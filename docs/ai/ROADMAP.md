@@ -8,27 +8,30 @@ Actualizado: 2026-09-28.
   `2b9ab559e1b1016e3e623fcd45462e1a0fd43541` publicado. La migración se aplicó
   en MySQL local y shadow; producción permanece intacta. No existe consumo
   funcional.
-- `SF-INTEREST-FOUNDATION-2` — **completada y certificada en shadow;
-pendiente únicamente de validación de lectura real contra Salesforce SandboxRefreshed.**
-
-  Commit:
-b69f0f88435e7509a039d30e4d62bf64468cd87b
-
-La migración FOUNDATION-2 se ha aplicado en `informes_intereses_local` y shadow,
-y el persister se ha certificado contra MySQL real. Shadow está certificado;
-únicamente sigue pendiente la lectura real contra Salesforce SandboxRefreshed
-con el usuario técnico read-only.
-Producción permanece intacta.
+- `SF-INTEREST-FOUNDATION-2` — **completada y certificada en shadow y contra
+  Salesforce SandboxRefreshed en full + incremental**. Commit funcional
+  `b69f0f88435e7509a039d30e4d62bf64468cd87b`. La migración y el persister están
+  certificados en MySQL local y shadow. El bootstrap read-only contra Salesforce
+  SandboxRefreshed completó 65 registros en dos páginas, sin errores ni
+  escrituras, y dejó el watermark UTC en `2026-09-28 14:31:28`. El primer
+  incremental real cubrió `2026-09-28T14:26:28+00:00` →
+  `2026-09-28T15:06:10+00:00` con overlap de 300 segundos: 2 páginas, 0 registros
+  y 0 errores. El run quedó completed, avanzó el watermark a `15:06:10 UTC` y
+  mantuvo 65 Interests activos sin duplicados observados. Quedan certificados
+  full, incremental, watermark, overlap, query/queryAll, lifecycle, persistencia,
+  auditoría y read-only. Producción permanece intacta y no existe scheduler.
 - `SF-INTEREST-FOUNDATION-3` — **implementada, pendiente de revisión sénior**:
   snapshot local aditivo y auditable Lead–Interest por relación fuerte, masters
   protegidos, matriz central de conflictos, persona canónica validada,
   expansión master loaded/expanded, chunks/cursor, publicación independiente
   del cleanup acotado, retención por runs protegidos y lock. La ruta failed
   conserva el último completed válido y reintenta cualquier detalle superseded.
-  Solo está
-  validada con fixtures sintéticas; la validación cuantitativa real depende del
-  bootstrap read-only pendiente de FOUNDATION-2 en SandboxRefreshed. No tiene
-  consumidores funcionales y su migración no se ha aplicado persistentemente.
+  Su ejecución real sobre más de un millón de Leads confirmó una dependencia de
+  alineación del dataset Lead en shadow: cuatro migration origins existen en
+  SandboxRefreshed mediante queryAll, uno eliminado, pero ninguno está en la
+  réplica local de Leads. Es una incidencia propia de FOUNDATION-3 y no invalida
+  el sync de Interest de FOUNDATION-2. FOUNDATION-3 no tiene consumidores
+  funcionales.
 - FOUNDATION-2 materializa persona y fecha mediante
   `SalesforceInterestFoundationResolver::materialize()` antes de cualquier
   escritura bulk; no podrá depender del evento Eloquent `saving`.

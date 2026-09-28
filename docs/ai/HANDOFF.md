@@ -4,9 +4,13 @@
 
 - FOUNDATION-3 queda implementada sobre el baseline
   `a08cc3b45f75d137b91fa959f28be689c7157952`, pendiente de revisión sénior y
-  validada exclusivamente con fixtures sintéticas SQLite. La validación
-  cuantitativa real permanece bloqueada hasta que FOUNDATION-2 ejecute el
-  bootstrap read-only autorizado contra SandboxRefreshed.
+  validada inicialmente con fixtures sintéticas SQLite. Tras el bootstrap real
+  read-only de FOUNDATION-2, la primera reconciliación sobre más de un millón de
+  Leads detectó una dependencia de datos Lead: cuatro Interests tienen migration
+  origin existente en SandboxRefreshed mediante queryAll —uno eliminado—, pero
+  esos cuatro Lead IDs faltan en `salesforce_leads` local de shadow. Esta
+  desalineación pertenece a la entrada Lead de FOUNDATION-3 y no invalida
+  FOUNDATION-2.
 - `salesforce:reconcile-interests-local --reason=...` es manual, no usa
   Salesforce ni scheduler y exige motivo auditable. Un lock de seis horas
   impide ejecuciones concurrentes; siempre se libera en `finally`.
@@ -68,6 +72,8 @@
 
 ## SF-INTEREST-FOUNDATION-2 — sincronización local read-only (2026-09-28)
 
+- Estado formal: **completada y certificada en shadow y contra Salesforce
+  SandboxRefreshed en full + incremental**.
 - Implementación y revisión sénior aprobadas.
 - Commit funcional:
   b69f0f88435e7509a039d30e4d62bf64468cd87b.
@@ -79,11 +85,48 @@
 - El smoke fue transaccional y terminó con 0 fixtures persistidas.
 - Runtime shadow correcto: rutas OK, comando registrado, scheduler no registrado
   y HTTP 302.
-- Salesforce SandboxRefreshed/read-only sigue pendiente.
-- No se ha ejecutado salesforce:sync-interests.
+- La autenticación real contra Salesforce SandboxRefreshed usa OAuth
+  `client_credentials`: se obtuvo un token Bearer y la Connected App ejecutó
+  mediante `Run As` con un usuario técnico específico. Laravel no usa
+  username/password/security token de ese usuario y no se documentan secretos.
+- Permisos efectivos verificados sobre `Interes__c`: `queryable=true` y
+  `createable=false`, `updateable=false`, `deletable=false`. Los 26 campos
+  requeridos estaban disponibles (`missing_fields=[]`); query estándar,
+  queryAll y `Owner.Name` funcionaron. No se realizó ninguna escritura. Aunque
+  el cliente PHP conserva métodos genéricos de escritura, los permisos del
+  usuario técnico aportan la defensa efectiva de mínimo privilegio.
+- El bootstrap real `salesforce:sync-interests --full` completó con cutoff
+  `2026-09-28T14:31:28+00:00`: 2 páginas, 65 consultados, 65 insertados, 0
+  actualizados, 0 sin cambios, 0 eliminados, 0 reactivados y 0 errores.
+- Estado local posterior: 65 Interests activos, 0 eliminados y 0 errores de
+  auditoría. El último run `salesforce_interests/salesforce` quedó `completed`,
+  con `source_cutoff_at=2026-09-28 14:31:28 UTC` y `error_message=null`. Solo un
+  run completado puede aportar el watermark; eliminados continúa usando
+  queryAll.
+- FOUNDATION-2 ofrece full e incremental por `SystemModstamp`, cutoff UTC fijo,
+  overlap configurable, lectura paginada, chunks locales de 200, lifecycle de
+  eliminados/reactivados, auditoría segura y materialización canónica previa.
+  La primera ejecución incremental real completó la ventana
+  `2026-09-28T14:26:28+00:00` → `2026-09-28T15:06:10+00:00`. Aplicó exactamente
+  300 segundos de overlap sobre el watermark full de `14:31:28`, consultó 2
+  páginas y 0 registros, con 0 insertados, actualizados, sin cambios, eliminados,
+  reactivados y errores. El run terminó `completed`, `error_message=null`, avanzó
+  `source_cutoff_at` a `2026-09-28 15:06:10 UTC` y mantuvo 65 Interests activos,
+  0 eliminados y 0 errores de sync. La cardinalidad quedó estable y no se
+  observaron duplicados.
+- Quedan certificados full, incremental, watermark, overlap, query/queryAll,
+  lifecycle, persistencia por chunks, auditoría y permisos Salesforce read-only.
 - Producción permanece intacta.
-- FOUNDATION-3 se implementó después como capa local aislada; continúa sin
-  datos reales hasta el bootstrap read-only de SandboxRefreshed.
+- No se habilitó scheduler ni consumidor funcional de informes.
+- FOUNDATION-3 es una fase local independiente. Su hallazgo sobre cuatro
+  migration origins ausentes de la réplica local de Leads es una dependencia de
+  alineación de `salesforce_leads`, no un defecto del sync de Interests.
+- Deuda operativa de shadow, fuera del comportamiento funcional: el contenedor
+  conserva variables Salesforce antiguas inyectadas por Docker y las pruebas
+  manuales requieren actualmente retirar esas variables para usar la
+  configuración segura; además, el egress hacia Salesforce se añadió
+  manualmente. Ambas cuestiones deben resolverse antes del despliegue
+  productivo del conjunto, sin documentar credenciales ni valores de entorno.
 
 ### Contratos posteriores confirmados por Samu (no implementados)
 

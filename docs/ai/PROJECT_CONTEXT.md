@@ -60,6 +60,26 @@ Actualizado: 2026-09-28.
   dos meses: se anula el JSON, nunca la fila ni sus columnas normalizadas.
 - El comando es manual y no está programado en scheduler. Esta capa no alimenta
   todavía ningún informe ni inicia reconciliaciones o cutover.
+- La lectura real se certificó contra Salesforce SandboxRefreshed mediante
+  OAuth `client_credentials` y un usuario técnico `Run As` de mínimo privilegio.
+  `Interes__c` es consultable pero no permite create/update/delete para ese
+  usuario. Los 26 campos requeridos, query estándar, queryAll y `Owner.Name`
+  quedaron verificados; no hubo escrituras Salesforce. Los métodos genéricos de
+  escritura del cliente no sustituyen esta barrera efectiva de permisos.
+- El bootstrap full certificado fijó cutoff UTC
+  `2026-09-28T14:31:28+00:00` y procesó 65 registros en dos páginas: 65 altas y
+  cero cambios, eliminados, reactivados o errores. El run quedó `completed`, sin
+  error y con watermark persistido. El primer incremental real cubrió
+  `2026-09-28T14:26:28+00:00` → `2026-09-28T15:06:10+00:00`: los 300 segundos
+  entre el watermark previo y el inicio certifican el overlap. Recorrió dos
+  páginas sin registros modificados, terminó `completed`, sin error, avanzó el
+  cutoff a `15:06:10 UTC` y mantuvo 65 Interests activos, ninguno eliminado y
+  cero errores de sync. Quedan certificados full e incremental, watermark,
+  overlap, query/queryAll, lifecycle, persistencia, auditoría y read-only.
+- La ausencia en shadow de cuatro Leads referenciados por migration origin —los
+  cuatro existen en SandboxRefreshed vía queryAll y uno está eliminado— es una
+  desalineación de la fuente Lead consumida por FOUNDATION-3, no una incidencia
+  del sincronizador de Interest.
 
 ## Foundation local de Salesforce Interest
 
