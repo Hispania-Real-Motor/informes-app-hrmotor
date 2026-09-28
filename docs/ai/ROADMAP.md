@@ -8,19 +8,15 @@ Actualizado: 2026-09-28.
   `2b9ab559e1b1016e3e623fcd45462e1a0fd43541` publicado. La migración se aplicó
   en MySQL local y shadow; producción permanece intacta. No existe consumo
   funcional.
-- `SF-INTEREST-FOUNDATION-2` — **implementada, pendiente de revisión sénior**:
-  sincronización local read-only completa/incremental por `SystemModstamp`,
-  queryAll de eliminados, watermark auditable, errores por run/ID y comando
-  manual sin scheduler. La revisión incorporó chunk local de 200, errores de
-  persistencia sin SQL/datos, FK de auditoría con cascade y retención del raw
-  payload a dos meses. La escritura específica evita el `upsert()` ambiguo de
-  MySQL con múltiples UNIQUE: altas bulk simples, updates por PK y colisiones de
-  migration origin como error fatal. La migración nueva aún no se ha aplicado
-  de forma persistente.
-- Siguientes fases no iniciadas: reconciliación Lead→Interest;
-  Opportunity→Interest; captura y resolución de
-  Activity→Interest; deduplicación con hitos; resumen por Interest; certificación
-  y migración gradual de cada informe.
+- `SF-INTEREST-FOUNDATION-2` — **aprobada y validada en MySQL local; pendiente de certificación en shadow.**
+
+  Commit:
+b69f0f88435e7509a039d30e4d62bf64468cd87b
+
+La migración FOUNDATION-2 se ha aplicado únicamente en `informes_intereses_local`
+y el persister se ha certificado contra MySQL real.
+Shadow y Salesforce read-only siguen pendientes.
+Producción permanece intacta.
 - FOUNDATION-2 materializa persona y fecha mediante
   `SalesforceInterestFoundationResolver::materialize()` antes de cualquier
   escritura bulk; no podrá depender del evento Eloquent `saving`.
