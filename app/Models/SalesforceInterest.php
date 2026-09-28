@@ -35,6 +35,9 @@ class SalesforceInterest extends Model
         'inverse_opportunity_salesforce_id',
         'raw_payload',
         'synced_at',
+        'is_deleted',
+        'salesforce_deleted_at',
+        'deletion_detection_source',
     ];
 
     protected $casts = [
@@ -44,6 +47,8 @@ class SalesforceInterest extends Model
         'functional_created_at' => 'datetime',
         'raw_payload' => 'array',
         'synced_at' => 'datetime',
+        'is_deleted' => 'boolean',
+        'salesforce_deleted_at' => 'datetime',
     ];
 
     protected static function booted(): void

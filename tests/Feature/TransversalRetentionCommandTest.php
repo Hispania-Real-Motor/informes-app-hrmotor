@@ -39,10 +39,30 @@ class TransversalRetentionCommandTest extends TestCase
             ],
         ]);
 
-        $this->insertSyncRun('completed-old', 'completed', $now->copy()->subMonthNoOverflow()->subDay());
+        $oldRunId = $this->insertSyncRun('completed-old', 'completed', $now->copy()->subMonthNoOverflow()->subDay());
         $this->insertSyncRun('completed-recent', 'completed', $now->copy()->subMonthNoOverflow()->addDay());
         $this->insertSyncRun('failed-13-days', 'failed', $now->copy()->subDays(13));
         $this->insertSyncRun('failed-15-days', 'failed', $now->copy()->subDays(15));
+
+        DB::table('salesforce_interest_sync_errors')->insert([
+            'report_sync_run_id' => $oldRunId,
+            'salesforce_id' => 'a01000000000000901',
+            'phase' => 'active_persist',
+            'error_code' => '23000',
+            'error_message' => 'Synthetic safe persistence failure.',
+            'occurred_at' => $now->copy()->subMonthNoOverflow()->subDay(),
+            'created_at' => $now->copy()->subMonthNoOverflow()->subDay(),
+            'updated_at' => $now->copy()->subMonthNoOverflow()->subDay(),
+        ]);
+        DB::table('salesforce_interests')->insert([
+            'salesforce_id' => 'a01000000000000902',
+            'salesforce_created_at' => $now->copy()->subMonthsNoOverflow(3),
+            'salesforce_last_modified_at' => $now->copy()->subMonthsNoOverflow(3),
+            'functional_created_at' => $now->copy()->subMonthsNoOverflow(3),
+            'raw_payload' => json_encode(['synthetic' => 'interest-old']),
+            'created_at' => $now->copy()->subMonthsNoOverflow(3),
+            'updated_at' => $now->copy()->subMonthsNoOverflow(2)->subDay(),
+        ]);
 
         OperationalAlert::query()->create($this->alertPayload('open-old', 'open', null));
         OperationalAlert::query()->create($this->alertPayload(
@@ -62,6 +82,11 @@ class TransversalRetentionCommandTest extends TestCase
         $this->assertNull(DB::table('salesforce_users')->where('salesforce_id', 'RAW-OLD')->value('raw_payload'));
         $this->assertNotNull(DB::table('salesforce_users')->where('salesforce_id', 'RAW-RECENT')->value('raw_payload'));
         $this->assertDatabaseMissing('report_sync_runs', ['dataset' => 'completed-old']);
+        $this->assertDatabaseMissing('salesforce_interest_sync_errors', ['report_sync_run_id' => $oldRunId]);
+        $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000902']);
+        $this->assertNull(DB::table('salesforce_interests')
+            ->where('salesforce_id', 'a01000000000000902')
+            ->value('raw_payload'));
         $this->assertDatabaseHas('report_sync_runs', ['dataset' => 'completed-recent']);
         $this->assertDatabaseHas('report_sync_runs', ['dataset' => 'failed-13-days']);
         $this->assertDatabaseMissing('report_sync_runs', ['dataset' => 'failed-15-days']);
@@ -88,9 +113,9 @@ class TransversalRetentionCommandTest extends TestCase
         $this->assertDatabaseHas('report_sync_runs', ['dataset' => 'completed-dry']);
     }
 
-    private function insertSyncRun(string $dataset, string $status, mixed $completedAt): void
+    private function insertSyncRun(string $dataset, string $status, mixed $completedAt): int
     {
-        DB::table('report_sync_runs')->insert([
+        return DB::table('report_sync_runs')->insertGetId([
             'dataset' => $dataset,
             'source' => 'synthetic',
             'status' => $status,

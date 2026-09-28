@@ -1,6 +1,28 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-09-25.
+Actualizado: 2026-09-28.
+
+## Sincronización local de Salesforce Interest
+
+- `SalesforceInterestSyncService` mantiene una réplica read-only mediante
+  bootstrap completo o incremental UTC por `SystemModstamp`. El incremental
+  usa como watermark solo `source_cutoff_at` de un `report_sync_runs`
+  completado, aplica un solape configurable y fija el límite superior al inicio
+  de cada ejecución.
+- Activos y eliminados se procesan por páginas. El endpoint queryAll aporta los
+  eliminados confirmados; `SystemModstamp` se reserva como cursor/evidencia de
+  borrado y `LastModifiedDate` mantiene su columna semántica independiente.
+- Cada array se materializa antes de persistirse en chunks máximos de 200. El
+  persister específico evita `upsert()`: precarga identidades/orígenes, usa
+  `insert()` bulk para altas y actualiza cambios exclusivamente por PK local.
+  Así ningún UNIQUE alternativo de MySQL puede seleccionar otra fila. Los runs
+  fallidos no avanzan el watermark y los errores seguros pueden auditarse por
+  run, fase y Salesforce ID sin almacenar SQL, bindings, tokens, SOQL ni
+  payloads en logs. La FK local elimina la auditoría subordinada al podar el run.
+- `salesforce_interests.raw_payload` aplica la política transversal vigente de
+  dos meses: se anula el JSON, nunca la fila ni sus columnas normalizadas.
+- El comando es manual y no está programado en scheduler. Esta capa no alimenta
+  todavía ningún informe ni inicia reconciliaciones o cutover.
 
 ## Foundation local de Salesforce Interest
 

@@ -1,26 +1,41 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-09-25.
+Actualizado: 2026-09-28.
 
 ## Salesforce Interest foundation
 
-- `SF-INTEREST-FOUNDATION-1` — **completada y validada en MySQL local;
-  pendiente de certificación en shadow**: revisión sénior aprobada y commit
+- `SF-INTEREST-FOUNDATION-1` — **completada y certificada en shadow**: revisión sénior aprobada y commit
   `2b9ab559e1b1016e3e623fcd45462e1a0fd43541` publicado. La migración se aplicó
-  solo en `informes_intereses_local`; shadow sigue pendiente y producción
-  permanece intacta. No existe integración Salesforce ni consumo funcional.
-- Siguientes fases, no iniciadas: sincronizador read-only e idempotente;
-  reconciliación Lead→Interest; Opportunity→Interest; captura y resolución de
+  en MySQL local y shadow; producción permanece intacta. No existe consumo
+  funcional.
+- `SF-INTEREST-FOUNDATION-2` — **implementada, pendiente de revisión sénior**:
+  sincronización local read-only completa/incremental por `SystemModstamp`,
+  queryAll de eliminados, watermark auditable, errores por run/ID y comando
+  manual sin scheduler. La revisión incorporó chunk local de 200, errores de
+  persistencia sin SQL/datos, FK de auditoría con cascade y retención del raw
+  payload a dos meses. La escritura específica evita el `upsert()` ambiguo de
+  MySQL con múltiples UNIQUE: altas bulk simples, updates por PK y colisiones de
+  migration origin como error fatal. La migración nueva aún no se ha aplicado
+  de forma persistente.
+- Siguientes fases no iniciadas: reconciliación Lead→Interest;
+  Opportunity→Interest; captura y resolución de
   Activity→Interest; deduplicación con hitos; resumen por Interest; certificación
   y migración gradual de cada informe.
-- FOUNDATION-2 deberá materializar persona y fecha mediante
+- FOUNDATION-2 materializa persona y fecha mediante
   `SalesforceInterestFoundationResolver::materialize()` antes de cualquier
   escritura bulk; no podrá depender del evento Eloquent `saving`.
-- Pendientes de contrato/operación: rollback completo y parcial del batch,
-  snapshot final legacy, deletes/merges y orden de sincronización continua,
-  atribución histórica fotografiada frente a mutable, fechas por actividad,
-  tipos de descarte, campos Contact Center, Quote, Contact, controles de
-  integridad, pools de producción y timestamps de cutover.
+- **Contrato confirmado; implementación pendiente:** Contact se resuelve por
+  Lead convertido/Account; Quote sigue Opportunity→Interest; Task usa
+  `ActivityDate` con `CreatedDate` como desempate y Event usa `StartDateTime`;
+  Opportunity fotografía la atribución; el orden continuo es
+  Lead/Account/Contact→Interest→Opportunity/Quote→Task/Event→hitos→
+  deletes/merges→integridad; pools proceden de `HRM_Reparto_Regla__c`; cutover
+  debe registrar UTC y hora local.
+- **Realmente pendiente:** rollback completo por ejecución histórica, métricas
+  persistentes del batch, campos Contact Center sin equivalente, exportación
+  completa de excepciones, snapshot definitivo y timestamps reales de cutover,
+  conciliación final de pools productivos, tipos de descarte y controles de
+  integridad aún no implementados.
 
 Este documento es la **fuente única de verdad del trabajo pendiente**. El
 histórico de trabajo ya entregado y sus validaciones permanece en

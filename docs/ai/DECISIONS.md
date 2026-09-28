@@ -1,5 +1,37 @@
 # Decisiones técnicas
 
+## 2026-09-28 — Persistencia inequívoca del sync de Interest
+
+- `salesforce_interests` no usa `upsert()`: MySQL/MariaDB ignora `uniqueBy` y
+  puede resolver `ON DUPLICATE KEY UPDATE` mediante cualquiera de sus índices
+  UNIQUE. Con `salesforce_id` y `migration_origin_lead_id` independientes, eso
+  podría actualizar un Interest distinto al entrante.
+- El persister específico precarga ambos identificadores por chunk, rechaza
+  colisiones antes de escribir, inserta altas mediante `insert()` bulk y dirige
+  cada modificación real por PK local. `migration_origin_lead_id UNIQUE` se
+  conserva como defensa final ante carreras; una violación siempre falla el run.
+- Un fallo de la operación inicial del chunk es fatal. El replay individual es
+  exclusivamente diagnóstico: puede conservar escrituras parciales y auditar
+  IDs, pero nunca convierte el run original en completado.
+
+## 2026-09-25 — Watermark y lifecycle del sync de Interest
+
+- `report_sync_runs` es la autoridad del watermark: solo un run
+  `salesforce_interests/salesforce` completado puede aportar
+  `source_cutoff_at`. Cada ejecución fija su cutoff UTC al comenzar; el
+  incremental vuelve a consultar desde watermark menos un solape configurable.
+- La lectura activa y de eliminados es paginada. Eliminados usa queryAll y
+  materializa `query_all_deleted`; una observación activa posterior limpia el
+  lifecycle. `SystemModstamp` gobierna la ventana y documenta la detección de
+  borrado, pero no sustituye `LastModifiedDate`.
+- Cada fila se materializa antes de persistirla. El timestamp local de sync no
+  participa en detección de cambios y las páginas se dividen en chunks locales
+  de 200 antes de la escritura.
+- Los errores por registro viven en una tabla aditiva vinculada lógicamente al
+  run mediante FK local con cascade. Persistencia usa mensaje genérico y código
+  técnico acotado; remoto usa el sanitizador común. No se conservan SQL,
+  bindings, respuestas completas, SOQL, tokens, payloads ni datos de contacto.
+
 ## 2026-09-25 — Interest como capa local aditiva y materializada
 
 - Se crea `salesforce_interests` en lugar de reinterpretar

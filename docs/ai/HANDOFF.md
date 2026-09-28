@@ -1,12 +1,98 @@
 # Handoff para agentes
 
+## SF-INTEREST-FOUNDATION-2 — sincronización local read-only (2026-09-28)
+
+- FOUNDATION-2 queda implementada y pendiente de revisión sénior sobre el
+  baseline certificado `4dd63f5c4ab722d585531b617e9ab825d2ef617f`.
+  Añade exclusivamente la réplica local de `Interes__c`; no modifica
+  dashboards, KPIs, Opportunities, Activities, tablas legacy ni scheduler.
+- `salesforce:sync-interests --full` realiza el bootstrap paginado con un corte
+  UTC fijo. Sin `--full`, el incremental toma exclusivamente el último
+  `source_cutoff_at` de `report_sync_runs` completado, resta el solape
+  configurable `SALESFORCE_INTEREST_SYNC_OVERLAP_SECONDS` (300 segundos por
+  defecto) y consulta por `SystemModstamp`. Un run fallido nunca avanza el
+  watermark y el incremental sin watermark exige ejecutar antes el bootstrap.
+- Activos y eliminados se leen por páginas mediante `queryPages`; eliminados
+  usan el endpoint queryAll (`includeDeleted=true`). Cada página se materializa
+  con `SalesforceInterestFoundationResolver::materialize()` y después se divide
+  en chunks locales de 200 filas. El persister específico no usa `upsert()`:
+  precomprueba la unicidad de migration origin, hace `insert()` bulk de altas y
+  updates dirigidos por PK local. `synced_at` queda fuera de la comparación.
+  Esto evita que MySQL/MariaDB elija otro UNIQUE distinto de `salesforce_id`.
+  El replay individual se limita al chunk fallido, sirve solo para diagnóstico
+  y nunca permite completar un run cuyo bulk inicial falló.
+- El lifecycle aditivo conserva `is_deleted`, `salesforce_deleted_at` y
+  `deletion_detection_source=query_all_deleted`. `salesforce_deleted_at` recibe
+  `SystemModstamp` como evidencia técnica; `salesforce_last_modified_at`
+  conserva exclusivamente `LastModifiedDate`. Una fila activa limpia las tres
+  marcas y permite undelete/reactivación idempotente.
+- `report_sync_runs` registra modo, ventana, solape, páginas, consultados,
+  insertados, actualizados, sin cambios, eliminados, reactivados, errores y
+  cutoff, sin listas grandes de IDs. `salesforce_interest_sync_errors` conserva
+  run, Salesforce ID nullable solo para fallos de página sin registro, fase,
+  tipo, mensaje sanitizado y fecha. Si falla un bulk, solo la ruta excepcional
+  reintenta por fila para identificar el ID exacto; el run queda fallido aunque
+  las páginas/filas ya persistidas permanezcan para el reintento idempotente.
+- `salesforce_interest_sync_errors.report_sync_run_id` usa una FK local con
+  borrado en cascada. El índice compuesto `(report_sync_run_id, phase)` evita
+  el índice simple redundante. Los fallos de persistencia solo conservan fase,
+  ID externo, tipo/SQLSTATE seguro y un mensaje genérico; no guardan SQL,
+  bindings, payload o valores de la fila, y la excepción pública no conserva
+  una excepción previa insegura.
+- La retención transversal incluye `salesforce_interests.raw_payload`: tras dos
+  meses lo sustituye por `NULL`, sin borrar la fila ni columnas normalizadas.
+  El overlap se valida también dentro del servicio y la CLI solo acepta enteros
+  decimales no negativos.
+- Seguridad: el servicio solo llama `queryPages()` y nunca `create()` o
+  `update()` de SalesforceClient. No almacena tokens, SOQL ni payloads en logs;
+  toda excepción persistida o propagada se sanitiza. El usuario técnico de
+  shadow deberá limitar además los permisos API a lectura.
+- Base de datos: nueva migración reversible para el lifecycle de Interest y la
+  auditoría de errores. Solo se ha revisado mediante `migrate --pretend`; no se
+  ha aplicado todavía en MySQL local, shadow o producción.
+- Validación de implementación tras la tercera corrección de revisión:
+  FOUNDATION-1 con 12 pruebas y 56 aserciones; FOUNDATION-2 con 15 pruebas y 85
+  aserciones; retención transversal con 2 pruebas y 17 aserciones; regresiones
+  Salesforce adicionales con 29 pruebas y 226 aserciones; suite completa con
+  1.047 pruebas y 8.028 aserciones. Pint pasó
+  sobre todo el PHP modificado, `git diff --check` fue correcto y
+  `migrate --pretend` generó únicamente el ALTER aditivo de lifecycle y la
+  tabla de auditoría prevista. No se ejecutó ninguna migración persistente, no
+  se conectó a Salesforce ni se ejecutó el batch histórico.
+- Estado: implementación y validación automatizada completadas; quedan
+  pendientes la revisión sénior y, después, la validación MySQL local/shadow
+  con el procedimiento controlado de FOUNDATION-1. Producción permanece
+  intacta.
+
+### Contratos posteriores confirmados por Samu (no implementados)
+
+- SandboxRefreshed usará un usuario técnico exclusivamente read-only y el batch
+  histórico continúa desactivado. Su universo operativo son Leads no eliminados
+  con `DuplicateReviewed__c=false`; eliminados/fusionados serán excepciones
+  separadas. El batch requerirá ejecución persistente, métricas y rollback por
+  ejecución.
+- `IN_Lead_Origen_Migracion__c` identifica el Lead histórico concreto. Account
+  mantiene prioridad canónica y distintos Leads históricos conservan distintos
+  Interests. Contact se resolverá por Lead convertido o Account, sin elección
+  arbitraria.
+- Quote seguirá `Quote → Opportunity → HRM_Interes_Origen__c → Interes__c`.
+  Task usará `ActivityDate` y `CreatedDate` como desempate del mismo día; Event,
+  `StartDateTime`. Nunca se asociará automáticamente una actividad a un Interest
+  posterior a ella. Contact Center continúa parcialmente bloqueado.
+- Los pools productivos procederán de `HRM_Reparto_Regla__c`, sin IDs
+  hardcodeados. El cutover registrará timestamps UTC y hora local. Opportunity
+  fotografiará la atribución del Interest y cambios posteriores no reescribirán
+  esa historia.
+- Los tipos canónicos siguen siendo `Venta`, `Venta con cambio` y `Tasación`.
+  El orden diario confirmado es Lead/Account/Contact → Interest →
+  Opportunity/Quote → Task/Event → hitos → deletes/merges → integridad.
+
 ## SF-INTEREST-FOUNDATION-1 — persistencia local de Interest (2026-09-25)
 
 - FOUNDATION-1 está implementada, revisada y aprobada. El commit publicado es
   `2b9ab559e1b1016e3e623fcd45462e1a0fd43541`
   (`feat: add local Salesforce interest foundation`). La fase queda validada
-  en MySQL local y pendiente exclusivamente de certificación en shadow;
-  FOUNDATION-2 no ha comenzado.
+  en MySQL local y certificada en shadow; producción permanece intacta.
 - Se añadió exclusivamente la foundation local y aditiva de `Interes__c` en
   `salesforce_interests`. No existe todavía sincronizador, SOQL, comando,
   scheduler, reconciliador, endpoint ni consumidor funcional; todas las tablas
@@ -48,8 +134,8 @@
   ambas se eliminaron tras la comprobación.
 - Seguridad: no se añadieron datos de contacto, secretos o credenciales. No se
   conectó a Salesforce, shadow o producción y no se ejecutaron backfills. La
-  migración todavía no se ha aplicado en shadow ni en producción; producción
-  permanece intacta.
+  migración se certificó posteriormente en shadow y no se ha aplicado en
+  producción; producción permanece intacta.
 - Validación final tras las correcciones: test específico con 12 pruebas y 56
   aserciones; regresiones Salesforce con 43 pruebas y 296 aserciones; suite
   completa con 1.032 pruebas y 7.940 aserciones. Pint pasó sobre los PHP
