@@ -2,22 +2,20 @@
 
 ## SF-INTEREST-FOUNDATION-2 — sincronización local read-only (2026-09-28)
 
-- Implementación completada y revisión sénior aprobada.
-- Commit funcional publicado:
-  b69f0f88435e7509a039d30e4d62bf64468cd87b
-  (feat: add read-only Salesforce interest sync).
-- Migración FOUNDATION-2 aplicada exclusivamente en MySQL local
-  `informes_intereses_local`.
-- Verificados lifecycle, tabla de auditoría, índices y FK con ON DELETE CASCADE.
-- Verificado sobre MySQL real el persister específico:
-  insert bulk, idempotencia, update por PK, conflicto de
-  migration_origin_lead_id sin modificar al propietario original.
-- Smoke realizado dentro de transacción y revertido; tablas de Interest/error
-  permanecieron sin fixtures sintéticas.
-- Suite completa: 1.047 tests / 8.028 assertions.
-- Shadow pendiente de certificación.
-- Salesforce SandboxRefreshed/read-only pendiente.
-- Producción intacta.
+- Implementación y revisión sénior aprobadas.
+- Commit funcional:
+  b69f0f88435e7509a039d30e4d62bf64468cd87b.
+- Validada en MySQL local y certificada en shadow.
+- En shadow se aplicaron correctamente las migraciones 61 y 62.
+- Verificados lifecycle, auditoría, índices, FK cascade y UNIQUE.
+- Smoke MySQL shadow:
+  insert bulk, idempotencia, update por PK y conflicto de migration origin.
+- El smoke fue transaccional y terminó con 0 fixtures persistidas.
+- Runtime shadow correcto: rutas OK, comando registrado, scheduler no registrado
+  y HTTP 302.
+- Salesforce SandboxRefreshed/read-only sigue pendiente.
+- No se ha ejecutado salesforce:sync-interests.
+- Producción permanece intacta.
 - FOUNDATION-3 no iniciada.
 
 ### Contratos posteriores confirmados por Samu (no implementados)

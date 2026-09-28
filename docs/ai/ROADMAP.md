@@ -8,7 +8,8 @@ Actualizado: 2026-09-28.
   `2b9ab559e1b1016e3e623fcd45462e1a0fd43541` publicado. La migración se aplicó
   en MySQL local y shadow; producción permanece intacta. No existe consumo
   funcional.
-- `SF-INTEREST-FOUNDATION-2` — **aprobada y validada en MySQL local; pendiente de certificación en shadow.**
+- `SF-INTEREST-FOUNDATION-2` — **completada y certificada en shadow;
+pendiente únicamente de validación de lectura real contra Salesforce SandboxRefreshed.**
 
   Commit:
 b69f0f88435e7509a039d30e4d62bf64468cd87b
