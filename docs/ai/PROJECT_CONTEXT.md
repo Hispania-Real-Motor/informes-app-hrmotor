@@ -2,6 +2,43 @@
 
 Actualizado: 2026-09-28.
 
+## Reconciliación local Lead–Interest
+
+- `SalesforceInterestReconciliationService` cruza exclusivamente
+  `migration_origin_lead_id` con `salesforce_leads.salesforce_id`. Lead e
+  Interest son fuentes read-only; la salida vive en runs y resoluciones propios
+  sin PII ni payloads.
+- El snapshot se construye por cursor PK y chunks de 200. Una fila representa
+  cada Lead y solo se añaden filas de tipo Interest para origen nulo o ausente.
+  Las cadenas de master se cargan por fronteras en lote, con límite de 100
+  saltos y estados explícitos para ausencia, self-reference, ciclo y exceso.
+  El algoritmo mantiene conjuntos separados `loaded`/`expanded`, por lo que un
+  master ya cargado también descubre su siguiente salto en una frontera batch.
+- Solo las resoluciones asociadas a un run `completed` forman un snapshot
+  válido. Un fallo conserva su parcial para diagnóstico bajo `failed`; al
+  fallar otro run se elimina el parcial fallido anterior. Al completar un run
+  se retiran todos los detalles superseded. Así coexisten como máximo dos
+  snapshots detallados —completed vigente y failed reciente— y tras éxito solo
+  uno. La limpieza recorre PKs en chunks de 1.000 y transacciones acotadas, sin
+  OFFSET ni DELETE monolítico; protege por ID el run actual y, en la ruta
+  failed, el último completed válido. El resto de runs finalizados son
+  candidatos, incluidos completed residuales. El histórico agregado se conserva.
+- La publicación precede al garbage collection. Si el cleanup posterior falla,
+  el nuevo run continúa `completed`, su snapshot íntegro sigue válido y
+  `cleanup_errors` registra el incidente sin detalle sensible. El siguiente run
+  vuelve a intentar los restos superseded aunque su reconciliación falle.
+- `has_conflict` procede de una única matriz: contradicción canónica, master
+  inválido, origen huérfano, alignment `other` o vínculo todavía al origen
+  cuando ya existe master resuelto. Ausencia de Interest, ausencia de migration
+  origin y `no_current_lead` no bastan por sí solas para afirmar conflicto.
+- La capa no valida Accounts, no infiere el universo `DuplicateReviewed__c`, no
+  fusiona Interests por persona/Account y no tiene consumidores funcionales.
+- El máximo de dos snapshots detallados corresponde a rutas gestionadas. Un
+  segundo fallo del propio cleanup puede exceder temporalmente esa cota sin
+  destruir el último completed. Un `SIGKILL`, caída del host o terminación
+  abrupta puede dejar un run `running` y su parcial hasta intervención
+  operativa; FOUNDATION-3 no añade recovery automático ni scheduler.
+
 ## Sincronización local de Salesforce Interest
 
 - `SalesforceInterestSyncService` mantiene una réplica read-only mediante

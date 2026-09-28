@@ -1,5 +1,71 @@
 # Handoff para agentes
 
+## SF-INTEREST-FOUNDATION-3 — reconciliación local Lead–Interest (2026-09-28)
+
+- FOUNDATION-3 queda implementada sobre el baseline
+  `a08cc3b45f75d137b91fa959f28be689c7157952`, pendiente de revisión sénior y
+  validada exclusivamente con fixtures sintéticas SQLite. La validación
+  cuantitativa real permanece bloqueada hasta que FOUNDATION-2 ejecute el
+  bootstrap read-only autorizado contra SandboxRefreshed.
+- `salesforce:reconcile-interests-local --reason=...` es manual, no usa
+  Salesforce ni scheduler y exige motivo auditable. Un lock de seis horas
+  impide ejecuciones concurrentes; siempre se libera en `finally`.
+- La clave histórica exclusiva es
+  `salesforce_interests.migration_origin_lead_id = salesforce_leads.salesforce_id`.
+  No se usan nombre, teléfono, email, Owner, fecha, vehículo, fuente o UTM. Las
+  fuentes Lead/Interest solo se leen y no se copian PII ni `raw_payload`.
+- Cada run dedicado materializa un snapshot por chunks de 200 y cursor PK, sin
+  OFFSET ni carga total. Cada Lead produce una resolución; los Interests con
+  origen ausente o inexistente producen una resolución propia. Las relaciones
+  exactas no se duplican. Un nuevo run completado sustituye las filas del
+  snapshot completado anterior, pero conserva sus métricas históricas.
+- Los estados documentados son: relación `exact`, `lead_without_interest`,
+  `interest_origin_missing_lead`, `interest_without_migration_origin`; master
+  `none`, `direct`, `chain`, `missing`, `self_reference`, `cycle`,
+  `depth_exceeded`, `not_applicable`; persona `coherent_account`,
+  `coherent_lead`, `coherent_none`, `inconsistent`, `not_applicable`; vínculo
+  actual `matches_origin`, `matches_master`, `no_current_lead`, `other` y
+  `not_applicable`.
+- Un run fallido conserva filas parciales únicamente como diagnóstico ligado al
+  run `failed`; nunca se presenta como snapshot válido. Solo se conserva el
+  parcial del failed más reciente. Con un fallo pueden coexistir como máximo el
+  completed vigente y ese failed; tras éxito queda únicamente el completed
+  actual. Los detalles superseded se borran por PK en chunks de 1.000 y
+  transacciones acotadas. La ruta failed protege por ID el failed actual y el
+  último completed válido, y elimina detalles de cualquier otro run finalizado,
+  incluidos restos de completed superseded. Las métricas históricas permanecen.
+- Construcción/publicación y cleanup están separados: al terminar la
+  reconciliación el run se publica `completed`; un fallo posterior tras uno o
+  más chunks de cleanup solo incrementa `cleanup_errors`, no cambia el estado,
+  no elimina el snapshot nuevo y deja restos superseded reintentables por el
+  siguiente run, incluso cuando esa siguiente reconciliación falla durante la
+  construcción.
+- La matriz central de conflicto marca persona inconsistente, master
+  missing/self/cycle/depth, origin huérfano, alignment `other`, o
+  `matches_origin` con master direct/chain. No marca automáticamente
+  `lead_without_interest`, `interest_without_migration_origin` ni
+  `no_current_lead`.
+- No se valida Accounts físicamente ni se convierte `converted_account_id` en
+  regla. Un Lead sin Interest es un hecho local observable, no prueba de que el
+  batch histórico lo omitiera, porque no existe réplica local verificada de
+  `DuplicateReviewed__c`.
+- FOUNDATION-3 no tiene consumidores funcionales y no cambia informes, KPIs,
+  Leads, Interests, Opportunities, Activities ni tablas legacy.
+- La resolución de masters diferencia IDs cargados e IDs ya expandidos. Así una
+  cadena A→B→C resuelve C por lote aunque A/B estén en el chunk y C fuera.
+- Límite operacional: la cota de dos snapshots detallados se garantiza en rutas
+  gestionadas cuyo cleanup concluye. Si también falla el cleanup de una ruta
+  failed, pueden persistir temporalmente restos superseded, sin eliminar el
+  último completed válido. Un `SIGKILL` o caída abrupta puede dejar un run
+  `running` parcial; no se implementa todavía recovery automático ni scheduler.
+- Validación local tras correcciones de revisión: test específico FOUNDATION-3
+  con 19 pruebas y 104 aserciones; regresiones Interest/Leads/reconciliación con
+  121 pruebas y 671 aserciones; suite completa con 1.066 pruebas y 8.132
+  aserciones. Pint y `git diff --check` correctos;
+  `migrate:status` deja solo la migración FOUNDATION-3 pendiente y
+  `migrate --pretend` genera exclusivamente las dos tablas aditivas. No se
+  ejecutó ninguna migración persistente ni acceso Salesforce.
+
 ## SF-INTEREST-FOUNDATION-2 — sincronización local read-only (2026-09-28)
 
 - Implementación y revisión sénior aprobadas.
@@ -16,7 +82,8 @@
 - Salesforce SandboxRefreshed/read-only sigue pendiente.
 - No se ha ejecutado salesforce:sync-interests.
 - Producción permanece intacta.
-- FOUNDATION-3 no iniciada.
+- FOUNDATION-3 se implementó después como capa local aislada; continúa sin
+  datos reales hasta el bootstrap read-only de SandboxRefreshed.
 
 ### Contratos posteriores confirmados por Samu (no implementados)
 

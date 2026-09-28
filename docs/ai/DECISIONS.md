@@ -1,5 +1,46 @@
 # Decisiones técnicas
 
+## 2026-09-28 — Snapshot local de reconciliación Lead–Interest
+
+- La identidad histórica fuerte es únicamente `migration_origin_lead_id` contra
+  `salesforce_leads.salesforce_id`. Se prohíben heurísticas de PII, Account o
+  afinidad temporal y no se infiere `DuplicateReviewed__c`.
+- Se usan runs dedicados porque `report_sync_runs` expresa ventanas/cutoffs que
+  no existen en este cálculo local. Las resoluciones se ligan al run: solo
+  `completed` publica snapshot y `failed` mantiene parciales diagnósticos.
+- Estados de relación: `exact`, `lead_without_interest`,
+  `interest_origin_missing_lead`, `interest_without_migration_origin`. Estados
+  master: `none`, `direct`, `chain`, `missing`, `self_reference`, `cycle`,
+  `depth_exceeded`, `not_applicable`. Persona: `coherent_account`,
+  `coherent_lead`, `coherent_none`, `inconsistent`, `not_applicable`.
+- El origen histórico nunca se sustituye por el master. `immediate_master` y
+  `resolved_master` son evidencia separada; cadenas se recorren con límite y
+  ciclos protegidos. La expansión distingue nodos cargados de nodos ya
+  expandidos: un master presente en el chunk todavía se inspecciona para
+  descubrir por lote el siguiente salto externo. `converted_account_id` no es
+  una regla contractual.
+- La idempotencia es lógica: un run completado reemplaza las filas del snapshot
+  completado anterior, mantiene métricas históricas y nunca confunde parciales
+  fallidos con el estado válido.
+- La regla única de conflicto marca: persona `inconsistent`; master `missing`,
+  `self_reference`, `cycle` o `depth_exceeded`; origen de migración sin Lead
+  local; alignment `other`; y `matches_origin` cuando existe master válido
+  `direct/chain`. No marca por sí sola `lead_without_interest`,
+  `interest_without_migration_origin` ni `no_current_lead`.
+- El detalle materializado está acotado: durante un fallo pueden coexistir como
+  máximo el último snapshot `completed` y el parcial del último `failed`; tras
+  éxito queda solo el completed actual. Runs anteriores conservan métricas. La
+  limpieza protege por ID el run actual y, si éste falla, el último `completed`;
+  elimina detalles del resto de runs finalizados, con cursor por PK, lotes de
+  1.000 y transacciones pequeñas. Así la ruta `failed` también reintenta restos
+  de completed superseded dejados por un garbage collection anterior.
+- Publicación y garbage collection son fases separadas. Una vez marcado el run
+  `completed`, un fallo posterior de cleanup incrementa `cleanup_errors` pero
+  no degrada el run ni invalida su snapshot íntegro; una ejecución posterior
+  —termine completed o failed— reintenta los detalles superseded restantes. Si
+  ese segundo cleanup también falla, la cota física puede excederse de forma
+  temporal sin poner en riesgo el último snapshot válido.
+
 ## 2026-09-28 — Persistencia inequívoca del sync de Interest
 
 - `salesforce_interests` no usa `upsert()`: MySQL/MariaDB ignora `uniqueBy` y

@@ -14,10 +14,21 @@ pendiente únicamente de validación de lectura real contra Salesforce SandboxRe
   Commit:
 b69f0f88435e7509a039d30e4d62bf64468cd87b
 
-La migración FOUNDATION-2 se ha aplicado únicamente en `informes_intereses_local`
-y el persister se ha certificado contra MySQL real.
-Shadow y Salesforce read-only siguen pendientes.
+La migración FOUNDATION-2 se ha aplicado en `informes_intereses_local` y shadow,
+y el persister se ha certificado contra MySQL real. Shadow está certificado;
+únicamente sigue pendiente la lectura real contra Salesforce SandboxRefreshed
+con el usuario técnico read-only.
 Producción permanece intacta.
+- `SF-INTEREST-FOUNDATION-3` — **implementada, pendiente de revisión sénior**:
+  snapshot local aditivo y auditable Lead–Interest por relación fuerte, masters
+  protegidos, matriz central de conflictos, persona canónica validada,
+  expansión master loaded/expanded, chunks/cursor, publicación independiente
+  del cleanup acotado, retención por runs protegidos y lock. La ruta failed
+  conserva el último completed válido y reintenta cualquier detalle superseded.
+  Solo está
+  validada con fixtures sintéticas; la validación cuantitativa real depende del
+  bootstrap read-only pendiente de FOUNDATION-2 en SandboxRefreshed. No tiene
+  consumidores funcionales y su migración no se ha aplicado persistentemente.
 - FOUNDATION-2 materializa persona y fecha mediante
   `SalesforceInterestFoundationResolver::materialize()` antes de cualquier
   escritura bulk; no podrá depender del evento Eloquent `saving`.
