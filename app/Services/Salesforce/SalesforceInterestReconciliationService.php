@@ -316,6 +316,7 @@ class SalesforceInterestReconciliationService
 
                 $stats[$relationshipStatus]++;
                 $stats['lead_deleted'] += (int) ($dependency?->is_deleted === true);
+                $stats['lead_merged'] += (int) ($master['immediate_id'] !== null);
                 $stats['canonical_'.$canonicalStatus]++;
                 $stats['master_'.$master['status']]++;
                 $stats['conflicts'] += (int) $hasConflict;

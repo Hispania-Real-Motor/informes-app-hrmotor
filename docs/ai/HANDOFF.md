@@ -1,5 +1,21 @@
 # Handoff para agentes
 
+## SF-INTEREST-FOUNDATION-3 — métrica `lead_merged` (2026-09-29)
+
+- Se corrigió exclusivamente la agregación de `lead_merged` para las
+  resoluciones dependency-only materializadas desde FOUNDATION-3A: cada fila con
+  `immediate_master_lead_id` demostrado suma una vez, igual que la rama legacy.
+- No cambian relaciones, estados master, lifecycle, evidencia ni matriz de
+  conflictos. El cálculo permanece O(1) durante el procesamiento, sin queries o
+  scans adicionales y sin doble conteo cuando el origin también existe en
+  `salesforce_leads`.
+- La revalidación posterior en shadow queda pendiente. Con el mismo dataset se
+  espera `lead_merged=5904`, manteniendo `master_direct=5387`,
+  `master_chain=517`, `exact=4`, `conflicts=1` y cero errores.
+- Validación local: FOUNDATION-3, 25 pruebas/132 aserciones; FOUNDATION-3A +
+  FOUNDATION-3, 40/215; FOUNDATION-1/2/3/3A, 67/356; suite completa,
+  1.087/8.244. Pint y `git diff --check HEAD` correctos.
+
 ## SF-INTEREST-FOUNDATION-3A — dependencias Lead read-only (2026-09-29)
 
 - Se añadieron `salesforce_interest_lead_dependency_runs` y

@@ -642,6 +642,7 @@ class SalesforceInterestReconciliationTest extends TestCase
         $deletedId = $this->leadId(731);
         $this->interest(730, ['migration_origin_lead_id' => $activeId, 'lead_salesforce_id' => $activeId]);
         $this->interest(731, ['migration_origin_lead_id' => $deletedId, 'lead_salesforce_id' => $deletedId]);
+        $this->interest(739);
         SalesforceInterestLeadDependency::query()
             ->where('dependency_run_id', $this->dependencyRun->id)
             ->where('salesforce_id', $activeId)
@@ -651,7 +652,7 @@ class SalesforceInterestReconciliationTest extends TestCase
             ->where('salesforce_id', $deletedId)
             ->update(['presence_status' => 'deleted', 'is_deleted' => true]);
 
-        app(SalesforceInterestReconciliationService::class)
+        $stats = app(SalesforceInterestReconciliationService::class)
             ->run('Synthetic nonlegacy dependency evidence validation');
 
         $this->assertDatabaseHas('salesforce_interest_reconciliations', [
@@ -666,7 +667,64 @@ class SalesforceInterestReconciliationTest extends TestCase
             'lead_is_deleted' => true,
             'lead_evidence_source' => 'interest_dependency_snapshot',
         ]);
+        $this->assertSame(0, $stats['lead_merged']);
         $this->assertSame($this->dependencyRun->id, SalesforceInterestReconciliationRun::query()->sole()->lead_dependency_run_id);
+    }
+
+    public function test_lead_merged_counts_dependency_masters_once_alongside_legacy_masters(): void
+    {
+        $directOrigin = $this->leadId(732);
+        $directMaster = $this->leadId(733);
+        $chainOrigin = $this->leadId(734);
+        $chainMiddle = $this->leadId(735);
+        $chainFinal = $this->leadId(736);
+        $legacyMaster = $this->lead(737);
+        $legacyOrigin = $this->lead(738, ['salesforce_master_record_id' => $legacyMaster->salesforce_id]);
+
+        $this->interest(732, [
+            'migration_origin_lead_id' => $directOrigin,
+            'lead_salesforce_id' => $directMaster,
+        ]);
+        $this->interest(734, [
+            'migration_origin_lead_id' => $chainOrigin,
+            'lead_salesforce_id' => $chainFinal,
+        ]);
+        $this->interest(738, [
+            'migration_origin_lead_id' => $legacyOrigin->salesforce_id,
+            'lead_salesforce_id' => $legacyMaster->salesforce_id,
+        ]);
+        $this->dependency($directOrigin, 'deleted', $directMaster, origin: true);
+        $this->dependency($directMaster, 'active', null, master: true);
+        $this->dependency($chainOrigin, 'active', $chainMiddle, origin: true);
+        $this->dependency($chainMiddle, 'active', $chainFinal, master: true);
+        $this->dependency($chainFinal, 'active', null, master: true);
+
+        $stats = app(SalesforceInterestReconciliationService::class)
+            ->run('Synthetic merged dependency metric validation');
+
+        $this->assertSame(3, $stats['lead_merged']);
+        $this->assertSame(2, $stats['master_direct']);
+        $this->assertSame(1, $stats['master_chain']);
+        $this->assertSame(1, $stats['lead_deleted']);
+        $this->assertSame(3, SalesforceInterestReconciliation::query()
+            ->whereNotNull('immediate_master_lead_id')->count());
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $directOrigin,
+            'relationship_status' => 'exact',
+            'master_status' => 'direct',
+            'lead_is_deleted' => true,
+            'lead_evidence_source' => 'interest_dependency_snapshot',
+            'has_conflict' => false,
+        ]);
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $chainOrigin,
+            'relationship_status' => 'exact',
+            'master_status' => 'chain',
+            'lead_evidence_source' => 'interest_dependency_snapshot',
+            'has_conflict' => false,
+        ]);
+        $this->assertSame(1, SalesforceInterestReconciliation::query()
+            ->where('subject_salesforce_id', $legacyOrigin->salesforce_id)->count());
     }
 
     public function test_dependency_snapshot_overrides_legacy_lifecycle_and_master_for_interest_origin(): void
@@ -738,6 +796,7 @@ class SalesforceInterestReconciliationTest extends TestCase
                 ->where('subject_salesforce_id', $id)->count());
         }
         $this->assertSame(0, $stats['lead_deleted']);
+        $this->assertSame(0, $stats['lead_merged']);
         $this->assertSame(2, $stats['conflicts']);
     }
 
