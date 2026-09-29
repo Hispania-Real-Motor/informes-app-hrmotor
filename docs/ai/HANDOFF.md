@@ -1,5 +1,50 @@
 # Handoff para agentes
 
+## SF-INTEREST-FOUNDATION-3A — dependencias Lead read-only (2026-09-29)
+
+- Se añadieron `salesforce_interest_lead_dependency_runs` y
+  `salesforce_interest_lead_dependencies` como snapshot separado. Las semillas
+  proceden exclusivamente de `salesforce_interests.migration_origin_lead_id`;
+  nunca se inserta ni modifica `salesforce_leads`.
+- El comando manual `salesforce:sync-interest-lead-dependencies --reason=...`
+  exige motivo, lock de seis horas y solo publica métricas agregadas. No existe
+  scheduler.
+- El servicio exige que el run más reciente de FOUNDATION-2 sea `completed` y
+  tenga cutoff. Persiste su ID/cutoff, siembra origins mediante `INSERT … SELECT`
+  y vuelve a validar la misma fuente antes de publicar. Un run F2 nuevo,
+  running o failed impide producir un snapshot 3A válido.
+- La cola persistente procesa hasta 100 pending por iteración y admite únicamente
+  IDs REST canónicos de exactamente 18 caracteres alfanuméricos. Un ID de 15
+  caracteres queda `invalid` y no se consulta ni se convierte. Se usa solo
+  queryAll con `Id`,
+  `IsDeleted`, `MasterRecordId`, `LastModifiedDate` y `SystemModstamp`. Invalid no
+  sale a Salesforce; masters descubiertos vuelven a la cola sin duplicarse.
+- Estados: pending transitorio, active, deleted, missing observable e invalid.
+  No se almacenan Name, email, teléfono, dirección, Owner ni raw payload.
+- Solo `completed` es snapshot válido. Los detalles superseded se borran por PK
+  en chunks de 1.000 y transacciones cortas; un cleanup posterior fallido no
+  degrada el nuevo completed y se conserva metadata histórica de runs. Un
+  SIGKILL puede dejar running parcial; no hay recovery automático.
+- FOUNDATION-3 exige el último 3A completed, current, completo y ligado al run
+  exacto de FOUNDATION-2. Para migration origins, 3A prevalece sobre lifecycle y
+  MasterRecordId legacy incluso si el ID también existe en `salesforce_leads`.
+  Leads legacy sin Interest mantienen su comportamiento. Las resoluciones y el
+  run registran `lead_evidence_source` y `lead_dependency_run_id`.
+- El lifecycle 3A conserva su semántica nullable: active=false, deleted=true y
+  missing/invalid=null, incluso si el mismo ID existe activo en la réplica
+  legacy. `lead_deleted` solo cuenta evidencia estrictamente true.
+- F2, 3A y 3 siguen siendo procesos manuales sin scheduler. Antes de automatizar
+  el pipeline debe evaluarse un lock compartido o mecanismo equivalente que
+  serialice FOUNDATION-2 → FOUNDATION-3A → FOUNDATION-3 y cierre la ventana
+  entre la comprobación final de la fuente y la publicación.
+- Migraciones nuevas únicamente: creación de las dos tablas 3A y ampliación
+  nullable de las tablas FOUNDATION-3. No se editó ninguna migración aplicada.
+- Validación local: FOUNDATION-3A + FOUNDATION-3, 39 pruebas/206 aserciones;
+  FOUNDATION-1/2/3/3A, 66/347; regresiones Lead y retención, 63/369; suite
+  completa, 1.086/8.234. Pint correcto y `migrate --pretend` exclusivamente
+  aditivo. No se ejecutó migración persistente ni acceso a Salesforce, shadow o
+  producción.
+
 ## SF-INTEREST-FOUNDATION-3 — reconciliación local Lead–Interest (2026-09-28)
 
 - FOUNDATION-3 queda implementada sobre el baseline
@@ -14,8 +59,9 @@
 - `salesforce:reconcile-interests-local --reason=...` es manual, no usa
   Salesforce ni scheduler y exige motivo auditable. Un lock de seis horas
   impide ejecuciones concurrentes; siempre se libera en `finally`.
-- La clave histórica exclusiva es
-  `salesforce_interests.migration_origin_lead_id = salesforce_leads.salesforce_id`.
+- La clave histórica exclusiva sigue siendo el Salesforce ID de
+  `migration_origin_lead_id`. FOUNDATION-3A aporta lifecycle/master autoritativo
+  para esos IDs sin incorporarlos al universo `salesforce_leads`.
   No se usan nombre, teléfono, email, Owner, fecha, vehículo, fuente o UTM. Las
   fuentes Lead/Interest solo se leen y no se copian PII ni `raw_payload`.
 - Cada run dedicado materializa un snapshot por chunks de 200 y cursor PK, sin

@@ -1,6 +1,6 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-09-28.
+Actualizado: 2026-09-29.
 
 ## Salesforce Interest foundation
 
@@ -32,6 +32,20 @@ Actualizado: 2026-09-28.
   réplica local de Leads. Es una incidencia propia de FOUNDATION-3 y no invalida
   el sync de Interest de FOUNDATION-2. FOUNDATION-3 no tiene consumidores
   funcionales.
+- `SF-INTEREST-FOUNDATION-3A` — **implementada, pendiente de revisión sénior y
+  migración persistente**: añade una réplica read-only mínima de Leads requeridos
+  por `migration_origin_lead_id`, separada de `salesforce_leads`, con runs
+  anclados al snapshot exacto de FOUNDATION-2, `queryAll` en lotes de 100,
+  captura recursiva de masters y estados active/deleted/missing/invalid. Exige
+  IDs REST canónicos de 18 caracteres; un ID de 15 queda invalid sin consulta ni
+  conversión. Missing/invalid conservan lifecycle desconocido (`is_deleted`
+  null) aunque exista una fila legacy activa. La
+  reconciliación exige un snapshot 3A current y completo y registra su fuente de
+  evidencia. No tiene scheduler ni consumidores funcionales; no se ha conectado
+  a Salesforce, shadow o producción durante la implementación.
+- Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
+  queda pendiente evaluar un lock compartido o serialización equivalente; no se
+  implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
 - FOUNDATION-2 materializa persona y fecha mediante
   `SalesforceInterestFoundationResolver::materialize()` antes de cualquier
   escritura bulk; no podrá depender del evento Eloquent `saving`.

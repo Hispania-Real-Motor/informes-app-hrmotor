@@ -1,10 +1,36 @@
 # Decisiones técnicas
 
+## 2026-09-29 — Fuente separada para dependencias Lead de Interest
+
+- Los Leads históricos requeridos por `migration_origin_lead_id` no se añaden a
+  `salesforce_leads`, porque ampliar esa réplica alteraría silenciosamente
+  universos legacy. Se materializan en tablas 3A separadas, sin PII, mediante
+  queryAll read-only y Salesforce ID como única identidad.
+- FOUNDATION-3A acepta únicamente Salesforce IDs REST canónicos de 18
+  caracteres alfanuméricos. Los IDs de 15 caracteres se materializan como
+  `invalid`, no se envían a Salesforce y no se convierten localmente, porque la
+  fuente FOUNDATION-2 procede de respuestas REST de 18 caracteres.
+- El snapshot 3A queda anclado por ID y cutoff al run exacto de FOUNDATION-2. Se
+  exige que el run F2 y el run 3A más recientes estén completed y coincidan; la
+  cobertura incompleta o un cambio concurrente bloquean la publicación o la
+  reconciliación.
+- Para una migration origin, lifecycle y cadena master de 3A prevalecen sobre
+  `salesforce_leads`; para un Lead sin Interest continúa la autoridad legacy. La
+  procedencia queda materializada en `lead_evidence_source` y
+  `lead_dependency_run_id`. El lifecycle conserva `null` para missing/invalid;
+  la presencia de una fila legacy activa no convierte esa ausencia de evidencia
+  autoritativa en `false`.
+- Los runs 3A conservan metadata aunque `report_sync_runs` se pode; por eso
+  `source_interest_sync_run_id` no usa FK. La FK desde reconciliation run al run
+  3A sí es estable porque la política elimina detalles superseded, no metadata
+  de runs 3A.
+
 ## 2026-09-28 — Snapshot local de reconciliación Lead–Interest
 
-- La identidad histórica fuerte es únicamente `migration_origin_lead_id` contra
-  `salesforce_leads.salesforce_id`. Se prohíben heurísticas de PII, Account o
-  afinidad temporal y no se infiere `DuplicateReviewed__c`.
+- La identidad histórica fuerte es únicamente el Salesforce ID de
+  `migration_origin_lead_id`; su evidencia procede de FOUNDATION-3A sin ampliar
+  `salesforce_leads`. Se prohíben heurísticas de PII, Account o afinidad temporal
+  y no se infiere `DuplicateReviewed__c`.
 - Se usan runs dedicados porque `report_sync_runs` expresa ventanas/cutoffs que
   no existen en este cálculo local. Las resoluciones se ligan al run: solo
   `completed` publica snapshot y `failed` mantiene parciales diagnósticos.

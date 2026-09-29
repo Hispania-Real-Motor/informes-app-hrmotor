@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
+use App\Models\SalesforceInterestLeadDependency;
+use App\Models\SalesforceInterestLeadDependencyRun;
 use App\Models\SalesforceInterestReconciliation;
 use App\Models\SalesforceInterestReconciliationRun;
 use App\Models\SalesforceLead;
@@ -16,6 +19,34 @@ use Tests\TestCase;
 class SalesforceInterestReconciliationTest extends TestCase
 {
     use RefreshDatabase;
+
+    private ReportSyncRun $interestSourceRun;
+
+    private SalesforceInterestLeadDependencyRun $dependencyRun;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->interestSourceRun = ReportSyncRun::query()->create([
+            'dataset' => 'salesforce_interests',
+            'source' => 'salesforce',
+            'status' => 'completed',
+            'source_cutoff_at' => '2026-09-28 15:06:10',
+            'started_at' => '2026-09-28 15:06:00',
+            'completed_at' => '2026-09-28 15:06:11',
+            'timezone' => 'UTC',
+        ]);
+        $this->dependencyRun = SalesforceInterestLeadDependencyRun::query()->create([
+            'run_identifier' => '00000000-0000-4000-8000-000000000099',
+            'reason' => 'Synthetic current dependency snapshot fixture',
+            'status' => 'completed',
+            'source_interest_sync_run_id' => $this->interestSourceRun->id,
+            'source_interest_cutoff_at' => $this->interestSourceRun->source_cutoff_at,
+            'started_at' => '2026-09-28 15:06:12',
+            'completed_at' => '2026-09-28 15:06:13',
+        ]);
+    }
 
     public function test_reconciles_strong_relationships_masters_deletions_orphans_and_canonical_person(): void
     {
@@ -216,7 +247,7 @@ class SalesforceInterestReconciliationTest extends TestCase
         $interestSelects = $queries->filter(fn (string $sql): bool => str_starts_with(strtolower($sql), 'select')
             && str_contains($sql, 'from "salesforce_interests"'));
         $this->assertLessThanOrEqual(6, $leadSelects->count());
-        $this->assertLessThanOrEqual(6, $interestSelects->count());
+        $this->assertLessThanOrEqual(9, $interestSelects->count());
         $this->assertFalse($queries->contains(fn (string $sql): bool => str_contains(strtolower($sql), ' offset ')));
     }
 
@@ -605,6 +636,196 @@ class SalesforceInterestReconciliationTest extends TestCase
             ->where('reconciliation_run_id', $completedRun->id)->count());
     }
 
+    public function test_dependency_snapshot_makes_nonlegacy_active_and_deleted_origins_exact(): void
+    {
+        $activeId = $this->leadId(730);
+        $deletedId = $this->leadId(731);
+        $this->interest(730, ['migration_origin_lead_id' => $activeId, 'lead_salesforce_id' => $activeId]);
+        $this->interest(731, ['migration_origin_lead_id' => $deletedId, 'lead_salesforce_id' => $deletedId]);
+        SalesforceInterestLeadDependency::query()
+            ->where('dependency_run_id', $this->dependencyRun->id)
+            ->where('salesforce_id', $activeId)
+            ->update(['presence_status' => 'active', 'is_deleted' => false]);
+        SalesforceInterestLeadDependency::query()
+            ->where('dependency_run_id', $this->dependencyRun->id)
+            ->where('salesforce_id', $deletedId)
+            ->update(['presence_status' => 'deleted', 'is_deleted' => true]);
+
+        app(SalesforceInterestReconciliationService::class)
+            ->run('Synthetic nonlegacy dependency evidence validation');
+
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $activeId,
+            'relationship_status' => 'exact',
+            'lead_is_deleted' => false,
+            'lead_evidence_source' => 'interest_dependency_snapshot',
+        ]);
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $deletedId,
+            'relationship_status' => 'exact',
+            'lead_is_deleted' => true,
+            'lead_evidence_source' => 'interest_dependency_snapshot',
+        ]);
+        $this->assertSame($this->dependencyRun->id, SalesforceInterestReconciliationRun::query()->sole()->lead_dependency_run_id);
+    }
+
+    public function test_dependency_snapshot_overrides_legacy_lifecycle_and_master_for_interest_origin(): void
+    {
+        $origin = $this->lead(740);
+        $masterId = $this->leadId(741);
+        $this->interest(740, [
+            'migration_origin_lead_id' => $origin->salesforce_id,
+            'lead_salesforce_id' => $masterId,
+        ]);
+        SalesforceInterestLeadDependency::query()
+            ->where('dependency_run_id', $this->dependencyRun->id)
+            ->where('salesforce_id', $origin->salesforce_id)
+            ->update([
+                'presence_status' => 'deleted',
+                'is_deleted' => true,
+                'salesforce_master_record_id' => $masterId,
+            ]);
+        SalesforceInterestLeadDependency::query()->create([
+            'dependency_run_id' => $this->dependencyRun->id,
+            'salesforce_id' => $masterId,
+            'presence_status' => 'deleted',
+            'is_origin_reference' => false,
+            'is_master_dependency' => true,
+            'is_deleted' => true,
+        ]);
+
+        app(SalesforceInterestReconciliationService::class)
+            ->run('Synthetic dependency authority over legacy validation');
+
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $origin->salesforce_id,
+            'relationship_status' => 'exact',
+            'master_status' => 'direct',
+            'resolved_master_lead_id' => $masterId,
+            'lead_is_deleted' => true,
+            'lead_evidence_source' => 'interest_dependency_snapshot',
+        ]);
+        $this->assertSame(1, SalesforceInterestReconciliation::query()
+            ->where('subject_salesforce_id', $origin->salesforce_id)->count());
+    }
+
+    public function test_missing_and_invalid_dependency_lifecycle_remain_unknown_despite_active_legacy_rows(): void
+    {
+        $missingLead = $this->lead(750);
+        $invalidLead = $this->lead(751);
+        $this->interest(750, ['migration_origin_lead_id' => $missingLead->salesforce_id]);
+        $this->interest(751, ['migration_origin_lead_id' => $invalidLead->salesforce_id]);
+
+        foreach ([$missingLead->salesforce_id => 'missing', $invalidLead->salesforce_id => 'invalid'] as $id => $status) {
+            SalesforceInterestLeadDependency::query()
+                ->where('dependency_run_id', $this->dependencyRun->id)
+                ->where('salesforce_id', $id)
+                ->update(['presence_status' => $status, 'is_deleted' => null]);
+        }
+
+        $stats = app(SalesforceInterestReconciliationService::class)
+            ->run('Synthetic nullable dependency lifecycle validation');
+
+        foreach ([$missingLead->salesforce_id, $invalidLead->salesforce_id] as $id) {
+            $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+                'subject_salesforce_id' => $id,
+                'relationship_status' => 'interest_origin_missing_lead',
+                'lead_evidence_source' => 'interest_dependency_snapshot',
+                'lead_is_deleted' => null,
+                'has_conflict' => true,
+            ]);
+            $this->assertSame(1, SalesforceInterestReconciliation::query()
+                ->where('subject_salesforce_id', $id)->count());
+        }
+        $this->assertSame(0, $stats['lead_deleted']);
+        $this->assertSame(2, $stats['conflicts']);
+    }
+
+    public function test_dependency_master_resolver_covers_missing_self_cycle_and_depth_limit(): void
+    {
+        $self = $this->leadId(760);
+        $cycleA = $this->leadId(761);
+        $cycleB = $this->leadId(762);
+        $missingOrigin = $this->leadId(763);
+        $missingMaster = $this->leadId(764);
+        $depthOrigin = $this->leadId(800);
+        foreach ([$self, $cycleA, $missingOrigin, $depthOrigin] as $index => $originId) {
+            $this->interest(760 + $index, ['migration_origin_lead_id' => $originId]);
+        }
+        $this->dependency($self, 'active', $self);
+        $this->dependency($cycleA, 'active', $cycleB);
+        $this->dependency($cycleB, 'active', $cycleA, master: true);
+        $this->dependency($missingOrigin, 'active', $missingMaster);
+        $this->dependency($missingMaster, 'missing', null, master: true);
+
+        $previous = $depthOrigin;
+        for ($index = 1; $index <= 101; $index++) {
+            $next = $this->leadId(800 + $index);
+            $this->dependency($previous, 'active', $next, origin: $index === 1, master: $index > 1);
+            $previous = $next;
+        }
+        $this->dependency($previous, 'active', null, master: true);
+
+        app(SalesforceInterestReconciliationService::class)
+            ->run('Synthetic dependency master status validation');
+
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $self,
+            'master_status' => 'self_reference',
+        ]);
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $cycleA,
+            'master_status' => 'cycle',
+        ]);
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $missingOrigin,
+            'master_status' => 'missing',
+        ]);
+        $this->assertDatabaseHas('salesforce_interest_reconciliations', [
+            'subject_salesforce_id' => $depthOrigin,
+            'master_status' => 'depth_exceeded',
+            'has_conflict' => true,
+        ]);
+    }
+
+    public function test_reconciliation_rejects_stale_or_incomplete_dependency_snapshot(): void
+    {
+        $originId = $this->leadId(750);
+        $this->interest(750, ['migration_origin_lead_id' => $originId]);
+        ReportSyncRun::query()->create([
+            'dataset' => 'salesforce_interests',
+            'source' => 'salesforce',
+            'status' => 'completed',
+            'source_cutoff_at' => '2026-09-28 16:00:00',
+            'started_at' => '2026-09-28 16:00:00',
+            'completed_at' => '2026-09-28 16:01:00',
+            'timezone' => 'UTC',
+        ]);
+
+        try {
+            app(SalesforceInterestReconciliationService::class)
+                ->run('Synthetic stale dependency snapshot validation');
+            $this->fail('A stale dependency snapshot must be rejected.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Interest reconciliation failed safely.', $exception->getMessage());
+        }
+        $this->assertDatabaseMissing('salesforce_interest_reconciliation_runs', ['status' => 'completed']);
+
+        ReportSyncRun::query()->latest('id')->delete();
+        SalesforceInterestLeadDependency::query()
+            ->where('dependency_run_id', $this->dependencyRun->id)
+            ->where('salesforce_id', $originId)
+            ->delete();
+
+        try {
+            app(SalesforceInterestReconciliationService::class)
+                ->run('Synthetic incomplete dependency snapshot validation');
+            $this->fail('An incomplete dependency snapshot must be rejected.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Interest reconciliation failed safely.', $exception->getMessage());
+        }
+    }
+
     public function test_lock_prevents_concurrent_persistent_reconciliation(): void
     {
         $lock = Cache::lock(SalesforceInterestReconciliationService::LOCK_KEY, 60);
@@ -644,7 +865,7 @@ class SalesforceInterestReconciliationTest extends TestCase
 
     private function interest(int $sequence, array $overrides = []): SalesforceInterest
     {
-        return SalesforceInterest::query()->create(array_replace([
+        $interest = SalesforceInterest::query()->create(array_replace([
             'salesforce_id' => 'a01'.str_pad((string) $sequence, 15, '0', STR_PAD_LEFT),
             'salesforce_created_at' => '2026-01-01 10:00:00',
             'salesforce_last_modified_at' => '2026-01-01 10:00:00',
@@ -653,6 +874,74 @@ class SalesforceInterestReconciliationTest extends TestCase
             'account_salesforce_id' => null,
             'is_deleted' => false,
         ], $overrides));
+
+        if (filled($interest->migration_origin_lead_id)) {
+            $this->mirrorDependencyChain((string) $interest->migration_origin_lead_id, true);
+        }
+
+        return $interest;
+    }
+
+    private function mirrorDependencyChain(string $salesforceId, bool $origin): void
+    {
+        $visited = [];
+        $currentId = $salesforceId;
+        $isOrigin = $origin;
+
+        while ($currentId !== '' && ! isset($visited[$currentId])) {
+            $visited[$currentId] = true;
+            $lead = SalesforceLead::query()->where('salesforce_id', $currentId)->first();
+            $status = preg_match('/^[A-Za-z0-9]{18}$/', $currentId) !== 1
+                ? 'invalid'
+                : ($lead === null ? 'missing' : ((bool) $lead->is_deleted ? 'deleted' : 'active'));
+            $existing = SalesforceInterestLeadDependency::query()
+                ->where('dependency_run_id', $this->dependencyRun->id)
+                ->where('salesforce_id', $currentId)
+                ->first();
+            SalesforceInterestLeadDependency::query()->updateOrCreate(
+                [
+                    'dependency_run_id' => $this->dependencyRun->id,
+                    'salesforce_id' => $currentId,
+                ],
+                [
+                    'presence_status' => $status,
+                    'is_origin_reference' => $isOrigin || (bool) $existing?->is_origin_reference,
+                    'is_master_dependency' => ! $isOrigin || (bool) $existing?->is_master_dependency,
+                    'is_deleted' => $lead === null ? null : (bool) $lead->is_deleted,
+                    'salesforce_master_record_id' => $lead?->salesforce_master_record_id,
+                ],
+            );
+
+            $currentId = trim((string) $lead?->salesforce_master_record_id);
+            $isOrigin = false;
+        }
+    }
+
+    private function dependency(
+        string $salesforceId,
+        string $status,
+        ?string $masterId,
+        bool $origin = false,
+        bool $master = false,
+    ): SalesforceInterestLeadDependency {
+        $existing = SalesforceInterestLeadDependency::query()
+            ->where('dependency_run_id', $this->dependencyRun->id)
+            ->where('salesforce_id', $salesforceId)
+            ->first();
+
+        return SalesforceInterestLeadDependency::query()->updateOrCreate(
+            [
+                'dependency_run_id' => $this->dependencyRun->id,
+                'salesforce_id' => $salesforceId,
+            ],
+            [
+                'presence_status' => $status,
+                'is_origin_reference' => $origin || (bool) $existing?->is_origin_reference,
+                'is_master_dependency' => $master || (bool) $existing?->is_master_dependency,
+                'is_deleted' => $status === 'deleted' ? true : ($status === 'active' ? false : null),
+                'salesforce_master_record_id' => $masterId,
+            ],
+        );
     }
 
     private function leadId(int $sequence): string

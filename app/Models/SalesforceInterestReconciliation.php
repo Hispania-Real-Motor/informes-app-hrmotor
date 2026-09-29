@@ -19,6 +19,7 @@ class SalesforceInterestReconciliation extends Model
         'master_status',
         'canonical_person_status',
         'current_lead_alignment',
+        'lead_evidence_source',
         'lead_is_deleted',
         'interest_is_deleted',
         'has_conflict',

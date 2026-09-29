@@ -1,13 +1,40 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-09-28.
+Actualizado: 2026-09-29.
+
+## Dependencias Lead de Salesforce Interest
+
+- `SalesforceInterestLeadDependencySyncService` construye una fuente local
+  mínima y separada para cada migration origin y sus masters. No modifica
+  `salesforce_leads`: las tablas propias conservan solo IDs, lifecycle y marcas
+  temporales Salesforce, sin PII ni payloads.
+- Cada run se ancla al ID y cutoff del run más reciente y estable de
+  `salesforce_interests/salesforce`. La fuente se comprueba antes de construir y
+  antes de publicar; una sincronización Interest concurrente invalida el run 3A.
+- Origins se siembran con SQL bulk y se procesan como cola por PK, sin OFFSET.
+  queryAll recibe como máximo 100 IDs REST canónicos de exactamente 18
+  caracteres alfanuméricos por llamada y descubre masters recursivamente. Un ID
+  de 15 caracteres se clasifica invalid sin consulta ni conversión. Estados
+  finales: active, deleted, missing e invalid; pending no puede existir en un
+  completed.
+- Solo el último run 3A completed y ligado al snapshot F2 current puede alimentar
+  FOUNDATION-3. Toda migration origin debe tener fila. Lifecycle y masters 3A
+  prevalecen sobre legacy para ese Interest; Leads sin Interest siguen usando
+  `salesforce_leads`. La evidencia queda materializada por run y resolución;
+  `is_deleted` es false para active, true para deleted y null para
+  missing/invalid.
+- Publicación, parciales failed, cleanup por 1.000 PKs, lock y riesgo de SIGKILL
+  siguen la política de FOUNDATION-3. El comando es manual y no tiene scheduler.
+- Antes de automatizar F2→3A→3 debe evaluarse un lock compartido o mecanismo
+  equivalente que serialice el pipeline. Esta deuda no cambia los locks locales
+  ni el flujo manual actual.
 
 ## Reconciliación local Lead–Interest
 
-- `SalesforceInterestReconciliationService` cruza exclusivamente
-  `migration_origin_lead_id` con `salesforce_leads.salesforce_id`. Lead e
-  Interest son fuentes read-only; la salida vive en runs y resoluciones propios
-  sin PII ni payloads.
+- `SalesforceInterestReconciliationService` identifica exclusivamente mediante
+  Salesforce ID. Para migration origins usa el snapshot FOUNDATION-3A; para
+  Leads legacy sin Interest conserva `salesforce_leads`. Ambas fuentes son
+  read-only y la salida vive en runs/resoluciones sin PII ni payloads.
 - El snapshot se construye por cursor PK y chunks de 200. Una fila representa
   cada Lead y solo se añaden filas de tipo Interest para origen nulo o ausente.
   Las cadenas de master se cargan por fronteras en lote, con límite de 100

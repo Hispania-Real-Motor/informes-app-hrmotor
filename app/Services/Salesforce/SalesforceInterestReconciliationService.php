@@ -2,12 +2,15 @@
 
 namespace App\Services\Salesforce;
 
+use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
+use App\Models\SalesforceInterestLeadDependency;
+use App\Models\SalesforceInterestLeadDependencyRun;
 use App\Models\SalesforceInterestReconciliation;
 use App\Models\SalesforceInterestReconciliationRun;
 use App\Models\SalesforceLead;
 use App\Support\IntegrationErrorSanitizer;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -44,16 +47,19 @@ class SalesforceInterestReconciliationService
 
         try {
             try {
+                $dependencyContext = $this->dependencyContext();
                 $run = SalesforceInterestReconciliationRun::query()->create([
                     'run_identifier' => (string) Str::uuid(),
                     'reason' => $reason,
                     'status' => 'running',
+                    'lead_dependency_run_id' => $dependencyContext?->id,
                     'started_at' => now(),
                     'stats' => $stats,
                 ]);
 
-                $this->reconcileLeads($run, $stats);
-                $this->reconcileUnmatchedInterests($run, $stats);
+                $this->reconcileLeads($run, $stats, $dependencyContext);
+                $this->reconcileUnmatchedInterests($run, $stats, $dependencyContext);
+                $this->assertDependencyContextUnchanged($dependencyContext);
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
 
                 $run->update([
@@ -102,8 +108,11 @@ class SalesforceInterestReconciliationService
     }
 
     /** @param array<string, int|float|null> $stats */
-    private function reconcileLeads(SalesforceInterestReconciliationRun $run, array &$stats): void
-    {
+    private function reconcileLeads(
+        SalesforceInterestReconciliationRun $run,
+        array &$stats,
+        ?SalesforceInterestLeadDependencyRun $dependencyRun,
+    ): void {
         $cursor = 0;
 
         while (true) {
@@ -129,17 +138,40 @@ class SalesforceInterestReconciliationService
                 ->whereIn('migration_origin_lead_id', $leadIds)
                 ->get()
                 ->keyBy('migration_origin_lead_id');
-            $masters = $this->resolveMasters($leads);
+            $dependencyRows = $dependencyRun === null || $interests->isEmpty()
+                ? collect()
+                : SalesforceInterestLeadDependency::query()
+                    ->where('dependency_run_id', $dependencyRun->id)
+                    ->whereIn('salesforce_id', $interests->keys()->all())
+                    ->get()
+                    ->keyBy('salesforce_id');
+            if ($dependencyRows->count() !== $interests->count()) {
+                throw new RuntimeException('Interest dependency snapshot is incomplete.');
+            }
+            $legacyLeads = $leads->reject(
+                fn (SalesforceLead $lead): bool => $interests->has((string) $lead->salesforce_id),
+            )->values();
+            $legacyMasters = $this->resolveLegacyMasters($legacyLeads);
+            $dependencyMasters = $dependencyRun === null
+                ? []
+                : $this->resolveDependencyMasters($dependencyRows->values(), $dependencyRun->id);
             $rows = [];
 
             foreach ($leads as $lead) {
                 /** @var SalesforceInterest|null $interest */
                 $interest = $interests->get((string) $lead->salesforce_id);
-                $master = $masters[(string) $lead->salesforce_id];
+                $dependency = $interest === null ? null : $dependencyRows->get((string) $lead->salesforce_id);
+                $master = $interest === null
+                    ? $legacyMasters[(string) $lead->salesforce_id]
+                    : $dependencyMasters[(string) $lead->salesforce_id];
                 $canonicalStatus = $interest === null
                     ? 'not_applicable'
                     : $this->canonicalPersonStatus($interest);
-                $relationshipStatus = $interest === null ? 'lead_without_interest' : 'exact';
+                $relationshipStatus = $interest === null
+                    ? 'lead_without_interest'
+                    : (in_array($dependency->presence_status, ['active', 'deleted'], true)
+                        ? 'exact'
+                        : 'interest_origin_missing_lead');
                 $alignment = $this->currentLeadAlignment(
                     $interest,
                     (string) $lead->salesforce_id,
@@ -151,6 +183,9 @@ class SalesforceInterestReconciliationService
                     $canonicalStatus,
                     $alignment,
                 );
+                $leadIsDeleted = $dependency === null
+                    ? (bool) $lead->is_deleted
+                    : $dependency->is_deleted;
 
                 $rows[] = $this->resolutionRow(
                     $run,
@@ -162,14 +197,15 @@ class SalesforceInterestReconciliationService
                     $master,
                     $canonicalStatus,
                     $alignment,
-                    (bool) $lead->is_deleted,
+                    $leadIsDeleted,
                     $hasConflict,
+                    $dependency === null ? 'legacy_salesforce_leads' : 'interest_dependency_snapshot',
                 );
 
                 $stats['leads_examined']++;
                 $stats[$relationshipStatus]++;
-                $stats['lead_deleted'] += (int) $lead->is_deleted;
-                $stats['lead_merged'] += (int) ($this->nullableId($lead->salesforce_master_record_id) !== null);
+                $stats['lead_deleted'] += (int) ($leadIsDeleted === true);
+                $stats['lead_merged'] += (int) ($master['immediate_id'] !== null);
                 $stats['master_'.$master['status']]++;
                 $stats['canonical_'.$canonicalStatus]++;
                 $stats['conflicts'] += (int) $hasConflict;
@@ -184,8 +220,11 @@ class SalesforceInterestReconciliationService
     }
 
     /** @param array<string, int|float|null> $stats */
-    private function reconcileUnmatchedInterests(SalesforceInterestReconciliationRun $run, array &$stats): void
-    {
+    private function reconcileUnmatchedInterests(
+        SalesforceInterestReconciliationRun $run,
+        array &$stats,
+        ?SalesforceInterestLeadDependencyRun $dependencyRun,
+    ): void {
         $cursor = 0;
 
         while (true) {
@@ -213,6 +252,21 @@ class SalesforceInterestReconciliationService
                     ->pluck('salesforce_id')
                     ->mapWithKeys(fn (mixed $id): array => [(string) $id => true])
                     ->all();
+            $dependencyRows = $dependencyRun === null || $originIds === []
+                ? collect()
+                : SalesforceInterestLeadDependency::query()
+                    ->where('dependency_run_id', $dependencyRun->id)
+                    ->whereIn('salesforce_id', $originIds)
+                    ->get()
+                    ->keyBy('salesforce_id');
+            foreach ($originIds as $originId) {
+                if (! $dependencyRows->has($originId)) {
+                    throw new RuntimeException('Interest dependency snapshot is incomplete.');
+                }
+            }
+            $dependencyMasters = $dependencyRun === null
+                ? []
+                : $this->resolveDependencyMasters($dependencyRows->values(), $dependencyRun->id);
             $rows = [];
 
             foreach ($interests as $interest) {
@@ -224,33 +278,46 @@ class SalesforceInterestReconciliationService
                     continue;
                 }
 
+                $dependency = $originId === null ? null : $dependencyRows->get($originId);
                 $relationshipStatus = $originId === null
                     ? 'interest_without_migration_origin'
-                    : 'interest_origin_missing_lead';
+                    : (in_array($dependency->presence_status, ['active', 'deleted'], true)
+                        ? 'exact'
+                        : 'interest_origin_missing_lead');
+                $master = $originId === null
+                    ? ['status' => 'not_applicable', 'immediate_id' => null, 'resolved_id' => null]
+                    : $dependencyMasters[$originId];
                 $canonicalStatus = $this->canonicalPersonStatus($interest);
                 $hasConflict = $this->hasStructuralConflict(
                     $relationshipStatus,
-                    'not_applicable',
+                    $master['status'],
                     $canonicalStatus,
-                    'not_applicable',
+                    $originId === null
+                        ? 'not_applicable'
+                        : $this->currentLeadAlignment($interest, $originId, $master['resolved_id']),
                 );
+                $alignment = $originId === null
+                    ? 'not_applicable'
+                    : $this->currentLeadAlignment($interest, $originId, $master['resolved_id']);
                 $rows[] = $this->resolutionRow(
                     $run,
-                    'interest',
-                    (string) $interest->salesforce_id,
-                    null,
+                    $relationshipStatus === 'exact' ? 'lead' : 'interest',
+                    $relationshipStatus === 'exact' ? $originId : (string) $interest->salesforce_id,
+                    $originId,
                     $interest,
                     $relationshipStatus,
-                    ['status' => 'not_applicable', 'immediate_id' => null, 'resolved_id' => null],
+                    $master,
                     $canonicalStatus,
-                    'not_applicable',
-                    null,
+                    $alignment,
+                    $dependency?->is_deleted,
                     $hasConflict,
+                    $dependency === null ? null : 'interest_dependency_snapshot',
                 );
 
                 $stats[$relationshipStatus]++;
+                $stats['lead_deleted'] += (int) ($dependency?->is_deleted === true);
                 $stats['canonical_'.$canonicalStatus]++;
-                $stats['master_not_applicable']++;
+                $stats['master_'.$master['status']]++;
                 $stats['conflicts'] += (int) $hasConflict;
             }
 
@@ -263,7 +330,7 @@ class SalesforceInterestReconciliationService
     }
 
     /** @param Collection<int, SalesforceLead> $leads @return array<string, array{status:string,immediate_id:?string,resolved_id:?string}> */
-    private function resolveMasters(Collection $leads): array
+    private function resolveLegacyMasters(Collection $leads): array
     {
         $loaded = $leads->keyBy('salesforce_id')->all();
         $missing = [];
@@ -374,6 +441,114 @@ class SalesforceInterestReconciliationService
         return $resolved;
     }
 
+    /**
+     * @param  Collection<int, SalesforceInterestLeadDependency>  $origins
+     * @return array<string, array{status:string,immediate_id:?string,resolved_id:?string}>
+     */
+    private function resolveDependencyMasters(Collection $origins, int $dependencyRunId): array
+    {
+        $loaded = $origins->keyBy('salesforce_id')->all();
+        $expanded = [];
+        $frontier = $origins->pluck('salesforce_master_record_id')
+            ->map($this->nullableId(...))->filter()->unique()->values()->all();
+
+        for ($depth = 0; $depth < self::MAX_MASTER_HOPS && $frontier !== []; $depth++) {
+            $toExpand = array_values(array_filter(
+                $frontier,
+                fn (string $id): bool => ! isset($expanded[$id]),
+            ));
+            if ($toExpand === []) {
+                break;
+            }
+
+            $unknown = array_values(array_filter($toExpand, fn (string $id): bool => ! isset($loaded[$id])));
+            if ($unknown !== []) {
+                $found = SalesforceInterestLeadDependency::query()
+                    ->where('dependency_run_id', $dependencyRunId)
+                    ->whereIn('salesforce_id', $unknown)
+                    ->get()
+                    ->keyBy('salesforce_id');
+                if ($found->count() !== count($unknown)) {
+                    throw new RuntimeException('Interest dependency master chain is incomplete.');
+                }
+                foreach ($found as $id => $dependency) {
+                    $loaded[(string) $id] = $dependency;
+                }
+            }
+
+            $nextFrontier = [];
+            foreach ($toExpand as $id) {
+                $expanded[$id] = true;
+                $nextId = $this->nullableId($loaded[$id]->salesforce_master_record_id);
+                if ($nextId !== null) {
+                    $nextFrontier[] = $nextId;
+                }
+            }
+            $frontier = array_values(array_unique($nextFrontier));
+        }
+
+        $resolved = [];
+        foreach ($origins as $origin) {
+            $originId = (string) $origin->salesforce_id;
+            if (in_array($origin->presence_status, ['missing', 'invalid'], true)) {
+                $resolved[$originId] = ['status' => 'missing', 'immediate_id' => null, 'resolved_id' => null];
+
+                continue;
+            }
+
+            $immediateId = $this->nullableId($origin->salesforce_master_record_id);
+            if ($immediateId === null) {
+                $resolved[$originId] = ['status' => 'none', 'immediate_id' => null, 'resolved_id' => null];
+
+                continue;
+            }
+
+            $currentId = $originId;
+            $nextId = $immediateId;
+            $visited = [$originId => true];
+            $hops = 0;
+            $status = 'depth_exceeded';
+            $resolvedId = null;
+
+            while ($hops < self::MAX_MASTER_HOPS) {
+                if ($nextId === $currentId) {
+                    $status = $hops === 0 ? 'self_reference' : 'cycle';
+                    break;
+                }
+                if (isset($visited[$nextId])) {
+                    $status = 'cycle';
+                    break;
+                }
+                if (! isset($loaded[$nextId])) {
+                    $status = 'depth_exceeded';
+                    break;
+                }
+                if (in_array($loaded[$nextId]->presence_status, ['missing', 'invalid'], true)) {
+                    $status = 'missing';
+                    break;
+                }
+
+                $visited[$nextId] = true;
+                $currentId = $nextId;
+                $hops++;
+                $nextId = $this->nullableId($loaded[$currentId]->salesforce_master_record_id);
+                if ($nextId === null) {
+                    $status = $hops === 1 ? 'direct' : 'chain';
+                    $resolvedId = $currentId;
+                    break;
+                }
+            }
+
+            $resolved[$originId] = [
+                'status' => $status,
+                'immediate_id' => $immediateId,
+                'resolved_id' => $resolvedId,
+            ];
+        }
+
+        return $resolved;
+    }
+
     /** @return list<string> */
     private function interestFields(): array
     {
@@ -459,6 +634,7 @@ class SalesforceInterestReconciliationService
         string $alignment,
         ?bool $leadDeleted,
         bool $hasConflict,
+        ?string $leadEvidenceSource,
     ): array {
         $now = now();
 
@@ -475,12 +651,81 @@ class SalesforceInterestReconciliationService
             'master_status' => $master['status'],
             'canonical_person_status' => $canonicalStatus,
             'current_lead_alignment' => $alignment,
+            'lead_evidence_source' => $leadEvidenceSource,
             'lead_is_deleted' => $leadDeleted,
             'interest_is_deleted' => $interest === null ? null : (bool) $interest->is_deleted,
             'has_conflict' => $hasConflict,
             'created_at' => $now,
             'updated_at' => $now,
         ];
+    }
+
+    private function dependencyContext(): ?SalesforceInterestLeadDependencyRun
+    {
+        $hasOrigins = SalesforceInterest::query()
+            ->whereNotNull('migration_origin_lead_id')
+            ->whereRaw("TRIM(migration_origin_lead_id) <> ''")
+            ->exists();
+        if (! $hasOrigins) {
+            return null;
+        }
+
+        $interestRun = $this->latestInterestRun();
+        $dependencyRun = SalesforceInterestLeadDependencyRun::query()->orderByDesc('id')->first();
+        if ($dependencyRun === null
+            || $dependencyRun->status !== 'completed'
+            || (int) $dependencyRun->source_interest_sync_run_id !== $interestRun->id
+            || ! $dependencyRun->source_interest_cutoff_at?->equalTo($interestRun->source_cutoff_at)) {
+            throw new RuntimeException('No current completed Interest dependency snapshot is available.');
+        }
+
+        $missingCoverage = SalesforceInterest::query()
+            ->whereNotNull('migration_origin_lead_id')
+            ->whereRaw("TRIM(migration_origin_lead_id) <> ''")
+            ->whereNotExists(function ($query) use ($dependencyRun): void {
+                $query->selectRaw('1')
+                    ->from('salesforce_interest_lead_dependencies')
+                    ->where('dependency_run_id', $dependencyRun->id)
+                    ->whereColumn(
+                        'salesforce_interest_lead_dependencies.salesforce_id',
+                        'salesforce_interests.migration_origin_lead_id',
+                    );
+            })
+            ->exists();
+        if ($missingCoverage || SalesforceInterestLeadDependency::query()
+            ->where('dependency_run_id', $dependencyRun->id)
+            ->where('presence_status', 'pending')
+            ->exists()) {
+            throw new RuntimeException('Interest dependency snapshot is incomplete.');
+        }
+
+        return $dependencyRun;
+    }
+
+    private function latestInterestRun(): ReportSyncRun
+    {
+        $run = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->orderByDesc('id')
+            ->first();
+        if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
+            throw new RuntimeException('The current Interest source is not stable.');
+        }
+
+        return $run;
+    }
+
+    private function assertDependencyContextUnchanged(?SalesforceInterestLeadDependencyRun $dependencyRun): void
+    {
+        if ($dependencyRun === null) {
+            return;
+        }
+
+        $current = $this->dependencyContext();
+        if ($current?->id !== $dependencyRun->id) {
+            throw new RuntimeException('Interest dependency snapshot changed during reconciliation.');
+        }
     }
 
     /** @param list<array<string, mixed>> $rows */
