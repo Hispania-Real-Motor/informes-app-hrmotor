@@ -1,5 +1,132 @@
 # Decisiones técnicas
 
+## 2026-09-29 — Fuente separada para dependencias Lead de Interest
+
+- Los Leads históricos requeridos por `migration_origin_lead_id` no se añaden a
+  `salesforce_leads`, porque ampliar esa réplica alteraría silenciosamente
+  universos legacy. Se materializan en tablas 3A separadas, sin PII, mediante
+  queryAll read-only y Salesforce ID como única identidad.
+- FOUNDATION-3A acepta únicamente Salesforce IDs REST canónicos de 18
+  caracteres alfanuméricos. Los IDs de 15 caracteres se materializan como
+  `invalid`, no se envían a Salesforce y no se convierten localmente, porque la
+  fuente FOUNDATION-2 procede de respuestas REST de 18 caracteres.
+- El snapshot 3A queda anclado por ID y cutoff al run exacto de FOUNDATION-2. Se
+  exige que el run F2 y el run 3A más recientes estén completed y coincidan; la
+  cobertura incompleta o un cambio concurrente bloquean la publicación o la
+  reconciliación.
+- Para una migration origin, lifecycle y cadena master de 3A prevalecen sobre
+  `salesforce_leads`; para un Lead sin Interest continúa la autoridad legacy. La
+  procedencia queda materializada en `lead_evidence_source` y
+  `lead_dependency_run_id`. El lifecycle conserva `null` para missing/invalid;
+  la presencia de una fila legacy activa no convierte esa ausencia de evidencia
+  autoritativa en `false`.
+- Los runs 3A conservan metadata aunque `report_sync_runs` se pode; por eso
+  `source_interest_sync_run_id` no usa FK. La FK desde reconciliation run al run
+  3A sí es estable porque la política elimina detalles superseded, no metadata
+  de runs 3A.
+
+## 2026-09-28 — Snapshot local de reconciliación Lead–Interest
+
+- La identidad histórica fuerte es únicamente el Salesforce ID de
+  `migration_origin_lead_id`; su evidencia procede de FOUNDATION-3A sin ampliar
+  `salesforce_leads`. Se prohíben heurísticas de PII, Account o afinidad temporal
+  y no se infiere `DuplicateReviewed__c`.
+- Se usan runs dedicados porque `report_sync_runs` expresa ventanas/cutoffs que
+  no existen en este cálculo local. Las resoluciones se ligan al run: solo
+  `completed` publica snapshot y `failed` mantiene parciales diagnósticos.
+- Estados de relación: `exact`, `lead_without_interest`,
+  `interest_origin_missing_lead`, `interest_without_migration_origin`. Estados
+  master: `none`, `direct`, `chain`, `missing`, `self_reference`, `cycle`,
+  `depth_exceeded`, `not_applicable`. Persona: `coherent_account`,
+  `coherent_lead`, `coherent_none`, `inconsistent`, `not_applicable`.
+- El origen histórico nunca se sustituye por el master. `immediate_master` y
+  `resolved_master` son evidencia separada; cadenas se recorren con límite y
+  ciclos protegidos. La expansión distingue nodos cargados de nodos ya
+  expandidos: un master presente en el chunk todavía se inspecciona para
+  descubrir por lote el siguiente salto externo. `converted_account_id` no es
+  una regla contractual.
+- La idempotencia es lógica: un run completado reemplaza las filas del snapshot
+  completado anterior, mantiene métricas históricas y nunca confunde parciales
+  fallidos con el estado válido.
+- La regla única de conflicto marca: persona `inconsistent`; master `missing`,
+  `self_reference`, `cycle` o `depth_exceeded`; origen de migración sin Lead
+  local; alignment `other`; y `matches_origin` cuando existe master válido
+  `direct/chain`. No marca por sí sola `lead_without_interest`,
+  `interest_without_migration_origin` ni `no_current_lead`.
+- El detalle materializado está acotado: durante un fallo pueden coexistir como
+  máximo el último snapshot `completed` y el parcial del último `failed`; tras
+  éxito queda solo el completed actual. Runs anteriores conservan métricas. La
+  limpieza protege por ID el run actual y, si éste falla, el último `completed`;
+  elimina detalles del resto de runs finalizados, con cursor por PK, lotes de
+  1.000 y transacciones pequeñas. Así la ruta `failed` también reintenta restos
+  de completed superseded dejados por un garbage collection anterior.
+- Publicación y garbage collection son fases separadas. Una vez marcado el run
+  `completed`, un fallo posterior de cleanup incrementa `cleanup_errors` pero
+  no degrada el run ni invalida su snapshot íntegro; una ejecución posterior
+  —termine completed o failed— reintenta los detalles superseded restantes. Si
+  ese segundo cleanup también falla, la cota física puede excederse de forma
+  temporal sin poner en riesgo el último snapshot válido.
+
+## 2026-09-28 — Persistencia inequívoca del sync de Interest
+
+- `salesforce_interests` no usa `upsert()`: MySQL/MariaDB ignora `uniqueBy` y
+  puede resolver `ON DUPLICATE KEY UPDATE` mediante cualquiera de sus índices
+  UNIQUE. Con `salesforce_id` y `migration_origin_lead_id` independientes, eso
+  podría actualizar un Interest distinto al entrante.
+- El persister específico precarga ambos identificadores por chunk, rechaza
+  colisiones antes de escribir, inserta altas mediante `insert()` bulk y dirige
+  cada modificación real por PK local. `migration_origin_lead_id UNIQUE` se
+  conserva como defensa final ante carreras; una violación siempre falla el run.
+- Un fallo de la operación inicial del chunk es fatal. El replay individual es
+  exclusivamente diagnóstico: puede conservar escrituras parciales y auditar
+  IDs, pero nunca convierte el run original en completado.
+
+## 2026-09-25 — Watermark y lifecycle del sync de Interest
+
+- `report_sync_runs` es la autoridad del watermark: solo un run
+  `salesforce_interests/salesforce` completado puede aportar
+  `source_cutoff_at`. Cada ejecución fija su cutoff UTC al comenzar; el
+  incremental vuelve a consultar desde watermark menos un solape configurable.
+- La lectura activa y de eliminados es paginada. Eliminados usa queryAll y
+  materializa `query_all_deleted`; una observación activa posterior limpia el
+  lifecycle. `SystemModstamp` gobierna la ventana y documenta la detección de
+  borrado, pero no sustituye `LastModifiedDate`.
+- Cada fila se materializa antes de persistirla. El timestamp local de sync no
+  participa en detección de cambios y las páginas se dividen en chunks locales
+  de 200 antes de la escritura.
+- Los errores por registro viven en una tabla aditiva vinculada lógicamente al
+  run mediante FK local con cascade. Persistencia usa mensaje genérico y código
+  técnico acotado; remoto usa el sanitizador común. No se conservan SQL,
+  bindings, respuestas completas, SOQL, tokens, payloads ni datos de contacto.
+
+## 2026-09-25 — Interest como capa local aditiva y materializada
+
+- Se crea `salesforce_interests` en lugar de reinterpretar
+  `salesforce_leads`. Mantiene PK local + Salesforce ID externo y no usa FK a
+  tablas Salesforce locales, porque futuras cargas podrán llegar fuera de orden
+  o contener referencias eliminadas, fusionadas o aún no sincronizadas.
+- No se crea tabla Persona. Cada Interest materializa
+  `canonical_person_type` y `canonical_person_salesforce_id`: Account prevalece
+  sobre Lead; si ambos faltan, ambos quedan `NULL`. Esto evita matching inseguro
+  por contacto y permite agrupar varios Interests sin fusionarlos.
+- `functional_created_at` materializa
+  `COALESCE(IN_Fecha_Creacion_Origen__c, CreatedDate)`. Así no se recalcula en
+  cada request ni se usa la fecha técnica local como fecha funcional. Null,
+  vacío y whitespace se consideran ausencia de fecha de origen.
+- `SalesforceInterestFoundationResolver::materialize()` es la única API
+  canónica para derivar persona y fecha. El evento `saving` del modelo es solo
+  un safety net para `create`/`save`/`update`. Los futuros procesos bulk deben
+  materializar cada array antes de `insert`/`upsert`, porque Eloquent no emite
+  eventos de modelo para esas operaciones; no se sustituirá el procesamiento
+  bulk por escrituras registro a registro.
+- Estado, tipo, fuente, medio y canal se almacenan sin enum/check ni
+  normalización implícita. Valores nuevos se conservan y su control de calidad
+  pertenece a fases posteriores.
+- El Lead de migración es único y nullable conforme al contrato Salesforce.
+  Opportunity inversa no es única, para no ocultar incoherencias futuras.
+- Se aplazan columnas de descarte hasta confirmar sus tipos y los índices de
+  dimensiones hasta disponer de datasets y planes de consulta reales.
+
 ## 2026-09-23 - Contrato temporal y dual de Resumen Dirección
 
 Resumen Dirección distingue de forma estable **Producción del período** de la

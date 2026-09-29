@@ -17,6 +17,7 @@ class PruneTransversalDataCommand extends Command
         'salesforce_vehicles',
         'salesforce_logistics',
         'campaign_platform_identifiers',
+        'salesforce_interests',
     ];
 
     protected $signature = 'reports:prune-transversal-data

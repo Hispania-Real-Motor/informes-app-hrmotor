@@ -1,5 +1,283 @@
 # Handoff para agentes
 
+## SF-INTEREST-FOUNDATION-3 — métrica `lead_merged` (2026-09-29)
+
+- Se corrigió exclusivamente la agregación de `lead_merged` para las
+  resoluciones dependency-only materializadas desde FOUNDATION-3A: cada fila con
+  `immediate_master_lead_id` demostrado suma una vez, igual que la rama legacy.
+- No cambian relaciones, estados master, lifecycle, evidencia ni matriz de
+  conflictos. El cálculo permanece O(1) durante el procesamiento, sin queries o
+  scans adicionales y sin doble conteo cuando el origin también existe en
+  `salesforce_leads`.
+- La revalidación final en shadow quedó certificada sobre el commit
+  `636d0640c9c8dae7480bc3c7d95bfc046f7b0fea`: `lead_merged=5904`,
+  `master_direct=5387`, `master_chain=517`, `exact=4`, `conflicts=1` y cero
+  errores. La identidad `5387 + 517 = 5904` confirma la métrica corregida.
+- Validación local: FOUNDATION-3, 25 pruebas/132 aserciones; FOUNDATION-3A +
+  FOUNDATION-3, 40/215; FOUNDATION-1/2/3/3A, 67/356; suite completa,
+  1.087/8.244. Pint y `git diff --check HEAD` correctos.
+
+## SF-INTEREST-FOUNDATION-3A — dependencias Lead read-only (2026-09-29)
+
+- Se añadieron `salesforce_interest_lead_dependency_runs` y
+  `salesforce_interest_lead_dependencies` como snapshot separado. Las semillas
+  proceden exclusivamente de `salesforce_interests.migration_origin_lead_id`;
+  nunca se inserta ni modifica `salesforce_leads`.
+- El comando manual `salesforce:sync-interest-lead-dependencies --reason=...`
+  exige motivo, lock de seis horas y solo publica métricas agregadas. No existe
+  scheduler.
+- El servicio exige que el run más reciente de FOUNDATION-2 sea `completed` y
+  tenga cutoff. Persiste su ID/cutoff, siembra origins mediante `INSERT … SELECT`
+  y vuelve a validar la misma fuente antes de publicar. Un run F2 nuevo,
+  running o failed impide producir un snapshot 3A válido.
+- La cola persistente procesa hasta 100 pending por iteración y admite únicamente
+  IDs REST canónicos de exactamente 18 caracteres alfanuméricos. Un ID de 15
+  caracteres queda `invalid` y no se consulta ni se convierte. Se usa solo
+  queryAll con `Id`,
+  `IsDeleted`, `MasterRecordId`, `LastModifiedDate` y `SystemModstamp`. Invalid no
+  sale a Salesforce; masters descubiertos vuelven a la cola sin duplicarse.
+- Estados: pending transitorio, active, deleted, missing observable e invalid.
+  No se almacenan Name, email, teléfono, dirección, Owner ni raw payload.
+- Solo `completed` es snapshot válido. Los detalles superseded se borran por PK
+  en chunks de 1.000 y transacciones cortas; un cleanup posterior fallido no
+  degrada el nuevo completed y se conserva metadata histórica de runs. Un
+  SIGKILL puede dejar running parcial; no hay recovery automático.
+- FOUNDATION-3 exige el último 3A completed, current, completo y ligado al run
+  exacto de FOUNDATION-2. Para migration origins, 3A prevalece sobre lifecycle y
+  MasterRecordId legacy incluso si el ID también existe en `salesforce_leads`.
+  Leads legacy sin Interest mantienen su comportamiento. Las resoluciones y el
+  run registran `lead_evidence_source` y `lead_dependency_run_id`.
+- El lifecycle 3A conserva su semántica nullable: active=false, deleted=true y
+  missing/invalid=null, incluso si el mismo ID existe activo en la réplica
+  legacy. `lead_deleted` solo cuenta evidencia estrictamente true.
+- F2, 3A y 3 siguen siendo procesos manuales sin scheduler. Antes de automatizar
+  el pipeline debe evaluarse un lock compartido o mecanismo equivalente que
+  serialice FOUNDATION-2 → FOUNDATION-3A → FOUNDATION-3 y cierre la ventana
+  entre la comprobación final de la fuente y la publicación.
+- Las migraciones aditivas de FOUNDATION-3A y la ampliación nullable de
+  FOUNDATION-3 fueron revisadas, aplicadas y verificadas en shadow; producción
+  permanece intacta.
+- La fuente certificada fue el run F2 número 2688, `completed`, con cutoff
+  `2026-09-29T11:28:13+00:00`: 65 Interests activos, 0 eliminados, 0 errores e
+  incremental con overlap de 300 segundos.
+- Certificación real: run 3A número 1, ligado al run F2 número 2688 y cutoff
+  `2026-09-29T11:28:13+00:00`, terminó completed. Sembró 4 origins, descubrió 5
+  dependencias —incluido 1 master— y realizó 2 llamadas queryAll para 5 IDs.
+  Totales: 4 activos, 1 eliminado, 0 missing, 0 invalid, 0 pending, 0 errores y
+  0 errores de cleanup. Entre los origins hubo 3 activos y 1 eliminado; el
+  master descubierto estaba activo. No se amplió `salesforce_leads`.
+
+## SF-INTEREST-FOUNDATION-3 — reconciliación local Lead–Interest (2026-09-28)
+
+- FOUNDATION-3 está revisada sénior y certificada en shadow. El hallazgo inicial
+  de cuatro migration origins ausentes de `salesforce_leads` motivó
+  FOUNDATION-3A; quedó resuelto sin ampliar el universo legacy y los cuatro se
+  materializan ahora como relaciones `exact` con evidencia dependency snapshot.
+- `salesforce:reconcile-interests-local --reason=...` es manual, no usa
+  Salesforce ni scheduler y exige motivo auditable. Un lock de seis horas
+  impide ejecuciones concurrentes; siempre se libera en `finally`.
+- La clave histórica exclusiva sigue siendo el Salesforce ID de
+  `migration_origin_lead_id`. FOUNDATION-3A aporta lifecycle/master autoritativo
+  para esos IDs sin incorporarlos al universo `salesforce_leads`.
+  No se usan nombre, teléfono, email, Owner, fecha, vehículo, fuente o UTM. Las
+  fuentes Lead/Interest solo se leen y no se copian PII ni `raw_payload`.
+- Cada run dedicado materializa un snapshot por chunks de 200 y cursor PK, sin
+  OFFSET ni carga total. Cada Lead produce una resolución; los Interests con
+  origen ausente o inexistente producen una resolución propia. Las relaciones
+  exactas no se duplican. Un nuevo run completado sustituye las filas del
+  snapshot completado anterior, pero conserva sus métricas históricas.
+- Los estados documentados son: relación `exact`, `lead_without_interest`,
+  `interest_origin_missing_lead`, `interest_without_migration_origin`; master
+  `none`, `direct`, `chain`, `missing`, `self_reference`, `cycle`,
+  `depth_exceeded`, `not_applicable`; persona `coherent_account`,
+  `coherent_lead`, `coherent_none`, `inconsistent`, `not_applicable`; vínculo
+  actual `matches_origin`, `matches_master`, `no_current_lead`, `other` y
+  `not_applicable`.
+- Un run fallido conserva filas parciales únicamente como diagnóstico ligado al
+  run `failed`; nunca se presenta como snapshot válido. Solo se conserva el
+  parcial del failed más reciente. Con un fallo pueden coexistir como máximo el
+  completed vigente y ese failed; tras éxito queda únicamente el completed
+  actual. Los detalles superseded se borran por PK en chunks de 1.000 y
+  transacciones acotadas. La ruta failed protege por ID el failed actual y el
+  último completed válido, y elimina detalles de cualquier otro run finalizado,
+  incluidos restos de completed superseded. Las métricas históricas permanecen.
+- Construcción/publicación y cleanup están separados: al terminar la
+  reconciliación el run se publica `completed`; un fallo posterior tras uno o
+  más chunks de cleanup solo incrementa `cleanup_errors`, no cambia el estado,
+  no elimina el snapshot nuevo y deja restos superseded reintentables por el
+  siguiente run, incluso cuando esa siguiente reconciliación falla durante la
+  construcción.
+- La matriz central de conflicto marca persona inconsistente, master
+  missing/self/cycle/depth, origin huérfano, alignment `other`, o
+  `matches_origin` con master direct/chain. No marca automáticamente
+  `lead_without_interest`, `interest_without_migration_origin` ni
+  `no_current_lead`.
+- No se valida Accounts físicamente ni se convierte `converted_account_id` en
+  regla. Un Lead sin Interest es un hecho local observable, no prueba de que el
+  batch histórico lo omitiera, porque no existe réplica local verificada de
+  `DuplicateReviewed__c`.
+- FOUNDATION-3 no tiene consumidores funcionales y no cambia informes, KPIs,
+  Leads, Interests, Opportunities, Activities ni tablas legacy.
+- La resolución de masters diferencia IDs cargados e IDs ya expandidos. Así una
+  cadena A→B→C resuelve C por lote aunque A/B estén en el chunk y C fuera.
+- Límite operacional: la cota de dos snapshots detallados se garantiza en rutas
+  gestionadas cuyo cleanup concluye. Si también falla el cleanup de una ruta
+  failed, pueden persistir temporalmente restos superseded, sin eliminar el
+  último completed válido. Un `SIGKILL` o caída abrupta puede dejar un run
+  `running` parcial; no se implementa todavía recovery automático ni scheduler.
+- Certificación final: run 3, ligado al dependency run 1, terminó completed en
+  `363.401 s`. Examinó 1.059.421 Leads y 65 Interests y materializó 1.059.486
+  filas: exact 4, lead_without_interest 1.059.421,
+  interest_origin_missing_lead 0, interest_without_migration_origin 61,
+  lead_deleted 6.477 y lead_merged 5.904. Masters: none 1.053.521, direct 5.387,
+  chain 517, not_applicable 61 y cero missing/self/cycle/depth. Persona: 49
+  coherent_account, 16 coherent_lead y 0 inconsistent. Hubo un único conflicto,
+  correspondiente a alignment `other`; es una incidencia observable de
+  integridad, no una regresión del reconciliador.
+- Los cuatro origins quedaron exact con evidencia
+  `interest_dependency_snapshot`: 3 activos, 1 eliminado, 1 master direct y 3
+  sin master; alignments matches_master 1, matches_origin 2 y other 1. Tras
+  publicar, solo permanecen las 1.059.486 resoluciones del run 3; el detalle del
+  run 2 fue eliminado y sus métricas históricas se conservaron.
+
+## SF-INTEREST-FOUNDATION-2 — sincronización local read-only (2026-09-28)
+
+- Estado formal: **completada y certificada en shadow y contra Salesforce
+  SandboxRefreshed en full + incremental**.
+- Implementación y revisión sénior aprobadas.
+- Commit funcional:
+  b69f0f88435e7509a039d30e4d62bf64468cd87b.
+- Validada en MySQL local y certificada en shadow.
+- En shadow se aplicaron correctamente las migraciones 61 y 62.
+- Verificados lifecycle, auditoría, índices, FK cascade y UNIQUE.
+- Smoke MySQL shadow:
+  insert bulk, idempotencia, update por PK y conflicto de migration origin.
+- El smoke fue transaccional y terminó con 0 fixtures persistidas.
+- Runtime shadow correcto: rutas OK, comando registrado, scheduler no registrado
+  y HTTP 302.
+- La autenticación real contra Salesforce SandboxRefreshed usa OAuth
+  `client_credentials`: se obtuvo un token Bearer y la Connected App ejecutó
+  mediante `Run As` con un usuario técnico específico. Laravel no usa
+  username/password/security token de ese usuario y no se documentan secretos.
+- Permisos efectivos verificados sobre `Interes__c`: `queryable=true` y
+  `createable=false`, `updateable=false`, `deletable=false`. Los 26 campos
+  requeridos estaban disponibles (`missing_fields=[]`); query estándar,
+  queryAll y `Owner.Name` funcionaron. No se realizó ninguna escritura. Aunque
+  el cliente PHP conserva métodos genéricos de escritura, los permisos del
+  usuario técnico aportan la defensa efectiva de mínimo privilegio.
+- El bootstrap real `salesforce:sync-interests --full` completó con cutoff
+  `2026-09-28T14:31:28+00:00`: 2 páginas, 65 consultados, 65 insertados, 0
+  actualizados, 0 sin cambios, 0 eliminados, 0 reactivados y 0 errores.
+- Estado local posterior: 65 Interests activos, 0 eliminados y 0 errores de
+  auditoría. El último run `salesforce_interests/salesforce` quedó `completed`,
+  con `source_cutoff_at=2026-09-28 14:31:28 UTC` y `error_message=null`. Solo un
+  run completado puede aportar el watermark; eliminados continúa usando
+  queryAll.
+- FOUNDATION-2 ofrece full e incremental por `SystemModstamp`, cutoff UTC fijo,
+  overlap configurable, lectura paginada, chunks locales de 200, lifecycle de
+  eliminados/reactivados, auditoría segura y materialización canónica previa.
+  La primera ejecución incremental real completó la ventana
+  `2026-09-28T14:26:28+00:00` → `2026-09-28T15:06:10+00:00`. Aplicó exactamente
+  300 segundos de overlap sobre el watermark full de `14:31:28`, consultó 2
+  páginas y 0 registros, con 0 insertados, actualizados, sin cambios, eliminados,
+  reactivados y errores. El run terminó `completed`, `error_message=null`, avanzó
+  `source_cutoff_at` a `2026-09-28 15:06:10 UTC` y mantuvo 65 Interests activos,
+  0 eliminados y 0 errores de sync. La cardinalidad quedó estable y no se
+  observaron duplicados.
+- Quedan certificados full, incremental, watermark, overlap, query/queryAll,
+  lifecycle, persistencia por chunks, auditoría y permisos Salesforce read-only.
+- Producción permanece intacta.
+- No se habilitó scheduler ni consumidor funcional de informes.
+- FOUNDATION-3 es una fase local independiente. El hallazgo histórico de cuatro
+  migration origins ausentes de la réplica legacy fue resuelto por la fuente
+  FOUNDATION-3A separada; no fue un defecto del sync de Interests ni requirió
+  ampliar `salesforce_leads`.
+- Deuda operativa de shadow, fuera del comportamiento funcional: el contenedor
+  conserva variables Salesforce antiguas inyectadas por Docker y las pruebas
+  manuales requieren actualmente retirar esas variables para usar la
+  configuración segura; además, el egress hacia Salesforce se añadió
+  manualmente. Ambas cuestiones deben resolverse antes del despliegue
+  productivo del conjunto, sin documentar credenciales ni valores de entorno.
+
+### Contratos posteriores confirmados por Samu (no implementados)
+
+- SandboxRefreshed usará un usuario técnico exclusivamente read-only y el batch
+  histórico continúa desactivado. Su universo operativo son Leads no eliminados
+  con `DuplicateReviewed__c=false`; eliminados/fusionados serán excepciones
+  separadas. El batch requerirá ejecución persistente, métricas y rollback por
+  ejecución.
+- `IN_Lead_Origen_Migracion__c` identifica el Lead histórico concreto. Account
+  mantiene prioridad canónica y distintos Leads históricos conservan distintos
+  Interests. Contact se resolverá por Lead convertido o Account, sin elección
+  arbitraria.
+- Quote seguirá `Quote → Opportunity → HRM_Interes_Origen__c → Interes__c`.
+  Task usará `ActivityDate` y `CreatedDate` como desempate del mismo día; Event,
+  `StartDateTime`. Nunca se asociará automáticamente una actividad a un Interest
+  posterior a ella. Contact Center continúa parcialmente bloqueado.
+- Los pools productivos procederán de `HRM_Reparto_Regla__c`, sin IDs
+  hardcodeados. El cutover registrará timestamps UTC y hora local. Opportunity
+  fotografiará la atribución del Interest y cambios posteriores no reescribirán
+  esa historia.
+- Los tipos canónicos siguen siendo `Venta`, `Venta con cambio` y `Tasación`.
+  El orden diario confirmado es Lead/Account/Contact → Interest →
+  Opportunity/Quote → Task/Event → hitos → deletes/merges → integridad.
+
+## SF-INTEREST-FOUNDATION-1 — persistencia local de Interest (2026-09-25)
+
+- FOUNDATION-1 está implementada, revisada y aprobada. El commit publicado es
+  `2b9ab559e1b1016e3e623fcd45462e1a0fd43541`
+  (`feat: add local Salesforce interest foundation`). La fase queda validada
+  en MySQL local y certificada en shadow; producción permanece intacta.
+- Se añadió exclusivamente la foundation local y aditiva de `Interes__c` en
+  `salesforce_interests`. No existe todavía sincronizador, SOQL, comando,
+  scheduler, reconciliador, endpoint ni consumidor funcional; todas las tablas
+  y funcionalidades legacy permanecen sin cambios.
+- La tabla usa PK local y `salesforce_id` de 18 caracteres único. Conserva IDs
+  externos de Lead, Account, Lead de migración, Owner, ambos vehículos y
+  Opportunity inversa sin FK SQL. `migration_origin_lead_id` es nullable y
+  único cuando existe; MySQL y SQLite permiten múltiples `NULL`.
+- La persona canónica se materializa como tipo + Salesforce ID: Account tiene
+  prioridad, Lead es fallback y ausencia se representa con `NULL`. No existe
+  tabla Persona ni matching por teléfono, email o nombre. La fecha funcional
+  se materializa con `origin_created_at ?? salesforce_created_at`; nunca usa
+  timestamps locales.
+- Corrección de revisión sénior: una fecha de origen `null`, vacía o compuesta
+  solo por whitespace se considera ausente y cae correctamente a
+  `salesforce_created_at`. `SalesforceInterestFoundationResolver::materialize()`
+  es el contrato único para preparar los derivados. El evento Eloquent
+  `saving` lo invoca como safety net; los futuros `insert`/`upsert` bulk no
+  ejecutan eventos y deberán invocarlo explícitamente al construir cada fila.
+- Estado, tipo, fuente, medio y canal son strings no restrictivos. No hay
+  enum/check ni normalización silenciosa. Las seis UTMs respetan las longitudes
+  confirmadas; `raw_payload` es JSON nullable y el futuro sync solo deberá
+  guardar campos consultados explícitamente, sin registrarlo en logs.
+- Los índices se limitan a identidades, fecha funcional, cursor incremental,
+  Opportunity inversa y persona canónica + fecha. No se añadieron índices
+  prematuros por Owner, estado, tipo, delegación, fuente, medio o canal.
+- Los tipos de los campos de descarte continúan `PENDIENTE DE CONTRATO
+  SALESFORCE`; no se inventaron columnas. También quedan pendientes rollback
+  del batch, snapshot final legacy, sincronización continua y deletes/merges,
+  atribución histórica mutable frente a fotografiada, fechas por actividad,
+  controles de integridad, campos Contact Center, Quote, Contact, pools de
+  producción y cutover.
+- La migración `2026_09_25_090000_create_salesforce_interests_table` se aplicó
+  correctamente únicamente sobre la base MySQL local
+  `informes_intereses_local`. Se verificaron la PK, los ocho índices de
+  FOUNDATION-1, las dos restricciones únicas y los índices incremental y de
+  persona canónica. Dos fixtures sintéticas confirmaron Lead→Lead,
+  Account→Account y el fallback de fecha funcional a Salesforce CreatedDate;
+  ambas se eliminaron tras la comprobación.
+- Seguridad: no se añadieron datos de contacto, secretos o credenciales. No se
+  conectó a Salesforce, shadow o producción y no se ejecutaron backfills. La
+  migración se certificó posteriormente en shadow y no se ha aplicado en
+  producción; producción permanece intacta.
+- Validación final tras las correcciones: test específico con 12 pruebas y 56
+  aserciones; regresiones Salesforce con 43 pruebas y 296 aserciones; suite
+  completa con 1.032 pruebas y 7.940 aserciones. Pint pasó sobre los PHP
+  modificados, `git diff --check` fue correcto y `migrate --pretend` mantuvo el
+  mismo `CREATE TABLE` y ocho índices. El literal `Tasación` se verificó en el
+  archivo real como UTF-8 correcto. No se requirió build frontend.
+
 ## Cierre formal de RV-2 tras PR #59 (2026-09-23)
 
 - El PR #59 se fusionó en

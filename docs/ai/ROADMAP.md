@@ -1,6 +1,59 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-09-23.
+Actualizado: 2026-09-29.
+
+## Salesforce Interest foundation
+
+- `SF-INTEREST-FOUNDATION-1` — **completada y certificada en shadow**: revisión sénior aprobada y commit
+  `2b9ab559e1b1016e3e623fcd45462e1a0fd43541` publicado. La migración se aplicó
+  en MySQL local y shadow; producción permanece intacta. No existe consumo
+  funcional.
+- `SF-INTEREST-FOUNDATION-2` — **completada y certificada en shadow y contra
+  Salesforce SandboxRefreshed en full + incremental**. Commit funcional
+  `b69f0f88435e7509a039d30e4d62bf64468cd87b`. La migración y el persister están
+  certificados en MySQL local y shadow. El bootstrap read-only contra Salesforce
+  SandboxRefreshed completó 65 registros en dos páginas, sin errores ni
+  escrituras, y dejó el watermark UTC en `2026-09-28 14:31:28`. El primer
+  incremental real cubrió `2026-09-28T14:26:28+00:00` →
+  `2026-09-28T15:06:10+00:00` con overlap de 300 segundos: 2 páginas, 0 registros
+  y 0 errores. El run quedó completed, avanzó el watermark a `15:06:10 UTC` y
+  mantuvo 65 Interests activos sin duplicados observados. Quedan certificados
+  full, incremental, watermark, overlap, query/queryAll, lifecycle, persistencia,
+  auditoría y read-only. Producción permanece intacta y no existe scheduler.
+- `SF-INTEREST-FOUNDATION-3` — **completada y certificada en shadow**: revisión
+  sénior aprobada, migración aplicada y reconciliación certificada sobre el
+  snapshot FOUNDATION-3A. El run 3 materializó 1.059.486 filas a partir de
+  1.059.421 Leads y 65 Interests: 4 relaciones exactas, 0 origins missing,
+  5.904 Leads con master inmediato y un único conflicto por alignment `other`,
+  conservado como hallazgo de integridad. La retención dejó únicamente el
+  detalle del run vigente y mantuvo las métricas históricas. No existen
+  consumidores funcionales ni scheduler; producción permanece intacta.
+- `SF-INTEREST-FOUNDATION-3A` — **completada y certificada en shadow contra
+  Salesforce SandboxRefreshed**: revisión sénior aprobada y migraciones
+  aplicadas. El run 1 quedó ligado al run FOUNDATION-2 número 2688 y a su cutoff
+  UTC `2026-09-29T11:28:13+00:00`; resolvió mediante queryAll los cuatro
+  migration origins ausentes del universo legacy como 3 activos y 1 eliminado,
+  sin missing, invalid o errores, y descubrió 1 master activo. La fuente continúa
+  separada de `salesforce_leads`, que no se amplió. No tiene scheduler ni
+  consumidores funcionales; producción permanece intacta.
+- Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
+  queda pendiente evaluar un lock compartido o serialización equivalente; no se
+  implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
+- FOUNDATION-2 materializa persona y fecha mediante
+  `SalesforceInterestFoundationResolver::materialize()` antes de cualquier
+  escritura bulk; no podrá depender del evento Eloquent `saving`.
+- **Contrato confirmado; implementación pendiente:** Contact se resuelve por
+  Lead convertido/Account; Quote sigue Opportunity→Interest; Task usa
+  `ActivityDate` con `CreatedDate` como desempate y Event usa `StartDateTime`;
+  Opportunity fotografía la atribución; el orden continuo es
+  Lead/Account/Contact→Interest→Opportunity/Quote→Task/Event→hitos→
+  deletes/merges→integridad; pools proceden de `HRM_Reparto_Regla__c`; cutover
+  debe registrar UTC y hora local.
+- **Realmente pendiente:** rollback completo por ejecución histórica, métricas
+  persistentes del batch, campos Contact Center sin equivalente, exportación
+  completa de excepciones, snapshot definitivo y timestamps reales de cutover,
+  conciliación final de pools productivos, tipos de descarte y controles de
+  integridad aún no implementados.
 
 Este documento es la **fuente única de verdad del trabajo pendiente**. El
 histórico de trabajo ya entregado y sus validaciones permanece en
