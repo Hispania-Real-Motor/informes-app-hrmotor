@@ -20,29 +20,22 @@ Actualizado: 2026-09-29.
   mantuvo 65 Interests activos sin duplicados observados. Quedan certificados
   full, incremental, watermark, overlap, query/queryAll, lifecycle, persistencia,
   auditoría y read-only. Producción permanece intacta y no existe scheduler.
-- `SF-INTEREST-FOUNDATION-3` — **implementada, pendiente de revisión sénior**:
-  snapshot local aditivo y auditable Lead–Interest por relación fuerte, masters
-  protegidos, matriz central de conflictos, persona canónica validada,
-  expansión master loaded/expanded, chunks/cursor, publicación independiente
-  del cleanup acotado, retención por runs protegidos y lock. La ruta failed
-  conserva el último completed válido y reintenta cualquier detalle superseded.
-  Su ejecución real sobre más de un millón de Leads confirmó una dependencia de
-  alineación del dataset Lead en shadow: cuatro migration origins existen en
-  SandboxRefreshed mediante queryAll, uno eliminado, pero ninguno está en la
-  réplica local de Leads. Es una incidencia propia de FOUNDATION-3 y no invalida
-  el sync de Interest de FOUNDATION-2. FOUNDATION-3 no tiene consumidores
-  funcionales.
-- `SF-INTEREST-FOUNDATION-3A` — **implementada, pendiente de revisión sénior y
-  migración persistente**: añade una réplica read-only mínima de Leads requeridos
-  por `migration_origin_lead_id`, separada de `salesforce_leads`, con runs
-  anclados al snapshot exacto de FOUNDATION-2, `queryAll` en lotes de 100,
-  captura recursiva de masters y estados active/deleted/missing/invalid. Exige
-  IDs REST canónicos de 18 caracteres; un ID de 15 queda invalid sin consulta ni
-  conversión. Missing/invalid conservan lifecycle desconocido (`is_deleted`
-  null) aunque exista una fila legacy activa. La
-  reconciliación exige un snapshot 3A current y completo y registra su fuente de
-  evidencia. No tiene scheduler ni consumidores funcionales; no se ha conectado
-  a Salesforce, shadow o producción durante la implementación.
+- `SF-INTEREST-FOUNDATION-3` — **completada y certificada en shadow**: revisión
+  sénior aprobada, migración aplicada y reconciliación certificada sobre el
+  snapshot FOUNDATION-3A. El run 3 materializó 1.059.486 filas a partir de
+  1.059.421 Leads y 65 Interests: 4 relaciones exactas, 0 origins missing,
+  5.904 Leads con master inmediato y un único conflicto por alignment `other`,
+  conservado como hallazgo de integridad. La retención dejó únicamente el
+  detalle del run vigente y mantuvo las métricas históricas. No existen
+  consumidores funcionales ni scheduler; producción permanece intacta.
+- `SF-INTEREST-FOUNDATION-3A` — **completada y certificada en shadow contra
+  Salesforce SandboxRefreshed**: revisión sénior aprobada y migraciones
+  aplicadas. El run 1 quedó ligado al run FOUNDATION-2 número 2688 y a su cutoff
+  UTC `2026-09-29T11:28:13+00:00`; resolvió mediante queryAll los cuatro
+  migration origins ausentes del universo legacy como 3 activos y 1 eliminado,
+  sin missing, invalid o errores, y descubrió 1 master activo. La fuente continúa
+  separada de `salesforce_leads`, que no se amplió. No tiene scheduler ni
+  consumidores funcionales; producción permanece intacta.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.

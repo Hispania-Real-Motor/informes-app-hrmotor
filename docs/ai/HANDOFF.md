@@ -9,9 +9,10 @@
   conflictos. El cálculo permanece O(1) durante el procesamiento, sin queries o
   scans adicionales y sin doble conteo cuando el origin también existe en
   `salesforce_leads`.
-- La revalidación posterior en shadow queda pendiente. Con el mismo dataset se
-  espera `lead_merged=5904`, manteniendo `master_direct=5387`,
-  `master_chain=517`, `exact=4`, `conflicts=1` y cero errores.
+- La revalidación final en shadow quedó certificada sobre el commit
+  `636d0640c9c8dae7480bc3c7d95bfc046f7b0fea`: `lead_merged=5904`,
+  `master_direct=5387`, `master_chain=517`, `exact=4`, `conflicts=1` y cero
+  errores. La identidad `5387 + 517 = 5904` confirma la métrica corregida.
 - Validación local: FOUNDATION-3, 25 pruebas/132 aserciones; FOUNDATION-3A +
   FOUNDATION-3, 40/215; FOUNDATION-1/2/3/3A, 67/356; suite completa,
   1.087/8.244. Pint y `git diff --check HEAD` correctos.
@@ -53,25 +54,25 @@
   el pipeline debe evaluarse un lock compartido o mecanismo equivalente que
   serialice FOUNDATION-2 → FOUNDATION-3A → FOUNDATION-3 y cierre la ventana
   entre la comprobación final de la fuente y la publicación.
-- Migraciones nuevas únicamente: creación de las dos tablas 3A y ampliación
-  nullable de las tablas FOUNDATION-3. No se editó ninguna migración aplicada.
-- Validación local: FOUNDATION-3A + FOUNDATION-3, 39 pruebas/206 aserciones;
-  FOUNDATION-1/2/3/3A, 66/347; regresiones Lead y retención, 63/369; suite
-  completa, 1.086/8.234. Pint correcto y `migrate --pretend` exclusivamente
-  aditivo. No se ejecutó migración persistente ni acceso a Salesforce, shadow o
-  producción.
+- Las migraciones aditivas de FOUNDATION-3A y la ampliación nullable de
+  FOUNDATION-3 fueron revisadas, aplicadas y verificadas en shadow; producción
+  permanece intacta.
+- La fuente certificada fue el run F2 número 2688, `completed`, con cutoff
+  `2026-09-29T11:28:13+00:00`: 65 Interests activos, 0 eliminados, 0 errores e
+  incremental con overlap de 300 segundos.
+- Certificación real: run 3A número 1, ligado al run F2 número 2688 y cutoff
+  `2026-09-29T11:28:13+00:00`, terminó completed. Sembró 4 origins, descubrió 5
+  dependencias —incluido 1 master— y realizó 2 llamadas queryAll para 5 IDs.
+  Totales: 4 activos, 1 eliminado, 0 missing, 0 invalid, 0 pending, 0 errores y
+  0 errores de cleanup. Entre los origins hubo 3 activos y 1 eliminado; el
+  master descubierto estaba activo. No se amplió `salesforce_leads`.
 
 ## SF-INTEREST-FOUNDATION-3 — reconciliación local Lead–Interest (2026-09-28)
 
-- FOUNDATION-3 queda implementada sobre el baseline
-  `a08cc3b45f75d137b91fa959f28be689c7157952`, pendiente de revisión sénior y
-  validada inicialmente con fixtures sintéticas SQLite. Tras el bootstrap real
-  read-only de FOUNDATION-2, la primera reconciliación sobre más de un millón de
-  Leads detectó una dependencia de datos Lead: cuatro Interests tienen migration
-  origin existente en SandboxRefreshed mediante queryAll —uno eliminado—, pero
-  esos cuatro Lead IDs faltan en `salesforce_leads` local de shadow. Esta
-  desalineación pertenece a la entrada Lead de FOUNDATION-3 y no invalida
-  FOUNDATION-2.
+- FOUNDATION-3 está revisada sénior y certificada en shadow. El hallazgo inicial
+  de cuatro migration origins ausentes de `salesforce_leads` motivó
+  FOUNDATION-3A; quedó resuelto sin ampliar el universo legacy y los cuatro se
+  materializan ahora como relaciones `exact` con evidencia dependency snapshot.
 - `salesforce:reconcile-interests-local --reason=...` es manual, no usa
   Salesforce ni scheduler y exige motivo auditable. Un lock de seis horas
   impide ejecuciones concurrentes; siempre se libera en `finally`.
@@ -124,13 +125,20 @@
   failed, pueden persistir temporalmente restos superseded, sin eliminar el
   último completed válido. Un `SIGKILL` o caída abrupta puede dejar un run
   `running` parcial; no se implementa todavía recovery automático ni scheduler.
-- Validación local tras correcciones de revisión: test específico FOUNDATION-3
-  con 19 pruebas y 104 aserciones; regresiones Interest/Leads/reconciliación con
-  121 pruebas y 671 aserciones; suite completa con 1.066 pruebas y 8.132
-  aserciones. Pint y `git diff --check` correctos;
-  `migrate:status` deja solo la migración FOUNDATION-3 pendiente y
-  `migrate --pretend` genera exclusivamente las dos tablas aditivas. No se
-  ejecutó ninguna migración persistente ni acceso Salesforce.
+- Certificación final: run 3, ligado al dependency run 1, terminó completed en
+  `363.401 s`. Examinó 1.059.421 Leads y 65 Interests y materializó 1.059.486
+  filas: exact 4, lead_without_interest 1.059.421,
+  interest_origin_missing_lead 0, interest_without_migration_origin 61,
+  lead_deleted 6.477 y lead_merged 5.904. Masters: none 1.053.521, direct 5.387,
+  chain 517, not_applicable 61 y cero missing/self/cycle/depth. Persona: 49
+  coherent_account, 16 coherent_lead y 0 inconsistent. Hubo un único conflicto,
+  correspondiente a alignment `other`; es una incidencia observable de
+  integridad, no una regresión del reconciliador.
+- Los cuatro origins quedaron exact con evidencia
+  `interest_dependency_snapshot`: 3 activos, 1 eliminado, 1 master direct y 3
+  sin master; alignments matches_master 1, matches_origin 2 y other 1. Tras
+  publicar, solo permanecen las 1.059.486 resoluciones del run 3; el detalle del
+  run 2 fue eliminado y sus métricas históricas se conservaron.
 
 ## SF-INTEREST-FOUNDATION-2 — sincronización local read-only (2026-09-28)
 
@@ -180,9 +188,10 @@
   lifecycle, persistencia por chunks, auditoría y permisos Salesforce read-only.
 - Producción permanece intacta.
 - No se habilitó scheduler ni consumidor funcional de informes.
-- FOUNDATION-3 es una fase local independiente. Su hallazgo sobre cuatro
-  migration origins ausentes de la réplica local de Leads es una dependencia de
-  alineación de `salesforce_leads`, no un defecto del sync de Interests.
+- FOUNDATION-3 es una fase local independiente. El hallazgo histórico de cuatro
+  migration origins ausentes de la réplica legacy fue resuelto por la fuente
+  FOUNDATION-3A separada; no fue un defecto del sync de Interests ni requirió
+  ampliar `salesforce_leads`.
 - Deuda operativa de shadow, fuera del comportamiento funcional: el contenedor
   conserva variables Salesforce antiguas inyectadas por Docker y las pruebas
   manuales requieren actualmente retirar esas variables para usar la

@@ -28,6 +28,11 @@ Actualizado: 2026-09-29.
 - Antes de automatizar F2→3A→3 debe evaluarse un lock compartido o mecanismo
   equivalente que serialice el pipeline. Esta deuda no cambia los locks locales
   ni el flujo manual actual.
+- La certificación shadow del run 3A número 1, ligado al run F2 número 2688 y su
+  cutoff `2026-09-29T11:28:13+00:00`, resolvió los 4 migration origins que no
+  pertenecían al universo legacy: 3 activos y 1 eliminado. Se descubrió además
+  1 master activo; no hubo missing, invalid, pending ni errores. La evidencia se
+  obtuvo sin ampliar `salesforce_leads`.
 
 ## Reconciliación local Lead–Interest
 
@@ -60,6 +65,15 @@ Actualizado: 2026-09-29.
   origin y `no_current_lead` no bastan por sí solas para afirmar conflicto.
 - La capa no valida Accounts, no infiere el universo `DuplicateReviewed__c`, no
   fusiona Interests por persona/Account y no tiene consumidores funcionales.
+- La certificación shadow del run 3 produjo 1.059.486 resoluciones sobre
+  1.059.421 Leads y 65 Interests. Los 4 migration origins quedaron `exact` con
+  evidencia FOUNDATION-3A y `interest_origin_missing_lead=0`; 3 estaban activos,
+  1 eliminado y uno tenía master directo. El único conflicto fue alignment
+  `other`, conservado como hallazgo de integridad. `lead_merged=5904` coincide
+  con 5.387 masters directos y 517 cadenas.
+- Tras publicar el run certificado solo permaneció su detalle; el snapshot
+  superseded fue retirado y sus métricas agregadas se conservaron. No existe
+  scheduler ni consumidor funcional y producción permanece intacta.
 - El máximo de dos snapshots detallados corresponde a rutas gestionadas. Un
   segundo fallo del propio cleanup puede exceder temporalmente esa cota sin
   destruir el último completed. Un `SIGKILL`, caída del host o terminación
@@ -103,10 +117,11 @@ Actualizado: 2026-09-29.
   cutoff a `15:06:10 UTC` y mantuvo 65 Interests activos, ninguno eliminado y
   cero errores de sync. Quedan certificados full e incremental, watermark,
   overlap, query/queryAll, lifecycle, persistencia, auditoría y read-only.
-- La ausencia en shadow de cuatro Leads referenciados por migration origin —los
-  cuatro existen en SandboxRefreshed vía queryAll y uno está eliminado— es una
-  desalineación de la fuente Lead consumida por FOUNDATION-3, no una incidencia
-  del sincronizador de Interest.
+- Históricamente, cuatro Leads referenciados por migration origin no estaban en
+  `salesforce_leads`. FOUNDATION-3A confirmó mediante queryAll que existían en
+  SandboxRefreshed —tres activos y uno eliminado— y los materializó en su fuente
+  separada; el bloqueo quedó resuelto sin alterar el sincronizador de Interest ni
+  el universo legacy.
 
 ## Foundation local de Salesforce Interest
 
