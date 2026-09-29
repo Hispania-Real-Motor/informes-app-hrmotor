@@ -2,6 +2,41 @@
 
 Actualizado: 2026-09-29.
 
+## Reconciliación local Interest–Opportunity
+
+- FOUNDATION-4A materializa una vista auditable y unidireccional basada
+  exclusivamente en `salesforce_interests.inverse_opportunity_salesforce_id`
+  contra `salesforce_opportunities.salesforce_id`. Produce una fila por
+  Interest; las Opportunities no referenciadas no forman parte de su universo.
+  Salesforce ID es la única identidad y ambas réplicas fuente son read-only.
+- Cada run exige como fuente el último run FOUNDATION-2, que debe ser completed
+  y conservar cutoff. Antes de publicar se exige el mismo ID/cutoff. El último
+  run operativo de Opportunity debe estar completed y se conserva su metadata,
+  pero su cutoff local no se equipara al watermark Salesforce de Interest.
+- La consistencia Opportunity se limita a los IDs usados. Se captura y vuelve a
+  validar en bulk existencia, `is_deleted`, `salesforce_deleted_at` y
+  `deletion_detection_source`; precio, portal y dimensiones ajenas no invalidan
+  el snapshot. El procesamiento usa cursor PK y chunks de 200, sin OFFSET, N+1
+  ni recorrido del universo completo de Opportunity.
+- Relación (`no_inverse`, `inverse_unique`, `inverse_shared`) y presencia
+  (`not_applicable`, `present_active`, `present_deleted`, `present_missing`,
+  `not_local`, `present_unresolved`) son ejes separados. `requires_review` es un
+  indicador diagnóstico y no una declaración de cardinalidad o conflicto de
+  negocio. Lifecycle de Interest también permanece separado.
+- Las métricas `opportunities_present_active`,
+  `opportunities_present_deleted`, `opportunities_present_missing`,
+  `opportunities_not_local` y `opportunities_present_unresolved` cuentan
+  resoluciones/referencias Interest→Opportunity, no Opportunities distintas.
+  `distinct_opportunities_referenced` es la métrica explícita de Salesforce IDs
+  de Opportunity distintos referenciados por el snapshot.
+- Runs y detalle son propios; solo completed publica snapshot. Los detalles
+  superseded se retiran por PK en chunks de 1.000 sin borrar métricas históricas.
+  El comando es manual, no tiene scheduler ni consumidor funcional.
+- FOUNDATION-4B queda separada y bloqueada hasta demostrar mediante describe un
+  lookup Opportunity → `Interes__c`, incluidos API Name, tipo, `referenceTo` y
+  FLS. No se presume `HRM_Interes_Origen__c` y no se alteran SOQL ni procesos
+  legacy de Opportunity.
+
 ## Dependencias Lead de Salesforce Interest
 
 - `SalesforceInterestLeadDependencySyncService` construye una fuente local

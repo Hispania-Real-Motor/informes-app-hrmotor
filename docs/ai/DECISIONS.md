@@ -1,5 +1,25 @@
 # Decisiones técnicas
 
+## 2026-09-29 — FOUNDATION-4A unidireccional Interest–Opportunity
+
+- La única evidencia contractual disponible es
+  `Interes__c.IN_VEN_Oportunidad__c → Opportunity`, ya replicada en
+  `salesforce_interests.inverse_opportunity_salesforce_id`. FOUNDATION-4A se
+  construye solo con esa relación y Salesforce ID; no usa Lead, Account,
+  portal, PII ni afinidades como sustitutos.
+- El snapshot contiene una fila por Interest y no materializa el universo de
+  Opportunities no referenciadas. `inverse_shared` es observable y requiere
+  revisión, pero no se declara conflicto porque Salesforce todavía no demuestra
+  la cardinalidad de negocio.
+- Lifecycle/presencia Opportunity se conserva separado del estado de relación y
+  del lifecycle Interest. La estabilidad se valida únicamente sobre las
+  Opportunities referenciadas y sus campos de lifecycle relevantes, evitando
+  firmar o escanear la réplica completa.
+- FOUNDATION-4B es una fase separada y bloqueada hasta que describe demuestre el
+  lookup Opportunity → `Interes__c`, su API Name, tipo, `referenceTo` y FLS. No
+  se añade `HRM_Interes_Origen__c` por documentación histórica ni se modifica el
+  sincronizador Opportunity o su scheduler.
+
 ## 2026-09-29 — Fuente separada para dependencias Lead de Interest
 
 - Los Leads históricos requeridos por `migration_origin_lead_id` no se añaden a

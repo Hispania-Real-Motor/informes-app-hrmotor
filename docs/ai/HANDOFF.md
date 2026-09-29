@@ -1,5 +1,52 @@
 # Handoff para agentes
 
+## SF-INTEREST-FOUNDATION-4A — snapshot local Interest–Opportunity (2026-09-29)
+
+- Se incorporan los runs `salesforce_interest_opportunity_reconciliation_runs`
+  y el detalle `salesforce_interest_opportunity_reconciliations`. Cada snapshot
+  contiene exactamente una resolución por Interest y usa únicamente
+  `salesforce_interests.inverse_opportunity_salesforce_id` contra
+  `salesforce_opportunities.salesforce_id`; no materializa Opportunities no
+  referenciadas ni copia PII o payloads.
+- El servicio `SalesforceInterestOpportunityReconciliationService` procesa
+  Interests por PK en chunks de 200, carga Opportunities y multiplicidades por
+  lote y publica solo después de revalidar el run FOUNDATION-2 y la evidencia
+  lifecycle de cada Opportunity referenciada. Solo existencia, `is_deleted`,
+  `salesforce_deleted_at` y `deletion_detection_source` forman la huella; otros
+  cambios de Opportunity no invalidan el snapshot.
+- Relación y presencia permanecen separadas. Relación: `no_inverse`,
+  `inverse_unique`, `inverse_shared`. Presencia: `not_applicable`,
+  `present_active`, `present_deleted`, `present_missing`, `not_local` y
+  `present_unresolved`. `requires_review` es diagnóstico para multiplicidad,
+  ausencia/lifecycle no resuelto y un Interest activo que apunta a una
+  Opportunity confirmadamente eliminada; no afirma conflicto contractual.
+- El run conserva ID/cutoff de FOUNDATION-2 y metadata del último run operativo
+  de Opportunity. Ese último run debe estar completed al inicio y no cambiar
+  durante la construcción. No se interpreta su `source_cutoff_at` como cutoff
+  Salesforce equivalente al de Interest.
+- El comando manual `salesforce:reconcile-interest-opportunities --reason=...`
+  exige entre 10 y 500 caracteres y emite métricas JSON con prefijo estable. No
+  se añadió scheduler, SOQL, acceso Salesforce ni consumidor funcional.
+- La retención protege el completed vigente; durante fallo protege además el
+  parcial failed actual. El detalle superseded se elimina por PK en chunks de
+  1.000 y transacciones breves. Un error de cleanup posterior no degrada el
+  completed y solo incrementa `cleanup_errors`.
+- FOUNDATION-4B permanece bloqueada: el usuario técnico no ve un lookup
+  Opportunity → `Interes__c`. No se añadió `HRM_Interes_Origen__c` ni se tocó el
+  sincronizador legacy de Opportunity. Antes de operar hacen falta revisión
+  sénior, migración controlada y certificación local/shadow; producción sigue
+  intacta.
+- El hardening de revisión demuestra que modificar `name` o `portal_original`
+  de una Opportunity referenciada no invalida la huella y que un cambio de
+  lifecycle en una Opportunity no referenciada tampoco invalida el snapshot.
+  La prueba multi-chunk confirma además que la multiplicidad compartida es
+  global aunque las referencias estén repartidas entre chunks.
+- Validación local: FOUNDATION-4A, 16 pruebas/91 aserciones; FOUNDATION-1/2/3/3A
+  más 4A y regresiones Opportunity/Stock, 123/688; suite completa,
+  1.103/8.335. Pint y `git diff --check HEAD` correctos. `migrate --pretend`
+  generó solo las dos tablas aditivas, sus índices mínimos y la FK detalle→run
+  con cascade; la migración no se aplicó persistentemente.
+
 ## SF-INTEREST-FOUNDATION-3 — métrica `lead_merged` (2026-09-29)
 
 - Se corrigió exclusivamente la agregación de `lead_merged` para las

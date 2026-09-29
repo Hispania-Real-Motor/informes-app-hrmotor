@@ -36,6 +36,16 @@ Actualizado: 2026-09-29.
   sin missing, invalid o errores, y descubrió 1 master activo. La fuente continúa
   separada de `salesforce_leads`, que no se amplió. No tiene scheduler ni
   consumidores funcionales; producción permanece intacta.
+- `SF-INTEREST-FOUNDATION-4` — **en_revision** en la rama
+  `feat/sf-interest-foundation-4-opportunity`, nacida del SHA
+  `6c26cce4a09349c30ebd289c73cf5ea985b9166f`. FOUNDATION-4A está implementada
+  y en revisión sénior, pendiente de aplicar y certificar su migración en los
+  entornos runtime autorizados. Materializa un snapshot local y manual de la
+  relación confirmada `Interes__c.IN_VEN_Oportunidad__c → Opportunity`, sin
+  modificar sincronizadores, scheduler ni consumidores. FOUNDATION-4B permanece
+  **bloqueada** hasta demostrar mediante describe el API Name, tipo,
+  `referenceTo` y FLS de un lookup Opportunity → `Interes__c`; no se presume
+  `HRM_Interes_Origen__c` ni se reutilizan campos parecidos.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
@@ -112,7 +122,7 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 ## Línea base y límites actuales
 
 - Rama base de este roadmap: `main`.
-- SHA actual de la rama base: `d57d460922cddbfe4e8abf4f9dceb9bffd134613`.
+- SHA base de la rama funcional activa: `6c26cce4a09349c30ebd289c73cf5ea985b9166f`.
 - El PR #54 de preparación documental está cerrado y fusionado. La rama remota
   `docs/roadmap-executive-v1` se eliminó después de verificar que seguía
   apuntando al commit aprobado `22e2f6496dc376ad6236854e56434e8a8aa0f3cc`.
@@ -132,9 +142,10 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
   posterior de `main` (`CI #132`) finalizaron correctamente; la rama
   `feat/rv-2-direction-summary-production-periods` fue eliminada después del
   merge.
-- Actualmente no existe ninguna rama funcional activa. El siguiente paso
-  operacional es el despliegue controlado del bloque Reservas/Ventas; no se ha
-  realizado todavía.
+- La única rama funcional activa es
+  `feat/sf-interest-foundation-4-opportunity`; FOUNDATION-4A está en revisión y
+  pendiente de certificación runtime, y FOUNDATION-4B continúa bloqueada por
+  contrato Salesforce no demostrado.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 
