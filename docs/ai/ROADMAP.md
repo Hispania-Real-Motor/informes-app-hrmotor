@@ -7,9 +7,11 @@ Actualizado: 2026-09-30.
 ### AUTH-PASSWORD-RESET — Recuperación de contraseña de usuarios de Informes
 
 - **Prioridad:** P0 seguridad.
-- **Estado:** `en_revision`.
+- **Estado:** `aprobada`.
 - **Rama activa:** `feat/auth-password-reset`.
 - **SHA base verificado:** `6c26cce4a09349c30ebd289c73cf5ea985b9166f`.
+- **Revisión sénior pre-PR:** aprobada sobre el HEAD
+  `29a1311a103e52b0036c5e24429ea2b7ca7ddeb3`.
 - **Motivo:** flujo completo de recuperación/restablecimiento por email para
   usuarios reales `ReportUser`, sin sustituir el login manual existente ni usar
   el broker `users` de `App\Models\User`.
@@ -21,6 +23,10 @@ Actualizado: 2026-09-30.
   minutos, rate limiting, correo por Laravel Mail, passwords hasheadas por
   `ReportUser`, invalidación de tokens previos y remember cookies previas,
   pruebas verdes, Pint y documentación.
+- **Condición operacional de despliegue:** el entorno debe usar cola realmente
+  asíncrona con `QUEUE_CONNECTION=database` y debe existir un worker Laravel
+  Queue operativo.
+- **Pendiente para cierre:** abrir PR, CI verde, merge y validación operacional.
 
 ## Salesforce Interest foundation
 
