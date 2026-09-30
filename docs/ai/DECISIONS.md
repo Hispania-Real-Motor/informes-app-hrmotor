@@ -1,5 +1,31 @@
 # Decisiones técnicas
 
+## 2026-09-30 — Motor ejecutivo V1 puro y dirección sin tolerancia
+
+- EXE-1 se implementa como un core puro en
+  `App\Services\Analytics\Executive\ExecutiveMetricRulesEngine`. No consulta BD,
+  no usa Eloquent, HTTP, Salesforce, Cache, filesystem, Mail, IA ni fecha actual.
+  Recibe valores y configuración ya preparados; EXE-2 será quien adapte fuentes
+  canónicas locales cuando se apruebe.
+- La versión de reglas queda fijada como `executive_metric_rules_v1` y viaja en
+  cada resultado para que calibraciones futuras no reinterpreten históricos.
+- La dirección queda definitivamente definida sin tolerancia: `actual >
+  baseline` es `favorable`, `actual == baseline` es `estable` y `actual <
+  baseline` es `desfavorable`. No existe dirección `revisar` en V1.
+- El baseline exige las cuatro referencias D-7, D-14, D-21 y D-28. D-364 es
+  complementaria y no participa en estado, dirección ni alerta.
+- Los estados se calculan combinando magnitud porcentual y puertas absolutas.
+  Un nivel solo se alcanza cuando se cumplen ambas condiciones; si no se cumple
+  su puerta absoluta, se degrada al mayor nivel inferior válido y, si ninguno
+  aplica, a `correcto`. La regla especial `actual = 0` con baseline evaluable
+  prevalece y devuelve `critico/desfavorable`.
+- `no_evaluable` conserva salud del dato y reason codes estables, pero nunca
+  genera alerta de negocio. Las incidencias de datos tampoco se transforman en
+  alertas de negocio.
+- EXE-1 no infiere causalidad ni recomendaciones de negocio. El contrato separa
+  `confirmed_cause`, `possible_cause_to_review` y `recommended_action_key`, que
+  permanecen `null` hasta que exista evidencia/catálogo aprobado.
+
 ## 2026-09-30 — Reset dedicado para `ReportUser`
 
 - No se usa el broker estándar `users` ni `password_reset_tokens` para Informes,

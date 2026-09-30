@@ -7,11 +7,14 @@ Actualizado: 2026-09-30.
 ### AUTH-PASSWORD-RESET — Recuperación de contraseña de usuarios de Informes
 
 - **Prioridad:** P0 seguridad.
-- **Estado:** `aprobada`.
+- **Estado:** `cerrada`.
 - **Rama activa:** `feat/auth-password-reset`.
 - **SHA base verificado:** `6c26cce4a09349c30ebd289c73cf5ea985b9166f`.
 - **Revisión sénior pre-PR:** aprobada sobre el HEAD
   `29a1311a103e52b0036c5e24429ea2b7ca7ddeb3`.
+- **Cierre operacional:** PR #63 fusionado en
+  `fb14def6952606cb45c05b9f2d95cfe5e7494552`, CI verde, despliegue en
+  producción completado y validación operacional completada el 2026-09-30.
 - **Motivo:** flujo completo de recuperación/restablecimiento por email para
   usuarios reales `ReportUser`, sin sustituir el login manual existente ni usar
   el broker `users` de `App\Models\User`.
@@ -26,7 +29,25 @@ Actualizado: 2026-09-30.
 - **Condición operacional de despliegue:** el entorno debe usar cola realmente
   asíncrona con `QUEUE_CONNECTION=database` y debe existir un worker Laravel
   Queue operativo.
-- **Pendiente para cierre:** abrir PR, CI verde, merge y validación operacional.
+- **Worker validado:** `laravel-informes-queue-worker`, cola `default`, consumió
+  `SendReportUserPasswordResetLink` sin acumulación en `jobs` ni fallos en
+  `failed_jobs` durante la prueba. La validación confirmó dispatch asíncrono,
+  creación de token, invalidación de token anterior por nueva solicitud, SMTP
+  aceptado y recepción final tras resolver una incidencia externa de
+  Dinahosting/Dinaserver.
+
+### INFRA-QUEUE-IAC — IaC reproducible del worker de Informes
+
+- **Prioridad:** P1 operación.
+- **Estado:** `pendiente`.
+- **Motivo:** durante la validación operacional de AUTH se observó el worker
+  `laravel-informes-queue-worker` en producción, pero las labels históricas de
+  `laravel-informes-app` apuntaban a ficheros no presentes:
+  `/srv/production/laravel/app-informes/docker-compose.production.yml` y
+  `/srv/production/laravel/app-informes/.env.docker`.
+- **Punto de reanudación:** recuperar y versionar Infrastructure-as-Code
+  reproducible del stack de Informes en un lote independiente. EXE-1 no
+  reconstruye ni versiona Compose.
 
 ## Salesforce Interest foundation
 
@@ -183,10 +204,9 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
   posterior de `main` (`CI #132`) finalizaron correctamente; la rama
   `feat/rv-2-direction-summary-production-periods` fue eliminada después del
   merge.
-- Actualmente existe la rama funcional transversal activa
-  `feat/auth-password-reset` en estado `en_revision`. El siguiente paso
-  operacional de Reservas/Ventas sigue siendo su despliegue controlado; no se ha
-  realizado todavía.
+- AUTH-PASSWORD-RESET está cerrado operacionalmente. El siguiente trabajo activo
+  es `EXE-1` en la rama `feat/exe-1-executive-engine`, nacida de `main`
+  `fb88b47551c05669c8c33ee16fc101067c6b08ba`.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 
@@ -197,9 +217,9 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 | 1 | RV-3 | Validación histórica Reservas/Ventas | P0 | `cerrada` | Ninguno | Evidencia cerrada disponible para RV-1 |
 | 2 | RV-1 | Cierre ejecutivo de Rendimiento comercial | P0 | `cerrada` | RV-3 | Evidencia de RV-3 para cancelaciones `N/D` y cero de ventas caídas |
 | 3 | RV-2 | Producción y períodos de Resumen Dirección | P0 | `cerrada` | RV-1 | Contratos temporales, reglas y universos existentes; no depende técnicamente de RV-1 |
-| 4 | SF-7A-OPS | Cierre operacional Salesforce Fase 7A | P0 | `pendiente` | RV-2 | Herramienta, migración, runbook y autorización propios; no depende de la UX de RV |
-| 5 | SF-7B-OPS | Cierre operacional Salesforce Fase 7B | P0 | `pendiente` | SF-7A-OPS | Herramienta, fechas locales, runbook y autorización propios; no depende de RV ni de 7A |
-| 6 | EXE-1 | Motor ejecutivo V1 | P0 | `pendiente` | SF-7B-OPS | Contrato y pruebas V1; no depende técnicamente de 7A/7B por ser agnóstico de módulo |
+| 4 | SF-7A-OPS | Cierre operacional Salesforce Fase 7A | P0 | `bloqueada` | RV-2 | Bloqueada hasta modelo Salesforce nuevo implementado y validado |
+| 5 | SF-7B-OPS | Cierre operacional Salesforce Fase 7B | P0 | `bloqueada` | SF-7A-OPS | Bloqueada hasta modelo Salesforce nuevo implementado y validado |
+| 6 | EXE-1 | Motor ejecutivo V1 | P0 | `en_revision` | SF-7B-OPS | Contrato y pruebas V1; no depende técnicamente de 7A/7B por ser agnóstico de módulo |
 | 7 | EXE-2 | Datos ejecutivos diarios | P0 | `pendiente` | EXE-1 | Contrato de EXE-1 y fuentes canónicas locales; no depende técnicamente de los backfills 7A/7B |
 | 8 | EXE-3 | Resumen Ejecutivo global | P0 | `pendiente` | EXE-2 | Contratos de EXE-1 y datasets de EXE-2 |
 | 9 | EXE-4 | Correo ejecutivo piloto | P0 | `pendiente` | EXE-3 | Dataset ejecutivo global aprobado |
@@ -273,17 +293,20 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 
 - **Fase/lote:** Salesforce 7A, backfill histórico de atribución Lead.
 - **Prioridad:** P0.
-- **Estado:** `pendiente`.
+- **Estado:** `bloqueada`.
 - **Predecesor planificado:** RV-2.
 - **Dependencias técnicas reales:** herramienta y migración ya implementadas
   según `HANDOFF.md`, más runbook, rango, motivo y autorización operativa. La UX
   de RV-1/RV-2 no es dependencia técnica.
 - **Rama prevista o activa:** por asignar; ninguna rama activa.
 - **SHA base al activar:** por registrar.
-- **Bloqueos/decisiones de negocio:** requiere runbook, rango, motivo y
-  autorización operativa separados; no autoriza escritura Salesforce.
-- **Punto exacto de reanudación:** conciliar migraciones y ejecutar primero el
-  dry-run aprobado sobre el rango acordado.
+- **Bloqueos/decisiones de negocio:** decisión operativa de esperar a que el
+  nuevo modelo de datos de Salesforce esté completamente implementado y validado
+  antes de realizar reprocesos/backfills históricos. No se declara fallo en las
+  herramientas actuales y este lote no autoriza escritura Salesforce.
+- **Punto exacto de reanudación:** tras estabilizar el nuevo modelo Salesforce,
+  revalidar campos, contratos, migraciones, universos y herramientas contra el
+  modelo definitivo antes de cualquier dry-run o apply.
 - **Criterios de aceptación:** dry-run conciliado; apply local autorizado,
   auditable e idempotente; validación posterior sin PII; incidencias y punto de
   reanudación documentados; cero escrituras Salesforce.
@@ -292,18 +315,20 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 
 - **Fase/lote:** Salesforce 7B, reproceso histórico de portales Opportunity.
 - **Prioridad:** P0.
-- **Estado:** `pendiente`.
+- **Estado:** `bloqueada`.
 - **Predecesor planificado:** SF-7A-OPS.
 - **Dependencias técnicas reales:** herramienta implementada, fechas locales
   necesarias conciliadas, runbook, rango, motivo y autorización operativa. No
   depende técnicamente de RV-1/RV-2 ni del cierre de SF-7A-OPS.
 - **Rama prevista o activa:** por asignar; ninguna rama activa.
 - **SHA base al activar:** por registrar.
-- **Bloqueos/decisiones de negocio:** requiere runbook, rango, motivo y
-  autorización operativa separados; Salesforce solo puede usarse para lectura
-  de Leads dentro del contrato existente.
-- **Punto exacto de reanudación:** verificar `created_date`, migraciones y rango
-  `[from, to)`; ejecutar primero dry-run productivo aprobado.
+- **Bloqueos/decisiones de negocio:** decisión operativa de esperar a que el
+  nuevo modelo de datos de Salesforce esté completamente implementado y validado
+  antes de realizar reprocesos/backfills históricos. No se declara fallo en las
+  herramientas actuales; cero ejecución de comandos SF-7 en este lote.
+- **Punto exacto de reanudación:** tras estabilizar el nuevo modelo Salesforce,
+  revalidar campos, contratos, migraciones, universos y herramientas contra el
+  modelo definitivo antes de cualquier dry-run o apply.
 - **Criterios de aceptación:** dry-run conciliado; apply local autorizado,
   reanudable y auditable; contratos y precedencias preservados; validación
   posterior documentada; cero escrituras Salesforce.
@@ -378,8 +403,9 @@ Reglas de evaluabilidad:
 
 - el estado y la dirección son dimensiones separadas: una subida grande puede
   ser **Crítico / Favorable** y una caída grande, **Crítico / Desfavorable**;
-- no se define todavía una tolerancia para la dirección **Estable**; su contrato
-  exacto debe fijarse mediante especificación y pruebas antes de EXE-1;
+- la dirección queda fijada definitivamente: `actual > baseline` es
+  **Favorable**, `actual == baseline` es **Estable** y `actual < baseline` es
+  **Desfavorable**; no existe tolerancia de estabilidad en V1;
 - si `actual = 0` y el baseline alcanza el mínimo evaluable, el resultado es
   **Crítico** y **Desfavorable**;
 - si falta D-7, D-14, D-21 o D-28, el día está incompleto o existe una incidencia
@@ -392,17 +418,18 @@ Reglas de evaluabilidad:
 
 - **Fase/lote:** Resumen Ejecutivo, motor analítico.
 - **Prioridad:** P0.
-- **Estado:** `pendiente`.
+- **Estado:** `en_revision`.
 - **Predecesor planificado:** SF-7B-OPS.
 - **Dependencias técnicas reales:** contrato funcional V1 y matriz de pruebas.
   El motor es agnóstico de módulo y no depende técnicamente del cierre de 7A/7B.
-- **Rama prevista o activa:** por asignar; ninguna rama activa.
-- **SHA base al activar:** por registrar.
-- **Bloqueos/decisiones de negocio:** antes de código deben formalizarse pruebas
-  de frontera para bandas, mínimos absolutos y dirección `Estable`, sin inventar
-  tolerancias no aprobadas.
-- **Punto exacto de reanudación:** diseñar un contrato de entrada/salida agnóstico
-  de módulo y una matriz de pruebas de reglas V1.
+- **Rama prevista o activa:** `feat/exe-1-executive-engine`.
+- **SHA base al activar:** `fb88b47551c05669c8c33ee16fc101067c6b08ba`.
+- **Bloqueos/decisiones de negocio:** implementación y pruebas terminadas en
+  rama; pendiente revisión sénior previa a PR. No se implementan EXE-2, EXE-3,
+  dashboard, correo ejecutivo ni scheduler.
+- **Punto exacto de reanudación:** revisar el motor puro
+  `ExecutiveMetricRulesEngine`, su contrato array de entrada/salida y la matriz
+  `ExecutiveMetricRulesEngineTest`.
 - **Criterios de aceptación:** motor determinista, sin IO ni IA; 4/4 referencias;
   D-364 complementario; estados, dirección, salud y reason codes versionados;
   ausencia distinta de cero; acciones fijas con clave única; causas demostradas

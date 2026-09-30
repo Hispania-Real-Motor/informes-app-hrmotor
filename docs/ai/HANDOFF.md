@@ -1,5 +1,71 @@
 # Handoff para agentes
 
+## EXE-1 — Motor Ejecutivo V1 (2026-09-30)
+
+- Rama de trabajo: `feat/exe-1-executive-engine`, creada desde `main`
+  `fb88b47551c05669c8c33ee16fc101067c6b08ba`.
+- Se añade `App\Services\Analytics\Executive\ExecutiveMetricRulesEngine` como
+  motor determinista, puro y agnóstico de módulo para evaluar una métrica
+  ejecutiva ya preparada. No tiene IO, Eloquent, queries, HTTP, Salesforce,
+  Cache, filesystem, Mail, IA, UI ni dependencia de fecha actual.
+- Contrato de entrada: `metric_key`, `current`, referencias `d7`, `d14`, `d21`,
+  `d28`, `d364` opcional, `config.minimum_baseline`,
+  `config.absolute_gates`, `data_health`, `day_complete` y bandera opcional de
+  incidencia. La configuración aprobada inicial para `leads`, `reservas` y
+  `ventas` vive en helpers del motor para EXE-2, pero el algoritmo opera sobre
+  la configuración recibida.
+- Contrato de salida: `rule_version`, `evaluable`, `baseline`, referencias
+  usadas, `d364_reference`, variación porcentual con signo, magnitud porcentual,
+  diferencia absoluta, `status`, `direction`, `data_health`, `reason_codes`,
+  `business_alert`, y campos nulos para causa confirmada, posible causa a
+  revisar y acción recomendada. EXE-1 no inventa causalidad ni recomendaciones.
+- Versión de reglas: `executive_metric_rules_v1`.
+- Reason codes V1: `exe_v1_normal_evaluation`,
+  `exe_v1_missing_weekly_reference:<d7|d14|d21|d28>`,
+  `exe_v1_insufficient_baseline`, `exe_v1_incomplete_day`,
+  `exe_v1_data_incident`, `exe_v1_zero_current`,
+  `exe_v1_negative_value` y `exe_v1_missing_current`.
+- Decisión funcional fijada: `actual > baseline` es `favorable`, `actual ==
+  baseline` es `estable`, `actual < baseline` es `desfavorable`; no existe
+  tolerancia de estabilidad ni dirección `revisar`.
+- La matriz unitaria cubre igualdad/subida/bajada, `actual=0`, baseline mínimo
+  exacto e insuficiente, límites 15/25/40 y superior a 40, degradación por
+  puertas absolutas, ausencia individual y múltiple de referencias, D-364
+  ausente/presente sin impacto, salud parcial/desactualizada/incidencia, día
+  incompleto, ceros reales y negativos no evaluables.
+- No hubo migraciones, rutas, controllers, Blade, scheduler, correo ejecutivo,
+  datasets EXE-2/EXE-3, llamadas Salesforce ni cambios de runtime de módulos.
+- Seguridad: el motor no necesita ni acepta PII por contrato funcional; no
+  registra payloads; `no_evaluable` e incidencias no generan alertas de negocio.
+- Rendimiento: evaluación O(1), solo arrays escalares pequeños y sin caché.
+- Validación inicial focal: `php artisan test --filter=ExecutiveMetricRulesEngineTest`
+  correcto, 35 pruebas / 94 aserciones.
+- Acciones pendientes: revisión sénior pre-PR, abrir PR, CI, merge y, en lotes
+  posteriores, implementar EXE-2/EXE-3 si se autoriza.
+
+## AUTH-PASSWORD-RESET — Cierre operacional (2026-09-30)
+
+- AUTH-PASSWORD-RESET queda `cerrada`: PR #63 fusionado en
+  `fb14def6952606cb45c05b9f2d95cfe5e7494552`, CI verde, despliegue producción
+  completado y validación operacional completada el 2026-09-30.
+- Producción usa `QUEUE_CONNECTION=database` y un worker dedicado
+  `laravel-informes-queue-worker`.
+- Worker observado: container `laravel-informes-queue-worker`, image
+  `app-informes-app`, network `app-informes_informes-network`, bind mount
+  `/srv/production/laravel/app-informes -> /var/www`, queue `default`, restart
+  `unless-stopped`.
+- La validación real confirmó dispatch asíncrono, consumo del Job
+  `SendReportUserPasswordResetLink`, tabla `jobs` sin acumulación, `failed_jobs`
+  sin fallos durante la prueba, creación del token, nueva solicitud consumiendo
+  el token anterior, SMTP aceptado y recepción final tras resolver una
+  incidencia externa de Dinahosting/Dinaserver.
+- Deuda de infraestructura: las labels históricas de `laravel-informes-app`
+  apuntan a `/srv/production/laravel/app-informes/docker-compose.production.yml`
+  y `/srv/production/laravel/app-informes/.env.docker`, pero esos ficheros no
+  estaban presentes durante la validación operacional. Queda tarea independiente
+  para recuperar IaC reproducible del stack de Informes; EXE-1 no reconstruye ni
+  versiona Compose.
+
 ## AUTH-PASSWORD-RESET — Recuperación segura de contraseña (2026-09-30)
 
 - Implementado el flujo completo para usuarios reales `ReportUser`: enlace desde
