@@ -38,8 +38,8 @@
 - Seguridad: el motor no necesita ni acepta PII por contrato funcional; no
   registra payloads; `no_evaluable` e incidencias no generan alertas de negocio.
 - Rendimiento: evaluación O(1), solo arrays escalares pequeños y sin caché.
-- Validación inicial focal: `php artisan test --filter=ExecutiveMetricRulesEngineTest`
-  correcto, 35 pruebas / 94 aserciones.
+- Validación focal: `php artisan test --filter=ExecutiveMetricRulesEngineTest`
+  correcto, 40 pruebas / 110 aserciones.
 - Acciones pendientes: revisión sénior pre-PR, abrir PR, CI, merge y, en lotes
   posteriores, implementar EXE-2/EXE-3 si se autoriza.
 

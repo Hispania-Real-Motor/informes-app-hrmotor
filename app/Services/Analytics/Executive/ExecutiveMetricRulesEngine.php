@@ -214,12 +214,25 @@ final class ExecutiveMetricRulesEngine
             throw new RuntimeException('La configuracion ejecutiva requiere puertas absolutas.');
         }
 
+        $minimumBaseline = $this->requiredNonNegativeNumber($config['minimum_baseline'] ?? null);
+        $attention = $this->requiredNonNegativeNumber($gates[self::STATUS_ATTENTION] ?? null);
+        $deviation = $this->requiredNonNegativeNumber($gates[self::STATUS_DEVIATION] ?? null);
+        $critical = $this->requiredNonNegativeNumber($gates[self::STATUS_CRITICAL] ?? null);
+
+        if ($minimumBaseline <= 0.0) {
+            throw new RuntimeException('El baseline minimo ejecutivo debe ser mayor que cero.');
+        }
+
+        if ($attention > $deviation || $deviation > $critical) {
+            throw new RuntimeException('Las puertas absolutas ejecutivas deben cumplir atencion <= desviacion <= critico.');
+        }
+
         return [
-            'minimum_baseline' => $this->requiredNonNegativeNumber($config['minimum_baseline'] ?? null),
+            'minimum_baseline' => $minimumBaseline,
             'absolute_gates' => [
-                self::STATUS_ATTENTION => $this->requiredNonNegativeNumber($gates[self::STATUS_ATTENTION] ?? null),
-                self::STATUS_DEVIATION => $this->requiredNonNegativeNumber($gates[self::STATUS_DEVIATION] ?? null),
-                self::STATUS_CRITICAL => $this->requiredNonNegativeNumber($gates[self::STATUS_CRITICAL] ?? null),
+                self::STATUS_ATTENTION => $attention,
+                self::STATUS_DEVIATION => $deviation,
+                self::STATUS_CRITICAL => $critical,
             ],
         ];
     }

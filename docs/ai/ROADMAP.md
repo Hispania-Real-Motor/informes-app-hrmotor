@@ -8,7 +8,7 @@ Actualizado: 2026-09-30.
 
 - **Prioridad:** P0 seguridad.
 - **Estado:** `cerrada`.
-- **Rama activa:** `feat/auth-password-reset`.
+- **Rama cerrada:** `feat/auth-password-reset`.
 - **SHA base verificado:** `6c26cce4a09349c30ebd289c73cf5ea985b9166f`.
 - **Revisión sénior pre-PR:** aprobada sobre el HEAD
   `29a1311a103e52b0036c5e24429ea2b7ca7ddeb3`.

@@ -5,6 +5,7 @@ namespace Tests\Unit\Executive;
 use App\Services\Analytics\Executive\ExecutiveMetricRulesEngine;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 class ExecutiveMetricRulesEngineTest extends TestCase
 {
@@ -314,6 +315,32 @@ class ExecutiveMetricRulesEngineTest extends TestCase
         $this->assertSame((float) $attentionGate, (float) $config['absolute_gates'][ExecutiveMetricRulesEngine::STATUS_ATTENTION]);
         $this->assertSame((float) $deviationGate, (float) $config['absolute_gates'][ExecutiveMetricRulesEngine::STATUS_DEVIATION]);
         $this->assertSame((float) $criticalGate, (float) $config['absolute_gates'][ExecutiveMetricRulesEngine::STATUS_CRITICAL]);
+    }
+
+    public function test_minimum_baseline_must_be_strictly_greater_than_zero(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('baseline minimo');
+
+        $this->engine->evaluate([
+            'metric_key' => 'invalid',
+            'current' => 10,
+            'references' => ['d7' => 10, 'd14' => 10, 'd21' => 10, 'd28' => 10],
+            'config' => ExecutiveMetricRulesEngine::metricConfig(0, 1, 2, 3),
+        ]);
+    }
+
+    public function test_absolute_gates_must_be_ordered_from_attention_to_critical(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('atencion <= desviacion <= critico');
+
+        $this->engine->evaluate([
+            'metric_key' => 'invalid',
+            'current' => 10,
+            'references' => ['d7' => 10, 'd14' => 10, 'd21' => 10, 'd28' => 10],
+            'config' => ExecutiveMetricRulesEngine::metricConfig(1, 3, 2, 4),
+        ]);
     }
 
     public static function defaultMetricConfigCases(): array
