@@ -3,12 +3,10 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Mail\ReportUserPasswordResetMail;
-use App\Models\ReportUser;
+use App\Jobs\Auth\SendReportUserPasswordResetLink;
 use App\Services\Auth\ReportUserPasswordResetService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -22,7 +20,7 @@ class ReportUserPasswordResetController extends Controller
         return view('auth.informes-password-forgot');
     }
 
-    public function sendResetLink(Request $request, ReportUserPasswordResetService $tokens): RedirectResponse
+    public function sendResetLink(Request $request): RedirectResponse
     {
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255'],
@@ -43,19 +41,7 @@ class ReportUserPasswordResetController extends Controller
             max(1, (int) config('auth.report_password_reset.request_decay_seconds', 3600)),
         );
 
-        $user = ReportUser::query()
-            ->where('email', $data['email'])
-            ->where('is_active', true)
-            ->first();
-
-        if ($user) {
-            $plainToken = $tokens->createTokenFor($user);
-
-            Mail::to($user->email)->send(new ReportUserPasswordResetMail(
-                resetUrl: route('password.reset', ['token' => $plainToken], true),
-                expireMinutes: $tokens->expireMinutes(),
-            ));
-        }
+        SendReportUserPasswordResetLink::dispatch($data['email']);
 
         return back()
             ->withInput($request->only('email'))

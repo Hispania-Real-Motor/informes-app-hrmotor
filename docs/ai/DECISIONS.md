@@ -14,6 +14,15 @@
   No se registra en logs ni se persiste. El formulario de solicitud siempre
   devuelve el mismo mensaje público para usuarios activos, inexistentes o
   inactivos.
+- El envío de email no se realiza en el request HTTP. La solicitud encola un Job
+  Laravel dedicado para cualquier email válido no limitado, y el Job es quien
+  comprueba existencia/actividad, genera token y envía. El Job implementa
+  `ShouldBeEncrypted` para que el email del solicitante no quede en claro en el
+  payload persistido de la cola.
+- La creación de tokens bloquea la fila del `ReportUser` con `lockForUpdate()`
+  antes de consumir tokens previos y crear el nuevo, evitando dos tokens activos
+  ante solicitudes concurrentes del mismo usuario sin bloquear usuarios
+  distintos.
 - Se añade `password_changed_at` a `report_users` para invalidar sesiones de
   Informes anteriores al cambio sin rediseñar el sistema de autenticación. Las
   cookies remember previas ya quedan inválidas al cambiar el hash de password,

@@ -643,17 +643,8 @@ class StockDashboardDatasetService
             $vehicle->state === 'Disponible' ? ($recommendations[0] ?? null) : null,
         );
 
-        if ($compactRecommendations) {
-            return [
-                '_vehicle' => $vehicle,
-                'id' => $vehicle->salesforce_id,
-                'days' => $age,
-                'review_level' => $reviewLevel,
-                'recommendations' => $recommendations,
-            ];
-        }
-
         return [
+            ...($compactRecommendations ? ['_vehicle' => $vehicle] : []),
             'id' => $vehicle->salesforce_id,
             'plate' => $vehicle->plate,
             'brand' => $vehicle->brand,

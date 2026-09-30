@@ -2,14 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\Auth\SendReportUserPasswordResetLink;
 use App\Mail\ReportUserPasswordResetMail;
 use App\Models\ReportUser;
 use App\Models\ReportUserPasswordResetToken;
 use App\Models\User;
 use App\Services\Auth\ReportUserPasswordResetService;
+use Illuminate\Contracts\Queue\ShouldBeEncrypted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
@@ -31,8 +34,9 @@ class ReportUserPasswordResetTest extends TestCase
             ->assertSee('Enviar enlace');
     }
 
-    public function test_solicitud_envia_correo_solo_a_report_user_activo_con_respuesta_publica_generica(): void
+    public function test_solicitud_encola_job_para_cualquier_email_valido_con_respuesta_publica_generica(): void
     {
+        Queue::fake();
         Mail::fake();
 
         $active = $this->reportUser('active@example.test', true);
@@ -43,10 +47,6 @@ class ReportUserPasswordResetTest extends TestCase
             'email' => $active->email,
         ])->assertRedirect(route('password.request'))->assertSessionHas('status', $expectedStatus);
 
-        Mail::assertSent(ReportUserPasswordResetMail::class, fn (ReportUserPasswordResetMail $mail): bool => $mail->hasTo($active->email)
-            && str_starts_with($mail->resetUrl, config('app.url'))
-            && str_contains($mail->resetUrl, config('app.url').'/password/reset/'));
-
         $this->from(route('password.request'))->post(route('password.email'), [
             'email' => 'missing@example.test',
         ])->assertRedirect(route('password.request'))->assertSessionHas('status', $expectedStatus);
@@ -55,23 +55,28 @@ class ReportUserPasswordResetTest extends TestCase
             'email' => $inactive->email,
         ])->assertRedirect(route('password.request'))->assertSessionHas('status', $expectedStatus);
 
-        Mail::assertSent(ReportUserPasswordResetMail::class, 1);
-        $this->assertDatabaseCount('report_user_password_reset_tokens', 1);
+        Queue::assertPushed(SendReportUserPasswordResetLink::class, 3);
+        Queue::assertPushed(SendReportUserPasswordResetLink::class, fn (SendReportUserPasswordResetLink $job): bool => $job instanceof ShouldBeEncrypted);
+        Mail::assertNothingSent();
+        $this->assertDatabaseCount('report_user_password_reset_tokens', 0);
     }
 
     public function test_solicitud_respeta_case_sensitivity_real_del_email(): void
     {
+        Queue::fake();
         Mail::fake();
         $this->reportUser('MixedCase@example.test', true);
 
         $this->post(route('password.email'), ['email' => 'mixedcase@example.test'])
             ->assertSessionHas('status');
 
+        Queue::assertPushed(SendReportUserPasswordResetLink::class, 1);
         Mail::assertNothingSent();
     }
 
     public function test_rate_limit_de_solicitud_no_revela_existencia(): void
     {
+        Queue::fake();
         Mail::fake();
         config()->set('auth.report_password_reset.request_max_attempts', 1);
         config()->set('auth.report_password_reset.request_decay_seconds', 60);
@@ -86,7 +91,69 @@ class ReportUserPasswordResetTest extends TestCase
             ->assertStatus(429)
             ->assertSessionHas('status');
 
-        Mail::assertSent(ReportUserPasswordResetMail::class, 1);
+        Queue::assertPushed(SendReportUserPasswordResetLink::class, 1);
+        Mail::assertNothingSent();
+    }
+
+    public function test_job_de_usuario_activo_genera_token_y_envia_correo(): void
+    {
+        Mail::fake();
+        $user = $this->reportUser('job-active@example.test', true);
+
+        $this->runResetJob($user->email);
+
+        $resetUrl = null;
+        Mail::assertSent(ReportUserPasswordResetMail::class, function (ReportUserPasswordResetMail $mail) use ($user, &$resetUrl): bool {
+            $resetUrl = $mail->resetUrl;
+
+            return $mail->hasTo($user->email)
+                && str_starts_with($mail->resetUrl, config('app.url'))
+                && str_contains($mail->resetUrl, config('app.url').'/password/reset/');
+        });
+
+        $record = ReportUserPasswordResetToken::query()->firstOrFail();
+        $this->assertSame($user->id, $record->report_user_id);
+        $this->assertFalse(str_contains((string) $resetUrl, $record->token_hash));
+    }
+
+    public function test_job_de_usuario_inexistente_o_inactivo_no_envia_correo_ni_genera_token(): void
+    {
+        Mail::fake();
+        $inactive = $this->reportUser('job-inactive@example.test', false);
+
+        $this->runResetJob('missing@example.test');
+        $this->runResetJob($inactive->email);
+
+        Mail::assertNothingSent();
+        $this->assertDatabaseCount('report_user_password_reset_tokens', 0);
+    }
+
+    public function test_job_no_envia_si_usuario_cambia_email_o_se_desactiva_antes_de_ejecutar(): void
+    {
+        Mail::fake();
+        $changed = $this->reportUser('queued-before-change@example.test', true);
+        $deactivated = $this->reportUser('queued-before-disable@example.test', true);
+
+        $changed->forceFill(['email' => 'queued-after-change@example.test'])->save();
+        $deactivated->forceFill(['is_active' => false])->save();
+
+        $this->runResetJob('queued-before-change@example.test');
+        $this->runResetJob('queued-before-disable@example.test');
+
+        Mail::assertNothingSent();
+        $this->assertDatabaseCount('report_user_password_reset_tokens', 0);
+    }
+
+    public function test_fallo_smtp_no_afecta_respuesta_http_original(): void
+    {
+        Queue::fake();
+        $user = $this->reportUser('smtp-failure@example.test', true);
+
+        $this->post(route('password.email'), ['email' => $user->email])
+            ->assertRedirect()
+            ->assertSessionHas('status');
+
+        Queue::assertPushed(SendReportUserPasswordResetLink::class);
     }
 
     public function test_token_valido_actualiza_password_hasheado_y_permita_login_solo_con_password_nuevo(): void
@@ -164,6 +231,24 @@ class ReportUserPasswordResetTest extends TestCase
             'password' => 'another-password-12345',
             'password_confirmation' => 'another-password-12345',
         ])->assertSessionHasErrors('token');
+    }
+
+    public function test_generar_token_serializa_por_usuario_y_no_bloquea_usuarios_distintos(): void
+    {
+        $first = $this->reportUser('lock-one@example.test', true);
+        $second = $this->reportUser('lock-two@example.test', true);
+        $service = app(ReportUserPasswordResetService::class);
+
+        $oldToken = $service->createTokenFor($first);
+        $newToken = $service->createTokenFor($first->fresh());
+        $secondToken = $service->createTokenFor($second);
+
+        $this->assertNull($service->tokenRecord($oldToken));
+        $this->assertNotNull($service->tokenRecord($newToken));
+        $this->assertNotNull($service->tokenRecord($secondToken));
+        $this->assertSame(2, ReportUserPasswordResetToken::query()->whereNull('consumed_at')->count());
+        $this->assertSame(1, ReportUserPasswordResetToken::query()->where('report_user_id', $first->id)->whereNull('consumed_at')->count());
+        $this->assertSame(1, ReportUserPasswordResetToken::query()->where('report_user_id', $second->id)->whereNull('consumed_at')->count());
     }
 
     public function test_validacion_de_password_y_confirmacion(): void
@@ -301,6 +386,11 @@ class ReportUserPasswordResetTest extends TestCase
         $user = ReportUser::query()->where('email', $email)->firstOrFail();
 
         return app(ReportUserPasswordResetService::class)->createTokenFor($user);
+    }
+
+    private function runResetJob(string $email): void
+    {
+        (new SendReportUserPasswordResetLink($email))->handle(app(ReportUserPasswordResetService::class));
     }
 
     private function rememberTokenFor(ReportUser $user): string

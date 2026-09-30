@@ -3,7 +3,7 @@
 ## AUTH-PASSWORD-RESET — Recuperación segura de contraseña (2026-09-30)
 
 - Implementado el flujo completo para usuarios reales `ReportUser`: enlace desde
-  login, formulario de solicitud, correo Laravel Mail, formulario de reset,
+  login, formulario de solicitud, Job de envío de correo, formulario de reset,
   actualización de password y vuelta al login. No se toca `App\Models\User`, el
   guard estándar ni la lógica de dashboards/Salesforce.
 - Arquitectura: solución dedicada de dominio Informes con
@@ -20,30 +20,35 @@
 - Base de datos: migración aditiva que añade `report_users.password_changed_at`
   nullable y crea `report_user_password_reset_tokens` con FK, `token_hash`
   único, `email_hash`, `expires_at`, `consumed_at` e índices de consumo/expiración.
-- Seguridad: respuesta pública genérica para evitar enumeración; solo usuarios
-  activos reciben email; tokens de 64 caracteres aleatorios; persistencia solo
-  por hash; expiración configurable de 60 minutos; single use; nueva solicitud
-  invalida anteriores; CSRF en POST; validación `min:12|max:255|confirmed`;
-  rate limit por IP + email/token hasheados; no hay contraseñas temporales ni
-  tokens en logs.
+- Seguridad: respuesta pública genérica para evitar enumeración; el request HTTP
+  no conecta con SMTP y encola siempre el mismo Job para emails válidos no
+  limitados; el Job implementa `ShouldBeEncrypted` para proteger el email en el
+  payload persistido de cola; solo usuarios activos reciben email; tokens de 64
+  caracteres aleatorios; persistencia solo por hash; expiración configurable de
+  60 minutos; single use; nueva solicitud invalida anteriores; CSRF en POST;
+  validación `min:12|max:255|confirmed`; rate limit por IP + email/token
+  hasheados; no hay contraseñas temporales ni tokens en logs.
 - Sesiones y remember: el reset actualiza `password_changed_at`; sesiones
   anteriores quedan rechazadas por middleware en la siguiente petición. Las
   cookies remember previas quedan criptográficamente inválidas porque el HMAC
   existente incluye el hash nuevo de la contraseña. No se borra físicamente toda
   la tabla de sesiones para evitar depender del driver/encriptación.
-- Rendimiento: búsqueda por email usa el índice unique existente; validación de
-  token usa `token_hash` único; no hay scans globales ni jobs/schedulers nuevos.
+- Concurrencia: `createTokenFor()` bloquea únicamente la fila del `ReportUser`
+  con `lockForUpdate()` antes de consumir tokens previos y crear el nuevo token,
+  de modo que solicitudes concurrentes del mismo usuario quedan serializadas sin
+  lock global ni bloqueo entre usuarios distintos.
+- Rendimiento: el endpoint público responde sin esperar a SMTP; búsqueda por
+  email usa el índice unique existente dentro del Job; validación de token usa
+  `token_hash` único; no hay scans globales ni schedulers nuevos.
 - Configuración: nuevas variables opcionales
   `REPORT_PASSWORD_RESET_EXPIRE_MINUTES`,
   `REPORT_PASSWORD_RESET_REQUEST_MAX_ATTEMPTS`,
   `REPORT_PASSWORD_RESET_REQUEST_DECAY_SECONDS`,
   `REPORT_PASSWORD_RESET_MAX_ATTEMPTS` y
   `REPORT_PASSWORD_RESET_DECAY_SECONDS`. Se reutilizan `APP_URL` y `MAIL_*`.
-- Pruebas ejecutadas y resultado final:
+- Pruebas ejecutadas y resultado inicial del lote:
   `php artisan test --filter=ReportUserPasswordResetTest` correcto, 11 pruebas /
-  70 aserciones; `php artisan test --filter=StockRecommendationCandidatePaginationTest`
-  correcto tras una micro-optimización de la ruta compacta interna, 2 pruebas /
-  13 aserciones; `php artisan test` correcto, 1.098 pruebas / 8.314 aserciones.
+  70 aserciones; `php artisan test` correcto, 1.098 pruebas / 8.314 aserciones.
 - Pint: el `--test` global sigue fallando por infracciones preexistentes en
   archivos ajenos al diff. La validación aplicable sobre todos los PHP
   modificados/creados en este lote pasó con
@@ -57,6 +62,28 @@
 - Riesgos pendientes: no se ha introducido revocación física centralizada de
   todas las sesiones persistidas; la invalidación es efectiva al siguiente
   request mediante comparación de `password_changed_at`.
+- Corrección sénior posterior: se eliminó del diff el cambio de rendimiento en
+  Stock introducido durante el lote inicial; AUTH no modifica Stock.
+- Corrección sénior de pre-PR: el envío pasa a `SendReportUserPasswordResetLink`,
+  Job Laravel cifrado con `ShouldBeEncrypted` y `ShouldQueue`. El endpoint de
+  solicitud ya no consulta usuarios ni abre SMTP; para cualquier email válido no
+  bloqueado por rate limit solo encola el Job y devuelve el mensaje genérico.
+  El Job busca por email exacto, exige `ReportUser` activo, genera el token y
+  envía el correo. Si el usuario no existe, está inactivo, se desactivó o cambió
+  de email antes de ejecutar el Job, termina sin enviar.
+- Una incidencia SMTP ocurre fuera del request HTTP ya respondido y queda bajo
+  el comportamiento estándar de retries/failures de Laravel Queue; no revela
+  existencia de cuenta en la respuesta original.
+- `createTokenFor()` bloquea la fila del usuario con `lockForUpdate()` dentro
+  de la transacción antes de consumir tokens previos y crear el nuevo. Esto
+  serializa solicitudes concurrentes del mismo `ReportUser` sin lock global.
+- Validación de la corrección: `php artisan test --filter=ReportUserPasswordResetTest`
+  correcto, 16 pruebas / 89 aserciones; `php artisan test --filter=StockRecommendationCandidatePaginationTest`
+  correcto, 2 pruebas / 13 aserciones; `php artisan test` correcto, 1.103
+  pruebas / 8.333 aserciones; `npm run build` correcto con los avisos no
+  bloqueantes conocidos; `git diff --check` correcto. Pint focal sobre PHP
+  modificado correcto. Pint global sigue fallando por infracciones preexistentes
+  en archivos ajenos al diff.
 
 ## SF-INTEREST-FOUNDATION-3 — métrica `lead_merged` (2026-09-29)
 

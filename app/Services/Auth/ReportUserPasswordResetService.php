@@ -12,17 +12,21 @@ class ReportUserPasswordResetService
     public function createTokenFor(ReportUser $user): string
     {
         $plainToken = Str::random(64);
-        $emailHash = $this->emailHash($user->email);
 
-        DB::transaction(function () use ($user, $plainToken, $emailHash): void {
+        DB::transaction(function () use ($user, $plainToken): void {
+            $lockedUser = ReportUser::query()
+                ->whereKey($user->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             ReportUserPasswordResetToken::query()
-                ->where('report_user_id', $user->id)
+                ->where('report_user_id', $lockedUser->id)
                 ->whereNull('consumed_at')
                 ->update(['consumed_at' => now()]);
 
             ReportUserPasswordResetToken::query()->create([
-                'report_user_id' => $user->id,
-                'email_hash' => $emailHash,
+                'report_user_id' => $lockedUser->id,
+                'email_hash' => $this->emailHash($lockedUser->email),
                 'token_hash' => $this->tokenHash($plainToken),
                 'expires_at' => now()->addMinutes($this->expireMinutes()),
             ]);
