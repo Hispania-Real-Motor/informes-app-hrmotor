@@ -4,10 +4,10 @@ namespace App\Services\Salesforce;
 
 use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
+use App\Models\SalesforceInterestOpportunityDependency;
+use App\Models\SalesforceInterestOpportunityDependencyRun;
 use App\Models\SalesforceInterestOpportunityReconciliation;
 use App\Models\SalesforceInterestOpportunityReconciliationRun;
-use App\Models\SalesforceOpportunity;
-use App\Models\SalesforceOpportunityPresenceReconciliationRun;
 use App\Support\IntegrationErrorSanitizer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -25,6 +25,8 @@ class SalesforceInterestOpportunityReconciliationService
     private const CHUNK_SIZE = 200;
 
     private const CLEANUP_CHUNK_SIZE = 1000;
+
+    private const NORMALIZED_OPPORTUNITY_ID_SQL = 'TRIM(inverse_opportunity_salesforce_id)';
 
     /** @return array<string, int|float|string|null> */
     public function run(string $reason): array
@@ -45,37 +47,31 @@ class SalesforceInterestOpportunityReconciliationService
 
         try {
             $interestSource = $this->latestStableInterestRun();
-            $opportunitySource = $this->latestStableOpportunityRun();
-            $presenceRunId = SalesforceOpportunityPresenceReconciliationRun::query()
-                ->latest('id')
-                ->value('id');
+            $dependencyRun = $this->latestStableDependencyRun($interestSource);
+            $this->assertDependencyCoverage($dependencyRun);
 
             try {
                 $run = SalesforceInterestOpportunityReconciliationRun::query()->create([
                     'run_identifier' => (string) Str::uuid(),
                     'reason' => $reason,
                     'status' => 'running',
+                    'opportunity_dependency_run_id' => $dependencyRun->id,
                     'source_interest_sync_run_id' => $interestSource->id,
                     'source_interest_cutoff_at' => $interestSource->source_cutoff_at,
-                    'source_opportunity_sync_run_id' => $opportunitySource->id,
-                    'source_opportunity_sync_status' => $opportunitySource->status,
-                    'source_opportunity_period_end_at' => $opportunitySource->period_end_at,
-                    'source_opportunity_completed_at' => $opportunitySource->completed_at,
-                    'source_opportunity_presence_run_id' => $presenceRunId,
                     'started_at' => now('UTC'),
                     'stats' => $stats,
                 ]);
 
-                $stats['distinct_opportunities_referenced'] = SalesforceInterest::query()
+                $stats['distinct_opportunities_referenced'] = (int) SalesforceInterest::query()
                     ->whereNotNull('inverse_opportunity_salesforce_id')
-                    ->where('inverse_opportunity_salesforce_id', '<>', '')
-                    ->distinct()
-                    ->count('inverse_opportunity_salesforce_id');
+                    ->whereRaw(self::NORMALIZED_OPPORTUNITY_ID_SQL." <> ''")
+                    ->selectRaw('COUNT(DISTINCT '.self::NORMALIZED_OPPORTUNITY_ID_SQL.') as aggregate')
+                    ->value('aggregate');
                 $this->materialize($run, $stats);
                 $this->beforeSourceValidation($run, $stats);
                 $this->assertInterestSourceUnchanged($interestSource);
-                $this->assertOpportunitySourceUnchanged($opportunitySource);
-                $this->assertReferencedOpportunityEvidenceUnchanged($run);
+                $this->assertDependencyRunUnchanged($dependencyRun, $interestSource);
+                $this->assertDependencyCoverage($dependencyRun);
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
 
                 $run->update([
@@ -155,20 +151,20 @@ class SalesforceInterestOpportunityReconciliationService
                 ->unique()
                 ->values()
                 ->all();
-            $opportunities = $this->opportunitiesBySalesforceId($opportunityIds);
+            $dependencies = $this->dependenciesBySalesforceId($run, $opportunityIds);
             $referenceCounts = $this->referenceCounts($opportunityIds);
             $now = now();
             $rows = [];
 
             foreach ($interests as $interest) {
                 $opportunityId = $this->nullableId($interest->inverse_opportunity_salesforce_id);
-                /** @var SalesforceOpportunity|null $opportunity */
-                $opportunity = $opportunityId === null ? null : $opportunities->get($opportunityId);
+                /** @var SalesforceInterestOpportunityDependency|null $dependency */
+                $dependency = $opportunityId === null ? null : $dependencies->get($opportunityId);
                 $referenceCount = $opportunityId === null ? 0 : ($referenceCounts[$opportunityId] ?? 0);
                 $relationshipStatus = $opportunityId === null
                     ? 'no_inverse'
                     : ($referenceCount > 1 ? 'inverse_shared' : 'inverse_unique');
-                $presenceStatus = $this->presenceStatus($opportunityId, $opportunity);
+                $presenceStatus = $this->presenceStatus($opportunityId, $dependency);
                 $requiresReview = $this->requiresReview(
                     $relationshipStatus,
                     $presenceStatus,
@@ -181,10 +177,17 @@ class SalesforceInterestOpportunityReconciliationService
                     'opportunity_salesforce_id' => $opportunityId,
                     'relationship_status' => $relationshipStatus,
                     'opportunity_presence_status' => $presenceStatus,
+                    'opportunity_evidence_source' => $opportunityId === null
+                        ? null
+                        : 'interest_opportunity_dependency_snapshot',
                     'interest_is_deleted' => (bool) $interest->is_deleted,
-                    'opportunity_is_deleted' => $opportunity?->is_deleted,
-                    'opportunity_salesforce_deleted_at' => $opportunity?->salesforce_deleted_at,
-                    'opportunity_deletion_detection_source' => $opportunity?->deletion_detection_source,
+                    'opportunity_is_deleted' => $dependency?->is_deleted,
+                    'opportunity_salesforce_deleted_at' => $dependency?->presence_status === 'deleted'
+                        ? $dependency->system_modstamp_at
+                        : null,
+                    'opportunity_deletion_detection_source' => $dependency?->presence_status === 'deleted'
+                        ? 'query_all_deleted'
+                        : null,
                     'inverse_reference_count' => $referenceCount,
                     'requires_review' => $requiresReview,
                     'created_at' => $now,
@@ -213,20 +216,24 @@ class SalesforceInterestOpportunityReconciliationService
         }
     }
 
-    /** @param list<string> $ids @return Collection<string, SalesforceOpportunity> */
-    private function opportunitiesBySalesforceId(array $ids): Collection
-    {
+    /** @param list<string> $ids @return \Illuminate\Support\Collection<string, SalesforceInterestOpportunityDependency> */
+    private function dependenciesBySalesforceId(
+        SalesforceInterestOpportunityReconciliationRun $run,
+        array $ids,
+    ): Collection {
         if ($ids === []) {
             return collect();
         }
 
-        return SalesforceOpportunity::withoutGlobalScope(SalesforceOpportunity::ACTIVE_SCOPE)
+        return SalesforceInterestOpportunityDependency::query()
             ->select([
                 'salesforce_id',
+                'presence_status',
                 'is_deleted',
-                'salesforce_deleted_at',
-                'deletion_detection_source',
+                'salesforce_last_modified_at',
+                'system_modstamp_at',
             ])
+            ->where('dependency_run_id', $run->opportunity_dependency_run_id)
             ->whereIn('salesforce_id', $ids)
             ->get()
             ->keyBy('salesforce_id');
@@ -240,42 +247,45 @@ class SalesforceInterestOpportunityReconciliationService
         }
 
         return SalesforceInterest::query()
-            ->select('inverse_opportunity_salesforce_id')
+            ->selectRaw(self::NORMALIZED_OPPORTUNITY_ID_SQL.' as normalized_opportunity_salesforce_id')
             ->selectRaw('COUNT(*) as reference_count')
-            ->whereIn('inverse_opportunity_salesforce_id', $ids)
-            ->groupBy('inverse_opportunity_salesforce_id')
-            ->pluck('reference_count', 'inverse_opportunity_salesforce_id')
+            ->whereNotNull('inverse_opportunity_salesforce_id')
+            ->whereRaw(self::NORMALIZED_OPPORTUNITY_ID_SQL." <> ''")
+            ->whereIn(DB::raw(self::NORMALIZED_OPPORTUNITY_ID_SQL), $ids)
+            ->groupByRaw(self::NORMALIZED_OPPORTUNITY_ID_SQL)
+            ->pluck('reference_count', 'normalized_opportunity_salesforce_id')
             ->map(fn (mixed $count): int => (int) $count)
             ->all();
     }
 
-    private function presenceStatus(?string $opportunityId, ?SalesforceOpportunity $opportunity): string
-    {
+    private function presenceStatus(
+        ?string $opportunityId,
+        ?SalesforceInterestOpportunityDependency $dependency,
+    ): string {
         if ($opportunityId === null) {
             return 'not_applicable';
         }
-        if ($opportunity === null) {
-            return 'not_local';
-        }
-        if ($opportunity->is_deleted
-            && $opportunity->deletion_detection_source === SalesforceOpportunity::DELETION_SOURCE_QUERY_ALL) {
-            return 'present_deleted';
-        }
-        if (! $opportunity->is_deleted
-            && $opportunity->deletion_detection_source === SalesforceOpportunity::PRESENCE_SOURCE_MISSING) {
-            return 'present_missing';
-        }
-        if (! $opportunity->is_deleted && $opportunity->deletion_detection_source === null) {
-            return 'present_active';
+        if ($dependency === null) {
+            return 'present_unresolved';
         }
 
-        return 'present_unresolved';
+        return match ($dependency->presence_status) {
+            'active' => $dependency->is_deleted === false ? 'present_active' : 'present_unresolved',
+            'deleted' => $dependency->is_deleted === true ? 'present_deleted' : 'present_unresolved',
+            'missing' => $dependency->is_deleted === null ? 'salesforce_missing' : 'present_unresolved',
+            'invalid' => $dependency->is_deleted === null ? 'invalid_reference' : 'present_unresolved',
+            default => 'present_unresolved',
+        };
     }
 
     private function requiresReview(string $relationshipStatus, string $presenceStatus, bool $interestDeleted): bool
     {
         return $relationshipStatus === 'inverse_shared'
-            || in_array($presenceStatus, ['not_local', 'present_missing', 'present_unresolved'], true)
+            || in_array($presenceStatus, [
+                'salesforce_missing',
+                'invalid_reference',
+                'present_unresolved',
+            ], true)
             || (! $interestDeleted && $presenceStatus === 'present_deleted');
     }
 
@@ -294,19 +304,18 @@ class SalesforceInterestOpportunityReconciliationService
         return $run;
     }
 
-    private function latestStableOpportunityRun(): ReportSyncRun
-    {
-        $run = ReportSyncRun::query()
-            ->where('dataset', 'salesforce_opportunities')
-            ->where('source', 'salesforce')
+    private function latestStableDependencyRun(
+        ReportSyncRun $interestSource,
+    ): SalesforceInterestOpportunityDependencyRun {
+        $run = SalesforceInterestOpportunityDependencyRun::query()
             ->latest('id')
             ->first();
 
         if ($run === null
             || $run->status !== 'completed'
-            || $run->period_end_at === null
-            || $run->completed_at === null) {
-            throw new RuntimeException('The latest Opportunity sync run is not a stable completed source.');
+            || $run->source_interest_sync_run_id !== $interestSource->id
+            || ! $run->source_interest_cutoff_at?->equalTo($interestSource->source_cutoff_at)) {
+            throw new RuntimeException('The latest Opportunity dependency run is not current for the Interest source.');
         }
 
         return $run;
@@ -321,63 +330,37 @@ class SalesforceInterestOpportunityReconciliationService
         }
     }
 
-    private function assertOpportunitySourceUnchanged(ReportSyncRun $source): void
-    {
-        $latest = $this->latestStableOpportunityRun();
-        if ($latest->id !== $source->id
-            || ! $latest->period_end_at?->equalTo($source->period_end_at)
-            || ! $latest->completed_at?->equalTo($source->completed_at)) {
-            throw new RuntimeException('The Opportunity pipeline changed while reconciliation was being built.');
-        }
-    }
-
-    private function assertReferencedOpportunityEvidenceUnchanged(
-        SalesforceInterestOpportunityReconciliationRun $run,
+    private function assertDependencyRunUnchanged(
+        SalesforceInterestOpportunityDependencyRun $dependencyRun,
+        ReportSyncRun $interestSource,
     ): void {
-        $cursor = 0;
-
-        while (true) {
-            $rows = SalesforceInterestOpportunityReconciliation::query()
-                ->where('reconciliation_run_id', $run->id)
-                ->whereNotNull('opportunity_salesforce_id')
-                ->where('id', '>', $cursor)
-                ->orderBy('id')
-                ->limit(self::CHUNK_SIZE)
-                ->get();
-            if ($rows->isEmpty()) {
-                break;
-            }
-
-            $opportunityIds = $rows->pluck('opportunity_salesforce_id')->unique()->values()->all();
-            $opportunities = $this->opportunitiesBySalesforceId($opportunityIds);
-
-            foreach ($rows as $row) {
-                /** @var SalesforceOpportunity|null $opportunity */
-                $opportunity = $opportunities->get($row->opportunity_salesforce_id);
-                if (! $this->sameOpportunityEvidence($row, $opportunity)) {
-                    throw new RuntimeException('Referenced Opportunity evidence changed during reconciliation.');
-                }
-            }
-
-            $cursor = (int) $rows->last()->id;
+        $latest = $this->latestStableDependencyRun($interestSource);
+        if ($latest->id !== $dependencyRun->id) {
+            throw new RuntimeException('The Opportunity dependency snapshot changed during reconciliation.');
         }
     }
 
-    private function sameOpportunityEvidence(
-        SalesforceInterestOpportunityReconciliation $snapshot,
-        ?SalesforceOpportunity $current,
-    ): bool {
-        if ($current === null) {
-            return $snapshot->opportunity_presence_status === 'not_local';
+    private function assertDependencyCoverage(
+        SalesforceInterestOpportunityDependencyRun $dependencyRun,
+    ): void {
+        if (SalesforceInterestOpportunityDependency::query()
+            ->where('dependency_run_id', $dependencyRun->id)
+            ->where('presence_status', 'pending')
+            ->exists()
+            || DB::table('salesforce_interests as interests')
+                ->leftJoin('salesforce_interest_opportunity_dependencies as dependencies', function ($join) use ($dependencyRun): void {
+                    $join->on(
+                        DB::raw('TRIM(interests.inverse_opportunity_salesforce_id)'),
+                        '=',
+                        'dependencies.salesforce_id',
+                    )->where('dependencies.dependency_run_id', $dependencyRun->id);
+                })
+                ->whereNotNull('interests.inverse_opportunity_salesforce_id')
+                ->whereRaw("TRIM(interests.inverse_opportunity_salesforce_id) <> ''")
+                ->whereNull('dependencies.id')
+                ->exists()) {
+            throw new RuntimeException('Opportunity dependency snapshot coverage is incomplete.');
         }
-        if ($snapshot->opportunity_presence_status === 'not_local') {
-            return false;
-        }
-
-        return (bool) $snapshot->opportunity_is_deleted === (bool) $current->is_deleted
-            && $snapshot->opportunity_deletion_detection_source === $current->deletion_detection_source
-            && $snapshot->opportunity_salesforce_deleted_at?->toIso8601String()
-                === $current->salesforce_deleted_at?->toIso8601String();
     }
 
     private function cleanupDetailedSnapshots(
@@ -439,6 +422,8 @@ class SalesforceInterestOpportunityReconciliationService
             'opportunities_present_missing' => 0,
             'opportunities_not_local' => 0,
             'opportunities_present_unresolved' => 0,
+            'opportunities_salesforce_missing' => 0,
+            'opportunities_invalid_reference' => 0,
             'interests_deleted' => 0,
             'requires_review' => 0,
             'errors' => 0,

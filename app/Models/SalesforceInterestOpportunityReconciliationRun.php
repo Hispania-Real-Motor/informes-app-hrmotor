@@ -10,6 +10,7 @@ class SalesforceInterestOpportunityReconciliationRun extends Model
         'run_identifier',
         'reason',
         'status',
+        'opportunity_dependency_run_id',
         'source_interest_sync_run_id',
         'source_interest_cutoff_at',
         'source_opportunity_sync_run_id',
@@ -24,6 +25,7 @@ class SalesforceInterestOpportunityReconciliationRun extends Model
     ];
 
     protected $casts = [
+        'opportunity_dependency_run_id' => 'integer',
         'source_interest_sync_run_id' => 'integer',
         'source_interest_cutoff_at' => 'datetime',
         'source_opportunity_sync_run_id' => 'integer',

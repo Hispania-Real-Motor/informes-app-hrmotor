@@ -12,6 +12,7 @@ class SalesforceInterestOpportunityReconciliation extends Model
         'opportunity_salesforce_id',
         'relationship_status',
         'opportunity_presence_status',
+        'opportunity_evidence_source',
         'interest_is_deleted',
         'opportunity_is_deleted',
         'opportunity_salesforce_deleted_at',

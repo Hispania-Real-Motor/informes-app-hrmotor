@@ -1,6 +1,6 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-09-29.
+Actualizado: 2026-09-30.
 
 ## Salesforce Interest foundation
 
@@ -38,17 +38,26 @@ Actualizado: 2026-09-29.
   consumidores funcionales; producción permanece intacta.
 - `SF-INTEREST-FOUNDATION-4` — **en_revision** en la rama
   `feat/sf-interest-foundation-4-opportunity`, nacida del SHA
-  `6c26cce4a09349c30ebd289c73cf5ea985b9166f`. FOUNDATION-4A está implementada
-  y en revisión sénior, pendiente de aplicar y certificar su migración en los
-  entornos runtime autorizados. Materializa un snapshot local y manual de la
-  relación confirmada `Interes__c.IN_VEN_Oportunidad__c → Opportunity`, sin
-  modificar sincronizadores, scheduler ni consumidores. FOUNDATION-4B permanece
+  `6c26cce4a09349c30ebd289c73cf5ea985b9166f`; HEAD publicado previo
+  `9a0ee5e3c7439aecaee201090eb27c11d5a7655b`. El snapshot 4A original fue
+  validado en local y shadow, pero sus 20 referencias quedaron `not_local`.
+  La auditoría read-only demostró que las 20 son IDs Opportunity canónicos,
+  existen y están activas en SandboxRefreshed, mientras una Opportunity local
+  de control no existía en ese mismo org. Sin atribuir una causa no demostrada,
+  la réplica legacy no constituye evidencia compatible con FOUNDATION-2.
+  FOUNDATION-4A incorpora por ello una fuente mínima separada, ligada al F2
+  exacto, y continúa en revisión pendiente de aplicar y certificar las nuevas
+  migraciones. No modifica `salesforce_opportunities`, sincronizadores,
+  scheduler ni consumidores. FOUNDATION-4B permanece
   **bloqueada** hasta demostrar mediante describe el API Name, tipo,
   `referenceTo` y FLS de un lookup Opportunity → `Interes__c`; no se presume
   `HRM_Interes_Origen__c` ni se reutilizan campos parecidos.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
+- La misma decisión queda pendiente para FOUNDATION-2→dependencias
+  Opportunity→FOUNDATION-4A antes de cualquier automatización; cada etapa tiene
+  lock propio y revalidación de fuente, pero no existe scheduler ni lock común.
 - FOUNDATION-2 materializa persona y fecha mediante
   `SalesforceInterestFoundationResolver::materialize()` antes de cualquier
   escritura bulk; no podrá depender del evento Eloquent `saving`.

@@ -1,5 +1,25 @@
 # Decisiones técnicas
 
+## 2026-09-30 — Fuente separada de dependencias Opportunity para FOUNDATION-4A
+
+- Las Opportunities requeridas por
+  `salesforce_interests.inverse_opportunity_salesforce_id` se consultan mediante
+  queryAll read-only y se materializan en una fuente mínima separada ligada al
+  ID/cutoff F2 exacto. Salesforce ID REST canónico de 18 caracteres es la única
+  identidad; no se usan Lead, Account, vehículo, PII ni heurísticas.
+- `salesforce_opportunities` no se amplía ni se rellena con
+  `syncBySalesforceIds()`. La auditoría shadow demostró 20 referencias activas
+  en SandboxRefreshed ausentes de la réplica legacy y una fila legacy de control
+  ausente del mismo org; no se presume la causa, pero legacy deja de ser
+  autoridad de presence/lifecycle para 4A.
+- Cada reconciliación nueva conserva `opportunity_dependency_run_id` y cada
+  detalle `opportunity_evidence_source`. El dependency snapshot prevalece sobre
+  cualquier fila legacy coincidente o contradictoria. Los runs 4A históricos
+  permanecen intactos mediante columnas legacy nullable.
+- `missing` Salesforce se proyecta como `salesforce_missing` e ID inválido como
+  `invalid_reference`; ambos requieren revisión. `active` no requiere revisión
+  por su mera ausencia legacy. FOUNDATION-4B continúa separada y bloqueada.
+
 ## 2026-09-29 — FOUNDATION-4A unidireccional Interest–Opportunity
 
 - La única evidencia contractual disponible es

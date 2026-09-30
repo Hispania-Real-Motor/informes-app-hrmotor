@@ -1,32 +1,50 @@
 # Handoff para agentes
 
-## SF-INTEREST-FOUNDATION-4A — snapshot local Interest–Opportunity (2026-09-29)
+## SF-INTEREST-FOUNDATION-4A — dependencias Opportunity read-only (2026-09-30)
 
-- Se incorporan los runs `salesforce_interest_opportunity_reconciliation_runs`
-  y el detalle `salesforce_interest_opportunity_reconciliations`. Cada snapshot
-  contiene exactamente una resolución por Interest y usa únicamente
-  `salesforce_interests.inverse_opportunity_salesforce_id` contra
-  `salesforce_opportunities.salesforce_id`; no materializa Opportunities no
-  referenciadas ni copia PII o payloads.
+- La primera versión 4A quedó aplicada y certificada en MySQL local y shadow:
+  dos runs completed reprodujeron 65 Interests, 45 sin inversa, 20 referencias
+  distintas, 20 `inverse_unique`, cero shared/errores y retención correcta. Las
+  20 referencias se clasificaron `not_local` al no existir en la réplica legacy.
+- La auditoría posterior contra SandboxRefreshed consultó por queryAll los 20
+  IDs: todos eran REST canónicos de Opportunity, todos existían activos y no
+  hubo deleted ni missing. Como control, una Opportunity de la réplica shadow
+  no existía en ese Salesforce. La causa exacta no se presume; sí queda probado
+  que ambas fuentes no sirven como evidencia autoritativa entre sí.
+- Se añaden `salesforce_interest_opportunity_dependency_runs` y
+  `salesforce_interest_opportunity_dependencies`. Sus semillas distinct
+  proceden solo de `inverse_opportunity_salesforce_id`; procesa hasta 100 IDs
+  REST canónicos por queryAll y conserva únicamente ID, estado, lifecycle,
+  LastModifiedDate y SystemModstamp. Invalid no sale a Salesforce. No se copia
+  PII, datos comerciales ni payloads, y nunca se modifica
+  `salesforce_opportunities`.
+- El pipeline manual queda FOUNDATION-2 → dependency Opportunity → 4A. Tanto el
+  dependency run como 4A exigen el mismo ID/cutoff F2 completed y current, sin
+  pending ni huecos de cobertura. Un cambio concurrente invalida la publicación.
+- Estados dependency finales: `active`, `deleted`, `missing`, `invalid`;
+  `pending` solo durante construcción. En 4A se proyectan como
+  `present_active`, `present_deleted`, `salesforce_missing` e
+  `invalid_reference`. El detalle registra
+  `interest_opportunity_dependency_snapshot` como evidence source.
 - El servicio `SalesforceInterestOpportunityReconciliationService` procesa
-  Interests por PK en chunks de 200, carga Opportunities y multiplicidades por
-  lote y publica solo después de revalidar el run FOUNDATION-2 y la evidencia
-  lifecycle de cada Opportunity referenciada. Solo existencia, `is_deleted`,
-  `salesforce_deleted_at` y `deletion_detection_source` forman la huella; otros
-  cambios de Opportunity no invalidan el snapshot.
+  Interests por PK en chunks de 200 y multiplicidades por lote. Presence y
+  lifecycle proceden exclusivamente del dependency snapshot; la metadata
+  legacy nullable queda solo para preservar el histórico de runs 1 y 2 y ya no
+  bloquea ni clasifica nuevas ejecuciones.
+- La identidad Opportunity se normaliza con `TRIM` de extremo a extremo: seed
+  dependency, cobertura, recuento distinct, agrupación de multiplicidad y
+  materialización. Variantes equivalentes con whitespace producen una única
+  dependencia y una única Opportunity distinta, y comparten el mismo
+  `inverse_reference_count`, sin modificar físicamente las fuentes.
 - Relación y presencia permanecen separadas. Relación: `no_inverse`,
   `inverse_unique`, `inverse_shared`. Presencia: `not_applicable`,
-  `present_active`, `present_deleted`, `present_missing`, `not_local` y
-  `present_unresolved`. `requires_review` es diagnóstico para multiplicidad,
-  ausencia/lifecycle no resuelto y un Interest activo que apunta a una
-  Opportunity confirmadamente eliminada; no afirma conflicto contractual.
-- El run conserva ID/cutoff de FOUNDATION-2 y metadata del último run operativo
-  de Opportunity. Ese último run debe estar completed al inicio y no cambiar
-  durante la construcción. No se interpreta su `source_cutoff_at` como cutoff
-  Salesforce equivalente al de Interest.
-- El comando manual `salesforce:reconcile-interest-opportunities --reason=...`
-  exige entre 10 y 500 caracteres y emite métricas JSON con prefijo estable. No
-  se añadió scheduler, SOQL, acceso Salesforce ni consumidor funcional.
+  `present_active`, `present_deleted`, `salesforce_missing`,
+  `invalid_reference` y `present_unresolved` para los runs dependency-backed.
+  `requires_review` sigue siendo diagnóstico para shared, missing, invalid,
+  inconsistencia y un Interest activo con Opportunity deleted.
+- El comando manual `salesforce:sync-interest-opportunity-dependencies
+  --reason=...` exige motivo auditable, usa lock de seis horas y emite métricas
+  agregadas. El reconciliador 4A conserva su comando manual independiente.
 - La retención protege el completed vigente; durante fallo protege además el
   parcial failed actual. El detalle superseded se elimina por PK en chunks de
   1.000 y transacciones breves. Un error de cleanup posterior no degrada el
@@ -36,16 +54,20 @@
   sincronizador legacy de Opportunity. Antes de operar hacen falta revisión
   sénior, migración controlada y certificación local/shadow; producción sigue
   intacta.
-- El hardening de revisión demuestra que modificar `name` o `portal_original`
-  de una Opportunity referenciada no invalida la huella y que un cambio de
-  lifecycle en una Opportunity no referenciada tampoco invalida el snapshot.
-  La prueba multi-chunk confirma además que la multiplicidad compartida es
-  global aunque las referencias estén repartidas entre chunks.
-- Validación local: FOUNDATION-4A, 16 pruebas/91 aserciones; FOUNDATION-1/2/3/3A
-  más 4A y regresiones Opportunity/Stock, 123/688; suite completa,
-  1.103/8.335. Pint y `git diff --check HEAD` correctos. `migrate --pretend`
-  generó solo las dos tablas aditivas, sus índices mínimos y la FK detalle→run
-  con cascade; la migración no se aplicó persistentemente.
+- No existe scheduler ni consumidor funcional. Las nuevas migraciones y el
+  pipeline dependency-backed permanecen pendientes de revisión/aplicación
+  runtime; producción continúa intacta.
+- Validación local: 4A focal, 20 pruebas/112 aserciones; dependency Opportunity
+  + 4A, 30/185; FOUNDATION-1/2/3/3A/4A y regresiones Opportunity/Stock,
+  172/1.094; suite completa final, 1.117/8.429. El único fallo observado en una
+  ejecución previa fue el umbral temporal ajeno de
+  `StockRecommendationCandidatePaginationTest` (41,58 s frente a 20 s): pasó
+  aislado (2/13) y la repetición completa quedó verde. Pint y
+  `git diff --check HEAD` correctos.
+  `migrate --pretend` generó únicamente las tablas dependency, sus índices/FK,
+  el enlace nullable dependency run→4A, evidence source y la conversión nullable
+  de metadata legacy para preservar los runs históricos; no se aplicó ninguna
+  migración persistente.
 
 ## SF-INTEREST-FOUNDATION-3 — métrica `lead_merged` (2026-09-29)
 

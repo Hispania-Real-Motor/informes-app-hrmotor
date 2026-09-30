@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
+use App\Models\SalesforceInterestOpportunityDependency;
+use App\Models\SalesforceInterestOpportunityDependencyRun;
 use App\Models\SalesforceInterestOpportunityReconciliation;
 use App\Models\SalesforceInterestOpportunityReconciliationRun;
 use App\Models\SalesforceOpportunity;
@@ -36,7 +38,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
     public function test_schema_has_auditable_run_detail_fk_and_minimal_indexes(): void
     {
         $this->assertTrue(Schema::hasColumns('salesforce_interest_opportunity_reconciliation_runs', [
-            'run_identifier', 'reason', 'status', 'source_interest_sync_run_id',
+            'run_identifier', 'reason', 'status', 'opportunity_dependency_run_id', 'source_interest_sync_run_id',
             'source_interest_cutoff_at', 'source_opportunity_sync_run_id',
             'source_opportunity_sync_status', 'source_opportunity_period_end_at',
             'source_opportunity_completed_at', 'stats', 'error_message',
@@ -44,6 +46,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         $this->assertTrue(Schema::hasColumns('salesforce_interest_opportunity_reconciliations', [
             'reconciliation_run_id', 'interest_salesforce_id', 'opportunity_salesforce_id',
             'relationship_status', 'opportunity_presence_status', 'interest_is_deleted',
+            'opportunity_evidence_source',
             'opportunity_is_deleted', 'opportunity_salesforce_deleted_at',
             'opportunity_deletion_detection_source', 'inverse_reference_count', 'requires_review',
         ]));
@@ -53,6 +56,13 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         $this->assertTrue($indexes->contains('sf_int_opp_recon_run_interest_uq'));
         $this->assertTrue($indexes->contains('sf_int_opp_recon_run_relation_idx'));
         $this->assertTrue($indexes->contains('sf_int_opp_recon_run_opp_idx'));
+        $runForeignKeys = collect(DB::select(
+            "PRAGMA foreign_key_list('salesforce_interest_opportunity_reconciliation_runs')",
+        ));
+        $this->assertTrue($runForeignKeys->contains(
+            fn (object $key): bool => $key->table === 'salesforce_interest_opportunity_dependency_runs'
+                && $key->from === 'opportunity_dependency_run_id',
+        ));
 
         $run = $this->completedAuditRun(90);
         $this->auditRow($run, 90);
@@ -96,20 +106,28 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
 
         $sourceInterestsBefore = DB::table('salesforce_interests')->orderBy('id')->get()->all();
         $sourceOpportunitiesBefore = DB::table('salesforce_opportunities')->orderBy('id')->get()->all();
+        $dependencyRun = $this->dependencySnapshot([
+            $deleted->salesforce_id => ['presence_status' => 'deleted', 'is_deleted' => true],
+            $missing->salesforce_id => ['presence_status' => 'missing', 'is_deleted' => null],
+            $notLocalInterest->inverse_opportunity_salesforce_id => [
+                'presence_status' => 'invalid', 'is_deleted' => null,
+            ],
+            $unresolved->salesforce_id => ['presence_status' => 'active', 'is_deleted' => true],
+        ]);
         $stats = app(SalesforceInterestOpportunityReconciliationService::class)
             ->run('Certify all unidirectional reconciliation states');
         $run = SalesforceInterestOpportunityReconciliationRun::query()->latest('id')->firstOrFail();
 
         $this->assertSame('completed', $run->status);
         $this->assertSame($this->interestRun->id, $run->source_interest_sync_run_id);
-        $this->assertSame($this->opportunityRun->id, $run->source_opportunity_sync_run_id);
-        $this->assertSame('completed', $run->source_opportunity_sync_status);
+        $this->assertSame($dependencyRun->id, $run->opportunity_dependency_run_id);
+        $this->assertNull($run->source_opportunity_sync_run_id);
         $this->assertDatabaseCount('salesforce_interest_opportunity_reconciliations', 9);
         $this->assertResolution($run, $noInverse, 'no_inverse', 'not_applicable', false, 0);
         $this->assertResolution($run, $activeInterest, 'inverse_unique', 'present_active', false, 1);
         $this->assertResolution($run, $deletedOpportunityInterest, 'inverse_unique', 'present_deleted', true, 1);
-        $this->assertResolution($run, $missingInterest, 'inverse_unique', 'present_missing', true, 1);
-        $this->assertResolution($run, $notLocalInterest, 'inverse_unique', 'not_local', true, 1);
+        $this->assertResolution($run, $missingInterest, 'inverse_unique', 'salesforce_missing', true, 1);
+        $this->assertResolution($run, $notLocalInterest, 'inverse_unique', 'invalid_reference', true, 1);
         $this->assertResolution($run, $unresolvedInterest, 'inverse_unique', 'present_unresolved', true, 1);
         $this->assertResolution($run, $deletedInterest, 'inverse_unique', 'present_active', false, 1);
         $this->assertResolution($run, $sharedA, 'inverse_shared', 'present_active', true, 2);
@@ -125,8 +143,8 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         $this->assertSame(6, $stats['inverse_unique']);
         $this->assertSame(2, $stats['inverse_shared']);
         $this->assertSame(1, $stats['opportunities_present_deleted']);
-        $this->assertSame(1, $stats['opportunities_present_missing']);
-        $this->assertSame(1, $stats['opportunities_not_local']);
+        $this->assertSame(1, $stats['opportunities_salesforce_missing']);
+        $this->assertSame(1, $stats['opportunities_invalid_reference']);
         $this->assertSame(1, $stats['opportunities_present_unresolved']);
         $this->assertSame(1, $stats['interests_deleted']);
         $this->assertSame(6, $stats['requires_review']);
@@ -142,6 +160,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         for ($index = 1; $index <= 201; $index++) {
             $this->interest($index, ['inverse_opportunity_salesforce_id' => $opportunity->salesforce_id]);
         }
+        $this->dependencySnapshot();
 
         DB::flushQueryLog();
         DB::enableQueryLog();
@@ -163,14 +182,53 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             strtolower($query['query']),
             'salesforce_interests',
         ))->count());
-        $this->assertLessThanOrEqual(8, $queries->filter(fn (array $query): bool => str_contains(
+        $this->assertSame(0, $queries->filter(fn (array $query): bool => str_contains(
             strtolower($query['query']),
             'salesforce_opportunities',
+        ))->count());
+        $this->assertLessThanOrEqual(8, $queries->filter(fn (array $query): bool => str_contains(
+            strtolower($query['query']),
+            'salesforce_interest_opportunity_dependencies',
         ))->count());
         $this->assertFalse($queries->contains(fn (array $query): bool => str_contains(
             strtolower($query['query']),
             ' offset ',
         )));
+    }
+
+    public function test_normalizes_inverse_opportunity_ids_for_distinct_count_and_multiplicity(): void
+    {
+        $opportunityId = $this->opportunityId(333);
+        $clean = $this->interest(1, [
+            'inverse_opportunity_salesforce_id' => $opportunityId,
+        ]);
+        $withWhitespace = $this->interest(2, [
+            'inverse_opportunity_salesforce_id' => "  {$opportunityId} ",
+        ]);
+        $sourceInterestsBefore = DB::table('salesforce_interests')->orderBy('id')->get()->all();
+        $sourceOpportunitiesBefore = DB::table('salesforce_opportunities')->orderBy('id')->get()->all();
+        $dependencyRun = $this->dependencySnapshot();
+
+        $this->assertSame(1, SalesforceInterestOpportunityDependency::query()
+            ->where('dependency_run_id', $dependencyRun->id)
+            ->count());
+        $this->assertDatabaseHas('salesforce_interest_opportunity_dependencies', [
+            'dependency_run_id' => $dependencyRun->id,
+            'salesforce_id' => $opportunityId,
+        ]);
+
+        $stats = app(SalesforceInterestOpportunityReconciliationService::class)
+            ->run('Normalize Opportunity references consistently across reconciliation');
+        $run = SalesforceInterestOpportunityReconciliationRun::query()->latest('id')->firstOrFail();
+
+        $this->assertSame('completed', $run->status);
+        $this->assertSame(1, $stats['distinct_opportunities_referenced']);
+        $this->assertSame(2, $stats['inverse_shared']);
+        $this->assertResolution($run, $clean, 'inverse_shared', 'present_active', true, 2);
+        $this->assertResolution($run, $withWhitespace, 'inverse_shared', 'present_active', true, 2);
+        $this->assertDatabaseCount('salesforce_interest_opportunity_reconciliations', 2);
+        $this->assertEquals($sourceInterestsBefore, DB::table('salesforce_interests')->orderBy('id')->get()->all());
+        $this->assertEquals($sourceOpportunitiesBefore, DB::table('salesforce_opportunities')->orderBy('id')->get()->all());
     }
 
     public function test_irrelevant_referenced_opportunity_change_does_not_invalidate_snapshot(): void
@@ -182,6 +240,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         $interest = $this->interest(1, [
             'inverse_opportunity_salesforce_id' => $opportunity->salesforce_id,
         ]);
+        $this->dependencySnapshot();
         $service = new class($opportunity->salesforce_id) extends SalesforceInterestOpportunityReconciliationService
         {
             public function __construct(private string $opportunityId) {}
@@ -213,6 +272,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         $interest = $this->interest(1, [
             'inverse_opportunity_salesforce_id' => $referenced->salesforce_id,
         ]);
+        $this->dependencySnapshot();
         $service = new class($unreferenced->salesforce_id) extends SalesforceInterestOpportunityReconciliationService
         {
             public function __construct(private string $opportunityId) {}
@@ -239,6 +299,23 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         $this->assertTrue($unreferenced->fresh()->is_deleted);
     }
 
+    public function test_dependency_active_is_authoritative_when_opportunity_is_absent_from_legacy_replica(): void
+    {
+        $opportunityId = $this->opportunityId(450);
+        $interest = $this->interest(450, ['inverse_opportunity_salesforce_id' => $opportunityId]);
+        $dependencyRun = $this->dependencySnapshot();
+
+        $stats = app(SalesforceInterestOpportunityReconciliationService::class)
+            ->run('Certify dependency authority without legacy Opportunity row');
+        $run = SalesforceInterestOpportunityReconciliationRun::query()->latest('id')->firstOrFail();
+
+        $this->assertSame('completed', $run->status);
+        $this->assertSame($dependencyRun->id, $run->opportunity_dependency_run_id);
+        $this->assertResolution($run, $interest, 'inverse_unique', 'present_active', false, 1);
+        $this->assertSame(0, $stats['requires_review']);
+        $this->assertDatabaseMissing('salesforce_opportunities', ['salesforce_id' => $opportunityId]);
+    }
+
     public function test_rejects_unstable_latest_interest_or_opportunity_pipeline_before_starting(): void
     {
         $this->interestSourceRun(['status' => 'failed']);
@@ -247,17 +324,64 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             ->run('Reject an unstable latest Interest source');
     }
 
-    public function test_rejects_unstable_opportunity_pipeline_before_starting(): void
+    public function test_missing_non_current_or_incomplete_dependency_snapshot_blocks_publication(): void
+    {
+        $id = $this->opportunityId(500);
+        $this->interest(500, ['inverse_opportunity_salesforce_id' => $id]);
+
+        foreach (['missing', 'running', 'failed', 'wrong_run', 'wrong_cutoff', 'incomplete'] as $case) {
+            SalesforceInterestOpportunityDependency::query()->delete();
+            SalesforceInterestOpportunityDependencyRun::query()->delete();
+
+            if ($case !== 'missing') {
+                $dependencyRun = SalesforceInterestOpportunityDependencyRun::query()->create([
+                    'run_identifier' => sprintf('20000000-0000-4000-8000-%012d', crc32($case)),
+                    'reason' => 'Synthetic invalid dependency precondition',
+                    'status' => in_array($case, ['running', 'failed'], true) ? $case : 'completed',
+                    'source_interest_sync_run_id' => $case === 'wrong_run'
+                        ? $this->interestRun->id + 100
+                        : $this->interestRun->id,
+                    'source_interest_cutoff_at' => $case === 'wrong_cutoff'
+                        ? '2026-09-30 12:00:00'
+                        : $this->interestRun->source_cutoff_at,
+                    'started_at' => now()->subMinute(),
+                    'completed_at' => $case === 'running' ? null : now(),
+                ]);
+                if ($case !== 'incomplete') {
+                    $this->dependency($dependencyRun, $id);
+                }
+            }
+
+            try {
+                app(SalesforceInterestOpportunityReconciliationService::class)
+                    ->run('Reject invalid Opportunity dependency precondition');
+                $this->fail("Expected dependency case {$case} to block publication.");
+            } catch (RuntimeException) {
+                $this->assertDatabaseMissing('salesforce_interest_opportunity_reconciliation_runs', [
+                    'status' => 'completed',
+                ]);
+            }
+        }
+    }
+
+    public function test_unstable_legacy_opportunity_pipeline_does_not_block_dependency_backed_snapshot(): void
     {
         $this->opportunitySourceRun(['status' => 'running', 'completed_at' => null]);
-        $this->expectException(RuntimeException::class);
-        app(SalesforceInterestOpportunityReconciliationService::class)
-            ->run('Reject an unstable latest Opportunity source');
+        $this->interest(1);
+        $this->dependencySnapshot();
+
+        $stats = app(SalesforceInterestOpportunityReconciliationService::class)
+            ->run('Ignore unrelated legacy Opportunity pipeline health');
+
+        $this->assertSame(1, $stats['interests_examined']);
+        $this->assertSame('completed', SalesforceInterestOpportunityReconciliationRun::query()
+            ->latest('id')->value('status'));
     }
 
     public function test_fails_without_publishing_when_f2_changes_during_materialization(): void
     {
         $this->interest(1);
+        $this->dependencySnapshot();
         $service = new class extends SalesforceInterestOpportunityReconciliationService
         {
             protected function beforeSourceValidation(
@@ -286,9 +410,44 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         $this->assertDatabaseMissing('salesforce_interest_opportunity_reconciliation_runs', ['status' => 'completed']);
     }
 
-    public function test_fails_without_publishing_when_opportunity_pipeline_run_changes(): void
+    public function test_fails_without_publishing_when_dependency_snapshot_changes_during_materialization(): void
     {
         $this->interest(1);
+        $this->dependencySnapshot();
+        $source = $this->interestRun;
+        $service = new class($source) extends SalesforceInterestOpportunityReconciliationService
+        {
+            public function __construct(private ReportSyncRun $source) {}
+
+            protected function beforeSourceValidation(
+                SalesforceInterestOpportunityReconciliationRun $run,
+                array $stats,
+            ): void {
+                SalesforceInterestOpportunityDependencyRun::query()->create([
+                    'run_identifier' => '40000000-0000-4000-8000-000000000001',
+                    'reason' => 'Synthetic concurrent dependency snapshot',
+                    'status' => 'completed',
+                    'source_interest_sync_run_id' => $this->source->id,
+                    'source_interest_cutoff_at' => $this->source->source_cutoff_at,
+                    'started_at' => now()->subSecond(),
+                    'completed_at' => now(),
+                ]);
+            }
+        };
+
+        $this->expectException(RuntimeException::class);
+        try {
+            $service->run('Detect concurrent Opportunity dependency publication');
+        } finally {
+            $this->assertSame('failed', SalesforceInterestOpportunityReconciliationRun::query()
+                ->latest('id')->value('status'));
+        }
+    }
+
+    public function test_legacy_opportunity_pipeline_change_during_build_does_not_block_publication(): void
+    {
+        $this->interest(1);
+        $this->dependencySnapshot();
         $service = new class extends SalesforceInterestOpportunityReconciliationService
         {
             protected function beforeSourceValidation(
@@ -309,23 +468,21 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             }
         };
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('failed safely');
-        try {
-            $service->run('Detect a concurrent Opportunity synchronization');
-        } finally {
-            $this->assertSame('failed', SalesforceInterestOpportunityReconciliationRun::query()->latest('id')->value('status'));
-        }
+        $service->run('Ignore concurrent legacy Opportunity synchronization');
+
+        $this->assertSame('completed', SalesforceInterestOpportunityReconciliationRun::query()
+            ->latest('id')->value('status'));
     }
 
     #[DataProvider('referencedOpportunityMutationProvider')]
-    public function test_fails_when_referenced_opportunity_evidence_changes_during_run(string $mutation): void
+    public function test_legacy_opportunity_evidence_never_overrides_dependency_snapshot(string $mutation): void
     {
         $opportunityId = $this->opportunityId(1);
         if ($mutation !== 'appears') {
             $this->opportunity(1);
         }
         $this->interest(1, ['inverse_opportunity_salesforce_id' => $opportunityId]);
+        $this->dependencySnapshot();
         $service = new class($opportunityId, $mutation) extends SalesforceInterestOpportunityReconciliationService
         {
             public function __construct(private string $opportunityId, private string $mutation) {}
@@ -351,13 +508,16 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             }
         };
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('failed safely');
-        try {
-            $service->run('Detect referenced Opportunity evidence mutation');
-        } finally {
-            $this->assertSame('failed', SalesforceInterestOpportunityReconciliationRun::query()->latest('id')->value('status'));
-        }
+        $service->run('Keep dependency snapshot authoritative over legacy mutation');
+        $run = SalesforceInterestOpportunityReconciliationRun::query()->latest('id')->firstOrFail();
+
+        $this->assertSame('completed', $run->status);
+        $this->assertDatabaseHas('salesforce_interest_opportunity_reconciliations', [
+            'reconciliation_run_id' => $run->id,
+            'opportunity_salesforce_id' => $opportunityId,
+            'opportunity_presence_status' => 'present_active',
+            'opportunity_evidence_source' => 'interest_opportunity_dependency_snapshot',
+        ]);
     }
 
     /** @return array<string, array{string}> */
@@ -379,6 +539,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         for ($index = 1; $index <= 201; $index++) {
             $this->interest($index);
         }
+        $this->dependencySnapshot();
         $service = new class extends SalesforceInterestOpportunityReconciliationService
         {
             protected function afterInterestChunk(int $cursor, array $stats): void
@@ -424,6 +585,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             ));
         }
         $this->interest(1);
+        $this->dependencySnapshot();
         $service = new class extends SalesforceInterestOpportunityReconciliationService
         {
             public int $cleanupChunks = 0;
@@ -447,6 +609,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         $old = $this->completedAuditRun(60);
         $this->auditRow($old, 60);
         $this->interest(1);
+        $this->dependencySnapshot();
         $service = new class extends SalesforceInterestOpportunityReconciliationService
         {
             protected function afterCleanupChunk(int $rowsDeleted): void
@@ -471,6 +634,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             ->assertFailed();
 
         $this->interest(1);
+        $this->dependencySnapshot();
         $this->artisan('salesforce:reconcile-interest-opportunities', [
             '--reason' => 'Manual auditable Interest Opportunity snapshot',
         ])->expectsOutputToContain('INTEREST_OPPORTUNITY_RECONCILIATION_METRICS=')
@@ -503,6 +667,9 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             'opportunity_presence_status' => $presence,
             'requires_review' => $review,
             'inverse_reference_count' => $count,
+            'opportunity_evidence_source' => $interest->inverse_opportunity_salesforce_id === null
+                ? null
+                : 'interest_opportunity_dependency_snapshot',
         ]);
     }
 
@@ -571,6 +738,51 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             'started_at' => now('UTC')->subMinute(),
             'completed_at' => now('UTC'),
         ]);
+    }
+
+    /** @param array<string, array<string, mixed>> $overridesById */
+    private function dependencySnapshot(array $overridesById = []): SalesforceInterestOpportunityDependencyRun
+    {
+        $run = SalesforceInterestOpportunityDependencyRun::query()->create([
+            'run_identifier' => '30000000-0000-4000-8000-'.str_pad((string) (
+                SalesforceInterestOpportunityDependencyRun::query()->count() + 1
+            ), 12, '0', STR_PAD_LEFT),
+            'reason' => 'Synthetic current Opportunity dependency snapshot',
+            'status' => 'completed',
+            'source_interest_sync_run_id' => $this->interestRun->id,
+            'source_interest_cutoff_at' => $this->interestRun->source_cutoff_at,
+            'started_at' => now()->subMinute(),
+            'completed_at' => now(),
+        ]);
+
+        $ids = SalesforceInterest::query()
+            ->whereNotNull('inverse_opportunity_salesforce_id')
+            ->whereRaw("TRIM(inverse_opportunity_salesforce_id) <> ''")
+            ->pluck('inverse_opportunity_salesforce_id')
+            ->map(fn (mixed $id): string => trim((string) $id))
+            ->unique()
+            ->values();
+        foreach ($ids as $id) {
+            $this->dependency($run, trim((string) $id), $overridesById[(string) $id] ?? []);
+        }
+
+        return $run;
+    }
+
+    /** @param array<string, mixed> $overrides */
+    private function dependency(
+        SalesforceInterestOpportunityDependencyRun $run,
+        string $id,
+        array $overrides = [],
+    ): SalesforceInterestOpportunityDependency {
+        return SalesforceInterestOpportunityDependency::query()->create(array_merge([
+            'dependency_run_id' => $run->id,
+            'salesforce_id' => $id,
+            'presence_status' => 'active',
+            'is_deleted' => false,
+            'salesforce_last_modified_at' => '2026-09-29 10:00:00',
+            'system_modstamp_at' => '2026-09-29 10:05:00',
+        ], $overrides));
     }
 
     private function auditRow(SalesforceInterestOpportunityReconciliationRun $run, int $sequence): void

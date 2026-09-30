@@ -1,37 +1,46 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-09-29.
+Actualizado: 2026-09-30.
 
 ## Reconciliación local Interest–Opportunity
 
 - FOUNDATION-4A materializa una vista auditable y unidireccional basada
-  exclusivamente en `salesforce_interests.inverse_opportunity_salesforce_id`
-  contra `salesforce_opportunities.salesforce_id`. Produce una fila por
-  Interest; las Opportunities no referenciadas no forman parte de su universo.
-  Salesforce ID es la única identidad y ambas réplicas fuente son read-only.
+  exclusivamente en `salesforce_interests.inverse_opportunity_salesforce_id`.
+  Presence/lifecycle se valida mediante el snapshot separado
+  `salesforce_interest_opportunity_dependencies`, no contra la réplica legacy
+  `salesforce_opportunities`. Produce una fila por Interest y solo consulta las
+  Opportunities referenciadas. Salesforce ID es la única identidad.
 - Cada run exige como fuente el último run FOUNDATION-2, que debe ser completed
-  y conservar cutoff. Antes de publicar se exige el mismo ID/cutoff. El último
-  run operativo de Opportunity debe estar completed y se conserva su metadata,
-  pero su cutoff local no se equipara al watermark Salesforce de Interest.
-- La consistencia Opportunity se limita a los IDs usados. Se captura y vuelve a
-  validar en bulk existencia, `is_deleted`, `salesforce_deleted_at` y
-  `deletion_detection_source`; precio, portal y dimensiones ajenas no invalidan
-  el snapshot. El procesamiento usa cursor PK y chunks de 200, sin OFFSET, N+1
-  ni recorrido del universo completo de Opportunity.
+  y conservar cutoff. El dependency run debe ser el último, completed, estar
+  ligado al mismo ID/cutoff y cubrir cada referencia. Antes de publicar 4A se
+  revalidan F2, dependency run y cobertura.
+- El dependency sync siembra IDs distinct con SQL, acepta solo IDs REST
+  alfanuméricos de 18 caracteres y usa queryAll en lotes máximos de 100.
+  Materializa `active`, `deleted`, `missing` e `invalid`, sin PII, dimensiones
+  comerciales o raw payload. Su coste depende de las referencias de Interest,
+  no de las 42.634 filas Opportunity legacy.
 - Relación (`no_inverse`, `inverse_unique`, `inverse_shared`) y presencia
-  (`not_applicable`, `present_active`, `present_deleted`, `present_missing`,
-  `not_local`, `present_unresolved`) son ejes separados. `requires_review` es un
+  (`not_applicable`, `present_active`, `present_deleted`, `salesforce_missing`,
+  `invalid_reference`, `present_unresolved`) son ejes separados para snapshots
+  nuevos. `requires_review` es un
   indicador diagnóstico y no una declaración de cardinalidad o conflicto de
   negocio. Lifecycle de Interest también permanece separado.
 - Las métricas `opportunities_present_active`,
-  `opportunities_present_deleted`, `opportunities_present_missing`,
-  `opportunities_not_local` y `opportunities_present_unresolved` cuentan
+  `opportunities_present_deleted`, `opportunities_salesforce_missing`,
+  `opportunities_invalid_reference` y `opportunities_present_unresolved` cuentan
   resoluciones/referencias Interest→Opportunity, no Opportunities distintas.
   `distinct_opportunities_referenced` es la métrica explícita de Salesforce IDs
   de Opportunity distintos referenciados por el snapshot.
 - Runs y detalle son propios; solo completed publica snapshot. Los detalles
   superseded se retiran por PK en chunks de 1.000 sin borrar métricas históricas.
   El comando es manual, no tiene scheduler ni consumidor funcional.
+- Antes de automatizar F2→dependencias Opportunity→4A debe evaluarse un lock
+  compartido o serialización equivalente; por ahora cada paso es manual, tiene
+  lock propio y revalida su fuente antes de publicar.
+- `salesforce_opportunities` no se amplía, no se rellena mediante
+  `syncBySalesforceIds()` y no prevalece como autoridad secundaria. Sus runs 4A
+  históricos permanecen auditables; su metadata nullable no clasifica nuevas
+  resoluciones. El detalle nuevo registra evidence source dependency explícita.
 - FOUNDATION-4B queda separada y bloqueada hasta demostrar mediante describe un
   lookup Opportunity → `Interes__c`, incluidos API Name, tipo, `referenceTo` y
   FLS. No se presume `HRM_Interes_Origen__c` y no se alteran SOQL ni procesos
