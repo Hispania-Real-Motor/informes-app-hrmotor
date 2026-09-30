@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Iniciar sesión | HR Motor</title>
+    <title>Recuperar contraseña | HR Motor</title>
     <link rel="icon" href="/brand/favicon.ico" sizes="any">
     <link rel="shortcut icon" href="/brand/favicon.ico">
     @include('partials.font-assets')
@@ -17,8 +17,8 @@
     </div>
 
     <section class="login-card">
-        <h1>Iniciar sesión</h1>
-        <p>Accede a la plataforma de HR Motor</p>
+        <h1>Recuperar contraseña</h1>
+        <p>Introduce tu correo y, si existe una cuenta activa, recibirás un enlace temporal.</p>
 
         @if (session('status'))
             <div class="login-status">
@@ -32,7 +32,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('login.post') }}">
+        <form method="POST" action="{{ route('password.email') }}">
             @csrf
 
             <label for="email">Correo electrónico</label>
@@ -47,26 +47,12 @@
                 autofocus
             >
 
-            <label for="password">Contraseña</label>
-            <input
-                id="password"
-                name="password"
-                type="password"
-                autocomplete="current-password"
-                required
-            >
-
-            <div class="login-options">
-                <label class="remember">
-                    <input type="checkbox" name="remember" value="1">
-                    <span>Recordarme</span>
-                </label>
-
-                <a href="{{ route('password.request') }}">¿Olvidaste tu contraseña?</a>
-            </div>
-
-            <button type="submit">Entrar</button>
+            <button type="submit">Enviar enlace</button>
         </form>
+
+        <p class="login-secondary-link">
+            <a href="{{ route('login') }}">Volver al login</a>
+        </p>
     </section>
 </main>
 </body>

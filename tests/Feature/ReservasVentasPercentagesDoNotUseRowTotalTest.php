@@ -25,7 +25,7 @@ class ReservasVentasPercentagesDoNotUseRowTotalTest extends TestCase
         $this->opportunities('006-web-neutra', 3689, ['portal_resolved' => 'Web']);
         $this->opportunities('006-coches-reserva', 233, ['portal_resolved' => 'Coches.net', 'stage_name' => 'Reserva', 'reservation' => true]);
 
-        $row = collect($this->getJson('/informes/reservas-ventas/data/portals?'.$this->query())->json('items'))
+        $row = collect($this->getJson('/informes/reservas-ventas/data/portals?'.$this->reservasVentasQuery())->json('items'))
             ->firstWhere('portal', 'Web');
 
         $this->assertSame(3800, $row['oportunidades_totales']);
@@ -64,7 +64,7 @@ class ReservasVentasPercentagesDoNotUseRowTotalTest extends TestCase
         }
     }
 
-    private function query(): string
+    private function reservasVentasQuery(): string
     {
         return http_build_query([
             'period' => 'custom',

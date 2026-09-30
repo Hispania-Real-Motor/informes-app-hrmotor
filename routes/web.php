@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\InformesLoginController;
+use App\Http\Controllers\Auth\ReportUserPasswordResetController;
 use App\Http\Controllers\Reports\Calls\CallDashboardController;
 use App\Http\Controllers\Reports\Calls\CallDashboardDataController;
 use App\Http\Controllers\Reports\Campaigns\CampaignDashboardController;
@@ -34,6 +35,10 @@ Route::get('/', function () {
 Route::get('/login', [InformesLoginController::class, 'show'])->name('login');
 Route::post('/login', [InformesLoginController::class, 'login'])->name('login.post');
 Route::post('/logout', [InformesLoginController::class, 'logout'])->name('logout');
+Route::get('/password/forgot', [ReportUserPasswordResetController::class, 'showRequestForm'])->name('password.request');
+Route::post('/password/email', [ReportUserPasswordResetController::class, 'sendResetLink'])->name('password.email');
+Route::get('/password/reset/{token}', [ReportUserPasswordResetController::class, 'showResetForm'])->name('password.reset');
+Route::post('/password/reset', [ReportUserPasswordResetController::class, 'reset'])->name('password.update');
 
 Route::middleware('reports.auth')->group(function () {
     Route::get('informes', [SummaryDashboardController::class, 'index'])->name('reports.index');

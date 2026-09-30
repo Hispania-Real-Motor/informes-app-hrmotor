@@ -148,6 +148,7 @@ class ReportUserManagementController extends Controller
 
         if (filled($data['password'] ?? null)) {
             $payload['password'] = $data['password'];
+            $payload['password_changed_at'] = now();
         }
 
         $reportUser->fill($payload)->save();
