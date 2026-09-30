@@ -68,6 +68,15 @@
   el enlace nullable dependency run→4A, evidence source y la conversión nullable
   de metadata legacy para preservar los runs históricos; no se aplicó ninguna
   migración persistente.
+- Certificación final shadow: dependency runs 1 y 2, ambos ligados al F2 run
+  2688 y cutoff 2026-09-29T11:28:13+00:00, resolvieron 20 referencias como
+  active, con 0 deleted, missing, invalid, errors y cleanup_errors. La retención
+  dejó únicamente las 20 dependencias del run 2.
+- Reconciliación final: runs 3 y 4 dependency-backed, ambos completed. El run 4
+  quedó ligado al dependency run 2 y materializó 65 filas: 20 inverse_unique /
+  present_active y 45 no_inverse / not_applicable, con 0 requires_review,
+  errors y cleanup_errors. Solo permanecen los 65 detalles del run 4; la
+  metadata histórica de los runs 1-4 se conserva.
 
 ## SF-INTEREST-FOUNDATION-3 — métrica `lead_merged` (2026-09-29)
 

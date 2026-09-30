@@ -36,7 +36,7 @@ Actualizado: 2026-09-30.
   sin missing, invalid o errores, y descubrió 1 master activo. La fuente continúa
   separada de `salesforce_leads`, que no se amplió. No tiene scheduler ni
   consumidores funcionales; producción permanece intacta.
-- `SF-INTEREST-FOUNDATION-4` — **en_revision** en la rama
+- `SF-INTEREST-FOUNDATION-4` — **aprobada** en la rama
   `feat/sf-interest-foundation-4-opportunity`, nacida del SHA
   `6c26cce4a09349c30ebd289c73cf5ea985b9166f`; HEAD publicado previo
   `9a0ee5e3c7439aecaee201090eb27c11d5a7655b`. El snapshot 4A original fue
@@ -45,13 +45,18 @@ Actualizado: 2026-09-30.
   existen y están activas en SandboxRefreshed, mientras una Opportunity local
   de control no existía en ese mismo org. Sin atribuir una causa no demostrada,
   la réplica legacy no constituye evidencia compatible con FOUNDATION-2.
-  FOUNDATION-4A incorpora por ello una fuente mínima separada, ligada al F2
-  exacto, y continúa en revisión pendiente de aplicar y certificar las nuevas
-  migraciones. No modifica `salesforce_opportunities`, sincronizadores,
-  scheduler ni consumidores. FOUNDATION-4B permanece
-  **bloqueada** hasta demostrar mediante describe el API Name, tipo,
-  `referenceTo` y FLS de un lookup Opportunity → `Interes__c`; no se presume
-  `HRM_Interes_Origen__c` ni se reutilizan campos parecidos.
+  FOUNDATION-4A queda certificada en shadow sobre el F2 run 2688 y cutoff
+  2026-09-29T11:28:13+00:00. Los dependency runs 1 y 2 resolvieron las 20
+  referencias Opportunity como activas mediante queryAll, sin missing, deleted,
+  invalid ni errores. Las reconciliaciones dependency-backed 3 y 4
+  materializaron 65 Interests: 20 inverse_unique/present_active y 45 no_inverse/
+  not_applicable, con 0 requires_review, errores o cleanup_errors. La retención
+  conserva metadata histórica y únicamente el detalle del último snapshot.
+  salesforce_opportunities legacy no fue ampliada ni modificada. Producción
+  permanece intacta. FOUNDATION-4B permanece **bloqueada** hasta demostrar 
+  mediante describe el API Name, tipo, `referenceTo` y FLS de un lookup
+  Opportunity → `Interes__c`; no se presume `HRM_Interes_Origen__c` 
+  ni se reutilizan campos parecidos.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
