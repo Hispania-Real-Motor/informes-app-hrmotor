@@ -42,9 +42,20 @@ class EnsureInformesAuthenticated
 
         $id = $request->session()->get('report_user_id');
 
-        return $id === null
-            ? null
-            : ReportUser::query()->whereKey($id)->where('is_active', true)->first();
+        if ($id === null) {
+            return null;
+        }
+
+        $user = ReportUser::query()->whereKey($id)->where('is_active', true)->first();
+
+        if (! $user) {
+            return null;
+        }
+
+        $sessionPasswordChangedAt = $request->session()->get('report_user_password_changed_at');
+        $currentPasswordChangedAt = $user->password_changed_at?->getTimestamp();
+
+        return $sessionPasswordChangedAt === $currentPasswordChangedAt ? $user : null;
     }
 
     private function rememberedReportUser(Request $request): ?ReportUser
@@ -82,5 +93,6 @@ class EnsureInformesAuthenticated
         $request->session()->put('report_user_email', $user->email);
         $request->session()->put('report_user_role', $user->role);
         $request->session()->put('report_user_name', $user->name);
+        $request->session()->put('report_user_password_changed_at', $user->password_changed_at?->getTimestamp());
     }
 }

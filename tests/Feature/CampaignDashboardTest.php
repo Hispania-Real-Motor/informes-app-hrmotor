@@ -145,26 +145,26 @@ class CampaignDashboardTest extends TestCase
             ->assertSee('window.reportUserCanAudit = true', false);
 
         $this->withSession($adminSession)
-            ->getJson('/informes/campanas/data/summary?'.$this->query())
+            ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonStructure(['diagnostics']);
 
         $this->withSession($adminSession)
-            ->getJson('/informes/campanas/data/summary?'.$this->query().'&include_diagnostics=0')
+            ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&include_diagnostics=0')
             ->assertOk()
             ->assertJsonMissingPath('diagnostics')
             ->assertJsonStructure(['rankings']);
 
         $this->withSession($adminSession)
-            ->get('/informes/campanas/export/campaigns.csv?'.$this->query())
+            ->get('/informes/campanas/export/campaigns.csv?'.$this->campaignQuery())
             ->assertOk();
 
         $this->withSession($adminSession)
-            ->getJson('/informes/campanas/data/kpi-audit?'.$this->query().'&metric=leads_salesforce')
+            ->getJson('/informes/campanas/data/kpi-audit?'.$this->campaignQuery().'&metric=leads_salesforce')
             ->assertOk();
 
         $this->withSession($adminSession)
-            ->get('/informes/campanas/export/kpi-audit.csv?'.$this->query().'&metric=leads_salesforce')
+            ->get('/informes/campanas/export/kpi-audit.csv?'.$this->campaignQuery().'&metric=leads_salesforce')
             ->assertOk();
 
         $this->withSession($viewerSession)
@@ -172,19 +172,19 @@ class CampaignDashboardTest extends TestCase
             ->assertRedirect('/informes/leads');
 
         $this->withSession($viewerSession)
-            ->getJson('/informes/campanas/data/summary?'.$this->query())
+            ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertForbidden();
 
         $this->withSession($viewerSession)
-            ->get('/informes/campanas/export/campaigns.csv?'.$this->query())
+            ->get('/informes/campanas/export/campaigns.csv?'.$this->campaignQuery())
             ->assertForbidden();
 
         $this->withSession($viewerSession)
-            ->getJson('/informes/campanas/data/kpi-audit?'.$this->query().'&metric=leads_salesforce')
+            ->getJson('/informes/campanas/data/kpi-audit?'.$this->campaignQuery().'&metric=leads_salesforce')
             ->assertForbidden();
 
         $this->withSession($viewerSession)
-            ->get('/informes/campanas/export/kpi-audit.csv?'.$this->query().'&metric=leads_salesforce')
+            ->get('/informes/campanas/export/kpi-audit.csv?'.$this->campaignQuery().'&metric=leads_salesforce')
             ->assertForbidden();
 
         $this->withSession($directorSession)
@@ -196,25 +196,25 @@ class CampaignDashboardTest extends TestCase
             ->assertSee('window.reportUserCanAudit = true', false);
 
         $this->withSession($directorSession)
-            ->getJson('/informes/campanas/data/summary?'.$this->query())
+            ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonMissingPath('diagnostics')
             ->assertJsonPath('warnings', []);
 
         $this->withSession($directorSession)
-            ->get('/informes/campanas/export/campaigns.csv?'.$this->query())
+            ->get('/informes/campanas/export/campaigns.csv?'.$this->campaignQuery())
             ->assertOk();
 
         $this->withSession($directorSession)
-            ->getJson('/informes/campanas/data/kpi-audit?'.$this->query().'&metric=leads_salesforce')
+            ->getJson('/informes/campanas/data/kpi-audit?'.$this->campaignQuery().'&metric=leads_salesforce')
             ->assertOk();
 
         $this->withSession($directorSession)
-            ->get('/informes/campanas/export/kpi-audit.csv?'.$this->query().'&metric=leads_salesforce')
+            ->get('/informes/campanas/export/kpi-audit.csv?'.$this->campaignQuery().'&metric=leads_salesforce')
             ->assertOk();
 
         $this->withSession($directorSession)
-            ->get('/informes/campanas/export/attributions.csv?'.$this->query())
+            ->get('/informes/campanas/export/attributions.csv?'.$this->campaignQuery())
             ->assertOk();
     }
 
@@ -302,7 +302,7 @@ class CampaignDashboardTest extends TestCase
             'spend' => 250,
         ]));
 
-        $before = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&campaign_status=')
+        $before = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&campaign_status=')
             ->assertOk()
             ->json();
         $this->assertSame(250, $before['kpis']['spend']);
@@ -333,7 +333,7 @@ class CampaignDashboardTest extends TestCase
         ])->assertOk();
 
         $after = $this->withSession($session)
-            ->getJson('/informes/campanas/data/summary?'.$this->query().'&campaign_status=')
+            ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&campaign_status=')
             ->assertOk()
             ->json();
         $this->assertSame(0, $after['kpis']['spend']);
@@ -614,7 +614,7 @@ class CampaignDashboardTest extends TestCase
             'campaign_source_type' => 'platform_campaign',
         ]);
 
-        $query = $this->query();
+        $query = $this->campaignQuery();
 
         $summary = $this->getJson('/informes/campanas/data/summary?'.$query)
             ->assertOk()
@@ -794,7 +794,7 @@ class CampaignDashboardTest extends TestCase
             'opportunity_id' => '006-tasacion-name',
         ]);
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->assertJsonPath('kpis.purchases', 2);
     }
@@ -854,7 +854,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertSame(2, DB::table('campaign_lead_attributions')->where('lead_id', '00Q-tasacion-multi')->count());
         $this->assertSame(2, DB::table('campaign_lead_attributions')->where('lead_id', '00Q-tasacion-multi')->where('has_purchase', true)->count());
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->assertJsonPath('kpis.leads_salesforce', 1)
             ->assertJsonPath('kpis.opportunities', 2)
@@ -927,7 +927,7 @@ class CampaignDashboardTest extends TestCase
             'campaign_acquired' => 'Formulario Directo Meta',
         ]);
 
-        $campaigns = $this->getJson('/informes/campanas/data/campaigns?'.$this->query().'&context=venta')
+        $campaigns = $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery().'&context=venta')
             ->assertOk()
             ->json('items');
 
@@ -991,7 +991,7 @@ class CampaignDashboardTest extends TestCase
             'sold_amount' => null,
         ]);
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->assertJsonPath('kpis.opportunities', 1)
             ->assertJsonPath('kpis.sales', 0)
@@ -1036,13 +1036,13 @@ class CampaignDashboardTest extends TestCase
             'campaign_type' => 'venta',
         ]);
 
-        $this->getJson('/informes/campanas/data/campaigns?'.$this->query())
+        $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('total', 1)
             ->assertJsonPath('items.0.campaign_name', 'Campana solo Salesforce')
             ->assertJsonPath('items.0.platform', 'salesforce');
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.leads_salesforce', 1)
             ->assertJsonPath('source_reconciliation.leads.platform', 0)
@@ -1070,7 +1070,7 @@ class CampaignDashboardTest extends TestCase
             ]));
         }
 
-        $item = $this->getJson('/informes/campanas/data/campaigns?'.$this->query().'&campaign_status=')
+        $item = $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery().'&campaign_status=')
             ->assertOk()
             ->json('items.0');
 
@@ -1081,7 +1081,7 @@ class CampaignDashboardTest extends TestCase
             $this->assertNull($item[$key], $key);
         }
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query().'&campaign_status=')
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&campaign_status=')
             ->assertOk()
             ->assertJsonPath('kpis.leads_salesforce', 10)
             ->assertJsonPath('kpis.opportunities', 4)
@@ -1120,12 +1120,12 @@ class CampaignDashboardTest extends TestCase
             'match_status' => 'excluded_campaign_tasador',
         ]);
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->assertJsonPath('kpis.leads_salesforce', 0)
             ->assertJsonPath('kpis.spend', 0);
 
-        $this->getJson('/informes/campanas/data/campaigns?'.$this->query().'&context=tasacion')
+        $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->assertJsonPath('total', 0)
             ->assertJsonPath('items', []);
@@ -1144,7 +1144,7 @@ class CampaignDashboardTest extends TestCase
             'clicks' => 100,
         ]));
 
-        $this->getJson('/informes/campanas/data/campaigns?'.$this->query())
+        $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('total', 1)
             ->assertJsonPath('items.0.classification', 'Revisar tracking')
@@ -1152,7 +1152,7 @@ class CampaignDashboardTest extends TestCase
             ->assertJsonPath('items.0.campaign_source_type', 'platform_campaign')
             ->assertJsonPath('items.0.leads_salesforce', 0);
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.spend', 900)
             ->assertJsonPath('kpis.leads_salesforce', 0);
@@ -1201,7 +1201,7 @@ class CampaignDashboardTest extends TestCase
             'clicks' => 0,
         ]));
 
-        $this->getJson('/informes/campanas/data/campaigns?'.$this->query())
+        $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('items.0.ctr', null)
             ->assertJsonPath('items.0.cpc', null)
@@ -1302,7 +1302,7 @@ class CampaignDashboardTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('period_mode', 'lead_pivot')
             ->assertJsonPath('kpis.leads_salesforce', 1)
@@ -1361,7 +1361,7 @@ class CampaignDashboardTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.leads_salesforce', 0)
             ->assertJsonPath('kpis.opportunities', 0)
@@ -1396,12 +1396,12 @@ class CampaignDashboardTest extends TestCase
             'lead_id' => '00Q-origin',
         ]);
 
-        $this->getJson('/informes/campanas/data/campaigns?'.$this->query())
+        $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('total', 0)
             ->assertJsonPath('items', []);
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.leads_salesforce', 0)
             ->assertJsonPath('diagnostics.salesforce_origins', 0)
@@ -1440,7 +1440,7 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $rankings = $this->getJson('/informes/campanas/data/rankings?'.$this->query())
+        $rankings = $this->getJson('/informes/campanas/data/rankings?'.$this->campaignQuery())
             ->assertOk()
             ->json('rankings');
         $rankingJson = json_encode($rankings);
@@ -1450,7 +1450,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertArrayNotHasKey('salesforce_origin', $rankings);
         $this->assertArrayNotHasKey('review_investment_tracking', $rankings);
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->json();
 
@@ -1500,7 +1500,7 @@ class CampaignDashboardTest extends TestCase
             ]);
         }
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->json();
 
@@ -1543,7 +1543,7 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $payload = $this->getJson('/informes/campanas/data/campaigns?'.$this->query())
+        $payload = $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
             ->assertOk()
             ->json();
 
@@ -1603,7 +1603,7 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.sale_amount', 15000)
             ->assertJsonPath('kpis.roas', 30)
@@ -1659,7 +1659,7 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.sale_amount', 25000)
             ->assertJsonPath('kpis.roas', 25)
@@ -1718,7 +1718,7 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.sales', 1)
             ->assertJsonPath('kpis.sale_amount', null)
@@ -1775,7 +1775,7 @@ class CampaignDashboardTest extends TestCase
             'clicks' => 900,
         ]));
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=exposicion')
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=exposicion')
             ->assertOk()
             ->json();
 
@@ -1798,7 +1798,7 @@ class CampaignDashboardTest extends TestCase
             'clicks' => 800,
         ]));
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->json();
 
@@ -1845,7 +1845,7 @@ class CampaignDashboardTest extends TestCase
             ]),
         ]);
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=all')
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=all')
             ->assertOk()
             ->json();
 
@@ -1884,7 +1884,7 @@ class CampaignDashboardTest extends TestCase
             ]),
         ]);
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->json();
 
@@ -1922,7 +1922,7 @@ class CampaignDashboardTest extends TestCase
             ]),
         ]);
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->json();
 
@@ -2016,14 +2016,14 @@ class CampaignDashboardTest extends TestCase
         $adminSession = $this->authenticatedSession(ReportUser::ROLE_ADMIN);
 
         $summary = $this->withSession($adminSession)
-            ->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+            ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->json();
 
         $this->assertSame(1, $summary['kpis']['purchases']);
 
         $audit = $this->withSession($adminSession)
-            ->getJson('/informes/campanas/data/kpi-audit?'.$this->query().'&context=tasacion&metric=purchases')
+            ->getJson('/informes/campanas/data/kpi-audit?'.$this->campaignQuery().'&context=tasacion&metric=purchases')
             ->assertOk()
             ->json();
 
@@ -2039,7 +2039,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertEquals(14500.0, $auditItem['purchase_amount']);
 
         $csv = $this->withSession($adminSession)
-            ->get('/informes/campanas/export/kpi-audit.csv?'.$this->query().'&context=tasacion&metric=purchases')
+            ->get('/informes/campanas/export/kpi-audit.csv?'.$this->campaignQuery().'&context=tasacion&metric=purchases')
             ->assertOk()
             ->streamedContent();
 
@@ -2081,7 +2081,7 @@ class CampaignDashboardTest extends TestCase
             'impressions' => 1000,
         ]));
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=all')
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=all')
             ->assertOk()
             ->json();
 
@@ -2125,10 +2125,10 @@ class CampaignDashboardTest extends TestCase
             'record_type_normalized' => 'venta',
         ]);
 
-        $allLeadTypes = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=ventas')
+        $allLeadTypes = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=ventas')
             ->assertOk()
             ->json();
-        $appraisalsOnly = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=ventas&lead_type=Tasaci%C3%B3n')
+        $appraisalsOnly = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=ventas&lead_type=Tasaci%C3%B3n')
             ->assertOk()
             ->json();
 
@@ -2183,7 +2183,7 @@ class CampaignDashboardTest extends TestCase
             'record_type_normalized' => 'tasacion',
         ]);
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion&campaign_status=')
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion&campaign_status=')
             ->assertOk()
             ->json();
 
@@ -2192,7 +2192,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertSame(1, $summary['kpis']['lead_attribution_overlap']);
         $this->assertStringContainsString('1 aparici', implode(' ', $summary['warnings']));
 
-        $audit = $this->getJson('/informes/campanas/data/attribution-audit?'.$this->query().'&context=tasacion&campaign_status=')
+        $audit = $this->getJson('/informes/campanas/data/attribution-audit?'.$this->campaignQuery().'&context=tasacion&campaign_status=')
             ->assertOk()
             ->assertJsonPath('total', 2)
             ->json('items');
@@ -2202,7 +2202,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertTrue(collect($audit)->every(fn (array $row): bool => $row['overlaps_another_campaign']));
         $this->assertSame(['tasacion'], collect($audit)->pluck('lead_record_type_normalized')->unique()->values()->all());
 
-        $csv = $this->get('/informes/campanas/export/attributions.csv?'.$this->query().'&context=tasacion&campaign_status=')
+        $csv = $this->get('/informes/campanas/export/attributions.csv?'.$this->campaignQuery().'&context=tasacion&campaign_status=')
             ->assertOk()
             ->streamedContent();
 
@@ -2248,7 +2248,7 @@ class CampaignDashboardTest extends TestCase
             'sold_amount' => 12000,
         ]));
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query())
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->json();
 
@@ -2261,10 +2261,10 @@ class CampaignDashboardTest extends TestCase
         $this->assertSame(0, data_get($summary, 'source_reconciliation.opportunities.platform'));
         $this->assertSame(0, data_get($summary, 'source_reconciliation.results.platform'));
 
-        $leadAudit = $this->getJson('/informes/campanas/data/kpi-audit?'.$this->query().'&context=branding')
+        $leadAudit = $this->getJson('/informes/campanas/data/kpi-audit?'.$this->campaignQuery().'&context=branding')
             ->assertOk()
             ->json();
-        $opportunityAudit = $this->getJson('/informes/campanas/data/kpi-audit?'.$this->query().'&metric=opportunities')
+        $opportunityAudit = $this->getJson('/informes/campanas/data/kpi-audit?'.$this->campaignQuery().'&metric=opportunities')
             ->assertOk()
             ->json();
 
@@ -2307,7 +2307,7 @@ class CampaignDashboardTest extends TestCase
             'has_purchase' => true,
         ]));
 
-        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->query().'&context=tasacion')
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
             ->json();
 
@@ -2337,7 +2337,7 @@ class CampaignDashboardTest extends TestCase
         ];
     }
 
-    private function query(): string
+    private function campaignQuery(): string
     {
         return http_build_query([
             'start_date' => '2026-05-01',

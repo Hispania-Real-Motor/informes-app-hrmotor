@@ -119,6 +119,7 @@ class InformesLoginController extends Controller
         $request->session()->put('report_user_email', $user->email);
         $request->session()->put('report_user_role', $user->role);
         $request->session()->put('report_user_name', $user->name);
+        $request->session()->put('report_user_password_changed_at', $user->password_changed_at?->getTimestamp());
     }
 
     private function queueRememberCookie(Request $request, ReportUser $user): void

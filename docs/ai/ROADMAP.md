@@ -2,6 +2,32 @@
 
 Actualizado: 2026-09-30.
 
+## Trabajo transversal autorizado
+
+### AUTH-PASSWORD-RESET — Recuperación de contraseña de usuarios de Informes
+
+- **Prioridad:** P0 seguridad.
+- **Estado:** `aprobada`.
+- **Rama activa:** `feat/auth-password-reset`.
+- **SHA base verificado:** `6c26cce4a09349c30ebd289c73cf5ea985b9166f`.
+- **Revisión sénior pre-PR:** aprobada sobre el HEAD
+  `29a1311a103e52b0036c5e24429ea2b7ca7ddeb3`.
+- **Motivo:** flujo completo de recuperación/restablecimiento por email para
+  usuarios reales `ReportUser`, sin sustituir el login manual existente ni usar
+  el broker `users` de `App\Models\User`.
+- **Paralelismo autorizado:** este lote se ejecuta de forma transversal en
+  paralelo al trabajo Salesforce Interest porque no depende técnicamente de
+  Leads, Interests, sincronizadores, dashboards ni universos analíticos.
+- **Criterios de revisión:** no enumeración de cuentas, envío desacoplado por
+  Job cifrado, tokens seguros y de un solo uso, expiración configurable de 60
+  minutos, rate limiting, correo por Laravel Mail, passwords hasheadas por
+  `ReportUser`, invalidación de tokens previos y remember cookies previas,
+  pruebas verdes, Pint y documentación.
+- **Condición operacional de despliegue:** el entorno debe usar cola realmente
+  asíncrona con `QUEUE_CONNECTION=database` y debe existir un worker Laravel
+  Queue operativo.
+- **Pendiente para cierre:** abrir PR, CI verde, merge y validación operacional.
+
 ## Salesforce Interest foundation
 
 - `SF-INTEREST-FOUNDATION-1` — **completada y certificada en shadow**: revisión sénior aprobada y commit
@@ -136,7 +162,8 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 ## Línea base y límites actuales
 
 - Rama base de este roadmap: `main`.
-- SHA base de la rama funcional activa: `6c26cce4a09349c30ebd289c73cf5ea985b9166f`.
+- SHA base verificado para el trabajo transversal AUTH activo:
+  `6c26cce4a09349c30ebd289c73cf5ea985b9166f`.
 - El PR #54 de preparación documental está cerrado y fusionado. La rama remota
   `docs/roadmap-executive-v1` se eliminó después de verificar que seguía
   apuntando al commit aprobado `22e2f6496dc376ad6236854e56434e8a8aa0f3cc`.
@@ -156,10 +183,10 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
   posterior de `main` (`CI #132`) finalizaron correctamente; la rama
   `feat/rv-2-direction-summary-production-periods` fue eliminada después del
   merge.
-- La única rama funcional activa es
-  `feat/sf-interest-foundation-4-opportunity`; FOUNDATION-4A está en revisión y
-  pendiente de certificación runtime, y FOUNDATION-4B continúa bloqueada por
-  contrato Salesforce no demostrado.
+- Actualmente existe la rama funcional transversal activa
+  `feat/auth-password-reset` en estado `en_revision`. El siguiente paso
+  operacional de Reservas/Ventas sigue siendo su despliegue controlado; no se ha
+  realizado todavía.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 

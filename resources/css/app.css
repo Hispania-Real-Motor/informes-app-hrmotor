@@ -118,6 +118,7 @@
 }
 
 .login-card input[type="text"],
+.login-card input[type="email"],
 .login-card input[type="password"] {
     width: 100%;
     height: 50px;
@@ -206,6 +207,34 @@
     color: #b91c2d;
     font-size: 14px;
     box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+
+.login-status {
+    margin-bottom: 20px;
+    padding: 12px 14px;
+    border: 1px solid rgba(22, 163, 74, .20);
+    border-radius: 18px;
+    background: rgba(240, 253, 244, .96);
+    color: #166534;
+    font-size: 14px;
+    line-height: 1.5;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+
+.login-secondary-link {
+    margin: 18px 0 0;
+    font-size: 14px;
+    text-align: center;
+}
+
+.login-secondary-link a {
+    color: #e51a2e;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.login-secondary-link a:hover {
+    text-decoration: underline;
 }
 
 @media (max-width: 520px) {

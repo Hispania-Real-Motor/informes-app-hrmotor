@@ -2,6 +2,32 @@
 
 Actualizado: 2026-09-30.
 
+## Autenticación de Informes y recuperación de contraseña
+
+- El acceso real a Informes sigue siendo manual y basado en `ReportUser`; no se
+  ha migrado al guard/broker estándar de Laravel ni se usa `App\Models\User`
+  para usuarios de Informes.
+- La recuperación de contraseña usa rutas públicas propias, un Job Laravel
+  cifrado (`ShouldBeEncrypted`) y una tabla dedicada
+  `report_user_password_reset_tokens`. El endpoint HTTP solo valida, aplica
+  rate limiting, encola el Job y responde con mensaje genérico; no abre SMTP ni
+  consulta existencia de usuario. Los tokens se generan con fuente
+  criptográficamente segura dentro del Job, se envían únicamente por Laravel
+  Mail, y en base de datos solo se conserva `token_hash` SHA-256, nunca el token
+  plano.
+- Cada nueva solicitud activa invalida tokens previos no consumidos del mismo
+  `ReportUser`. La creación se serializa con `lockForUpdate()` sobre la fila del
+  usuario, sin locks globales. El consumo exige token no usado, no caducado,
+  usuario activo y email actual coincidente con el hash de email guardado; un
+  cambio posterior de email invalida el enlace.
+- La expiración centralizada vive en `auth.report_password_reset.expire_minutes`
+  y por defecto es de 60 minutos. La solicitud y el consumo aplican rate limit
+  con claves que combinan IP y email/token hasheados.
+- El cambio de password actualiza `password_changed_at`. El middleware de
+  informes compara esa marca con la sesión, por lo que sesiones autenticadas
+  antes del cambio se rechazan en su siguiente petición. La cookie remember ya
+  queda inválida porque su HMAC incluye el hash actual de contraseña.
+
 ## Reconciliación local Interest–Opportunity
 
 - FOUNDATION-4A materializa una vista auditable y unidireccional basada

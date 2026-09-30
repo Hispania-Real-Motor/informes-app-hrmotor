@@ -1,5 +1,33 @@
 # Decisiones técnicas
 
+## 2026-09-30 — Reset dedicado para `ReportUser`
+
+- No se usa el broker estándar `users` ni `password_reset_tokens` para Informes,
+  porque el login productivo opera sobre `report_users` mediante sesión manual y
+  `App\Models\User` pertenece a otro dominio. Convertir `ReportUser` al flujo
+  nativo habría ampliado la superficie de regresión del login.
+- Se crea una tabla dedicada `report_user_password_reset_tokens` con FK a
+  `report_users`, hash SHA-256 del token, hash del email normalizado, expiración
+  y marca de consumo. Una nueva solicitud consume tokens previos del mismo
+  usuario para evitar enlaces antiguos válidos.
+- El token plano solo existe en memoria y en el enlace enviado por Laravel Mail.
+  No se registra en logs ni se persiste. El formulario de solicitud siempre
+  devuelve el mismo mensaje público para usuarios activos, inexistentes o
+  inactivos.
+- El envío de email no se realiza en el request HTTP. La solicitud encola un Job
+  Laravel dedicado para cualquier email válido no limitado, y el Job es quien
+  comprueba existencia/actividad, genera token y envía. El Job implementa
+  `ShouldBeEncrypted` para que el email del solicitante no quede en claro en el
+  payload persistido de la cola.
+- La creación de tokens bloquea la fila del `ReportUser` con `lockForUpdate()`
+  antes de consumir tokens previos y crear el nuevo, evitando dos tokens activos
+  ante solicitudes concurrentes del mismo usuario sin bloquear usuarios
+  distintos.
+- Se añade `password_changed_at` a `report_users` para invalidar sesiones de
+  Informes anteriores al cambio sin rediseñar el sistema de autenticación. Las
+  cookies remember previas ya quedan inválidas al cambiar el hash de password,
+  porque el HMAC existente lo incluye.
+
 ## 2026-09-30 — Fuente separada de dependencias Opportunity para FOUNDATION-4A
 
 - Las Opportunities requeridas por
@@ -19,26 +47,6 @@
 - `missing` Salesforce se proyecta como `salesforce_missing` e ID inválido como
   `invalid_reference`; ambos requieren revisión. `active` no requiere revisión
   por su mera ausencia legacy. FOUNDATION-4B continúa separada y bloqueada.
-
-## 2026-09-29 — FOUNDATION-4A unidireccional Interest–Opportunity
-
-- La única evidencia contractual disponible es
-  `Interes__c.IN_VEN_Oportunidad__c → Opportunity`, ya replicada en
-  `salesforce_interests.inverse_opportunity_salesforce_id`. FOUNDATION-4A se
-  construye solo con esa relación y Salesforce ID; no usa Lead, Account,
-  portal, PII ni afinidades como sustitutos.
-- El snapshot contiene una fila por Interest y no materializa el universo de
-  Opportunities no referenciadas. `inverse_shared` es observable y requiere
-  revisión, pero no se declara conflicto porque Salesforce todavía no demuestra
-  la cardinalidad de negocio.
-- Lifecycle/presencia Opportunity se conserva separado del estado de relación y
-  del lifecycle Interest. La estabilidad se valida únicamente sobre las
-  Opportunities referenciadas y sus campos de lifecycle relevantes, evitando
-  firmar o escanear la réplica completa.
-- FOUNDATION-4B es una fase separada y bloqueada hasta que describe demuestre el
-  lookup Opportunity → `Interes__c`, su API Name, tipo, `referenceTo` y FLS. No
-  se añade `HRM_Interes_Origen__c` por documentación histórica ni se modifica el
-  sincronizador Opportunity o su scheduler.
 
 ## 2026-09-29 — Fuente separada para dependencias Lead de Interest
 
