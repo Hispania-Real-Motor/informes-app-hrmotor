@@ -1,5 +1,63 @@
 # Handoff para agentes
 
+## AUTH-PASSWORD-RESET — Recuperación segura de contraseña (2026-09-30)
+
+- Implementado el flujo completo para usuarios reales `ReportUser`: enlace desde
+  login, formulario de solicitud, correo Laravel Mail, formulario de reset,
+  actualización de password y vuelta al login. No se toca `App\Models\User`, el
+  guard estándar ni la lógica de dashboards/Salesforce.
+- Arquitectura: solución dedicada de dominio Informes con
+  `report_user_password_reset_tokens`. Se descartó usar el broker `users`
+  porque apunta al modelo estándar y no al login manual de `ReportUser`.
+- Archivos principales modificados/creados: rutas públicas en `routes/web.php`;
+  controlador `ReportUserPasswordResetController`; servicio
+  `ReportUserPasswordResetService`; modelo `ReportUserPasswordResetToken`;
+  mailable `ReportUserPasswordResetMail`; vistas Blade de solicitud/reset y
+  correo; migración `2026_09_30_090000_create_report_user_password_reset_tokens_table`;
+  `ReportUser`, login/middleware, CSS del login, `.env.example`; pruebas
+  `ReportUserPasswordResetTest`; documentación `ROADMAP`, `PROJECT_CONTEXT`,
+  `DECISIONS` y este handoff.
+- Base de datos: migración aditiva que añade `report_users.password_changed_at`
+  nullable y crea `report_user_password_reset_tokens` con FK, `token_hash`
+  único, `email_hash`, `expires_at`, `consumed_at` e índices de consumo/expiración.
+- Seguridad: respuesta pública genérica para evitar enumeración; solo usuarios
+  activos reciben email; tokens de 64 caracteres aleatorios; persistencia solo
+  por hash; expiración configurable de 60 minutos; single use; nueva solicitud
+  invalida anteriores; CSRF en POST; validación `min:12|max:255|confirmed`;
+  rate limit por IP + email/token hasheados; no hay contraseñas temporales ni
+  tokens en logs.
+- Sesiones y remember: el reset actualiza `password_changed_at`; sesiones
+  anteriores quedan rechazadas por middleware en la siguiente petición. Las
+  cookies remember previas quedan criptográficamente inválidas porque el HMAC
+  existente incluye el hash nuevo de la contraseña. No se borra físicamente toda
+  la tabla de sesiones para evitar depender del driver/encriptación.
+- Rendimiento: búsqueda por email usa el índice unique existente; validación de
+  token usa `token_hash` único; no hay scans globales ni jobs/schedulers nuevos.
+- Configuración: nuevas variables opcionales
+  `REPORT_PASSWORD_RESET_EXPIRE_MINUTES`,
+  `REPORT_PASSWORD_RESET_REQUEST_MAX_ATTEMPTS`,
+  `REPORT_PASSWORD_RESET_REQUEST_DECAY_SECONDS`,
+  `REPORT_PASSWORD_RESET_MAX_ATTEMPTS` y
+  `REPORT_PASSWORD_RESET_DECAY_SECONDS`. Se reutilizan `APP_URL` y `MAIL_*`.
+- Pruebas ejecutadas y resultado final:
+  `php artisan test --filter=ReportUserPasswordResetTest` correcto, 11 pruebas /
+  70 aserciones; `php artisan test --filter=StockRecommendationCandidatePaginationTest`
+  correcto tras una micro-optimización de la ruta compacta interna, 2 pruebas /
+  13 aserciones; `php artisan test` correcto, 1.098 pruebas / 8.314 aserciones.
+- Pint: el `--test` global sigue fallando por infracciones preexistentes en
+  archivos ajenos al diff. La validación aplicable sobre todos los PHP
+  modificados/creados en este lote pasó con
+  `php .\vendor\bin\pint --test ...` y resultado correcto.
+- Build frontend: `npm run build` correcto. Vite conserva los avisos no
+  bloqueantes ya conocidos de `/images/login-bg.jpg` resuelto en runtime y
+  deprecación Node `module.register()`.
+- Acciones manuales necesarias: desplegar código, ejecutar migraciones en la base
+  objetivo, limpiar config/cache si aplica y verificar `APP_URL`, `MAIL_*`,
+  trusted proxies y `SESSION_SECURE_COOKIE` en staging/producción.
+- Riesgos pendientes: no se ha introducido revocación física centralizada de
+  todas las sesiones persistidas; la invalidación es efectiva al siguiente
+  request mediante comparación de `password_changed_at`.
+
 ## SF-INTEREST-FOUNDATION-3 — métrica `lead_merged` (2026-09-29)
 
 - Se corrigió exclusivamente la agregación de `lead_merged` para las

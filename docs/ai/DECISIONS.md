@@ -1,5 +1,24 @@
 # Decisiones técnicas
 
+## 2026-09-30 — Reset dedicado para `ReportUser`
+
+- No se usa el broker estándar `users` ni `password_reset_tokens` para Informes,
+  porque el login productivo opera sobre `report_users` mediante sesión manual y
+  `App\Models\User` pertenece a otro dominio. Convertir `ReportUser` al flujo
+  nativo habría ampliado la superficie de regresión del login.
+- Se crea una tabla dedicada `report_user_password_reset_tokens` con FK a
+  `report_users`, hash SHA-256 del token, hash del email normalizado, expiración
+  y marca de consumo. Una nueva solicitud consume tokens previos del mismo
+  usuario para evitar enlaces antiguos válidos.
+- El token plano solo existe en memoria y en el enlace enviado por Laravel Mail.
+  No se registra en logs ni se persiste. El formulario de solicitud siempre
+  devuelve el mismo mensaje público para usuarios activos, inexistentes o
+  inactivos.
+- Se añade `password_changed_at` a `report_users` para invalidar sesiones de
+  Informes anteriores al cambio sin rediseñar el sistema de autenticación. Las
+  cookies remember previas ya quedan inválidas al cambiar el hash de password,
+  porque el HMAC existente lo incluye.
+
 ## 2026-09-29 — Fuente separada para dependencias Lead de Interest
 
 - Los Leads históricos requeridos por `migration_origin_lead_id` no se añaden a

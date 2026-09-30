@@ -73,6 +73,7 @@ class ReportUser extends Model
         'salesforce_user_id',
         'is_active',
         'last_login_at',
+        'password_changed_at',
         'permissions',
     ];
 
@@ -83,6 +84,7 @@ class ReportUser extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'last_login_at' => 'datetime',
+        'password_changed_at' => 'datetime',
         'permissions' => 'array',
     ];
 

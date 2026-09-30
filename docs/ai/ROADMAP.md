@@ -1,6 +1,25 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-09-29.
+Actualizado: 2026-09-30.
+
+## Trabajo transversal autorizado
+
+### AUTH-PASSWORD-RESET — Recuperación de contraseña de usuarios de Informes
+
+- **Prioridad:** P0 seguridad.
+- **Estado:** `en_revision`.
+- **Rama activa:** `feat/auth-password-reset`.
+- **SHA base verificado:** `6c26cce4a09349c30ebd289c73cf5ea985b9166f`.
+- **Motivo:** flujo completo de recuperación/restablecimiento por email para
+  usuarios reales `ReportUser`, sin sustituir el login manual existente ni usar
+  el broker `users` de `App\Models\User`.
+- **Paralelismo autorizado:** este lote se ejecuta de forma transversal en
+  paralelo al trabajo Salesforce Interest porque no depende técnicamente de
+  Leads, Interests, sincronizadores, dashboards ni universos analíticos.
+- **Criterios de revisión:** no enumeración de cuentas, tokens seguros y de un
+  solo uso, expiración configurable de 60 minutos, rate limiting, correo por
+  Laravel Mail, passwords hasheadas por `ReportUser`, invalidación de tokens
+  previos y remember cookies previas, pruebas verdes, Pint y documentación.
 
 ## Salesforce Interest foundation
 

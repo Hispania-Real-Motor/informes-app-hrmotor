@@ -9,6 +9,14 @@ return [
         'decay_seconds' => (int) env('REPORT_LOGIN_DECAY_SECONDS', 60),
     ],
 
+    'report_password_reset' => [
+        'expire_minutes' => (int) env('REPORT_PASSWORD_RESET_EXPIRE_MINUTES', 60),
+        'request_max_attempts' => (int) env('REPORT_PASSWORD_RESET_REQUEST_MAX_ATTEMPTS', 3),
+        'request_decay_seconds' => (int) env('REPORT_PASSWORD_RESET_REQUEST_DECAY_SECONDS', 3600),
+        'reset_max_attempts' => (int) env('REPORT_PASSWORD_RESET_MAX_ATTEMPTS', 5),
+        'reset_decay_seconds' => (int) env('REPORT_PASSWORD_RESET_DECAY_SECONDS', 900),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Authentication Defaults
