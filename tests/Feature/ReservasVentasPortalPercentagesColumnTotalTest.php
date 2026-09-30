@@ -29,7 +29,7 @@ class ReservasVentasPortalPercentagesColumnTotalTest extends TestCase
         $this->opportunities('006-coches-caida', 90, ['portal_resolved' => 'Coches.net', 'stage_name' => 'Cerrada Perdida']);
         $this->opportunities('006-coches-cv', 60, ['portal_resolved' => 'Coches.net', 'stage_name' => 'Contrato', 'reservation' => true, 'cv_signed' => true]);
 
-        $rows = collect($this->getJson('/informes/reservas-ventas/data/portals?'.$this->query())->json('items'));
+        $rows = collect($this->getJson('/informes/reservas-ventas/data/portals?'.$this->reservasVentasQuery())->json('items'));
         $web = $rows->firstWhere('portal', 'Web');
         $coches = $rows->firstWhere('portal', 'Coches.net');
 
@@ -84,7 +84,7 @@ class ReservasVentasPortalPercentagesColumnTotalTest extends TestCase
         }
     }
 
-    private function query(): string
+    private function reservasVentasQuery(): string
     {
         return http_build_query([
             'period' => 'custom',

@@ -24,7 +24,7 @@ class ReservasVentasCommercialsPercentagesColumnTotalTest extends TestCase
         $this->commercialMetrics('juan', 'Comercial Juan', 'Alcobendas', 40, 12, 8);
         $this->commercialMetrics('ana', 'Comercial Ana', 'Bilbao', 304, 108, 72);
 
-        $response = $this->getJson('/informes/reservas-ventas/data/commercials?'.$this->query());
+        $response = $this->getJson('/informes/reservas-ventas/data/commercials?'.$this->reservasVentasQuery());
 
         $zone = collect($response->json('zones'))->firstWhere('zone', 'Zona Sur y Centro');
         $delegation = collect($response->json('delegations'))->firstWhere('commercial_delegation', 'Alcobendas');
@@ -108,7 +108,7 @@ class ReservasVentasCommercialsPercentagesColumnTotalTest extends TestCase
         }
     }
 
-    private function query(): string
+    private function reservasVentasQuery(): string
     {
         return http_build_query([
             'period' => 'custom',
