@@ -97,6 +97,35 @@ class SalesforceLeadDashboardDatasetService
         return $this->payload($request, 'summary', $timing)['summary'];
     }
 
+    public function executiveLeadTotal(CarbonImmutable $start, CarbonImmutable $end): array
+    {
+        $filters = $this->filters(Request::create('/internal/executive/leads', 'GET'), 'summary');
+        $period = ['start' => $start, 'end' => $end];
+        $bucket = $this->emptyBucket();
+
+        $this->eachPeriodLead($period, function (array $lead) use (&$bucket, $filters): void {
+            if (! $this->passesFilters($lead, $filters)) {
+                return;
+            }
+
+            $this->addToBucket($bucket, $lead);
+        });
+
+        $metadata = $this->syncMetadata($period);
+
+        return [
+            'value' => $this->finalizeBucket($bucket)['leads_totales'],
+            'coverage' => $metadata['metadata_coverage'],
+            'source_cutoff' => [
+                'dataset_cutoff_at' => $metadata['dataset_cutoff_at'],
+                'salesforce_leads_synced_at' => $metadata['salesforce_leads_synced_at'],
+                'activities_synced_at' => $metadata['activities_synced_at'],
+                'sync_run_id' => $metadata['sync_run_id'],
+                'sync_run_status' => $metadata['sync_run_status'],
+            ],
+        ];
+    }
+
     public function kpiAudit(Request $request): array
     {
         $filters = $this->filters($request, 'summary');

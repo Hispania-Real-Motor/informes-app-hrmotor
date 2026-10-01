@@ -29,6 +29,27 @@ class ReservationsSalesDashboardDatasetService
         return $this->payload($request)['summary'];
     }
 
+    public function executiveProduction(CarbonImmutable $start, CarbonImmutable $endExclusive): array
+    {
+        $filters = $this->filters(Request::create('/internal/executive/reservas-ventas', 'GET', [
+            'period' => 'custom',
+            'date_criterion' => 'created_date',
+        ]));
+        $period = ['start' => $start, 'end' => $endExclusive];
+        $aggregate = $this->aggregate($filters, $period);
+
+        return [
+            'reservas' => $aggregate['bucket']['reservas_totales'],
+            'ventas' => $aggregate['production_sales'],
+            'data_quality' => $aggregate['data_quality'],
+            'source_cutoff' => [
+                'dataset_cutoff_at' => $this->lastUpdated()?->toDateTimeString(),
+                'dataset_source' => 'local_snapshot',
+                'timezone' => (string) config('app.timezone'),
+            ],
+        ];
+    }
+
     public function kpiAudit(Request $request): array
     {
         $filters = $this->filters($request);

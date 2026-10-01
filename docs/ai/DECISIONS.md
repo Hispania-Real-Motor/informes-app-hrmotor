@@ -1,5 +1,40 @@
 # Decisiones técnicas
 
+## 2026-10-01 — Dataset ejecutivo diario local y reconciliable
+
+- EXE-2 se implementa como capa local de preparación de datos en
+  `App\Services\Analytics\Executive\ExecutiveDailyDatasetService`. Su salida
+  alimenta EXE-1, pero no reimplementa reglas de estado, dirección, baseline ni
+  thresholds.
+- El cutoff ejecutivo V1 se resuelve en servidor con `CarbonImmutable` y
+  timezone fijo `Europe/Madrid`: siempre evalúa el último día natural cerrado.
+  Las muestras usan rangos semiabiertos `[start, endExclusive)`, excepto el
+  adaptador de Leads cuando invoca la API canónica existente que opera con fin
+  inclusivo.
+- El MTD es exclusivamente contexto y se define como `[primer día del mes del
+  cutoff, D+1)` en `Europe/Madrid`. No sustituye `current` ni ninguna referencia
+  semanal.
+- Leads debe reutilizar el universo de `SalesforceLeadDashboardDatasetService`.
+  Reservas y Ventas deben reutilizar `ReservationsSalesDashboardDatasetService`:
+  reservas desde `reservas_totales` por `reservation_date` y ventas desde
+  `production_sales` por `cv_signed_date`. No se crean fórmulas paralelas ni
+  consultas simplificadas para EXE-2.
+- El valor `0` solo se publica cuando existe evidencia de cobertura completa y
+  el universo canónico contiene cero hechos. La ausencia de cobertura,
+  desactualización o incidencia se representa con `null`.
+- La salud del dato se deriva de evidencia local verificable: `actualizado` si
+  el cutoff de fuente cubre `endExclusive`; `desactualizado` si existe cutoff
+  pero queda antes del fin requerido; `parcial` si no existe cutoff demostrable;
+  `incidencia` solo cuando el servicio canónico aporta una incidencia real de
+  calidad. No se aprueba ningún umbral temporal por horas.
+- Una deduplicación canónica común en Reservas/Ventas no convierte por sí sola
+  una métrica en incidencia ejecutiva. Solo los grupos con
+  `breakdown_status=data_quality_incident` bloquean la evaluabilidad del sample.
+- EXE-2 no devuelve PII ni Salesforce IDs, no consulta Salesforce ni HTTP
+  externo, no usa IA, no envía correo y no crea persistencia diaria. Scopes
+  futuros deberán entrar como contexto preparado por consumidores posteriores,
+  sin modificar el motor de reglas.
+
 ## 2026-09-30 — Motor ejecutivo V1 puro y dirección sin tolerancia
 
 - EXE-1 se implementa como un core puro en
