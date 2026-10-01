@@ -121,7 +121,10 @@ final class ExecutiveDailyDatasetService
             ? $this->leadSample($start, $endExclusive)
             : $this->reservationSalesSample($metric, $start, $endExclusive);
         $sourceCutoff = $this->sourceCutoff($raw['source_cutoff']);
-        $complete = $sourceCutoff !== null && $sourceCutoff->greaterThanOrEqualTo($endExclusive);
+        $baseCovered = $this->baseCoverageCovered($raw['source_cutoff']);
+        $complete = $baseCovered === null
+            ? $sourceCutoff !== null && $sourceCutoff->greaterThanOrEqualTo($endExclusive)
+            : $baseCovered && $sourceCutoff !== null && $sourceCutoff->greaterThanOrEqualTo($endExclusive);
         $incident = (bool) ($raw['data_incident'] ?? false)
             || $this->syncRunIncident($raw['source_cutoff']);
 
@@ -188,7 +191,7 @@ final class ExecutiveDailyDatasetService
             return ExecutiveMetricRulesEngine::HEALTH_INCIDENT;
         }
 
-        if (collect($requiredSamples)->contains(fn (array $sample): bool => $this->sourceCutoff($sample['source_cutoff']) === null)) {
+        if (collect($requiredSamples)->contains(fn (array $sample): bool => $this->missingCoverage($sample['source_cutoff']))) {
             return ExecutiveMetricRulesEngine::HEALTH_PARTIAL;
         }
 
@@ -201,9 +204,27 @@ final class ExecutiveDailyDatasetService
 
     private function syncRunIncident(array $sourceCutoff): bool
     {
-        $status = $sourceCutoff['sync_run_status'] ?? null;
+        $status = $sourceCutoff['freshness_status'] ?? $sourceCutoff['sync_run_status'] ?? null;
 
         return filled($status) && $status !== 'completed';
+    }
+
+    private function baseCoverageCovered(array $sourceCutoff): ?bool
+    {
+        $status = $sourceCutoff['coverage_base_status'] ?? null;
+
+        return $status === null ? null : $status === 'covered';
+    }
+
+    private function missingCoverage(array $sourceCutoff): bool
+    {
+        $baseCovered = $this->baseCoverageCovered($sourceCutoff);
+
+        if ($baseCovered !== null) {
+            return ! $baseCovered;
+        }
+
+        return $this->sourceCutoff($sourceCutoff) === null;
     }
 
     /** @return array<string, mixed> */

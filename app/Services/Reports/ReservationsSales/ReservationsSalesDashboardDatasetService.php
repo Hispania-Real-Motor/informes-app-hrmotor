@@ -20,6 +20,11 @@ class ReservationsSalesDashboardDatasetService
 
     private const DATA_QUALITY_INCIDENT = 'Incidencia de datos';
 
+    private const EXECUTIVE_BASE_COVERAGE_MODES = ['period', 'all_history'];
+
+    /** @var Collection<int, ReportSyncRun>|null */
+    private ?Collection $opportunitySyncRuns = null;
+
     public function __construct(
         private readonly LeadDelegationNormalizer $delegationNormalizer,
         private readonly OpportunityPortalNormalizer $portalNormalizer,
@@ -1298,26 +1303,69 @@ class ReservationsSalesDashboardDatasetService
     /** @return array<string, mixed> */
     private function opportunitySyncMetadata(CarbonImmutable $start, CarbonImmutable $endExclusive): array
     {
-        $run = ReportSyncRun::query()
-            ->where('dataset', 'salesforce_opportunities')
-            ->where('source', 'salesforce')
-            ->where('period_start_at', '<=', $start)
-            ->where('period_end_at', '>=', $endExclusive)
-            ->latest('started_at')
-            ->latest('id')
-            ->first();
+        $baseRun = $this->opportunitySyncRuns()
+            ->first(fn (ReportSyncRun $run): bool => $this->isExecutiveBaseCoverageRun($run, $start, $endExclusive));
+        $freshnessRun = $this->opportunitySyncRuns()
+            ->first(fn (ReportSyncRun $run): bool => $this->isExecutiveFreshnessRun($run, $start, $endExclusive));
 
         return [
-            'dataset_cutoff_at' => $run?->source_cutoff_at?->toDateTimeString(),
+            'dataset_cutoff_at' => $freshnessRun?->source_cutoff_at?->toDateTimeString(),
             'dataset_source' => 'report_sync_runs',
-            'sync_run_id' => $run?->id,
-            'sync_run_status' => $run?->status,
-            'sync_run_completed_at' => $run?->completed_at?->toDateTimeString(),
-            'sync_run_period_start_at' => $run?->period_start_at?->toDateTimeString(),
-            'sync_run_period_end_at' => $run?->period_end_at?->toDateTimeString(),
+            'coverage_base_status' => $baseRun !== null ? 'covered' : 'missing',
+            'coverage_base_run_id' => $baseRun?->id,
+            'coverage_base_mode' => $this->syncRunMode($baseRun),
+            'coverage_base_period_start_at' => $baseRun?->period_start_at?->toDateTimeString(),
+            'coverage_base_period_end_at' => $baseRun?->period_end_at?->toDateTimeString(),
+            'coverage_base_source_cutoff_at' => $baseRun?->source_cutoff_at?->toDateTimeString(),
+            'freshness_run_id' => $freshnessRun?->id,
+            'freshness_mode' => $this->syncRunMode($freshnessRun),
+            'freshness_status' => $freshnessRun?->status,
+            'freshness_completed_at' => $freshnessRun?->completed_at?->toDateTimeString(),
+            'freshness_period_start_at' => $freshnessRun?->period_start_at?->toDateTimeString(),
+            'freshness_period_end_at' => $freshnessRun?->period_end_at?->toDateTimeString(),
             'local_updated_at' => $this->lastUpdated()?->toDateTimeString(),
-            'timezone' => (string) ($run?->timezone ?? config('app.timezone')),
+            'timezone' => (string) ($freshnessRun?->timezone ?? $baseRun?->timezone ?? config('app.timezone')),
         ];
+    }
+
+    /** @return Collection<int, ReportSyncRun> */
+    private function opportunitySyncRuns(): Collection
+    {
+        return $this->opportunitySyncRuns ??= ReportSyncRun::query()
+            ->where('dataset', 'salesforce_opportunities')
+            ->where('source', 'salesforce')
+            ->orderByDesc('started_at')
+            ->orderByDesc('id')
+            ->get();
+    }
+
+    private function isExecutiveBaseCoverageRun(ReportSyncRun $run, CarbonImmutable $start, CarbonImmutable $endExclusive): bool
+    {
+        return $run->status === 'completed'
+            && in_array($this->syncRunMode($run), self::EXECUTIVE_BASE_COVERAGE_MODES, true)
+            && $run->period_start_at !== null
+            && $run->period_end_at !== null
+            && CarbonImmutable::parse($run->period_start_at)->lessThanOrEqualTo($start)
+            && CarbonImmutable::parse($run->period_end_at)->greaterThanOrEqualTo($endExclusive);
+    }
+
+    private function isExecutiveFreshnessRun(ReportSyncRun $run, CarbonImmutable $start, CarbonImmutable $endExclusive): bool
+    {
+        if ($this->syncRunMode($run) === 'modified') {
+            return true;
+        }
+
+        return $run->period_start_at !== null
+            && $run->period_end_at !== null
+            && CarbonImmutable::parse($run->period_start_at)->lessThanOrEqualTo($start)
+            && CarbonImmutable::parse($run->period_end_at)->greaterThanOrEqualTo($endExclusive);
+    }
+
+    private function syncRunMode(?ReportSyncRun $run): ?string
+    {
+        $mode = $run?->stats['mode'] ?? null;
+
+        return filled($mode) ? (string) $mode : null;
     }
 
     private function dataVersion(): array

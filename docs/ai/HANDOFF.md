@@ -28,12 +28,16 @@
   existentes.
 - Cobertura/frescura: un sample solo publica valor numérico cuando existe
   evidencia de cutoff de fuente `>= endExclusive` y no hay incidencia de calidad
-  real. En Reservas/Ventas la autoridad de cobertura es el `ReportSyncRun`
-  `salesforce_opportunities` que cubre el rango, siguiendo la semántica usada
-  por `CommercialCommissionSourceReadinessService`; `updated_at` local queda
-  solo como metadata diagnóstica. Sin run/cutoff queda `parcial`; con run
-  completado pero cutoff anterior queda `desactualizado`; con run no completado
-  o incidencia real queda `incidencia`. No se inventan umbrales por horas.
+  real. En Reservas/Ventas se separa cobertura base histórica de frescura
+  incremental: la cobertura base exige un `ReportSyncRun`
+  `salesforce_opportunities` `completed`, con modo `period` o `all_history`, que
+  cubra el rango funcional. Un run `modified` nunca sustituye esa cobertura
+  base; solo puede aportar frescura incremental. Los runs `period`/`all_history`
+  aportan frescura únicamente para los rangos que cubren. `updated_at` local
+  queda solo como metadata diagnóstica. Sin cobertura base queda `parcial`; con
+  cobertura base y cutoff/frescura insuficiente queda `desactualizado`; con run
+  operativo no completado o incidencia real queda `incidencia`. No se inventan
+  umbrales por horas.
 - La salud agregada y `day_complete` del `engine_input` se calculan solo con
   `current` y las referencias obligatorias D-7/D-14/D-21/D-28. D-364 y MTD
   conservan cobertura individual, pero no degradan la evaluación diaria.
@@ -54,7 +58,7 @@
   referencias semanales, D-364 y MTD) mediante los servicios canónicos locales.
   No hay N+1 por registro ni carga de tablas completas añadida por EXE-2.
 - Pruebas focales iniciales: `php artisan test --filter=ExecutiveDailyDatasetTest`
-  correcto, 15 pruebas / 75 aserciones. La validación final completa se registra
+  correcto, 25 pruebas / 110 aserciones. La validación final completa se registra
   en la entrega de la rama.
 - EXE-1 queda cerrado documentalmente: PR #65 fusionado en
   `99fc0ee3973919cdfaa57389872b6cd89f480352`, CI verde, rama
@@ -103,8 +107,10 @@
 - Rendimiento: evaluación O(1), solo arrays escalares pequeños y sin caché.
 - Validación focal: `php artisan test --filter=ExecutiveMetricRulesEngineTest`
   correcto, 40 pruebas / 110 aserciones.
-- Acciones pendientes: revisión sénior pre-PR, abrir PR, CI, merge y, en lotes
-  posteriores, implementar EXE-2/EXE-3 si se autoriza.
+- Cierre real: PR #65 fusionado, CI verde, merge
+  `99fc0ee3973919cdfaa57389872b6cd89f480352` y rama
+  `feat/exe-1-executive-engine` cerrada. EXE-2 se aborda en lote posterior
+  separado y EXE-3 sigue pendiente.
 
 ## AUTH-PASSWORD-RESET — Cierre operacional (2026-09-30)
 

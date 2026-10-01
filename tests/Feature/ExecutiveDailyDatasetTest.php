@@ -13,6 +13,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Concerns\CreatesOpportunityDashboardRows;
 use Tests\TestCase;
 
@@ -160,6 +161,86 @@ class ExecutiveDailyDatasetTest extends TestCase
         $this->assertNotNull($dataset['metrics']['reservas']['source_cutoff']['local_updated_at']);
     }
 
+    public function test_modified_run_completed_cannot_prove_historical_coverage(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00', mode: 'modified');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertNull($dataset['metrics']['reservas']['current']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_PARTIAL, $dataset['metrics']['reservas']['data_health']);
+        $this->assertSame('missing', $dataset['metrics']['reservas']['source_cutoff']['coverage_base_status']);
+        $this->assertSame('modified', $dataset['metrics']['reservas']['source_cutoff']['freshness_mode']);
+    }
+
+    public function test_all_history_run_can_prove_historical_coverage_when_it_covers_the_range(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00', mode: 'all_history');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertSame(0, $dataset['metrics']['ventas']['current']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_UPDATED, $dataset['metrics']['ventas']['data_health']);
+        $this->assertSame('covered', $dataset['metrics']['ventas']['source_cutoff']['coverage_base_status']);
+        $this->assertSame('all_history', $dataset['metrics']['ventas']['source_cutoff']['coverage_base_mode']);
+    }
+
+    public function test_base_run_must_cover_the_functional_range(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2026-09-01', '2026-09-30', '2026-10-01 00:00:00');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertNull($dataset['metrics']['reservas']['current']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_PARTIAL, $dataset['metrics']['reservas']['data_health']);
+        $this->assertSame('missing', $dataset['metrics']['reservas']['source_cutoff']['coverage_base_status']);
+    }
+
+    public function test_completed_modified_run_supplies_freshness_but_not_base_coverage(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2026-09-30', '2026-10-01 00:00:00', '2026-10-01 08:00:00', mode: 'modified');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertSame(0, $dataset['metrics']['ventas']['current']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_UPDATED, $dataset['metrics']['ventas']['data_health']);
+        $this->assertSame('period', $dataset['metrics']['ventas']['source_cutoff']['coverage_base_mode']);
+        $this->assertSame('modified', $dataset['metrics']['ventas']['source_cutoff']['freshness_mode']);
+    }
+
+    public function test_failed_modified_run_after_base_coverage_is_a_data_incident(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2026-09-30', '2026-10-01 00:00:00', '2026-10-01 08:00:00', 'failed', 'modified');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertTrue($dataset['metrics']['reservas']['data_incident']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_INCIDENT, $dataset['metrics']['reservas']['data_health']);
+        $this->assertNull($dataset['metrics']['reservas']['current']);
+        $this->assertSame('period', $dataset['metrics']['reservas']['source_cutoff']['coverage_base_mode']);
+        $this->assertSame('modified', $dataset['metrics']['reservas']['source_cutoff']['freshness_mode']);
+    }
+
+    public function test_running_run_after_base_coverage_is_a_data_incident(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2026-09-30', '2026-10-01 00:00:00', null, 'running', 'modified');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertTrue($dataset['metrics']['ventas']['data_incident']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_INCIDENT, $dataset['metrics']['ventas']['data_health']);
+        $this->assertNull($dataset['metrics']['ventas']['current']);
+    }
+
     public function test_failed_or_running_opportunity_sync_run_is_a_data_incident(): void
     {
         $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
@@ -213,6 +294,35 @@ class ExecutiveDailyDatasetTest extends TestCase
         $this->assertNull($dataset['metrics']['reservas']['references']['d7']);
         $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_PARTIAL, $dataset['metrics']['reservas']['data_health']);
         $this->assertFalse($dataset['metrics']['reservas']['engine_input']['day_complete']);
+    }
+
+    #[DataProvider('requiredReferenceDates')]
+    public function test_each_required_weekly_reference_without_base_coverage_degrades_engine_input(string $referenceKey, string $missingDate): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        foreach (['2026-09-30', '2026-09-23', '2026-09-16', '2026-09-09', '2026-09-02'] as $date) {
+            if ($date === $missingDate) {
+                continue;
+            }
+
+            $this->coverOpportunitySource($date, CarbonImmutable::parse($date)->addDay()->toDateString(), CarbonImmutable::parse($date)->addDay()->toDateString());
+        }
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertNull($dataset['metrics']['reservas']['references'][$referenceKey]);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_PARTIAL, $dataset['metrics']['reservas']['data_health']);
+        $this->assertFalse($dataset['metrics']['reservas']['day_complete']);
+    }
+
+    public static function requiredReferenceDates(): array
+    {
+        return [
+            'D-7' => ['d7', '2026-09-23'],
+            'D-14' => ['d14', '2026-09-16'],
+            'D-21' => ['d21', '2026-09-09'],
+            'D-28' => ['d28', '2026-09-02'],
+        ];
     }
 
     public function test_required_reference_with_stale_cutoff_degrades_engine_input_to_stale(): void
@@ -372,8 +482,13 @@ class ExecutiveDailyDatasetTest extends TestCase
         ]);
     }
 
-    private function coverOpportunitySource(string $start, string $end, ?string $cutoff = null, string $status = 'completed'): void
-    {
+    private function coverOpportunitySource(
+        string $start,
+        string $end,
+        ?string $cutoff = null,
+        string $status = 'completed',
+        string $mode = 'period',
+    ): void {
         $endAt = CarbonImmutable::parse($end, 'Europe/Madrid');
         $completedAt = $status === 'completed'
             ? $endAt
@@ -389,7 +504,7 @@ class ExecutiveDailyDatasetTest extends TestCase
             'started_at' => $endAt->subMinutes(5),
             'completed_at' => $completedAt,
             'timezone' => 'Europe/Madrid',
-            'stats' => [],
+            'stats' => ['mode' => $mode],
         ]);
     }
 

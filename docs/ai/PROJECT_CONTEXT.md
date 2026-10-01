@@ -62,11 +62,12 @@ Actualizado: 2026-10-01.
   `source_cutoff` y un `engine_input` listo para EXE-1. No contiene PII ni IDs
   Salesforce y no realiza llamadas Salesforce, HTTP externo, IA, correo,
   scheduler o persistencia diaria.
-- Para Reservas/Ventas, la cobertura/frescura ejecutiva se acredita con
-  `ReportSyncRun` del dataset `salesforce_opportunities`; `updated_at` local de
-  Opportunities es solo diagnóstico. `engine_input.data_health` y
-  `engine_input.day_complete` dependen de `current` y D-7/D-14/D-21/D-28, no de
-  D-364 ni del MTD.
+- Para Reservas/Ventas, la cobertura base ejecutiva se acredita con
+  `ReportSyncRun` del dataset `salesforce_opportunities` en modo `period` o
+  `all_history` que cubra el rango; un run `modified` no cubre histórico y solo
+  puede aportar frescura incremental. `updated_at` local de Opportunities es
+  solo diagnóstico. `engine_input.data_health` y `engine_input.day_complete`
+  dependen de `current` y D-7/D-14/D-21/D-28, no de D-364 ni del MTD.
 
 ## Reconciliación local Interest–Opportunity
 

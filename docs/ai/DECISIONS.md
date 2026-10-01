@@ -28,9 +28,13 @@
   `incidencia` cuando el servicio canónico aporta una incidencia real de calidad
   o la sync metadata indica un run no completado. No se aprueba ningún umbral
   temporal por horas.
-- Para Reservas/Ventas la autoridad de cobertura es `ReportSyncRun` del dataset
-  `salesforce_opportunities`, cubriendo el rango requerido y con estado
-  `completed`. `SalesforceOpportunity::updated_at` puede publicarse como
+- Para Reservas/Ventas la autoridad de cobertura base histórica es
+  `ReportSyncRun` del dataset `salesforce_opportunities`, cubriendo el rango
+  requerido, con estado `completed` y `stats.mode` `period` o `all_history`. Un
+  run `modified` nunca prueba cobertura histórica de `reservation_date` o
+  `cv_signed_date`; solo puede servir como frescura incremental. Los runs
+  `period`/`all_history` también pueden servir como frescura, pero solo para los
+  rangos que cubren. `SalesforceOpportunity::updated_at` puede publicarse como
   diagnóstico, pero nunca prueba cobertura suficiente.
 - La salud agregada y `day_complete` de EXE-2 consideran únicamente `current` y
   las referencias obligatorias D-7, D-14, D-21 y D-28. D-364 y MTD mantienen su
