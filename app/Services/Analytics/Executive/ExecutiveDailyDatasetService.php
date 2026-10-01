@@ -76,9 +76,17 @@ final class ExecutiveDailyDatasetService
             'd28' => $references['d28']['value'],
             'd364' => $references['d364']['value'],
         ];
-        $dataIncident = $current['data_incident'] || collect($references)->contains(fn (array $sample): bool => $sample['data_incident']);
-        $dayComplete = $current['complete'] && ! $dataIncident;
-        $health = $this->health($current, $dataIncident);
+        $requiredSamples = [
+            $current,
+            $references['d7'],
+            $references['d14'],
+            $references['d21'],
+            $references['d28'],
+        ];
+        $dataIncident = collect($requiredSamples)->contains(fn (array $sample): bool => $sample['data_incident']);
+        $dayComplete = ! $dataIncident
+            && collect($requiredSamples)->every(fn (array $sample): bool => $sample['complete']);
+        $health = $this->health($requiredSamples, $dataIncident);
 
         return [
             'metric_key' => $metric,
@@ -114,7 +122,8 @@ final class ExecutiveDailyDatasetService
             : $this->reservationSalesSample($metric, $start, $endExclusive);
         $sourceCutoff = $this->sourceCutoff($raw['source_cutoff']);
         $complete = $sourceCutoff !== null && $sourceCutoff->greaterThanOrEqualTo($endExclusive);
-        $incident = (bool) ($raw['data_incident'] ?? false);
+        $incident = (bool) ($raw['data_incident'] ?? false)
+            || $this->syncRunIncident($raw['source_cutoff']);
 
         return [
             'date' => $start->toDateString(),
@@ -172,19 +181,29 @@ final class ExecutiveDailyDatasetService
         return CarbonImmutable::parse((string) $value, self::TIMEZONE)->setTimezone(self::TIMEZONE);
     }
 
-    private function health(array $current, bool $dataIncident): string
+    /** @param  array<int, array<string, mixed>>  $requiredSamples */
+    private function health(array $requiredSamples, bool $dataIncident): string
     {
         if ($dataIncident) {
             return ExecutiveMetricRulesEngine::HEALTH_INCIDENT;
         }
 
-        if ($current['complete']) {
-            return ExecutiveMetricRulesEngine::HEALTH_UPDATED;
+        if (collect($requiredSamples)->contains(fn (array $sample): bool => $this->sourceCutoff($sample['source_cutoff']) === null)) {
+            return ExecutiveMetricRulesEngine::HEALTH_PARTIAL;
         }
 
-        return $this->sourceCutoff($current['source_cutoff']) === null
-            ? ExecutiveMetricRulesEngine::HEALTH_PARTIAL
-            : ExecutiveMetricRulesEngine::HEALTH_STALE;
+        if (collect($requiredSamples)->contains(fn (array $sample): bool => ! $sample['complete'])) {
+            return ExecutiveMetricRulesEngine::HEALTH_STALE;
+        }
+
+        return ExecutiveMetricRulesEngine::HEALTH_UPDATED;
+    }
+
+    private function syncRunIncident(array $sourceCutoff): bool
+    {
+        $status = $sourceCutoff['sync_run_status'] ?? null;
+
+        return filled($status) && $status !== 'completed';
     }
 
     /** @return array<string, mixed> */

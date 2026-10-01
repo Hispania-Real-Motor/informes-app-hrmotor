@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports\ReservationsSales;
 
+use App\Models\ReportSyncRun;
 use App\Models\SalesforceOpportunity;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\ReservasVentas\OpportunityPortalNormalizer;
@@ -42,11 +43,7 @@ class ReservationsSalesDashboardDatasetService
             'reservas' => $aggregate['bucket']['reservas_totales'],
             'ventas' => $aggregate['production_sales'],
             'data_quality' => $aggregate['data_quality'],
-            'source_cutoff' => [
-                'dataset_cutoff_at' => $this->lastUpdated()?->toDateTimeString(),
-                'dataset_source' => 'local_snapshot',
-                'timezone' => (string) config('app.timezone'),
-            ],
+            'source_cutoff' => $this->opportunitySyncMetadata($start, $endExclusive),
         ];
     }
 
@@ -1296,6 +1293,31 @@ class ReservationsSalesDashboardDatasetService
         $updated = SalesforceOpportunity::query()->max('updated_at');
 
         return $updated ? CarbonImmutable::parse($updated) : null;
+    }
+
+    /** @return array<string, mixed> */
+    private function opportunitySyncMetadata(CarbonImmutable $start, CarbonImmutable $endExclusive): array
+    {
+        $run = ReportSyncRun::query()
+            ->where('dataset', 'salesforce_opportunities')
+            ->where('source', 'salesforce')
+            ->where('period_start_at', '<=', $start)
+            ->where('period_end_at', '>=', $endExclusive)
+            ->latest('started_at')
+            ->latest('id')
+            ->first();
+
+        return [
+            'dataset_cutoff_at' => $run?->source_cutoff_at?->toDateTimeString(),
+            'dataset_source' => 'report_sync_runs',
+            'sync_run_id' => $run?->id,
+            'sync_run_status' => $run?->status,
+            'sync_run_completed_at' => $run?->completed_at?->toDateTimeString(),
+            'sync_run_period_start_at' => $run?->period_start_at?->toDateTimeString(),
+            'sync_run_period_end_at' => $run?->period_end_at?->toDateTimeString(),
+            'local_updated_at' => $this->lastUpdated()?->toDateTimeString(),
+            'timezone' => (string) ($run?->timezone ?? config('app.timezone')),
+        ];
     }
 
     private function dataVersion(): array

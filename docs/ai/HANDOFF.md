@@ -27,9 +27,16 @@
   `production_sales` por `cv_signed_date`, con deduplicación y exclusiones
   existentes.
 - Cobertura/frescura: un sample solo publica valor numérico cuando existe
-  evidencia de cutoff local `>= endExclusive` y no hay incidencia de calidad
-  real. Sin cutoff queda `parcial`; con cutoff anterior queda `desactualizado`;
-  con incidencia real queda `incidencia`. No se inventan umbrales por horas.
+  evidencia de cutoff de fuente `>= endExclusive` y no hay incidencia de calidad
+  real. En Reservas/Ventas la autoridad de cobertura es el `ReportSyncRun`
+  `salesforce_opportunities` que cubre el rango, siguiendo la semántica usada
+  por `CommercialCommissionSourceReadinessService`; `updated_at` local queda
+  solo como metadata diagnóstica. Sin run/cutoff queda `parcial`; con run
+  completado pero cutoff anterior queda `desactualizado`; con run no completado
+  o incidencia real queda `incidencia`. No se inventan umbrales por horas.
+- La salud agregada y `day_complete` del `engine_input` se calculan solo con
+  `current` y las referencias obligatorias D-7/D-14/D-21/D-28. D-364 y MTD
+  conservan cobertura individual, pero no degradan la evaluación diaria.
 - Ausencia y cero quedan separados: `0` es válido si la fuente está cubierta y
   el universo canónico contiene cero hechos; `null` representa ausencia de
   cobertura, desactualización o incidencia.
@@ -47,7 +54,7 @@
   referencias semanales, D-364 y MTD) mediante los servicios canónicos locales.
   No hay N+1 por registro ni carga de tablas completas añadida por EXE-2.
 - Pruebas focales iniciales: `php artisan test --filter=ExecutiveDailyDatasetTest`
-  correcto, 8 pruebas / 47 aserciones. La validación final completa se registra
+  correcto, 15 pruebas / 75 aserciones. La validación final completa se registra
   en la entrega de la rama.
 - EXE-1 queda cerrado documentalmente: PR #65 fusionado en
   `99fc0ee3973919cdfaa57389872b6cd89f480352`, CI verde, rama

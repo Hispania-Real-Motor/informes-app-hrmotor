@@ -141,6 +141,111 @@ class ExecutiveDailyDatasetTest extends TestCase
         $this->assertNull($missing['metrics']['leads']['mtd']);
     }
 
+    public function test_recent_local_opportunity_without_report_sync_run_does_not_prove_coverage(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->opportunityRow('006-local-only', [
+            'created_date' => '2026-08-01 10:00:00',
+            'reservation' => true,
+            'reservation_date' => '2026-09-30',
+            'updated_at' => '2026-10-01 00:00:00',
+        ]);
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertNull($dataset['metrics']['reservas']['current']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_PARTIAL, $dataset['metrics']['reservas']['data_health']);
+        $this->assertFalse($dataset['metrics']['reservas']['day_complete']);
+        $this->assertSame('report_sync_runs', $dataset['metrics']['reservas']['source_cutoff']['dataset_source']);
+        $this->assertNotNull($dataset['metrics']['reservas']['source_cutoff']['local_updated_at']);
+    }
+
+    public function test_failed_or_running_opportunity_sync_run_is_a_data_incident(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00', 'failed');
+
+        $failed = app(ExecutiveDailyDatasetService::class)->build();
+        $this->assertTrue($failed['metrics']['reservas']['data_incident']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_INCIDENT, $failed['metrics']['reservas']['data_health']);
+        $this->assertNull($failed['metrics']['reservas']['current']);
+
+        ReportSyncRun::query()->where('dataset', 'salesforce_opportunities')->delete();
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00', 'running');
+
+        $running = app(ExecutiveDailyDatasetService::class)->build();
+        $this->assertTrue($running['metrics']['ventas']['data_incident']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_INCIDENT, $running['metrics']['ventas']['data_health']);
+    }
+
+    public function test_completed_opportunity_sync_run_with_insufficient_cutoff_is_stale(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-09-30 12:00:00');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertNull($dataset['metrics']['ventas']['current']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_STALE, $dataset['metrics']['ventas']['data_health']);
+        $this->assertFalse($dataset['metrics']['ventas']['engine_input']['day_complete']);
+    }
+
+    public function test_completed_opportunity_sync_run_with_sufficient_cutoff_publishes_zero(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertSame(0, $dataset['metrics']['reservas']['current']);
+        $this->assertSame(0, $dataset['metrics']['ventas']['current']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_UPDATED, $dataset['metrics']['reservas']['data_health']);
+    }
+
+    public function test_required_reference_without_coverage_degrades_engine_input_to_partial(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverOpportunitySource('2026-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertSame(0, $dataset['metrics']['reservas']['current']);
+        $this->assertNull($dataset['metrics']['reservas']['references']['d7']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_PARTIAL, $dataset['metrics']['reservas']['data_health']);
+        $this->assertFalse($dataset['metrics']['reservas']['engine_input']['day_complete']);
+    }
+
+    public function test_required_reference_with_stale_cutoff_degrades_engine_input_to_stale(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        foreach (['2026-09-30', '2026-09-16', '2026-09-09', '2026-09-02'] as $date) {
+            $this->coverOpportunitySource($date, CarbonImmutable::parse($date)->addDay()->toDateString(), CarbonImmutable::parse($date)->addDay()->toDateString());
+        }
+        $this->coverOpportunitySource('2026-09-23', '2026-09-24', '2026-09-23 12:00:00');
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertSame(0, $dataset['metrics']['ventas']['current']);
+        $this->assertNull($dataset['metrics']['ventas']['references']['d7']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_STALE, $dataset['metrics']['ventas']['data_health']);
+        $this->assertFalse($dataset['metrics']['ventas']['engine_input']['day_complete']);
+    }
+
+    public function test_missing_d364_does_not_degrade_daily_evaluation(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        foreach (['2026-09-30', '2026-09-23', '2026-09-16', '2026-09-09', '2026-09-02'] as $date) {
+            $this->coverOpportunitySource($date, CarbonImmutable::parse($date)->addDay()->toDateString(), CarbonImmutable::parse($date)->addDay()->toDateString());
+        }
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertNull($dataset['metrics']['reservas']['references']['d364']);
+        $this->assertTrue($dataset['metrics']['reservas']['day_complete']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_UPDATED, $dataset['metrics']['reservas']['data_health']);
+        $this->assertTrue($dataset['metrics']['reservas']['engine_input']['day_complete']);
+    }
+
     public function test_missing_weekly_references_are_not_filled_with_zero(): void
     {
         $this->coverSources('2026-09-30', '2026-10-01 00:00:00');
@@ -247,6 +352,12 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     private function coverSources(string $start, string $cutoff): void
     {
+        $this->coverLeadSource($start, $cutoff);
+        $this->coverOpportunitySource($start, $cutoff, $cutoff);
+    }
+
+    private function coverLeadSource(string $start, string $cutoff): void
+    {
         ReportSyncRun::query()->create([
             'dataset' => 'leads_dashboard',
             'source' => 'salesforce',
@@ -256,6 +367,27 @@ class ExecutiveDailyDatasetTest extends TestCase
             'source_cutoff_at' => CarbonImmutable::parse($cutoff, 'Europe/Madrid'),
             'started_at' => CarbonImmutable::parse($cutoff, 'Europe/Madrid')->subMinutes(5),
             'completed_at' => CarbonImmutable::parse($cutoff, 'Europe/Madrid'),
+            'timezone' => 'Europe/Madrid',
+            'stats' => [],
+        ]);
+    }
+
+    private function coverOpportunitySource(string $start, string $end, ?string $cutoff = null, string $status = 'completed'): void
+    {
+        $endAt = CarbonImmutable::parse($end, 'Europe/Madrid');
+        $completedAt = $status === 'completed'
+            ? $endAt
+            : ($status === 'failed' ? $endAt : null);
+
+        ReportSyncRun::query()->create([
+            'dataset' => 'salesforce_opportunities',
+            'source' => 'salesforce',
+            'status' => $status,
+            'period_start_at' => CarbonImmutable::parse($start, 'Europe/Madrid')->startOfDay(),
+            'period_end_at' => $endAt,
+            'source_cutoff_at' => $cutoff !== null ? CarbonImmutable::parse($cutoff, 'Europe/Madrid') : null,
+            'started_at' => $endAt->subMinutes(5),
+            'completed_at' => $completedAt,
             'timezone' => 'Europe/Madrid',
             'stats' => [],
         ]);

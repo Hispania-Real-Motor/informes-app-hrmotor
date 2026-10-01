@@ -25,8 +25,16 @@
 - La salud del dato se deriva de evidencia local verificable: `actualizado` si
   el cutoff de fuente cubre `endExclusive`; `desactualizado` si existe cutoff
   pero queda antes del fin requerido; `parcial` si no existe cutoff demostrable;
-  `incidencia` solo cuando el servicio canónico aporta una incidencia real de
-  calidad. No se aprueba ningún umbral temporal por horas.
+  `incidencia` cuando el servicio canónico aporta una incidencia real de calidad
+  o la sync metadata indica un run no completado. No se aprueba ningún umbral
+  temporal por horas.
+- Para Reservas/Ventas la autoridad de cobertura es `ReportSyncRun` del dataset
+  `salesforce_opportunities`, cubriendo el rango requerido y con estado
+  `completed`. `SalesforceOpportunity::updated_at` puede publicarse como
+  diagnóstico, pero nunca prueba cobertura suficiente.
+- La salud agregada y `day_complete` de EXE-2 consideran únicamente `current` y
+  las referencias obligatorias D-7, D-14, D-21 y D-28. D-364 y MTD mantienen su
+  cobertura individual, pero no degradan ni mejoran la evaluación diaria.
 - Una deduplicación canónica común en Reservas/Ventas no convierte por sí sola
   una métrica en incidencia ejecutiva. Solo los grupos con
   `breakdown_status=data_quality_incident` bloquean la evaluabilidad del sample.
