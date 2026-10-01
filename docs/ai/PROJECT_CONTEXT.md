@@ -7,6 +7,9 @@ Actualizado: 2026-09-30.
 - El acceso real a Informes sigue siendo manual y basado en `ReportUser`; no se
   ha migrado al guard/broker estándar de Laravel ni se usa `App\Models\User`
   para usuarios de Informes.
+- La recuperación de contraseña está desplegada y validada operacionalmente en
+  producción. Requiere `QUEUE_CONNECTION=database` y un worker Laravel Queue
+  dedicado (`laravel-informes-queue-worker`) consumiendo la cola `default`.
 - La recuperación de contraseña usa rutas públicas propias, un Job Laravel
   cifrado (`ShouldBeEncrypted`) y una tabla dedicada
   `report_user_password_reset_tokens`. El endpoint HTTP solo valida, aplica
@@ -27,6 +30,25 @@ Actualizado: 2026-09-30.
   informes compara esa marca con la sesión, por lo que sesiones autenticadas
   antes del cambio se rechazan en su siguiente petición. La cookie remember ya
   queda inválida porque su HMAC incluye el hash actual de contraseña.
+
+## Motor Ejecutivo V1
+
+- `App\Services\Analytics\Executive\ExecutiveMetricRulesEngine` es el core puro
+  de EXE-1. Evalúa métricas ejecutivas ya preparadas y es agnóstico de Leads,
+  Reservas, Ventas o cualquier módulo futuro.
+- El motor no realiza IO: no consulta BD, no usa Eloquent, Salesforce, HTTP,
+  Mail, Cache, filesystem, IA, Request, rutas, vistas ni fecha actual.
+- El baseline V1 exige D-7, D-14, D-21 y D-28. D-364 es referencia
+  complementaria y no altera estado ni dirección. La versión de reglas publicada
+  es `executive_metric_rules_v1`.
+- La dirección queda definida sin tolerancia: actual mayor que baseline es
+  `favorable`, igual es `estable` y menor es `desfavorable`.
+- Los estados combinan banda porcentual y puerta absoluta por configuración. Una
+  puerta no cumplida degrada al máximo nivel inferior válido o a `correcto`.
+  `actual = 0` con baseline evaluable devuelve `critico/desfavorable`.
+- `no_evaluable` conserva salud y reason codes, pero no genera alerta de
+  negocio. El motor no infiere causas ni recomendaciones; esos campos permanecen
+  separados y nulos hasta que exista evidencia o catálogo aprobado.
 
 ## Reconciliación local Interest–Opportunity
 
