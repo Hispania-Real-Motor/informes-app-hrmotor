@@ -1,6 +1,6 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-09-30.
+Actualizado: 2026-10-01.
 
 ## Autenticación de Informes y recuperación de contraseña
 
@@ -49,6 +49,25 @@ Actualizado: 2026-09-30.
 - `no_evaluable` conserva salud y reason codes, pero no genera alerta de
   negocio. El motor no infiere causas ni recomendaciones; esos campos permanecen
   separados y nulos hasta que exista evidencia o catálogo aprobado.
+- `App\Services\Analytics\Executive\ExecutiveDailyDatasetService` es el dataset
+  local de EXE-2 para la visión global V1 de Leads, Reservas y Ventas. Resuelve
+  el último día cerrado en `Europe/Madrid`, referencias D-7/D-14/D-21/D-28,
+  D-364 complementario y MTD hasta el mismo corte.
+- EXE-2 reutiliza los servicios canónicos existentes:
+  `SalesforceLeadDashboardDatasetService` para Leads y
+  `ReservationsSalesDashboardDatasetService` para Reservas/Ventas. No duplica
+  thresholds de EXE-1 ni fórmulas de dashboards.
+- La salida ejecutiva distingue `0` real de `null` por ausencia de cobertura,
+  publica `data_health`, `day_complete`, `data_incident`, `coverage`,
+  `source_cutoff` y un `engine_input` listo para EXE-1. No contiene PII ni IDs
+  Salesforce y no realiza llamadas Salesforce, HTTP externo, IA, correo,
+  scheduler o persistencia diaria.
+- Para Reservas/Ventas, la cobertura base ejecutiva se acredita con
+  `ReportSyncRun` del dataset `salesforce_opportunities` en modo `period` o
+  `all_history` que cubra el rango; un run `modified` no cubre histórico y solo
+  puede aportar frescura incremental. `updated_at` local de Opportunities es
+  solo diagnóstico. `engine_input.data_health` y `engine_input.day_complete`
+  dependen de `current` y D-7/D-14/D-21/D-28, no de D-364 ni del MTD.
 
 ## Reconciliación local Interest–Opportunity
 

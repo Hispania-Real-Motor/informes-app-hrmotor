@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports\ReservationsSales;
 
+use App\Models\ReportSyncRun;
 use App\Models\SalesforceOpportunity;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\ReservasVentas\OpportunityPortalNormalizer;
@@ -19,6 +20,14 @@ class ReservationsSalesDashboardDatasetService
 
     private const DATA_QUALITY_INCIDENT = 'Incidencia de datos';
 
+    private const EXECUTIVE_BASE_COVERAGE_MODES = ['period', 'all_history'];
+
+    /** @var array<string, ReportSyncRun|null> */
+    private array $opportunityBaseCoverageRuns = [];
+
+    /** @var array<string, ReportSyncRun|null> */
+    private array $opportunityFreshnessRuns = [];
+
     public function __construct(
         private readonly LeadDelegationNormalizer $delegationNormalizer,
         private readonly OpportunityPortalNormalizer $portalNormalizer,
@@ -27,6 +36,23 @@ class ReservationsSalesDashboardDatasetService
     public function summary(Request $request): array
     {
         return $this->payload($request)['summary'];
+    }
+
+    public function executiveProduction(CarbonImmutable $start, CarbonImmutable $endExclusive): array
+    {
+        $filters = $this->filters(Request::create('/internal/executive/reservas-ventas', 'GET', [
+            'period' => 'custom',
+            'date_criterion' => 'created_date',
+        ]));
+        $period = ['start' => $start, 'end' => $endExclusive];
+        $aggregate = $this->aggregate($filters, $period);
+
+        return [
+            'reservas' => $aggregate['bucket']['reservas_totales'],
+            'ventas' => $aggregate['production_sales'],
+            'data_quality' => $aggregate['data_quality'],
+            'source_cutoff' => $this->opportunitySyncMetadata($start, $endExclusive),
+        ];
     }
 
     public function kpiAudit(Request $request): array
@@ -1275,6 +1301,87 @@ class ReservationsSalesDashboardDatasetService
         $updated = SalesforceOpportunity::query()->max('updated_at');
 
         return $updated ? CarbonImmutable::parse($updated) : null;
+    }
+
+    /** @return array<string, mixed> */
+    private function opportunitySyncMetadata(CarbonImmutable $start, CarbonImmutable $endExclusive): array
+    {
+        $baseRun = $this->opportunityBaseCoverageRun($start, $endExclusive);
+        $freshnessRun = $this->opportunityFreshnessRun($start, $endExclusive);
+
+        return [
+            'dataset_cutoff_at' => $freshnessRun?->source_cutoff_at?->toDateTimeString(),
+            'dataset_source' => 'report_sync_runs',
+            'coverage_base_status' => $baseRun !== null ? 'covered' : 'missing',
+            'coverage_base_run_id' => $baseRun?->id,
+            'coverage_base_mode' => $this->syncRunMode($baseRun),
+            'coverage_base_period_start_at' => $baseRun?->period_start_at?->toDateTimeString(),
+            'coverage_base_period_end_at' => $baseRun?->period_end_at?->toDateTimeString(),
+            'coverage_base_source_cutoff_at' => $baseRun?->source_cutoff_at?->toDateTimeString(),
+            'freshness_run_id' => $freshnessRun?->id,
+            'freshness_mode' => $this->syncRunMode($freshnessRun),
+            'freshness_status' => $freshnessRun?->status,
+            'freshness_completed_at' => $freshnessRun?->completed_at?->toDateTimeString(),
+            'freshness_period_start_at' => $freshnessRun?->period_start_at?->toDateTimeString(),
+            'freshness_period_end_at' => $freshnessRun?->period_end_at?->toDateTimeString(),
+            'local_updated_at' => $this->lastUpdated()?->toDateTimeString(),
+            'timezone' => (string) ($freshnessRun?->timezone ?? $baseRun?->timezone ?? config('app.timezone')),
+        ];
+    }
+
+    private function opportunityBaseCoverageRun(CarbonImmutable $start, CarbonImmutable $endExclusive): ?ReportSyncRun
+    {
+        $cacheKey = $this->opportunitySyncRangeKey($start, $endExclusive);
+
+        if (array_key_exists($cacheKey, $this->opportunityBaseCoverageRuns)) {
+            return $this->opportunityBaseCoverageRuns[$cacheKey];
+        }
+
+        return $this->opportunityBaseCoverageRuns[$cacheKey] = ReportSyncRun::query()
+            ->where('dataset', 'salesforce_opportunities')
+            ->where('source', 'salesforce')
+            ->where('status', 'completed')
+            ->whereIn('stats->mode', self::EXECUTIVE_BASE_COVERAGE_MODES)
+            ->where('period_start_at', '<=', $start)
+            ->where('period_end_at', '>=', $endExclusive)
+            ->orderByDesc('started_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function opportunityFreshnessRun(CarbonImmutable $start, CarbonImmutable $endExclusive): ?ReportSyncRun
+    {
+        $cacheKey = $this->opportunitySyncRangeKey($start, $endExclusive);
+
+        if (array_key_exists($cacheKey, $this->opportunityFreshnessRuns)) {
+            return $this->opportunityFreshnessRuns[$cacheKey];
+        }
+
+        return $this->opportunityFreshnessRuns[$cacheKey] = ReportSyncRun::query()
+            ->where('dataset', 'salesforce_opportunities')
+            ->where('source', 'salesforce')
+            ->where(function ($query) use ($start, $endExclusive): void {
+                $query->where('stats->mode', 'modified')
+                    ->orWhere(function ($query) use ($start, $endExclusive): void {
+                        $query->where('period_start_at', '<=', $start)
+                            ->where('period_end_at', '>=', $endExclusive);
+                    });
+            })
+            ->orderByDesc('started_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function opportunitySyncRangeKey(CarbonImmutable $start, CarbonImmutable $endExclusive): string
+    {
+        return $start->toIso8601String().'|'.$endExclusive->toIso8601String();
+    }
+
+    private function syncRunMode(?ReportSyncRun $run): ?string
+    {
+        $mode = $run?->stats['mode'] ?? null;
+
+        return filled($mode) ? (string) $mode : null;
     }
 
     private function dataVersion(): array

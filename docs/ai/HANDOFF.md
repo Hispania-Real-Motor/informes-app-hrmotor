@@ -1,5 +1,77 @@
 # Handoff para agentes
 
+## EXE-2 — Datos ejecutivos diarios (2026-10-01)
+
+- Rama de trabajo: `feat/exe-2-executive-daily-data`, creada desde `main`
+  `99fc0ee3973919cdfaa57389872b6cd89f480352` tras el merge del PR #65.
+- Se añade `App\Services\Analytics\Executive\ExecutiveDailyDatasetService` como
+  punto único de entrada del dataset ejecutivo V1 global para `leads`,
+  `reservas` y `ventas`. No crea rutas, UI, correo, scheduler, snapshots
+  persistentes ni migraciones.
+- Cutoff: último día natural cerrado en `Europe/Madrid`, calculado en servidor
+  con `CarbonImmutable`. Para una ejecución el 2026-10-01 evalúa 2026-09-30; el
+  2027-01-01 evalúa 2026-12-31.
+- Referencias: para el día D publica D, D-7, D-14, D-21, D-28 y D-364 opcional.
+  D-364 se conserva como referencia complementaria y no forma parte del baseline
+  de EXE-1.
+- MTD: contexto acumulado `[primer día del mes de D 00:00, D+1 00:00)` en
+  `Europe/Madrid`. MTD no sustituye `current` ni las referencias semanales.
+- Leads reutiliza el universo canónico de
+  `SalesforceLeadDashboardDatasetService`: filtros internos, exclusiones,
+  eliminados/merged, no clasificados, delegación, procedencia y buckets
+  existentes. El adaptador ejecutivo llama a `executiveLeadTotal()` y no ejecuta
+  el pipeline de insights/IA del dashboard.
+- Reservas y Ventas reutilizan `ReservationsSalesDashboardDatasetService` vía
+  `executiveProduction()`, que usa el agregado canónico. Reservas procede de
+  `reservas_totales` por `reservation_date`; Ventas procede de
+  `production_sales` por `cv_signed_date`, con deduplicación y exclusiones
+  existentes.
+- Cobertura/frescura: un sample solo publica valor numérico cuando existe
+  evidencia de cutoff de fuente `>= endExclusive` y no hay incidencia de calidad
+  real. En Reservas/Ventas se separa cobertura base histórica de frescura
+  incremental: la cobertura base exige un `ReportSyncRun`
+  `salesforce_opportunities` `completed`, con modo `period` o `all_history`, que
+  cubra el rango funcional. Un run `modified` nunca sustituye esa cobertura
+  base; solo puede aportar frescura incremental. Los runs `period`/`all_history`
+  aportan frescura únicamente para los rangos que cubren. `updated_at` local
+  queda solo como metadata diagnóstica. Sin cobertura base queda `parcial`; con
+  cobertura base y cutoff/frescura insuficiente queda `desactualizado`; con run
+  operativo no completado o incidencia real queda `incidencia`. No se inventan
+  umbrales por horas.
+- La salud agregada y `day_complete` del `engine_input` se calculan solo con
+  `current` y las referencias obligatorias D-7/D-14/D-21/D-28. D-364 y MTD
+  conservan cobertura individual, pero no degradan la evaluación diaria.
+- Ausencia y cero quedan separados: `0` es válido si la fuente está cubierta y
+  el universo canónico contiene cero hechos; `null` representa ausencia de
+  cobertura, desactualización o incidencia.
+- La salida incluye `cutoff`, `mtd_period`, `metrics.*.current`,
+  `references.d7/d14/d21/d28/d364`, `mtd`, `data_health`, `day_complete`,
+  `data_incident`, `coverage`, `source_cutoff` y `engine_input` listo para
+  `ExecutiveMetricRulesEngine::evaluate()` con configuración tomada de
+  `ExecutiveMetricRulesEngine::defaultMetricConfigs()`. EXE-2 no duplica
+  thresholds.
+- Seguridad: el dataset solo devuelve agregados y metadata técnica; las pruebas
+  comprueban que no aparecen emails, teléfonos, nombres sensibles ni IDs
+  Salesforce. No consulta Salesforce, no usa HTTP externo, no usa IA, no envía
+  correo y no lee filesystem como fuente de negocio.
+- Rendimiento: el dataset consulta un conjunto fijo de muestras (D, cuatro
+  referencias semanales, D-364 y MTD) mediante los servicios canónicos locales.
+  La metadata de `ReportSyncRun` para `salesforce_opportunities` se resuelve
+  con consultas acotadas `first()`/`LIMIT 1` y caché interna por rango, sin
+  cargar el histórico completo de sincronizaciones. El máximo actual es 14
+  consultas de metadata por build de EXE-2 para Reservas/Ventas: cobertura base
+  y frescura sobre los 7 rangos fijos. No hay N+1 por registro ni carga de
+  tablas completas añadida por EXE-2.
+- Pruebas focales iniciales: `php artisan test --filter=ExecutiveDailyDatasetTest`
+  correcto, 26 pruebas / 114 aserciones. La validación final completa se registra
+  en la entrega de la rama.
+- EXE-1 queda cerrado documentalmente: PR #65 fusionado en
+  `99fc0ee3973919cdfaa57389872b6cd89f480352`, CI verde, rama
+  `feat/exe-1-executive-engine` cerrada. El motor disponible es
+  `ExecutiveMetricRulesEngine` con versión `executive_metric_rules_v1`.
+- COMM-CLOSE-SCHEDULE queda registrado únicamente como tarea futura pendiente.
+  EXE-2 no implementa comando, scheduler ni snapshots de comisiones.
+
 ## EXE-1 — Motor Ejecutivo V1 (2026-09-30)
 
 - Rama de trabajo: `feat/exe-1-executive-engine`, creada desde `main`
@@ -40,8 +112,10 @@
 - Rendimiento: evaluación O(1), solo arrays escalares pequeños y sin caché.
 - Validación focal: `php artisan test --filter=ExecutiveMetricRulesEngineTest`
   correcto, 40 pruebas / 110 aserciones.
-- Acciones pendientes: revisión sénior pre-PR, abrir PR, CI, merge y, en lotes
-  posteriores, implementar EXE-2/EXE-3 si se autoriza.
+- Cierre real: PR #65 fusionado, CI verde, merge
+  `99fc0ee3973919cdfaa57389872b6cd89f480352` y rama
+  `feat/exe-1-executive-engine` cerrada. EXE-2 se aborda en lote posterior
+  separado y EXE-3 sigue pendiente.
 
 ## AUTH-PASSWORD-RESET — Cierre operacional (2026-09-30)
 

@@ -1,6 +1,6 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-09-30.
+Actualizado: 2026-10-01.
 
 ## Trabajo transversal autorizado
 
@@ -204,9 +204,10 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
   posterior de `main` (`CI #132`) finalizaron correctamente; la rama
   `feat/rv-2-direction-summary-production-periods` fue eliminada después del
   merge.
-- AUTH-PASSWORD-RESET está cerrado operacionalmente. El siguiente trabajo activo
-  es `EXE-1` en la rama `feat/exe-1-executive-engine`, nacida de `main`
-  `fb88b47551c05669c8c33ee16fc101067c6b08ba`.
+- AUTH-PASSWORD-RESET está cerrado operacionalmente.
+- EXE-1 está cerrado tras el PR #65. El trabajo activo actual es `EXE-2` en la
+  rama `feat/exe-2-executive-daily-data`, nacida de `main`
+  `99fc0ee3973919cdfaa57389872b6cd89f480352`.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 
@@ -219,19 +220,20 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 | 3 | RV-2 | Producción y períodos de Resumen Dirección | P0 | `cerrada` | RV-1 | Contratos temporales, reglas y universos existentes; no depende técnicamente de RV-1 |
 | 4 | SF-7A-OPS | Cierre operacional Salesforce Fase 7A | P0 | `bloqueada` | RV-2 | Bloqueada hasta modelo Salesforce nuevo implementado y validado |
 | 5 | SF-7B-OPS | Cierre operacional Salesforce Fase 7B | P0 | `bloqueada` | SF-7A-OPS | Bloqueada hasta modelo Salesforce nuevo implementado y validado |
-| 6 | EXE-1 | Motor ejecutivo V1 | P0 | `en_revision` | SF-7B-OPS | Contrato y pruebas V1; no depende técnicamente de 7A/7B por ser agnóstico de módulo |
-| 7 | EXE-2 | Datos ejecutivos diarios | P0 | `pendiente` | EXE-1 | Contrato de EXE-1 y fuentes canónicas locales; no depende técnicamente de los backfills 7A/7B |
+| 6 | EXE-1 | Motor ejecutivo V1 | P0 | `cerrada` | SF-7B-OPS | Contrato y pruebas V1; no depende técnicamente de 7A/7B por ser agnóstico de módulo |
+| 7 | EXE-2 | Datos ejecutivos diarios | P0 | `en_revision` | EXE-1 | Contrato de EXE-1 y fuentes canónicas locales; no depende técnicamente de los backfills 7A/7B |
 | 8 | EXE-3 | Resumen Ejecutivo global | P0 | `pendiente` | EXE-2 | Contratos de EXE-1 y datasets de EXE-2 |
 | 9 | EXE-4 | Correo ejecutivo piloto | P0 | `pendiente` | EXE-3 | Dataset ejecutivo global aprobado |
 | 10 | EXE-5 | Piloto y calibración | P0 | `pendiente` | EXE-4 | Flujo piloto ejecutable y auditable |
 | 11 | TRANS-1 | Correcciones transversales | P1 | `pendiente` | EXE-5 | Inventario aprobado de incidencias verificadas |
-| 12 | UX-LEADS | UX Leads | P1 | `pendiente` | TRANS-1 | Alcance UX de Leads aprobado |
-| 13 | UX-CALLS | UX Llamadas | P1 | `pendiente` | TRANS-1 | Alcance UX de Llamadas aprobado |
-| 14 | UX-CAMPAIGNS | UX Campañas | P1 | `pendiente` | TRANS-1 | Alcance UX de Campañas aprobado |
-| 15 | SEO-SIMPLIFY | Simplificación SEO | P2 | `pendiente` | EXE-5 | Alcance de simplificación aprobado y contratos SEO actuales |
-| 16 | ANALYTICS-EXT | Ampliación del motor analítico | P2 | `pendiente` | EXE-5 | Evidencia del piloto y métricas aprobadas |
-| 17 | AI-LATER | IA posterior | P3 | `pendiente` | ANALYTICS-EXT | Caso de uso, gobernanza y contrato aprobados |
-| 18 | GEO-AI-LATER | GEO/IA posterior | P3 | `pendiente` | ANALYTICS-EXT | Decisión funcional y alcance aprobados |
+| 12 | COMM-CLOSE-SCHEDULE | Preparación automática mensual de cierres de comisiones | P1 | `pendiente` | TRANS-1 | Contrato mensual aprobado; implementación posterior |
+| 13 | UX-LEADS | UX Leads | P1 | `pendiente` | TRANS-1 | Alcance UX de Leads aprobado |
+| 14 | UX-CALLS | UX Llamadas | P1 | `pendiente` | TRANS-1 | Alcance UX de Llamadas aprobado |
+| 15 | UX-CAMPAIGNS | UX Campañas | P1 | `pendiente` | TRANS-1 | Alcance UX de Campañas aprobado |
+| 16 | SEO-SIMPLIFY | Simplificación SEO | P2 | `pendiente` | EXE-5 | Alcance de simplificación aprobado y contratos SEO actuales |
+| 17 | ANALYTICS-EXT | Ampliación del motor analítico | P2 | `pendiente` | EXE-5 | Evidencia del piloto y métricas aprobadas |
+| 18 | AI-LATER | IA posterior | P3 | `pendiente` | ANALYTICS-EXT | Caso de uso, gobernanza y contrato aprobados |
+| 19 | GEO-AI-LATER | GEO/IA posterior | P3 | `pendiente` | ANALYTICS-EXT | Decisión funcional y alcance aprobados |
 
 ## Lote previo: cierre definitivo de Reservas/Ventas
 
@@ -418,37 +420,38 @@ Reglas de evaluabilidad:
 
 - **Fase/lote:** Resumen Ejecutivo, motor analítico.
 - **Prioridad:** P0.
-- **Estado:** `en_revision`.
+- **Estado:** `cerrada`.
 - **Predecesor planificado:** SF-7B-OPS.
 - **Dependencias técnicas reales:** contrato funcional V1 y matriz de pruebas.
   El motor es agnóstico de módulo y no depende técnicamente del cierre de 7A/7B.
-- **Rama prevista o activa:** `feat/exe-1-executive-engine`.
+- **Rama cerrada:** `feat/exe-1-executive-engine`.
 - **SHA base al activar:** `fb88b47551c05669c8c33ee16fc101067c6b08ba`.
-- **Bloqueos/decisiones de negocio:** implementación y pruebas terminadas en
-  rama; pendiente revisión sénior previa a PR. No se implementan EXE-2, EXE-3,
-  dashboard, correo ejecutivo ni scheduler.
-- **Punto exacto de reanudación:** revisar el motor puro
-  `ExecutiveMetricRulesEngine`, su contrato array de entrada/salida y la matriz
-  `ExecutiveMetricRulesEngineTest`.
-- **Criterios de aceptación:** motor determinista, sin IO ni IA; 4/4 referencias;
-  D-364 complementario; estados, dirección, salud y reason codes versionados;
-  ausencia distinta de cero; acciones fijas con clave única; causas demostradas
-  separadas de posibles causas; pruebas completas de límites y regla de cero.
+- **Cierre:** PR #65 fusionado en `99fc0ee3973919cdfaa57389872b6cd89f480352`
+  con CI verde.
+- **Conclusión:** queda disponible `ExecutiveMetricRulesEngine` con versión
+  `executive_metric_rules_v1`, 4/4 referencias obligatorias, D-364
+  complementario, dirección sin tolerancia, `minimum_baseline > 0`, puertas
+  ordenadas `attention <= deviation <= critical`, regla especial de cero con
+  baseline evaluable como `critico/desfavorable`, y motor sin IO, BD,
+  Salesforce ni IA.
 
 ### EXE-2 — Datos ejecutivos diarios Leads/Reservas/Ventas
 
 - **Fase/lote:** Resumen Ejecutivo, adaptadores de datos.
 - **Prioridad:** P0.
-- **Estado:** `pendiente`.
+- **Estado:** `en_revision`.
 - **Predecesor planificado:** EXE-1.
 - **Dependencias técnicas reales:** contrato de entrada de EXE-1 y fuentes
   canónicas locales. No depende técnicamente de los backfills de 7A/7B.
-- **Rama prevista o activa:** por asignar; ninguna rama activa.
-- **SHA base al activar:** por registrar.
-- **Bloqueos/decisiones de negocio:** reutilizar universos canónicos y datos
-  locales; no duplicar fórmulas ni consultar proveedores durante el render.
-- **Punto exacto de reanudación:** inventariar el contrato canónico y el cutoff
-  certificado de cada una de las tres métricas.
+- **Rama prevista o activa:** `feat/exe-2-executive-daily-data`.
+- **SHA base al activar:** `99fc0ee3973919cdfaa57389872b6cd89f480352`.
+- **Bloqueos/decisiones de negocio:** implementación, pruebas y documentación
+  terminadas en rama; pendiente revisión sénior. Reutiliza universos canónicos y
+  datos locales; no duplica fórmulas ni consulta proveedores durante el render.
+- **Punto exacto de reanudación:** revisar
+  `ExecutiveDailyDatasetService`, los adaptadores ejecutivos añadidos a los
+  datasets canónicos de Leads y Reservas/Ventas, y
+  `ExecutiveDailyDatasetTest`.
 - **Criterios de aceptación:** series diarias reconciliables para Leads, Reservas
   y Ventas; último día cerrado explícito; 4/4 referencias; frescura y cobertura
   verificables; scopes preparados sin conceder acceso futuro; sin PII ni ceros
@@ -526,6 +529,30 @@ aproximen a ejecución, sin adelantar contratos ni inventar arquitectura.
   tres módulos sin mezclar cambios funcionales no relacionados.
 - **Aceptación:** lotes independientes, contratos preservados, seguridad y
   rendimiento verificados, pruebas y documentación completas.
+
+### COMM-CLOSE-SCHEDULE — Preparación automática mensual de cierres de comisiones
+
+- **Fase/lote:** Comisiones, automatización operativa.
+- **Prioridad:** P1. **Estado:** `pendiente`.
+- **Predecesor planificado:** TRANS-1. **Dependencias técnicas reales:** cierres
+  actuales de comisiones, readiness por scope y snapshots candidatos.
+  **Rama:** por asignar. **SHA base:** por registrar.
+- **Contrato aprobado:** el día 15 de cada mes se prepara el mes natural
+  inmediatamente anterior en timezone `Europe/Madrid` (por ejemplo,
+  15/10/2026 prepara 2026-09). Se procesan los scopes disponibles de forma
+  independiente; si un scope está listo, se genera snapshot candidato y queda
+  `pending_approval`.
+- **Restricciones:** nunca se aprueba automáticamente; Dirección/Admin conserva
+  la aprobación manual a `definitive`; un scope bloqueado por readiness no se
+  fuerza; la ejecución debe ser idempotente; no debe duplicar snapshots ya
+  `pending_approval`, tocar `definitive` ni pisar `reopened`.
+- **Auditoría:** el actor automático debe quedar diferenciado de un usuario
+  humano sin crear un `ReportUser` ficticio "Sistema". Al implementar se
+  evaluará que `commercial_commission_snapshots.created_by` y
+  `commercial_commission_closure_events.report_user_id` sean nullable.
+- **Punto de reanudación:** diseñar comando Artisan dedicado con dry-run
+  deseable, integración posterior con `OperationalAlertService` y pruebas de
+  idempotencia/scope. EXE-2 no implementa nada de este contrato.
 
 ### UX-LEADS — UX Leads
 
