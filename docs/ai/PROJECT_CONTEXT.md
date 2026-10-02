@@ -1,6 +1,6 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-01.
+Actualizado: 2026-10-02.
 
 ## Autenticación de Informes y recuperación de contraseña
 
@@ -68,6 +68,15 @@ Actualizado: 2026-10-01.
   puede aportar frescura incremental. `updated_at` local de Opportunities es
   solo diagnóstico. `engine_input.data_health` y `engine_input.day_complete`
   dependen de `current` y D-7/D-14/D-21/D-28, no de D-364 ni del MTD.
+- `App\Services\Analytics\Executive\ExecutiveSummaryService` compone EXE-3 para
+  `/informes`. Ejecuta EXE-2 una vez, evalúa Leads/Reservas/Ventas con EXE-1 y
+  entrega un payload de vista con métricas, alertas, salud agregada y metadatos.
+  No crea rutas nuevas, no consulta Salesforce/HTTP, no usa IA, no envía correo
+  y no implementa scheduler.
+- El Resumen Ejecutivo V1 reutiliza la autorización estratégica existente:
+  `ReportUserAccess::canViewReport($request, 'summary')`. Solo Administrador y
+  Dirección pueden visualizar `/informes`; los roles operacionales conservan
+  su redirección al primer módulo permitido.
 
 ## Reconciliación local Interest–Opportunity
 

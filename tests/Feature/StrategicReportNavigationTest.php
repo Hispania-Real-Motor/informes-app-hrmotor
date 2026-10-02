@@ -20,8 +20,10 @@ class StrategicReportNavigationTest extends TestCase
             $this->withSession($this->sessionFor($user))
                 ->get('/informes')
                 ->assertOk()
-                ->assertSee('Resumen')
-                ->assertSee('Sin datos anal')
+                ->assertSee('Resumen Ejecutivo')
+                ->assertSee('Leads')
+                ->assertSee('Reservas')
+                ->assertSee('Ventas')
                 ->assertSee('class="app-nav-link is-active"', false)
                 ->assertSee('aria-current="page"', false);
 

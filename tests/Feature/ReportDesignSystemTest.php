@@ -12,10 +12,11 @@ class ReportDesignSystemTest extends TestCase
         $this->get('/informes')
             ->assertOk()
             ->assertSee('report-ui-page-header', false)
-            ->assertSee('report-ui-empty-state', false)
+            ->assertSee('report-ui-kpi-strip', false)
             ->assertSee('report-ui-badge', false)
-            ->assertSee('Sin datos analíticos en este lote')
-            ->assertDontSee('report-ui-status', false);
+            ->assertSee('report-ui-status', false)
+            ->assertSee('Resumen Ejecutivo')
+            ->assertDontSee('Sin datos analíticos en este lote');
 
         $this->get('/informes/seo-analytics')
             ->assertOk()
