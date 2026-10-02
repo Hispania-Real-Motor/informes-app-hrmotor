@@ -13,6 +13,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Concerns\CreatesOpportunityDashboardRows;
 use Tests\TestCase;
@@ -211,6 +212,36 @@ class ExecutiveDailyDatasetTest extends TestCase
         $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_UPDATED, $dataset['metrics']['ventas']['data_health']);
         $this->assertSame('period', $dataset['metrics']['ventas']['source_cutoff']['coverage_base_mode']);
         $this->assertSame('modified', $dataset['metrics']['ventas']['source_cutoff']['freshness_mode']);
+    }
+
+    public function test_opportunity_sync_metadata_queries_are_bounded_with_many_irrelevant_runs(): void
+    {
+        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        foreach (range(1, 150) as $day) {
+            $date = CarbonImmutable::parse('2024-01-01', 'Europe/Madrid')->addDays($day);
+            $this->coverOpportunitySource(
+                $date->toDateString(),
+                $date->addDay()->toDateString(),
+                $date->addDay()->toDateTimeString(),
+            );
+        }
+        foreach (['2026-09-30', '2026-09-23', '2026-09-16', '2026-09-09', '2026-09-02'] as $date) {
+            $this->coverOpportunitySource($date, CarbonImmutable::parse($date)->addDay()->toDateString(), CarbonImmutable::parse($date)->addDay()->toDateString());
+        }
+
+        $opportunitySyncRunQueries = 0;
+        DB::listen(function ($query) use (&$opportunitySyncRunQueries): void {
+            if (str_contains($query->sql, 'report_sync_runs')
+                && in_array('salesforce_opportunities', $query->bindings, true)) {
+                $opportunitySyncRunQueries++;
+            }
+        });
+
+        $dataset = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertSame(0, $dataset['metrics']['reservas']['current']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_UPDATED, $dataset['metrics']['reservas']['data_health']);
+        $this->assertLessThanOrEqual(14, $opportunitySyncRunQueries);
     }
 
     public function test_failed_modified_run_after_base_coverage_is_a_data_incident(): void

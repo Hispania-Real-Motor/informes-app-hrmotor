@@ -22,8 +22,11 @@ class ReservationsSalesDashboardDatasetService
 
     private const EXECUTIVE_BASE_COVERAGE_MODES = ['period', 'all_history'];
 
-    /** @var Collection<int, ReportSyncRun>|null */
-    private ?Collection $opportunitySyncRuns = null;
+    /** @var array<string, ReportSyncRun|null> */
+    private array $opportunityBaseCoverageRuns = [];
+
+    /** @var array<string, ReportSyncRun|null> */
+    private array $opportunityFreshnessRuns = [];
 
     public function __construct(
         private readonly LeadDelegationNormalizer $delegationNormalizer,
@@ -1303,10 +1306,8 @@ class ReservationsSalesDashboardDatasetService
     /** @return array<string, mixed> */
     private function opportunitySyncMetadata(CarbonImmutable $start, CarbonImmutable $endExclusive): array
     {
-        $baseRun = $this->opportunitySyncRuns()
-            ->first(fn (ReportSyncRun $run): bool => $this->isExecutiveBaseCoverageRun($run, $start, $endExclusive));
-        $freshnessRun = $this->opportunitySyncRuns()
-            ->first(fn (ReportSyncRun $run): bool => $this->isExecutiveFreshnessRun($run, $start, $endExclusive));
+        $baseRun = $this->opportunityBaseCoverageRun($start, $endExclusive);
+        $freshnessRun = $this->opportunityFreshnessRun($start, $endExclusive);
 
         return [
             'dataset_cutoff_at' => $freshnessRun?->source_cutoff_at?->toDateTimeString(),
@@ -1328,37 +1329,52 @@ class ReservationsSalesDashboardDatasetService
         ];
     }
 
-    /** @return Collection<int, ReportSyncRun> */
-    private function opportunitySyncRuns(): Collection
+    private function opportunityBaseCoverageRun(CarbonImmutable $start, CarbonImmutable $endExclusive): ?ReportSyncRun
     {
-        return $this->opportunitySyncRuns ??= ReportSyncRun::query()
-            ->where('dataset', 'salesforce_opportunities')
-            ->where('source', 'salesforce')
-            ->orderByDesc('started_at')
-            ->orderByDesc('id')
-            ->get();
-    }
+        $cacheKey = $this->opportunitySyncRangeKey($start, $endExclusive);
 
-    private function isExecutiveBaseCoverageRun(ReportSyncRun $run, CarbonImmutable $start, CarbonImmutable $endExclusive): bool
-    {
-        return $run->status === 'completed'
-            && in_array($this->syncRunMode($run), self::EXECUTIVE_BASE_COVERAGE_MODES, true)
-            && $run->period_start_at !== null
-            && $run->period_end_at !== null
-            && CarbonImmutable::parse($run->period_start_at)->lessThanOrEqualTo($start)
-            && CarbonImmutable::parse($run->period_end_at)->greaterThanOrEqualTo($endExclusive);
-    }
-
-    private function isExecutiveFreshnessRun(ReportSyncRun $run, CarbonImmutable $start, CarbonImmutable $endExclusive): bool
-    {
-        if ($this->syncRunMode($run) === 'modified') {
-            return true;
+        if (array_key_exists($cacheKey, $this->opportunityBaseCoverageRuns)) {
+            return $this->opportunityBaseCoverageRuns[$cacheKey];
         }
 
-        return $run->period_start_at !== null
-            && $run->period_end_at !== null
-            && CarbonImmutable::parse($run->period_start_at)->lessThanOrEqualTo($start)
-            && CarbonImmutable::parse($run->period_end_at)->greaterThanOrEqualTo($endExclusive);
+        return $this->opportunityBaseCoverageRuns[$cacheKey] = ReportSyncRun::query()
+            ->where('dataset', 'salesforce_opportunities')
+            ->where('source', 'salesforce')
+            ->where('status', 'completed')
+            ->whereIn('stats->mode', self::EXECUTIVE_BASE_COVERAGE_MODES)
+            ->where('period_start_at', '<=', $start)
+            ->where('period_end_at', '>=', $endExclusive)
+            ->orderByDesc('started_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function opportunityFreshnessRun(CarbonImmutable $start, CarbonImmutable $endExclusive): ?ReportSyncRun
+    {
+        $cacheKey = $this->opportunitySyncRangeKey($start, $endExclusive);
+
+        if (array_key_exists($cacheKey, $this->opportunityFreshnessRuns)) {
+            return $this->opportunityFreshnessRuns[$cacheKey];
+        }
+
+        return $this->opportunityFreshnessRuns[$cacheKey] = ReportSyncRun::query()
+            ->where('dataset', 'salesforce_opportunities')
+            ->where('source', 'salesforce')
+            ->where(function ($query) use ($start, $endExclusive): void {
+                $query->where('stats->mode', 'modified')
+                    ->orWhere(function ($query) use ($start, $endExclusive): void {
+                        $query->where('period_start_at', '<=', $start)
+                            ->where('period_end_at', '>=', $endExclusive);
+                    });
+            })
+            ->orderByDesc('started_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function opportunitySyncRangeKey(CarbonImmutable $start, CarbonImmutable $endExclusive): string
+    {
+        return $start->toIso8601String().'|'.$endExclusive->toIso8601String();
     }
 
     private function syncRunMode(?ReportSyncRun $run): ?string

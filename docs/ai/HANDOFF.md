@@ -56,9 +56,14 @@
   correo y no lee filesystem como fuente de negocio.
 - Rendimiento: el dataset consulta un conjunto fijo de muestras (D, cuatro
   referencias semanales, D-364 y MTD) mediante los servicios canónicos locales.
-  No hay N+1 por registro ni carga de tablas completas añadida por EXE-2.
+  La metadata de `ReportSyncRun` para `salesforce_opportunities` se resuelve
+  con consultas acotadas `first()`/`LIMIT 1` y caché interna por rango, sin
+  cargar el histórico completo de sincronizaciones. El máximo actual es 14
+  consultas de metadata por build de EXE-2 para Reservas/Ventas: cobertura base
+  y frescura sobre los 7 rangos fijos. No hay N+1 por registro ni carga de
+  tablas completas añadida por EXE-2.
 - Pruebas focales iniciales: `php artisan test --filter=ExecutiveDailyDatasetTest`
-  correcto, 25 pruebas / 110 aserciones. La validación final completa se registra
+  correcto, 26 pruebas / 114 aserciones. La validación final completa se registra
   en la entrega de la rama.
 - EXE-1 queda cerrado documentalmente: PR #65 fusionado en
   `99fc0ee3973919cdfaa57389872b6cd89f480352`, CI verde, rama

@@ -36,6 +36,10 @@
   `period`/`all_history` también pueden servir como frescura, pero solo para los
   rangos que cubren. `SalesforceOpportunity::updated_at` puede publicarse como
   diagnóstico, pero nunca prueba cobertura suficiente.
+- La resolución de esa metadata debe permanecer acotada: EXE-2 no precarga el
+  histórico completo de `ReportSyncRun`; selecciona cobertura base y frescura
+  con consultas ordenadas y `LIMIT 1`, cacheadas por el conjunto fijo de rangos
+  del dataset ejecutivo.
 - La salud agregada y `day_complete` de EXE-2 consideran únicamente `current` y
   las referencias obligatorias D-7, D-14, D-21 y D-28. D-364 y MTD mantienen su
   cobertura individual, pero no degradan ni mejoran la evaluación diaria.
