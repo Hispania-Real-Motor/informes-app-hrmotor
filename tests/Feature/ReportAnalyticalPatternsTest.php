@@ -88,14 +88,16 @@ class ReportAnalyticalPatternsTest extends TestCase
         $this->assertStringNotContainsString('not-evaluable', $component);
     }
 
-    public function test_structural_pages_do_not_present_fictitious_metrics_or_analytical_states(): void
+    public function test_summary_renders_real_executive_metrics_and_seo_remains_structural(): void
     {
         $this->get('/informes')
             ->assertOk()
-            ->assertDontSee('report-ui-kpi-strip', false)
-            ->assertDontSee('report-ui-table', false)
+            ->assertSee('Resumen Ejecutivo')
+            ->assertSee('report-ui-kpi-strip', false)
+            ->assertSee('report-ui-table', false)
+            ->assertSee('report-ui-status', false)
             ->assertDontSee('report-ui-source-status', false)
-            ->assertDontSee('report-ui-status', false);
+            ->assertDontSee('Sin datos analíticos en este lote');
 
         $this->get('/informes/seo-analytics')
             ->assertOk()

@@ -1,4 +1,4 @@
-@props(['state'])
+@props(['state', 'label' => null])
 
 @php
     $states = [
@@ -34,5 +34,5 @@
                 <path d="M8 12h8" />
         @endswitch
     </svg>
-    <span>{{ $states[$resolvedState] }}</span>
+    <span>{{ $label ?? $states[$resolvedState] }}</span>
 </span>

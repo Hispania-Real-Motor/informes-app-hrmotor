@@ -1,5 +1,30 @@
 # Decisiones técnicas
 
+## 2026-10-02 — Resumen Ejecutivo global sobre EXE-1/EXE-2
+
+- `/informes` es el Resumen Ejecutivo global V1. No se crea una ruta paralela ni
+  un endpoint JSON adicional: la página server-rendered consume un payload de
+  composición preparado por `ExecutiveSummaryService`.
+- `ExecutiveSummaryService` es el único compositor EXE-3. Ejecuta EXE-2 una vez
+  por request, evalúa cada métrica con EXE-1 y prepara un payload estable con
+  `cutoff`, `mtd_period`, `metrics`, `alerts`, `data_health_summary` y `meta`.
+  El controller queda limitado a autorización existente y render.
+- EXE-3 no recalcula baseline, variación, estado, dirección, thresholds ni
+  salud. Esos valores proceden de `ExecutiveMetricRulesEngine` y
+  `ExecutiveDailyDatasetService`.
+- La presentación separa situación de negocio, dirección y salud del dato. Una
+  incidencia de datos no se convierte en alerta de negocio, y una métrica no
+  evaluable se muestra como tal sin convertir `null` en cero.
+- Las alertas salen exclusivamente de resultados `business_alert=true`. Se
+  ordenan por severidad, dirección desfavorable antes que favorable,
+  `absolute_difference` y `metric_key`; no existe impacto económico fiable común
+  en V1 y no se inventa.
+- EXE-3 no inventa causas ni acciones. Si no hay causa confirmada en el contrato
+  del motor, la vista solo indica revisión requerida.
+- El acceso sigue delegado en `ReportUserAccess::canViewReport(..., 'summary')`
+  y por tanto V1 es exclusivo de Administrador/Dirección. No se introduce
+  configuración por `report_access_settings` para Summary.
+
 ## 2026-10-01 — Dataset ejecutivo diario local y reconciliable
 
 - EXE-2 se implementa como capa local de preparación de datos en

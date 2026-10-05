@@ -1,5 +1,43 @@
 # Handoff para agentes
 
+## EXE-3 — Resumen Ejecutivo global (2026-10-02)
+
+- Rama de trabajo: `feat/exe-3-executive-summary`, creada desde `main`
+  `206e0c7b7c55e44e1e37935d59a37aaab44067ff` tras el merge del PR #66.
+- EXE-2 queda cerrado documentalmente: PR #66 fusionado con head
+  `f5413d594f53ddf09af9f5bfc6e52b964dead41e`, merge
+  `206e0c7b7c55e44e1e37935d59a37aaab44067ff`, rama
+  `feat/exe-2-executive-daily-data` cerrada.
+- Se añade `App\Services\Analytics\Executive\ExecutiveSummaryService` como
+  compositor EXE-3. `build()` ejecuta EXE-2 una sola vez por request y
+  `compose()` permite probar payloads controlados. El controller no contiene
+  thresholds, fórmulas, sorting complejo, queries directas ni lógica de alertas.
+- El compositor evalúa cada `engine_input` de EXE-2 con
+  `ExecutiveMetricRulesEngine`, conserva MTD y D-364 como contexto, traduce
+  status/direction/health a presentación y ordena alertas exclusivamente cuando
+  `business_alert=true`.
+- Orden de alertas V1: severidad `Crítico > Desviación > Atención > Correcto`;
+  a igual severidad, `Desfavorable` precede a `Favorable`; después se usa
+  `absolute_difference`; último desempate determinista por `metric_key`. No se
+  inventa impacto económico.
+- `/informes` deja de ser placeholder y renderiza `reports.summary.index` con
+  `x-reports.app-shell`, `x-reports.ui.page-header`, `x-reports.ui.status`,
+  `report-ui-kpi-strip`, paneles y empty-state compartidos. No se crea ruta,
+  endpoint JSON, JS, scheduler, correo ni migración.
+- Acceso: se mantiene `reports.auth` y `ReportUserAccess::canViewReport(...,
+  'summary')`. V1 sigue limitado a Administrador y Dirección; los roles
+  operacionales continúan redirigiendo a su primer módulo permitido.
+- Seguridad: la vista muestra agregados y textos de presentación. No expone PII,
+  Salesforce IDs, IDs de `ReportSyncRun`, raw payloads, `error_message` ni
+  reason codes técnicos `exe_v1_*`.
+- Causas y acciones: EXE-3 no infiere causalidad ni prescribe acciones. Si no
+  existe `confirmed_cause`, la alerta muestra revisión requerida sin fabricar
+  causa. `recommended_action_key` permanece sin catálogo en V1.
+- Pruebas focales iniciales: `ExecutiveSummaryServiceTest` correcto, 4 pruebas /
+  18 aserciones; `ExecutiveSummaryPageTest` correcto, 3 pruebas / 43
+  aserciones. La validación final completa se registra en la entrega de la
+  rama.
+
 ## EXE-2 — Datos ejecutivos diarios (2026-10-01)
 
 - Rama de trabajo: `feat/exe-2-executive-daily-data`, creada desde `main`

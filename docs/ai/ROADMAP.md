@@ -1,6 +1,6 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-10-01.
+Actualizado: 2026-10-02.
 
 ## Trabajo transversal autorizado
 
@@ -205,9 +205,10 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
   `feat/rv-2-direction-summary-production-periods` fue eliminada después del
   merge.
 - AUTH-PASSWORD-RESET está cerrado operacionalmente.
-- EXE-1 está cerrado tras el PR #65. El trabajo activo actual es `EXE-2` en la
-  rama `feat/exe-2-executive-daily-data`, nacida de `main`
-  `99fc0ee3973919cdfaa57389872b6cd89f480352`.
+- EXE-1 está cerrado tras el PR #65. EXE-2 está cerrado tras el PR #66. El
+  trabajo activo actual es `EXE-3` en la rama
+  `feat/exe-3-executive-summary`, nacida de `main`
+  `206e0c7b7c55e44e1e37935d59a37aaab44067ff`.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 
@@ -221,8 +222,8 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 | 4 | SF-7A-OPS | Cierre operacional Salesforce Fase 7A | P0 | `bloqueada` | RV-2 | Bloqueada hasta modelo Salesforce nuevo implementado y validado |
 | 5 | SF-7B-OPS | Cierre operacional Salesforce Fase 7B | P0 | `bloqueada` | SF-7A-OPS | Bloqueada hasta modelo Salesforce nuevo implementado y validado |
 | 6 | EXE-1 | Motor ejecutivo V1 | P0 | `cerrada` | SF-7B-OPS | Contrato y pruebas V1; no depende técnicamente de 7A/7B por ser agnóstico de módulo |
-| 7 | EXE-2 | Datos ejecutivos diarios | P0 | `en_revision` | EXE-1 | Contrato de EXE-1 y fuentes canónicas locales; no depende técnicamente de los backfills 7A/7B |
-| 8 | EXE-3 | Resumen Ejecutivo global | P0 | `pendiente` | EXE-2 | Contratos de EXE-1 y datasets de EXE-2 |
+| 7 | EXE-2 | Datos ejecutivos diarios | P0 | `cerrada` | EXE-1 | Contrato de EXE-1 y fuentes canónicas locales; no depende técnicamente de los backfills 7A/7B |
+| 8 | EXE-3 | Resumen Ejecutivo global | P0 | `en_revision` | EXE-2 | Contratos de EXE-1 y datasets de EXE-2 |
 | 9 | EXE-4 | Correo ejecutivo piloto | P0 | `pendiente` | EXE-3 | Dataset ejecutivo global aprobado |
 | 10 | EXE-5 | Piloto y calibración | P0 | `pendiente` | EXE-4 | Flujo piloto ejecutable y auditable |
 | 11 | TRANS-1 | Correcciones transversales | P1 | `pendiente` | EXE-5 | Inventario aprobado de incidencias verificadas |
@@ -439,19 +440,20 @@ Reglas de evaluabilidad:
 
 - **Fase/lote:** Resumen Ejecutivo, adaptadores de datos.
 - **Prioridad:** P0.
-- **Estado:** `en_revision`.
+- **Estado:** `cerrada`.
 - **Predecesor planificado:** EXE-1.
 - **Dependencias técnicas reales:** contrato de entrada de EXE-1 y fuentes
   canónicas locales. No depende técnicamente de los backfills de 7A/7B.
-- **Rama prevista o activa:** `feat/exe-2-executive-daily-data`.
+- **Rama cerrada:** `feat/exe-2-executive-daily-data`.
 - **SHA base al activar:** `99fc0ee3973919cdfaa57389872b6cd89f480352`.
-- **Bloqueos/decisiones de negocio:** implementación, pruebas y documentación
-  terminadas en rama; pendiente revisión sénior. Reutiliza universos canónicos y
-  datos locales; no duplica fórmulas ni consulta proveedores durante el render.
-- **Punto exacto de reanudación:** revisar
-  `ExecutiveDailyDatasetService`, los adaptadores ejecutivos añadidos a los
-  datasets canónicos de Leads y Reservas/Ventas, y
-  `ExecutiveDailyDatasetTest`.
+- **Cierre:** PR #66 fusionado con head
+  `f5413d594f53ddf09af9f5bfc6e52b964dead41e` y merge
+  `206e0c7b7c55e44e1e37935d59a37aaab44067ff`.
+- **Conclusión:** queda disponible el dataset diario local para Leads, Reservas
+  y Ventas, con timezone `Europe/Madrid`, D/D-7/D-14/D-21/D-28/D-364, MTD,
+  reconciliación con universos canónicos, cobertura base separada de frescura
+  incremental, `modified` sin certificación histórica, cero/null diferenciados,
+  sin Salesforce/HTTP/IA y queries de metadata acotadas.
 - **Criterios de aceptación:** series diarias reconciliables para Leads, Reservas
   y Ventas; último día cerrado explícito; 4/4 referencias; frescura y cobertura
   verificables; scopes preparados sin conceder acceso futuro; sin PII ni ceros
@@ -461,16 +463,17 @@ Reglas de evaluabilidad:
 
 - **Fase/lote:** Resumen Ejecutivo, dashboard.
 - **Prioridad:** P0.
-- **Estado:** `pendiente`.
+- **Estado:** `en_revision`.
 - **Predecesor planificado:** EXE-2.
 - **Dependencias técnicas reales:** contrato del motor EXE-1 y datasets diarios
   reconciliables de EXE-2.
-- **Rama prevista o activa:** por asignar; ninguna rama activa.
-- **SHA base al activar:** por registrar.
+- **Rama prevista o activa:** `feat/exe-3-executive-summary`.
+- **SHA base al activar:** `206e0c7b7c55e44e1e37935d59a37aaab44067ff`.
 - **Bloqueos/decisiones de negocio:** acceso V1 solo Administrador/Dirección;
   SISTRIX y GEO/IA ocultos.
-- **Punto exacto de reanudación:** definir autorización server-side y jerarquía
-  de la vista global conforme al Design System existente.
+- **Punto exacto de reanudación:** revisar `SummaryDashboardController`, el
+  compositor `ExecutiveSummaryService`, la vista `reports.summary.index` y los
+  tests `ExecutiveSummary*` antes de abrir PR.
 - **Criterios de aceptación:** visión global; máximo cinco alertas con orden
   aprobado; último día cerrado y contexto MTD claramente separados; salud del
   dato fuera de alertas de negocio; causas y acciones con trazabilidad; interfaz
