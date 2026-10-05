@@ -151,15 +151,22 @@ final class ExecutiveSummaryService
      */
     private function dataHealthSummary(array $metrics): array
     {
-        $healthCounts = collect($metrics)->countBy(fn (array $metric): string => $metric['data_health']['key'])->all();
+        $metricCollection = collect($metrics);
+        $healthCounts = $metricCollection->countBy(fn (array $metric): string => $metric['data_health']['key'])->all();
         $incidentCount = (int) ($healthCounts[ExecutiveMetricRulesEngine::HEALTH_INCIDENT] ?? 0);
         $partialCount = (int) ($healthCounts[ExecutiveMetricRulesEngine::HEALTH_PARTIAL] ?? 0);
         $staleCount = (int) ($healthCounts[ExecutiveMetricRulesEngine::HEALTH_STALE] ?? 0);
         $allUpdated = $incidentCount === 0 && $partialCount === 0 && $staleCount === 0;
+        $metricCount = $metricCollection->count();
+        $evaluableCount = $metricCollection->filter(fn (array $metric): bool => $metric['evaluable'] === true)->count();
+        $notEvaluableCount = $metricCount - $evaluableCount;
+        $allEvaluable = $metricCount > 0 && $evaluableCount === $metricCount;
 
         return [
-            'all_evaluable' => collect($metrics)->every(fn (array $metric): bool => $metric['evaluable'] === true),
+            'all_evaluable' => $allEvaluable,
             'all_data_updated' => $allUpdated,
+            'evaluable_count' => $evaluableCount,
+            'not_evaluable_count' => $notEvaluableCount,
             'has_incidents' => $incidentCount > 0,
             'has_partial' => $partialCount > 0,
             'has_stale' => $staleCount > 0,
@@ -167,6 +174,8 @@ final class ExecutiveSummaryService
                 $incidentCount > 0 => 'Con incidencias de datos',
                 $partialCount > 0 => 'Parcialmente evaluable',
                 $staleCount > 0 => 'Con datos desactualizados',
+                $evaluableCount === 0 => 'No evaluable',
+                ! $allEvaluable => 'Parcialmente evaluable',
                 default => 'Completamente evaluable',
             },
             'counts' => [

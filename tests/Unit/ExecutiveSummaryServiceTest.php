@@ -65,6 +65,52 @@ class ExecutiveSummaryServiceTest extends TestCase
         $this->assertSame('Correcto', $summary['metrics']['leads']['status']['label']);
     }
 
+    public function test_updated_metric_with_insufficient_baseline_keeps_health_but_prevents_complete_evaluability_headline(): void
+    {
+        $summary = app(ExecutiveSummaryService::class)->compose($this->dataset([
+            'leads' => $this->metric('leads', 8, [10, 10, 10, 10]),
+            'reservas' => $this->metric('reservas', 5, [5, 5, 5, 5]),
+            'ventas' => $this->metric('ventas', 5, [5, 5, 5, 5]),
+        ]));
+
+        $this->assertFalse($summary['metrics']['leads']['evaluable']);
+        $this->assertSame('No evaluable', $summary['metrics']['leads']['status']['label']);
+        $this->assertSame('Actualizado', $summary['metrics']['leads']['data_health']['label']);
+        $this->assertFalse($summary['data_health_summary']['all_evaluable']);
+        $this->assertSame(2, $summary['data_health_summary']['evaluable_count']);
+        $this->assertSame(1, $summary['data_health_summary']['not_evaluable_count']);
+        $this->assertSame('Parcialmente evaluable', $summary['data_health_summary']['headline']);
+        $this->assertNotSame('Completamente evaluable', $summary['data_health_summary']['headline']);
+    }
+
+    public function test_all_updated_but_no_metrics_evaluable_uses_not_evaluable_headline(): void
+    {
+        $summary = app(ExecutiveSummaryService::class)->compose($this->dataset([
+            'leads' => $this->metric('leads', 8, [10, 10, 10, 10]),
+            'reservas' => $this->metric('reservas', 2, [4, 4, 4, 4]),
+            'ventas' => $this->metric('ventas', 2, [4, 4, 4, 4]),
+        ]));
+
+        $this->assertFalse($summary['data_health_summary']['all_evaluable']);
+        $this->assertSame(0, $summary['data_health_summary']['evaluable_count']);
+        $this->assertSame(3, $summary['data_health_summary']['not_evaluable_count']);
+        $this->assertSame('No evaluable', $summary['data_health_summary']['headline']);
+    }
+
+    public function test_all_updated_and_all_metrics_evaluable_uses_complete_evaluability_headline(): void
+    {
+        $summary = app(ExecutiveSummaryService::class)->compose($this->dataset([
+            'leads' => $this->metric('leads', 100, [100, 100, 100, 100]),
+            'reservas' => $this->metric('reservas', 5, [5, 5, 5, 5]),
+            'ventas' => $this->metric('ventas', 5, [5, 5, 5, 5]),
+        ]));
+
+        $this->assertTrue($summary['data_health_summary']['all_evaluable']);
+        $this->assertSame(3, $summary['data_health_summary']['evaluable_count']);
+        $this->assertSame(0, $summary['data_health_summary']['not_evaluable_count']);
+        $this->assertSame('Completamente evaluable', $summary['data_health_summary']['headline']);
+    }
+
     /** @param array<string, array<string, mixed>> $metrics */
     private function dataset(array $metrics): array
     {
