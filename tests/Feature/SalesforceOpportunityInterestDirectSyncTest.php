@@ -183,6 +183,63 @@ class SalesforceOpportunityInterestDirectSyncTest extends TestCase
             ->where('direct_run_id', $failed->id)->count());
     }
 
+    public function test_cleanup_is_chunked_and_failure_after_publication_keeps_completed_snapshot(): void
+    {
+        $old = $this->completedRun(3);
+        $now = now();
+        $rows = array_map(fn (int $index): array => [
+            'direct_run_id' => $old->id,
+            'opportunity_salesforce_id' => $this->opportunityId(1000 + $index),
+            'interest_salesforce_id' => $this->interestId(1000 + $index),
+            'reference_status' => 'valid',
+            'opportunity_is_deleted' => false,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], range(1, 1001));
+        foreach (array_chunk($rows, 200) as $chunk) {
+            SalesforceOpportunityInterestDirect::query()->insert($chunk);
+        }
+        $client = $this->client([[]]);
+        $service = new class($client) extends SalesforceOpportunityInterestDirectSyncService
+        {
+            public int $cleanupChunks = 0;
+
+            protected function afterCleanupChunk(int $rowsDeleted): void
+            {
+                $this->cleanupChunks++;
+            }
+        };
+
+        $published = $service->sync('Remove superseded direct snapshot detail in chunks');
+        $this->assertSame('completed', $published['run']->status);
+        $this->assertSame(2, $service->cleanupChunks);
+        $this->assertDatabaseMissing('salesforce_opportunity_interest_directs', ['direct_run_id' => $old->id]);
+
+        SalesforceOpportunityInterestDirect::query()->create([
+            'direct_run_id' => $published['run']->id,
+            'opportunity_salesforce_id' => $this->opportunityId(9999),
+            'interest_salesforce_id' => $this->interestId(9999),
+            'reference_status' => 'valid',
+            'opportunity_is_deleted' => false,
+        ]);
+        $failingCleanup = new class($client) extends SalesforceOpportunityInterestDirectSyncService
+        {
+            protected function afterCleanupChunk(int $rowsDeleted): void
+            {
+                throw new RuntimeException('sensitive cleanup failure');
+            }
+        };
+        $next = $failingCleanup->sync('Keep completed direct snapshot after cleanup failure');
+
+        $this->assertSame('completed', $next['run']->status);
+        $this->assertSame(1, $next['stats']['cleanup_errors']);
+        $this->assertNull($next['run']->error_message);
+        $this->assertDatabaseHas('salesforce_opportunity_interest_direct_runs', [
+            'id' => $next['run']->id,
+            'status' => 'completed',
+        ]);
+    }
+
     public function test_command_validates_reason_and_lock_is_exclusive(): void
     {
         $this->artisan('salesforce:sync-opportunity-interest-direct')->assertFailed();

@@ -11,6 +11,15 @@
   independientes. La reconciliación guarda qué runs y qué instantes compara;
   no afirma simultaneidad cuando los cutoffs difieren y falla si cualquiera de
   los snapshots cambia durante la construcción.
+- `salesforce_interests` solo puede aportar lifecycle/presencia de Interest si
+  el último `ReportSyncRun` canónico sigue siendo exactamente el F2 registrado
+  por 4A. Se valida por ID, cutoff y estado completed antes del materializado y
+  antes de publicar; no se infiere estabilidad mediante `updated_at` ni locks
+  globales.
+- El lifecycle Opportunity directo e inverso se persiste en campos separados,
+  junto con el presence status inverso. Una divergencia temporal puede activar
+  revisión diagnóstica, pero no cambia los estados de relación ni elige una
+  evidencia como autoridad silenciosa.
 - La unidad reconciliada es Opportunity sobre la unión de ambos lados. Los
   estados `both_match`, `direct_only`, `inverse_only`, `contradiction`,
   `inverse_shared` y `unresolved` preservan asimetrías sin elegir un ganador.

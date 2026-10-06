@@ -127,6 +127,15 @@ Actualizado: 2026-10-06.
   ID/run/cutoff Interest de 4A, y distingue `both_match`, `direct_only`,
   `inverse_only`, `contradiction`, `inverse_shared` y `unresolved`. Ningún lado
   sobrescribe al otro y una contradicción nunca se resuelve por heurística.
+- El lifecycle Opportunity permanece separado como
+  `direct_opportunity_is_deleted`, `inverse_opportunity_is_deleted` e
+  `inverse_opportunity_presence_status`; diferencias debidas a cutoffs distintos
+  son auditables y pueden requerir revisión, pero no se convierten en
+  contradicción de identidad. No existe precedencia silenciosa entre 4A y 4B.
+- El acceso de 4B a `salesforce_interests` queda anclado al run F2 exacto que
+  declara 4A. Antes de leer y antes de publicar, el último run por ID de
+  `salesforce_interests/salesforce` debe seguir completed y coincidir en ID y
+  cutoff. Un F2 posterior running, failed o completed invalida la publicación.
 - No se impone unicidad Interest→Opportunity: un Interest directo puede aparecer
   en varias Opportunities y una Opportunity puede tener varias referencias
   inversas. Solo Salesforce ID REST canónico es identidad. Runs y detalles son

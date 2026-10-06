@@ -2,6 +2,7 @@
 
 namespace App\Services\Salesforce;
 
+use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
 use App\Models\SalesforceInterestOpportunityReconciliation;
 use App\Models\SalesforceInterestOpportunityReconciliationRun;
@@ -47,6 +48,7 @@ class SalesforceOpportunityInterestReconciliationService
         try {
             $directRun = $this->latestStableDirectRun();
             $inverseRun = $this->latestStableInverseRun();
+            $interestRun = $this->latestStableInterestRun($inverseRun);
 
             try {
                 $run = SalesforceOpportunityInterestReconciliationRun::query()->create([
@@ -65,7 +67,7 @@ class SalesforceOpportunityInterestReconciliationService
                 $this->materializeDirectUniverse($run, $directRun, $inverseRun, $stats);
                 $this->materializeInverseOnlyUniverse($run, $directRun, $inverseRun, $stats);
                 $this->afterSnapshotBuilt($run, $stats);
-                $this->assertSourcesUnchanged($directRun, $inverseRun);
+                $this->assertSourcesUnchanged($directRun, $inverseRun, $interestRun);
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
 
                 $run->update([
@@ -254,17 +256,37 @@ class SalesforceOpportunityInterestReconciliationService
             (bool) $interest->is_deleted => 'present_deleted',
             default => 'present_active',
         };
-        $opportunityDeleted = $direct?->opportunity_is_deleted
-            ?? $inverse->first()?->opportunity_is_deleted;
+        $inversePresenceStatuses = $inverse->pluck('opportunity_presence_status')->unique()->values();
+        $inversePresenceStatus = $inversePresenceStatuses->count() === 1
+            ? $inversePresenceStatuses->first()
+            : ($inversePresenceStatuses->isEmpty() ? null : 'present_unresolved');
+        $inverseDeletedValues = $inverse->pluck('opportunity_is_deleted')
+            ->filter(fn (mixed $value): bool => $value !== null)
+            ->map(fn (mixed $value): bool => (bool) $value)
+            ->unique()
+            ->values();
+        $inverseOpportunityDeleted = $inverseDeletedValues->count() === 1
+            ? $inverseDeletedValues->first()
+            : null;
+        $directOpportunityDeleted = $direct?->opportunity_is_deleted;
+        $lifecycleMismatch = $directOpportunityDeleted !== null
+            && $inverseOpportunityDeleted !== null
+            && $directOpportunityDeleted !== $inverseOpportunityDeleted;
         $requiresReview = in_array($relationship, [
             'direct_only', 'inverse_only', 'contradiction', 'inverse_shared', 'unresolved',
-        ], true) || $interestPresenceStatus === 'not_local' || $opportunityDeleted === true;
+        ], true)
+            || $interestPresenceStatus === 'not_local'
+            || $directOpportunityDeleted === true
+            || $inverseOpportunityDeleted === true
+            || $lifecycleMismatch;
 
         $stats['opportunities_examined']++;
         $stats[$relationship]++;
         $stats['direct_references'] += (int) ($direct !== null);
         $stats['inverse_references'] += $inverseCount;
-        $stats['opportunities_deleted'] += (int) ($opportunityDeleted === true);
+        $stats['direct_opportunities_deleted'] += (int) ($directOpportunityDeleted === true);
+        $stats['inverse_opportunities_deleted'] += (int) ($inverseOpportunityDeleted === true);
+        $stats['lifecycle_mismatches'] += (int) $lifecycleMismatch;
         $stats['direct_interests_not_local'] += (int) ($interestPresenceStatus === 'not_local');
         $stats['invalid_references'] += (int) ($interestPresenceStatus === 'invalid_reference');
         $stats['requires_review'] += (int) $requiresReview;
@@ -281,7 +303,9 @@ class SalesforceOpportunityInterestReconciliationService
             'direct_reference_status' => $direct?->reference_status,
             'direct_interest_presence_status' => $interestPresenceStatus,
             'direct_interest_is_deleted' => $interest?->is_deleted,
-            'opportunity_is_deleted' => $opportunityDeleted,
+            'direct_opportunity_is_deleted' => $directOpportunityDeleted,
+            'inverse_opportunity_is_deleted' => $inverseOpportunityDeleted,
+            'inverse_opportunity_presence_status' => $inversePresenceStatus,
             'requires_review' => $requiresReview,
             'created_at' => $now,
             'updated_at' => $now,
@@ -332,16 +356,40 @@ class SalesforceOpportunityInterestReconciliationService
         return $run;
     }
 
+    private function latestStableInterestRun(
+        SalesforceInterestOpportunityReconciliationRun $inverseRun,
+    ): ReportSyncRun {
+        $run = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->latest('id')
+            ->first();
+
+        if ($run === null
+            || $run->status !== 'completed'
+            || $run->source_cutoff_at === null
+            || $run->id !== $inverseRun->source_interest_sync_run_id
+            || ! $run->source_cutoff_at->equalTo($inverseRun->source_interest_cutoff_at)) {
+            throw new RuntimeException('The Interest source is not current for the inverse snapshot.');
+        }
+
+        return $run;
+    }
+
     private function assertSourcesUnchanged(
         SalesforceOpportunityInterestDirectRun $directRun,
         SalesforceInterestOpportunityReconciliationRun $inverseRun,
+        ReportSyncRun $interestRun,
     ): void {
         $currentDirect = $this->latestStableDirectRun();
         $currentInverse = $this->latestStableInverseRun();
+        $currentInterest = $this->latestStableInterestRun($inverseRun);
         if ($currentDirect->id !== $directRun->id
             || ! $currentDirect->source_cutoff_at?->equalTo($directRun->source_cutoff_at)
             || $currentInverse->id !== $inverseRun->id
-            || ! $currentInverse->source_interest_cutoff_at?->equalTo($inverseRun->source_interest_cutoff_at)) {
+            || ! $currentInverse->source_interest_cutoff_at?->equalTo($inverseRun->source_interest_cutoff_at)
+            || $currentInterest->id !== $interestRun->id
+            || ! $currentInterest->source_cutoff_at?->equalTo($interestRun->source_cutoff_at)) {
             throw new RuntimeException('Opportunity Interest evidence changed during reconciliation.');
         }
     }
@@ -396,7 +444,9 @@ class SalesforceOpportunityInterestReconciliationService
             'contradiction' => 0,
             'inverse_shared' => 0,
             'unresolved' => 0,
-            'opportunities_deleted' => 0,
+            'direct_opportunities_deleted' => 0,
+            'inverse_opportunities_deleted' => 0,
+            'lifecycle_mismatches' => 0,
             'direct_interests_not_local' => 0,
             'invalid_references' => 0,
             'requires_review' => 0,

@@ -26,6 +26,16 @@
   Interest de 4A. Antes de publicar se revalidan ambas fuentes. Cutoffs distintos
   permanecen visibles; no se finge un instante común ni se resuelve una
   contradicción mediante heurísticas.
+- Correctivo sénior: antes de consultar `salesforce_interests` se exige que el
+  último `ReportSyncRun` canónico sea el mismo F2 completed —ID y cutoff— usado
+  por 4A, y se repite la comprobación justo antes de publicar. Un F2 posterior,
+  incluso running o failed, impide combinar lifecycle mutable con evidencia 4A
+  anterior y deja el run 4B failed sin sustituir el último completed.
+- El detalle conserva separadamente `direct_opportunity_is_deleted`,
+  `inverse_opportunity_is_deleted` e `inverse_opportunity_presence_status`. Una
+  diferencia de lifecycle entre cutoffs se cuantifica en
+  `lifecycle_mismatches` y requiere revisión, pero no transforma `both_match` en
+  `contradiction` ni establece precedencia directa/inversa.
 - Se admiten varias Opportunities por Interest y varias referencias inversas
   por Opportunity. No existe constraint 1:1 basada en la fotografía observada.
   Salesforce ID canónico es la única identidad.
@@ -41,8 +51,10 @@
   `salesforce_opportunities`, FOUNDATION-4A o informes; errores sanitizados y
   ausencia de credenciales, raw payload y PII. No se ejecutaron migraciones
   persistentes ni accesos Salesforce/producción durante la implementación.
-- Validación local: focales 4B `14/110`; FOUNDATION-1/2/3/3A/4A/4B
-  `111/652`; suite completa `1.223/8.936`, todas verdes. Pint focal y
+- Validación inicial local: focales 4B `14/110`; FOUNDATION-1/2/3/3A/4A/4B
+  `111/652`; suite completa `1.223/8.936`, todas verdes. El correctivo sénior
+  amplía focales F4B a `18/138`, el bloque FOUNDATION-1/2/3/3A/4A/4B a
+  `115/680` y la suite completa a `1.227/8.964`, todas verdes. Pint focal y
   `git diff --check` correctos. `migrate --pretend` revisado: las dos migraciones
   4B generan únicamente tablas, índices y FK aditivos; el entorno local mostró
   además una migración AUTH previa todavía pendiente, ajena a este cambio. No se

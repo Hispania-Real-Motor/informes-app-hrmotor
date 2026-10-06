@@ -111,7 +111,11 @@ Actualizado: 2026-10-06.
   el 2026-10-06 —aproximadamente 2.489 directas activas, 2.459 coincidentes,
   30 solo directas, 6 solo inversas, ninguna contradicción y al menos una
   Opportunity eliminada— es certificación puntual, no una invariante ni una
-  restricción 1:1. No existe scheduler, consumo funcional ni despliegue de 4B.
+  restricción 1:1. El correctivo sénior ancla toda lectura mutable de
+  `salesforce_interests` al F2 exacto usado por 4A y conserva lifecycle
+  Opportunity directo/inverso en campos separados, sin precedencia ni cambio de
+  estados de relación. No existe scheduler, consumo funcional ni despliegue de
+  4B.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.

@@ -43,7 +43,9 @@ return new class extends Migration
             $table->string('direct_reference_status', 20)->nullable();
             $table->string('direct_interest_presence_status', 24);
             $table->boolean('direct_interest_is_deleted')->nullable();
-            $table->boolean('opportunity_is_deleted')->nullable();
+            $table->boolean('direct_opportunity_is_deleted')->nullable();
+            $table->boolean('inverse_opportunity_is_deleted')->nullable();
+            $table->string('inverse_opportunity_presence_status', 32)->nullable();
             $table->boolean('requires_review')->default(false);
             $table->timestamps();
 

@@ -16,7 +16,9 @@ class SalesforceOpportunityInterestReconciliation extends Model
         'direct_reference_status',
         'direct_interest_presence_status',
         'direct_interest_is_deleted',
-        'opportunity_is_deleted',
+        'direct_opportunity_is_deleted',
+        'inverse_opportunity_is_deleted',
+        'inverse_opportunity_presence_status',
         'requires_review',
     ];
 
@@ -25,7 +27,8 @@ class SalesforceOpportunityInterestReconciliation extends Model
         'inverse_interest_salesforce_ids' => 'array',
         'inverse_reference_count' => 'integer',
         'direct_interest_is_deleted' => 'boolean',
-        'opportunity_is_deleted' => 'boolean',
+        'direct_opportunity_is_deleted' => 'boolean',
+        'inverse_opportunity_is_deleted' => 'boolean',
         'requires_review' => 'boolean',
     ];
 }
