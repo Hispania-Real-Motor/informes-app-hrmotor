@@ -1,6 +1,6 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-02.
+Actualizado: 2026-10-06.
 
 ## Autenticación de Informes y recuperación de contraseña
 
@@ -117,10 +117,21 @@ Actualizado: 2026-10-02.
   `syncBySalesforceIds()` y no prevalece como autoridad secundaria. Sus runs 4A
   históricos permanecen auditables; su metadata nullable no clasifica nuevas
   resoluciones. El detalle nuevo registra evidence source dependency explícita.
-- FOUNDATION-4B queda separada y bloqueada hasta demostrar mediante describe un
-  lookup Opportunity → `Interes__c`, incluidos API Name, tipo, `referenceTo` y
-  FLS. No se presume `HRM_Interes_Origen__c` y no se alteran SOQL ni procesos
-  legacy de Opportunity.
+- FOUNDATION-4B conserva separadamente la evidencia confirmada
+  `Opportunity.HRM_Interes_Origen__c → Interes__c`. El snapshot directo consulta
+  solo Id, lookup, lifecycle, LastModifiedDate y SystemModstamp mediante
+  queryAll paginado con cutoff UTC fijo; no copia PII, payloads o dimensiones
+  comerciales y no modifica `salesforce_opportunities`.
+- La reconciliación 4A↔4B materializa una fila por Opportunity presente en
+  cualquiera de las evidencias. Conserva el ID/cutoff del snapshot directo y el
+  ID/run/cutoff Interest de 4A, y distingue `both_match`, `direct_only`,
+  `inverse_only`, `contradiction`, `inverse_shared` y `unresolved`. Ningún lado
+  sobrescribe al otro y una contradicción nunca se resuelve por heurística.
+- No se impone unicidad Interest→Opportunity: un Interest directo puede aparecer
+  en varias Opportunities y una Opportunity puede tener varias referencias
+  inversas. Solo Salesforce ID REST canónico es identidad. Runs y detalles son
+  propios, completed es el único snapshot válido, el cleanup es chunked y los
+  comandos siguen siendo manuales sin consumidor funcional ni scheduler.
 
 ## Dependencias Lead de Salesforce Interest
 
