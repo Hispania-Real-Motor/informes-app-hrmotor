@@ -1,5 +1,26 @@
 # Decisiones técnicas
 
+## 2026-10-07 — Fuente directa Task/Event–Interest separada del pipeline legacy
+
+- FOUNDATION-5 usa el calificador polimórfico Salesforce
+  `What.Type = 'Interes__c'` en dos streams queryAll paginados, uno para Task y
+  otro para Event. Se descarta el fan-out por todos los IDs Interest: el coste
+  remoto depende de Activities/paginación y no del tamaño de F2.
+- Cada página resuelve sus `WhatId` contra `salesforce_interests` mediante
+  consultas bulk locales. Esto permite distinguir de forma real
+  `interest_not_in_source` sin cargar todo F2, consultar una fila por Activity
+  ni inferir una asociación alternativa.
+- La evidencia vive en runs/detalle propios y no amplía ni cambia la autoridad
+  de `salesforce_activities` o `salesforce_calls`. FOUNDATION-5 no tiene
+  consumidor funcional ni scheduler; ROT-1 decidirá posteriormente cómo rota
+  los informes.
+- Task conserva `ActivityDate` y `CreatedDate`; Event conserva `StartDateTime` y
+  `CreatedDate`. No se crea fecha funcional artificial. WhoId es evidencia
+  técnica nullable, nunca identidad Interest ni condición de inclusión.
+- El snapshot queda versionado por el ID/cutoff F2 exacto y se revalida antes de
+  publicar. Salesforce ID es la única identidad; no se almacenan Subject,
+  Description, payload, nombres ni PII y no existe escritura Salesforce.
+
 ## 2026-10-06 — Evidencias bidireccionales Opportunity–Interest independientes
 
 - El lookup productivo confirmado `Opportunity.HRM_Interes_Origen__c` se captura
@@ -182,7 +203,8 @@
   permanecen intactos mediante columnas legacy nullable.
 - `missing` Salesforce se proyecta como `salesforce_missing` e ID inválido como
   `invalid_reference`; ambos requieren revisión. `active` no requiere revisión
-  por su mera ausencia legacy. FOUNDATION-4B continúa separada y bloqueada.
+  por su mera ausencia legacy. FOUNDATION-4B permanece como evidencia separada
+  y fue implementada y certificada posteriormente sin alterar esta autoridad.
 
 ## 2026-09-29 — Fuente separada para dependencias Lead de Interest
 
