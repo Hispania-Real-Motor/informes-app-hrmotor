@@ -1,6 +1,6 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-10-02.
+Actualizado: 2026-10-06.
 
 ## Trabajo transversal autorizado
 
@@ -99,17 +99,32 @@ Actualizado: 2026-10-02.
   materializaron 65 Interests: 20 inverse_unique/present_active y 45 no_inverse/
   not_applicable, con 0 requires_review, errores o cleanup_errors. La retención
   conserva metadata histórica y únicamente el detalle del último snapshot.
-  salesforce_opportunities legacy no fue ampliada ni modificada. Producción
-  permanece intacta. FOUNDATION-4B permanece **bloqueada** hasta demostrar 
-  mediante describe el API Name, tipo, `referenceTo` y FLS de un lookup
-  Opportunity → `Interes__c`; no se presume `HRM_Interes_Origen__c` 
-  ni se reutilizan campos parecidos.
+  `salesforce_opportunities` legacy no fue ampliada ni modificada. FOUNDATION-4A
+  fue certificada posteriormente en producción con 95.480 Interests, 2.465
+  referencias inversas únicas y activas y cero incidencias.
+- `SF-INTEREST-FOUNDATION-4B` — **en_revision** en la rama
+  `feat/sf-interest-foundation-4b-opportunity-origin`, nacida de `main` en
+  `1813c9bd43a1d46ab8c086fd517aafdb96364217`. El describe productivo confirmó
+  `Opportunity.HRM_Interes_Origen__c` como reference a `Interes__c` y legible
+  por la integración. Se implementa un snapshot read-only propio con cutoff UTC
+  y una reconciliación separada contra el snapshot 4A. La evidencia observada
+  el 2026-10-06 —aproximadamente 2.489 directas activas, 2.459 coincidentes,
+  30 solo directas, 6 solo inversas, ninguna contradicción y al menos una
+  Opportunity eliminada— es certificación puntual, no una invariante ni una
+  restricción 1:1. El correctivo sénior ancla toda lectura mutable de
+  `salesforce_interests` al F2 exacto usado por 4A y conserva lifecycle
+  Opportunity directo/inverso en campos separados, sin precedencia ni cambio de
+  estados de relación. No existe scheduler, consumo funcional ni despliegue de
+  4B.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
 - La misma decisión queda pendiente para FOUNDATION-2→dependencias
   Opportunity→FOUNDATION-4A antes de cualquier automatización; cada etapa tiene
   lock propio y revalidación de fuente, pero no existe scheduler ni lock común.
+- Antes de automatizar 4B deberá serializarse también el pipeline de snapshot
+  directo y reconciliación 4A↔4B; por ahora ambos comandos son manuales y cada
+  run conserva los IDs y cutoffs exactos comparados.
 - FOUNDATION-2 materializa persona y fecha mediante
   `SalesforceInterestFoundationResolver::materialize()` antes de cualquier
   escritura bulk; no podrá depender del evento Eloquent `saving`.

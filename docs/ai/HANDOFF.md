@@ -1,5 +1,75 @@
 # Handoff para agentes
 
+## SF-INTEREST-FOUNDATION-4B — evidencia directa y reconciliación bidireccional (2026-10-06)
+
+- Base verificada: `main` en `1813c9bd43a1d46ab8c086fd517aafdb96364217`;
+  rama `feat/sf-interest-foundation-4b-opportunity-origin`. El describe
+  productivo confirmó `Opportunity.HRM_Interes_Origen__c` como reference a
+  `Interes__c` y legible por la integración, por lo que queda superado el
+  bloqueo documental anterior.
+- La auditoría read-only del 2026-10-06 observó aproximadamente 2.489 relaciones
+  directas activas, al menos una eliminada, 2.459 pares coherentes en ambos
+  sentidos, 30 solo directos, 6 solo inversos y cero contradicciones. Son cifras
+  de certificación de un sistema vivo, no constantes ni cardinalidad contractual.
+- Se crean runs y detalles propios para el snapshot directo. El servicio
+  `SalesforceOpportunityInterestDirectSyncService` usa queryAll paginado y un
+  cutoff UTC fijo; selecciona solo Id, `HRM_Interes_Origen__c`, IsDeleted,
+  LastModifiedDate y SystemModstamp. Persiste IDs, validez de referencia y
+  lifecycle, sin payload, PII ni datos comerciales.
+- `SalesforceOpportunityInterestReconciliationService` procesa por chunks la
+  unión de Opportunities del snapshot directo y del último snapshot 4A. Una
+  fila por Opportunity conserva el Interest directo, la lista de Interests
+  inversos, multiplicidad, lifecycle y `requires_review`. Estados:
+  `both_match`, `direct_only`, `inverse_only`, `contradiction`,
+  `inverse_shared` y `unresolved`.
+- Los runs de reconciliación registran ID/cutoff directo e ID, run F2 y cutoff
+  Interest de 4A. Antes de publicar se revalidan ambas fuentes. Cutoffs distintos
+  permanecen visibles; no se finge un instante común ni se resuelve una
+  contradicción mediante heurísticas.
+- Correctivo sénior: antes de consultar `salesforce_interests` se exige que el
+  último `ReportSyncRun` canónico sea el mismo F2 completed —ID y cutoff— usado
+  por 4A, y se repite la comprobación justo antes de publicar. Un F2 posterior,
+  incluso running o failed, impide combinar lifecycle mutable con evidencia 4A
+  anterior y deja el run 4B failed sin sustituir el último completed.
+- El detalle conserva separadamente `direct_opportunity_is_deleted`,
+  `inverse_opportunity_is_deleted` e `inverse_opportunity_presence_status`. Una
+  diferencia de lifecycle entre cutoffs se cuantifica en
+  `lifecycle_mismatches` y requiere revisión, pero no transforma `both_match` en
+  `contradiction` ni establece precedencia directa/inversa.
+- Correctivo final: `requires_review` propaga tanto cualquier señal diagnóstica
+  ya materializada por las filas F4A como los presence inversos
+  `salesforce_missing`, `invalid_reference` y `present_unresolved`. La calidad
+  de evidencia no modifica `relationship_status`: un par de IDs coincidente
+  continúa `both_match` aunque su presence requiera revisión. El cálculo usa la
+  colección inversa ya cargada y no añade queries.
+- Se admiten varias Opportunities por Interest y varias referencias inversas
+  por Opportunity. No existe constraint 1:1 basada en la fotografía observada.
+  Salesforce ID canónico es la única identidad.
+- Publicación y retención siguen el patrón probado: solo completed es válido,
+  failed no sustituye el último completed, metadata histórica permanece y el
+  detalle superseded se elimina por PK en chunks de 1.000 y transacciones
+  breves. Un fallo de cleanup posterior no degrada el snapshot publicado.
+- Comandos manuales: `salesforce:sync-opportunity-interest-direct --reason=...`
+  y `salesforce:reconcile-opportunity-interests --reason=...`. Ambos exigen
+  motivo, lock de seis horas y métricas JSON. No existe scheduler ni consumidor
+  funcional.
+- Seguridad: cero escrituras Salesforce, cero cambios en
+  `salesforce_opportunities`, FOUNDATION-4A o informes; errores sanitizados y
+  ausencia de credenciales, raw payload y PII. No se ejecutaron migraciones
+  persistentes ni accesos Salesforce/producción durante la implementación.
+- Validación inicial local: focales 4B `14/110`; FOUNDATION-1/2/3/3A/4A/4B
+  `111/652`; suite completa `1.223/8.936`, todas verdes. El correctivo sénior
+  amplía focales F4B a `18/138`, el bloque FOUNDATION-1/2/3/3A/4A/4B a
+  `115/680` y la suite completa a `1.227/8.964`, todas verdes. Pint focal y
+  `git diff --check` correctos. `migrate --pretend` revisado: las dos migraciones
+  4B generan únicamente tablas, índices y FK aditivos; el entorno local mostró
+  además una migración AUTH previa todavía pendiente, ajena a este cambio. No se
+  aplicó ninguna migración persistente.
+- Validación del correctivo final de propagación review: focales F4B `19/148`,
+  FOUNDATION-1/2/3/3A/4A/4B `116/690` y suite completa `1.228/8.974`, todas
+  verdes. No se modificó el esquema ni fue necesario repetir
+  `migrate --pretend`.
+
 ## EXE-3 — Resumen Ejecutivo global (2026-10-02)
 
 - Rama de trabajo: `feat/exe-3-executive-summary`, creada desde `main`

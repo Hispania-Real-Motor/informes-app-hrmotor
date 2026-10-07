@@ -1,5 +1,39 @@
 # Decisiones técnicas
 
+## 2026-10-06 — Evidencias bidireccionales Opportunity–Interest independientes
+
+- El lookup productivo confirmado `Opportunity.HRM_Interes_Origen__c` se captura
+  en una fuente FOUNDATION-4B propia, mínima y read-only. No se añade a
+  `salesforce_opportunities`, no reescribe
+  `salesforce_interests.inverse_opportunity_salesforce_id` y no convierte la
+  réplica legacy en autoridad.
+- La evidencia directa y la inversa 4A conservan snapshots, lifecycle y cutoffs
+  independientes. La reconciliación guarda qué runs y qué instantes compara;
+  no afirma simultaneidad cuando los cutoffs difieren y falla si cualquiera de
+  los snapshots cambia durante la construcción.
+- `salesforce_interests` solo puede aportar lifecycle/presencia de Interest si
+  el último `ReportSyncRun` canónico sigue siendo exactamente el F2 registrado
+  por 4A. Se valida por ID, cutoff y estado completed antes del materializado y
+  antes de publicar; no se infiere estabilidad mediante `updated_at` ni locks
+  globales.
+- El lifecycle Opportunity directo e inverso se persiste en campos separados,
+  junto con el presence status inverso. Una divergencia temporal puede activar
+  revisión diagnóstica, pero no cambia los estados de relación ni elige una
+  evidencia como autoridad silenciosa.
+- La unidad reconciliada es Opportunity sobre la unión de ambos lados. Los
+  estados `both_match`, `direct_only`, `inverse_only`, `contradiction`,
+  `inverse_shared` y `unresolved` preservan asimetrías sin elegir un ganador.
+  Contradicciones, referencias inválidas/no locales y evidencia unilateral son
+  diagnósticas y requieren revisión, no atribución automática.
+- No se convierte la cardinalidad observada en restricción: varias Opportunities
+  pueden referenciar el mismo Interest y varias Interests pueden apuntar
+  inversamente a la misma Opportunity. Salesforce ID de 18 caracteres es la
+  única identidad; quedan prohibidas heurísticas con Lead, Account, PII,
+  vehículo o afinidad temporal.
+- Ambos procesos son manuales, con locks, publicación completed, retención
+  chunked y errores sanitizados. No se añade scheduler ni consumidor de
+  informes en FOUNDATION-4B.
+
 ## 2026-10-02 — Resumen Ejecutivo global sobre EXE-1/EXE-2
 
 - `/informes` es el Resumen Ejecutivo global V1. No se crea una ruta paralela ni
