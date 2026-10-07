@@ -114,19 +114,15 @@ Actualizado: 2026-10-07.
   lifecycle, 9 `requires_review`, 0 errores y 0 errores de cleanup. Las
   relaciones unilaterales son evidencia observable, no errores de integridad
   demostrados. No existe scheduler ni consumidor funcional.
-- `SF-INTEREST-FOUNDATION-5` — **en_revision** en la rama
-  `feat/sf-interest-foundation-5-activities`, nacida de `main` en
-  `4eb62475184b29234024c94c8084174be8020ca5`. Añade una fuente local, manual y
-  separada para relaciones directas `Task.What → Interes__c` y
-  `Event.What → Interes__c`, anclada a un F2 exacto y con lifecycle queryAll.
-  Task conserva `ActivityDate` y `CreatedDate`; Event conserva `StartDateTime` y
-  `CreatedDate`. La adquisición usa dos consultas polimórficas constantes con
-  `What.Type = 'Interes__c'`, paginadas, y resuelve `WhatId` localmente en bulk,
-  por lo que el número inicial de requests no crece con los Interests. No
-  contiene PII/payload, scheduler ni consumidores funcionales y no modifica el
-  pipeline legacy. El siguiente lote funcional previsto es `ROT-1`, rotación
-  del informe Leads desde Lead hacia Interest; FOUNDATION-5 todavía no cambia
-  ningún dashboard.
+- `SF-INTEREST-FOUNDATION-5` — **cerrada y certificada en shadow**: PR #69
+  fusionado mediante `543955975a2ca43c3b6e07b71400f437e6e3321f`. La
+  certificación usó F2 run 2693 con 96.778 Interests y cutoff
+  `2026-10-07T14:23:10Z`; F5 run 2 materializó 5.014 actividades y resolvió
+  5.012 relaciones. Los 2 `interest_not_in_source` restantes se verificaron
+  como drift temporal esperado: ambos Interests nacieron después del cutoff F2
+  y antes del cutoff F5. No hubo IDs inválidos, errores ni errores de cleanup.
+  No existe scheduler ni consumidor funcional y producción permanece intacta.
+  `ROT-1` continúa siendo el siguiente lote funcional, todavía no iniciado.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
@@ -232,9 +228,9 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
   merge.
 - AUTH-PASSWORD-RESET está cerrado operacionalmente.
 - EXE-1 está cerrado tras el PR #65, EXE-2 tras el PR #66 y EXE-3 tras el PR
-  #67, fusionado en `1813c9bd43a1d46ab8c086fd517aafdb96364217`. El trabajo
-  actualmente en revisión es `SF-INTEREST-FOUNDATION-5` en la rama
-  `feat/sf-interest-foundation-5-activities`.
+  #67, fusionado en `1813c9bd43a1d46ab8c086fd517aafdb96364217`.
+  SF-INTEREST-FOUNDATION-5 también está cerrado tras el PR #69. El siguiente
+  lote funcional previsto es `ROT-1`, todavía sin rama activa.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 
