@@ -2,10 +2,10 @@
 
 ## SF-INTEREST-FOUNDATION-5 — evidencia directa Task/Event–Interest (2026-10-07)
 
-- Rama `feat/sf-interest-foundation-5-activities`, creada desde `main`
-  `4eb62475184b29234024c94c8084174be8020ca5`. FOUNDATION-5 permanece
-  `en_revision`: no se ha desplegado ni ejecutado contra Salesforce, shadow o
-  producción.
+- Rama cerrada `feat/sf-interest-foundation-5-activities`, creada desde `main`
+  `4eb62475184b29234024c94c8084174be8020ca5`. PR #69 fusionado mediante
+  `543955975a2ca43c3b6e07b71400f437e6e3321f`; FOUNDATION-5 está desplegada y
+  certificada operacionalmente en shadow. Producción permanece intacta.
 - Se incorporan runs auditables y detalle materializado propios para
   `Task.What → Interes__c` y `Event.What → Interes__c`. La fuente no modifica ni
   sustituye `salesforce_activities`, `salesforce_calls` o cualquier consumidor
@@ -40,9 +40,41 @@
   FOUNDATION-1/2/3/3A/4A/4B/5 más regresiones Activities/Calls `137/850`; suite
   completa `1.243/9.082`, todas verdes. Pint y `git diff --check` correctos. La
   migración no cambió y `migrate --pretend` confirmó nuevamente SQL aditiva; no
-  se aplicó persistentemente.
+  se aplicó persistentemente durante esa validación local previa al merge.
+- Despliegue shadow verificado: migración
+  `2026_10_07_090000_create_salesforce_interest_activity_foundation_tables` en
+  batch 69 con estado `Ran`; existen `salesforce_interest_activity_runs` y
+  `salesforce_interest_activities`.
+- Fuente definitiva: F2 run 2693 completed, cutoff
+  `2026-10-07T14:23:10+00:00` y 96.778 Interests locales. El incremental previo
+  cubrió `2026-10-07T10:06:26+00:00` →
+  `2026-10-07T14:23:10+00:00`: 759 registros, 276 insertados, 468 actualizados,
+  15 sin cambios, 0 eliminados, 0 reactivados y 0 errores.
+- Certificación FOUNDATION-5 run 2: fuente F2 run 2693/cutoff
+  `2026-10-07T14:23:10+00:00`, cutoff F5
+  `2026-10-07T14:26:51+00:00`, 96.778 Interests fuente, 2 queryAll iniciales,
+  3 páginas Task y 1 Event. Examinó 4.621 Tasks y 393 Events, materializó 5.014
+  filas en 26 chunks y resolvió 5.012 relaciones; las 5.014 actividades estaban
+  activas y no hubo eliminadas.
+- Resultado de calidad: 2 unresolved, ambos `interest_not_in_source`; 0 IDs de
+  actividad inválidos, 0 referencias Interest inválidas, 0 errores y 0 errores
+  de cleanup. Duración observada: `3.825 s`.
+- Los dos `interest_not_in_source` fueron comprobados directamente y read-only
+  en Salesforce: los Interests y sus Tasks nacieron a las 14:24:00Z y
+  14:24:06Z, después del cutoff F2 14:23:10Z y antes del cutoff F5 14:26:51Z.
+  Son drift temporal esperado entre snapshots secuenciales, no referencias
+  huérfanas ni errores de integridad. No se documentan sus IDs Salesforce. La
+  primera ejecución, separada unas cuatro horas de F2 run 2692, había observado
+  286 casos; actualizar F2 los redujo a estos 2 casos temporalmente explicados.
+- Retención certificada: permanecen 2 runs históricos y solo 5.014 detalles,
+  todos del run 2 vigente. El detalle superseded del primer snapshot se eliminó
+  y la metadata histórica se conservó.
+- La certificación Salesforce fue exclusivamente read-only. No existe scheduler
+  ni consumidor funcional; no se modificaron informes, tablas legacy o
+  producción.
 - ROT-1 es el siguiente lote funcional previsto. FOUNDATION-5 solo prepara la
-  evidencia inequívoca y no rota todavía dashboards ni KPIs.
+  evidencia inequívoca y no rota todavía dashboards ni KPIs. ROT-1 no se inicia
+  en este cierre.
 
 ## Cierre SF-INTEREST-FOUNDATION-4B (2026-10-07)
 
