@@ -74,12 +74,13 @@ class SalesforceInterestActivitySyncTest extends TestCase
 
         $this->assertSame('completed', $result['run']->status);
         $this->assertSame($source->id, $result['run']->source_interest_sync_run_id);
-        $this->assertSame(2, $result['stats']['interests_examined']);
-        $this->assertSame(2, $result['stats']['tasks_examined']);
+        $this->assertSame(2, $result['stats']['source_interests']);
+        $this->assertSame(3, $result['stats']['tasks_examined']);
         $this->assertSame(1, $result['stats']['events_examined']);
         $this->assertSame(3, $result['stats']['direct_relations']);
         $this->assertSame(1, $result['stats']['activities_deleted']);
-        $this->assertSame(0, $result['stats']['unresolved_references']);
+        $this->assertSame(1, $result['stats']['unresolved_references']);
+        $this->assertSame(1, $result['stats']['interest_not_in_source']);
         $this->assertDatabaseHas('salesforce_interest_activities', [
             'activity_kind' => 'Task',
             'activity_salesforce_id' => $this->taskId(1),
@@ -106,7 +107,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
         $this->assertSame(0, $client->writeCalls);
         $this->assertCount(2, $client->soql);
         foreach ($client->soql as $soql) {
-            $this->assertStringContainsString('WhatId IN', $soql);
+            $this->assertStringContainsString("What.Type = 'Interes__c'", $soql);
             $this->assertStringContainsString('SystemModstamp <= ', $soql);
             $this->assertStringNotContainsString('Subject', $soql);
             $this->assertStringNotContainsString('Description', $soql);
@@ -116,54 +117,74 @@ class SalesforceInterestActivitySyncTest extends TestCase
         $this->assertSame([true, true], $client->includeDeleted);
     }
 
-    public function test_batches_interests_without_n_plus_one_and_persists_multiple_pages_and_chunks(): void
+    public function test_remote_queries_are_constant_with_large_interest_source_and_pages_and_persistence_are_chunked(): void
     {
         $this->completedInterestRun();
-        for ($index = 1; $index <= 201; $index++) {
+        for ($index = 1; $index <= 2001; $index++) {
             $this->interest($index);
         }
         $tasks = [];
         for ($index = 1; $index <= 401; $index++) {
             $tasks[] = $this->task($index, $this->interestId(1), null);
         }
-        $client = new InterestActivityFakeClient($tasks, [], pageSize: 250);
+        $events = [];
+        for ($index = 1; $index <= 251; $index++) {
+            $events[] = $this->event($index, $this->interestId(2), null);
+        }
+        $client = new InterestActivityFakeClient($tasks, $events, pageSize: 250);
+        $interestSelects = 0;
+        DB::listen(function ($query) use (&$interestSelects): void {
+            if (str_contains(strtolower($query->sql), 'from "salesforce_interests"')) {
+                $interestSelects++;
+            }
+        });
 
         $result = $this->service($client)->sync('Verify bounded Interest activity batching and pagination');
 
-        $this->assertSame(3, $result['stats']['interest_batches']);
-        $this->assertSame(3, $result['stats']['salesforce_batches']);
-        $this->assertSame(6, $result['stats']['query_all_calls']);
+        $this->assertSame(2001, $result['stats']['source_interests']);
+        $this->assertSame(2, $result['stats']['query_all_calls']);
+        $this->assertSame(2, $client->queryCalls);
         $this->assertSame(401, $result['stats']['tasks_examined']);
+        $this->assertSame(251, $result['stats']['events_examined']);
         $this->assertGreaterThan(1, $result['stats']['task_pages']);
-        $this->assertGreaterThan(2, $result['stats']['persist_chunks']);
-        $this->assertSame(401, $result['stats']['rows_materialized']);
-        $this->assertDatabaseCount('salesforce_interest_activities', 401);
+        $this->assertGreaterThan(1, $result['stats']['event_pages']);
+        $this->assertGreaterThan(4, $result['stats']['persist_chunks']);
+        $this->assertSame(652, $result['stats']['rows_materialized']);
+        $this->assertDatabaseCount('salesforce_interest_activities', 652);
+        $this->assertLessThanOrEqual(
+            1 + $result['stats']['task_pages'] + $result['stats']['event_pages'],
+            $interestSelects,
+        );
         foreach ($client->soql as $soql) {
-            preg_match_all("/'[A-Za-z0-9]{18}'/", $soql, $matches);
-            $this->assertLessThanOrEqual(100, count($matches[0]));
+            $this->assertStringContainsString("What.Type = 'Interes__c'", $soql);
+            $this->assertStringNotContainsString('WhatId IN', $soql);
         }
     }
 
-    public function test_invalid_source_id_is_not_queried_and_unexpected_reference_is_audited_not_inferred(): void
+    #[DataProvider('sourceInterestCounts')]
+    public function test_source_interest_count_does_not_change_remote_query_count(int $interestCount): void
     {
         $this->completedInterestRun();
-        $valid = $this->interest(1);
-        SalesforceInterest::query()->create([
-            'salesforce_id' => substr($this->interestId(2), 0, 15),
-            'salesforce_created_at' => '2026-10-01 08:00:00',
-            'salesforce_last_modified_at' => '2026-10-01 08:00:00',
-            'is_deleted' => false,
-        ]);
-        $client = new InterestActivityFakeClient([
-            $this->task(1, $valid->salesforce_id, null),
-        ]);
-
-        $result = $this->service($client)->sync('Do not query non canonical Interest identifiers');
-
-        $this->assertSame(1, $result['stats']['invalid_interest_ids']);
-        foreach ($client->soql as $soql) {
-            $this->assertStringNotContainsString("'".substr($this->interestId(2), 0, 15)."'", $soql);
+        for ($index = 1; $index <= $interestCount; $index++) {
+            $this->interest($index);
         }
+        $client = new InterestActivityFakeClient;
+
+        $result = $this->service($client)->sync('Count source Interests without remote query fan out');
+
+        $this->assertSame($interestCount, $result['stats']['source_interests']);
+        $this->assertSame(2, $result['stats']['query_all_calls']);
+        $this->assertSame(2, $client->queryCalls);
+    }
+
+    /** @return array<string, array{int}> */
+    public static function sourceInterestCounts(): array
+    {
+        return [
+            'one Interest' => [1],
+            'two hundred one Interests' => [201],
+            'several thousand Interests' => [2001],
+        ];
     }
 
     public function test_invalid_activity_id_and_non_source_interest_are_audited_without_inference(): void
@@ -172,18 +193,20 @@ class SalesforceInterestActivitySyncTest extends TestCase
         $interest = $this->interest(1);
         $invalidActivity = $this->task(1, $interest->salesforce_id, null);
         $invalidActivity['Id'] = substr($this->taskId(1), 0, 15);
-        $client = new InterestActivityFakeClient(
-            tasks: [
-                $invalidActivity,
-                $this->task(2, $this->interestId(999), null),
-            ],
-            includeUnexpected: true,
-        );
+        $invalidReference = $this->task(3, substr($this->interestId(3), 0, 15), null);
+        $client = new InterestActivityFakeClient(tasks: [
+            $invalidActivity,
+            $this->task(2, $this->interestId(999), null),
+            $invalidReference,
+        ]);
 
         $result = $this->service($client)->sync('Audit invalid activity evidence without heuristics');
 
         $this->assertSame(0, $result['stats']['direct_relations']);
-        $this->assertSame(2, $result['stats']['unresolved_references']);
+        $this->assertSame(3, $result['stats']['unresolved_references']);
+        $this->assertSame(1, $result['stats']['invalid_activity_ids']);
+        $this->assertSame(1, $result['stats']['interest_not_in_source']);
+        $this->assertSame(1, $result['stats']['invalid_interest_references']);
         $this->assertDatabaseHas('salesforce_interest_activities', [
             'activity_salesforce_id' => substr($this->taskId(1), 0, 15),
             'relationship_status' => 'invalid_activity_id',
@@ -192,6 +215,11 @@ class SalesforceInterestActivitySyncTest extends TestCase
             'activity_salesforce_id' => $this->taskId(2),
             'interest_salesforce_id' => $this->interestId(999),
             'relationship_status' => 'interest_not_in_source',
+            'interest_is_deleted' => null,
+        ]);
+        $this->assertDatabaseHas('salesforce_interest_activities', [
+            'activity_salesforce_id' => $this->taskId(3),
+            'relationship_status' => 'invalid_interest_reference',
             'interest_is_deleted' => null,
         ]);
     }
@@ -316,7 +344,10 @@ class SalesforceInterestActivitySyncTest extends TestCase
     {
         $this->completedInterestRun();
         $this->interest(1);
-        $client = new InterestActivityFakeClient(failOnQuery: 1);
+        $client = new InterestActivityFakeClient(
+            tasks: [$this->task(1, $this->interestId(1), null)],
+            failOnQuery: 2,
+        );
 
         try {
             $this->service($client)->sync('Sanitize a remote activity synchronization failure');
@@ -327,6 +358,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
             $this->assertStringNotContainsString('sensitive-value', $exception->getMessage());
         }
         $this->assertSame('failed', SalesforceInterestActivityRun::query()->latest('id')->value('status'));
+        $this->assertDatabaseCount('salesforce_interest_activities', 1);
 
         ReportSyncRun::query()->where('status', 'running')->delete();
         $service = new class(new InterestActivityFakeClient([$this->task(2, $this->interestId(1), null)])) extends SalesforceInterestActivitySyncService
@@ -535,7 +567,6 @@ class InterestActivityFakeClient extends SalesforceClient
         private array $events = [],
         private int $pageSize = 2000,
         private ?int $failOnQuery = null,
-        private bool $includeUnexpected = false,
     ) {}
 
     public function queryPages(string $soql, bool $includeDeleted = false): Generator
@@ -547,15 +578,7 @@ class InterestActivityFakeClient extends SalesforceClient
             throw new RuntimeException('remote sensitive-value token SQL');
         }
 
-        preg_match_all("/'([A-Za-z0-9]{18})'/", $soql, $matches);
-        $ids = $matches[1];
         $records = str_contains($soql, 'FROM Task') ? $this->tasks : $this->events;
-        if (! $this->includeUnexpected) {
-            $records = array_values(array_filter(
-                $records,
-                fn (array $record): bool => in_array(trim((string) ($record['WhatId'] ?? '')), $ids, true),
-            ));
-        }
         if ($records === []) {
             yield [];
 

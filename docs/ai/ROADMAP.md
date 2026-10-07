@@ -1,6 +1,6 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-10-06.
+Actualizado: 2026-10-07.
 
 ## Trabajo transversal autorizado
 
@@ -102,20 +102,31 @@ Actualizado: 2026-10-06.
   `salesforce_opportunities` legacy no fue ampliada ni modificada. FOUNDATION-4A
   fue certificada posteriormente en producción con 95.480 Interests, 2.465
   referencias inversas únicas y activas y cero incidencias.
-- `SF-INTEREST-FOUNDATION-4B` — **en_revision** en la rama
-  `feat/sf-interest-foundation-4b-opportunity-origin`, nacida de `main` en
-  `1813c9bd43a1d46ab8c086fd517aafdb96364217`. El describe productivo confirmó
-  `Opportunity.HRM_Interes_Origen__c` como reference a `Interes__c` y legible
-  por la integración. Se implementa un snapshot read-only propio con cutoff UTC
-  y una reconciliación separada contra el snapshot 4A. La evidencia observada
-  el 2026-10-06 —aproximadamente 2.489 directas activas, 2.459 coincidentes,
-  30 solo directas, 6 solo inversas, ninguna contradicción y al menos una
-  Opportunity eliminada— es certificación puntual, no una invariante ni una
-  restricción 1:1. El correctivo sénior ancla toda lectura mutable de
-  `salesforce_interests` al F2 exacto usado por 4A y conserva lifecycle
-  Opportunity directo/inverso en campos separados, sin precedencia ni cambio de
-  estados de relación. No existe scheduler, consumo funcional ni despliegue de
-  4B.
+- `SF-INTEREST-FOUNDATION-4B` — **cerrada y certificada en shadow**: PR #68
+  fusionado en `main` mediante `4eb62475184b29234024c94c8084174be8020ca5`.
+  La certificación usó F2 run 2692 y cutoff Interest/F4A
+  `2026-10-07T10:11:26Z`, con 96.502 Interests. F4A materializó 2.564
+  referencias inversas, todas únicas y activas, con `requires_review=0`. El
+  snapshot directo 4B, cutoff `2026-10-07T10:27:24Z`, conservó 2.561
+  referencias: 2.560 activas y 1 eliminada. La reconciliación obtuvo 2.558
+  `both_match`, 3 `direct_only`, 6 `inverse_only`, 0 `contradiction`, 0
+  `inverse_shared`, 0 `unresolved`, 0 referencias inválidas, 0 divergencias de
+  lifecycle, 9 `requires_review`, 0 errores y 0 errores de cleanup. Las
+  relaciones unilaterales son evidencia observable, no errores de integridad
+  demostrados. No existe scheduler ni consumidor funcional.
+- `SF-INTEREST-FOUNDATION-5` — **en_revision** en la rama
+  `feat/sf-interest-foundation-5-activities`, nacida de `main` en
+  `4eb62475184b29234024c94c8084174be8020ca5`. Añade una fuente local, manual y
+  separada para relaciones directas `Task.What → Interes__c` y
+  `Event.What → Interes__c`, anclada a un F2 exacto y con lifecycle queryAll.
+  Task conserva `ActivityDate` y `CreatedDate`; Event conserva `StartDateTime` y
+  `CreatedDate`. La adquisición usa dos consultas polimórficas constantes con
+  `What.Type = 'Interes__c'`, paginadas, y resuelve `WhatId` localmente en bulk,
+  por lo que el número inicial de requests no crece con los Interests. No
+  contiene PII/payload, scheduler ni consumidores funcionales y no modifica el
+  pipeline legacy. El siguiente lote funcional previsto es `ROT-1`, rotación
+  del informe Leads desde Lead hacia Interest; FOUNDATION-5 todavía no cambia
+  ningún dashboard.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.

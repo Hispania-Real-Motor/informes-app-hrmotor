@@ -1,6 +1,6 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-06.
+Actualizado: 2026-10-07.
 
 ## Autenticación de Informes y recuperación de contraseña
 
@@ -143,6 +143,35 @@ Actualizado: 2026-10-06.
   inversas. Solo Salesforce ID REST canónico es identidad. Runs y detalles son
   propios, completed es el único snapshot válido, el cleanup es chunked y los
   comandos siguen siendo manuales sin consumidor funcional ni scheduler.
+
+## Evidencia directa Task/Event–Interest
+
+- FOUNDATION-5 mantiene una fuente propia y separada de
+  `salesforce_activities` y `salesforce_calls`. Materializa exclusivamente
+  relaciones explícitas `Task.What → Interes__c` y
+  `Event.What → Interes__c`; Salesforce ID es la única identidad y quedan
+  prohibidas inferencias por WhoId, persona, owner, PII, Opportunity o cercanía
+  temporal.
+- La adquisición remota consta de una consulta queryAll paginada por objeto,
+  filtrada mediante `What.Type = 'Interes__c'` y un cutoff UTC fijo. No usa
+  `TYPEOF`, prefijos de ID ni lotes remotos por cada Interest. Los `WhatId` de
+  cada página se deduplican y resuelven localmente mediante `whereIn` acotados.
+- `resolved` acredita que el Interest existe en el snapshot F2 local;
+  `interest_not_in_source` conserva una relación directa Salesforce cuyo
+  Interest no está en ese F2; `invalid_activity_id` e
+  `invalid_interest_reference` conservan evidencia no canónica sin matching
+  alternativo. `interest_is_deleted` es nullable para no equiparar ausencia con
+  lifecycle activo.
+- Task conserva `ActivityDate` y `CreatedDate` por separado. Event conserva
+  `StartDateTime` y `CreatedDate`. LastModifiedDate y SystemModstamp son marcas
+  técnicas; FOUNDATION-5 no fabrica una fecha funcional ni almacena Subject,
+  Description, nombres, payload o PII.
+- Cada run registra el ID/cutoff del F2 más reciente, que debe ser completed al
+  inicio y seguir siendo exactamente el último antes de publicar. Solo
+  completed es snapshot válido; fallos preservan el completed anterior y el
+  cleanup elimina detalle superseded por PK en chunks de 1.000.
+- El comando es manual, sin scheduler, endpoints ni consumidores funcionales.
+  FOUNDATION-5 prepara la fuente para ROT-1, pero no cambia informes ni KPIs.
 
 ## Dependencias Lead de Salesforce Interest
 

@@ -7,7 +7,6 @@ use App\Models\SalesforceInterestActivity;
 use App\Models\SalesforceInterestActivityRun;
 use App\Support\IntegrationErrorSanitizer;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -24,7 +23,7 @@ class SalesforceInterestActivitySyncService
 
     private const LOCK_TTL_SECONDS = 21600;
 
-    private const INTEREST_BATCH_SIZE = 100;
+    private const LOCAL_LOOKUP_CHUNK_SIZE = 500;
 
     private const PERSIST_CHUNK_SIZE = 200;
 
@@ -58,6 +57,7 @@ class SalesforceInterestActivitySyncService
             $sourceRun = $this->latestStableInterestRun();
             $stats['source_interest_sync_run_id'] = $sourceRun->id;
             $stats['source_interest_cutoff_at'] = $sourceRun->source_cutoff_at->utc()->toIso8601String();
+            $stats['source_interests'] = DB::table('salesforce_interests')->count();
 
             try {
                 $run = SalesforceInterestActivityRun::query()->create([
@@ -71,7 +71,7 @@ class SalesforceInterestActivitySyncService
                     'stats' => $stats,
                 ]);
 
-                $this->syncInterestBatches($run, $cutoff, $stats);
+                $this->syncActivities($run, $cutoff, $stats);
                 $this->afterSnapshotBuilt($run, $stats);
                 $this->assertSnapshotComplete($run, $stats);
                 $this->assertSourceRunUnchanged($sourceRun);
@@ -145,62 +145,27 @@ class SalesforceInterestActivitySyncService
     }
 
     /** @param array<string, int|float|string|null> $stats */
-    private function syncInterestBatches(
+    private function syncActivities(
         SalesforceInterestActivityRun $run,
         CarbonImmutable $cutoff,
         array &$stats,
     ): void {
-        $lastId = 0;
-
-        while (true) {
-            $interests = DB::table('salesforce_interests')
-                ->select(['id', 'salesforce_id', 'is_deleted'])
-                ->where('id', '>', $lastId)
-                ->orderBy('id')
-                ->limit(self::INTEREST_BATCH_SIZE)
-                ->get();
-            if ($interests->isEmpty()) {
-                break;
-            }
-
-            $lastId = (int) $interests->last()->id;
-            $stats['interest_batches']++;
-            $stats['interests_examined'] += $interests->count();
-            $valid = $interests->filter(
-                fn (object $interest): bool => $this->isValidSalesforceId(trim((string) $interest->salesforce_id)),
-            )->values();
-            $stats['invalid_interest_ids'] += $interests->count() - $valid->count();
-
-            if ($valid->isNotEmpty()) {
-                $interestById = $valid->keyBy(fn (object $interest): string => trim((string) $interest->salesforce_id));
-                $ids = $interestById->keys()->all();
-                $this->syncActivityKind($run, 'Task', $ids, $interestById, $cutoff, $stats);
-                $this->syncActivityKind($run, 'Event', $ids, $interestById, $cutoff, $stats);
-                $stats['salesforce_batches']++;
-            }
-
-            $stats['last_interest_id_processed'] = $lastId;
-            $this->afterInterestBatch($run, $stats);
-        }
+        $this->syncActivityKind($run, 'Task', $cutoff, $stats);
+        $this->syncActivityKind($run, 'Event', $cutoff, $stats);
     }
 
-    /**
-     * @param  list<string>  $interestIds
-     * @param  Collection<string, object>  $interestById
-     * @param  array<string, int|float|string|null>  $stats
-     */
+    /** @param array<string, int|float|string|null> $stats */
     private function syncActivityKind(
         SalesforceInterestActivityRun $run,
         string $kind,
-        array $interestIds,
-        Collection $interestById,
         CarbonImmutable $cutoff,
         array &$stats,
     ): void {
         $stats['query_all_calls']++;
-        foreach ($this->client->queryPages($this->soql($kind, $interestIds, $cutoff), true) as $records) {
+        foreach ($this->client->queryPages($this->soql($kind, $cutoff), true) as $records) {
             $stats[$kind === 'Task' ? 'task_pages' : 'event_pages']++;
             $stats[$kind === 'Task' ? 'tasks_examined' : 'events_examined'] += count($records);
+            $interestById = $this->resolveInterests($records);
             $rows = array_map(
                 fn (array $record): array => $this->mapRecord($run, $kind, $record, $interestById),
                 $records,
@@ -216,6 +181,12 @@ class SalesforceInterestActivitySyncService
                         $stats['direct_relations']++;
                     } else {
                         $stats['unresolved_references']++;
+                        $metric = match ($row['relationship_status']) {
+                            'interest_not_in_source' => 'interest_not_in_source',
+                            'invalid_activity_id' => 'invalid_activity_ids',
+                            'invalid_interest_reference' => 'invalid_interest_references',
+                        };
+                        $stats[$metric]++;
                     }
                 }
                 $this->afterPersistChunk($run, $stats);
@@ -224,19 +195,43 @@ class SalesforceInterestActivitySyncService
     }
 
     /**
+     * @param  list<array<string, mixed>>  $records
+     * @return array<string, object>
+     */
+    private function resolveInterests(array $records): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(
+            fn (array $record): string => trim((string) data_get($record, 'WhatId')),
+            $records,
+        ), fn (string $id): bool => $this->isValidSalesforceId($id))));
+        $interests = [];
+
+        foreach (array_chunk($ids, self::LOCAL_LOOKUP_CHUNK_SIZE) as $chunk) {
+            foreach (DB::table('salesforce_interests')
+                ->select(['salesforce_id', 'is_deleted'])
+                ->whereIn('salesforce_id', $chunk)
+                ->get() as $interest) {
+                $interests[trim((string) $interest->salesforce_id)] = $interest;
+            }
+        }
+
+        return $interests;
+    }
+
+    /**
      * @param  array<string, mixed>  $record
-     * @param  Collection<string, object>  $interestById
+     * @param  array<string, object>  $interestById
      * @return array<string, mixed>
      */
     private function mapRecord(
         SalesforceInterestActivityRun $run,
         string $kind,
         array $record,
-        Collection $interestById,
+        array $interestById,
     ): array {
         $activityId = trim((string) data_get($record, 'Id'));
         $interestId = trim((string) data_get($record, 'WhatId'));
-        $interest = $interestById->get($interestId);
+        $interest = $interestById[$interestId] ?? null;
         $relationshipStatus = match (true) {
             ! $this->isValidSalesforceId($activityId) => 'invalid_activity_id',
             ! $this->isValidSalesforceId($interestId) => 'invalid_interest_reference',
@@ -264,15 +259,13 @@ class SalesforceInterestActivitySyncService
         ];
     }
 
-    /** @param list<string> $interestIds */
-    private function soql(string $kind, array $interestIds, CarbonImmutable $cutoff): string
+    private function soql(string $kind, CarbonImmutable $cutoff): string
     {
         $fields = $kind === 'Task' ? self::TASK_SOQL_FIELDS : self::EVENT_SOQL_FIELDS;
-        $quotedIds = implode(', ', array_map(fn (string $id): string => "'{$id}'", $interestIds));
 
         return 'SELECT '.$fields."\n"
             .'FROM '.$kind."\n"
-            ."WHERE WhatId IN ({$quotedIds})\n"
+            ."WHERE What.Type = 'Interes__c'\n"
             .'    AND SystemModstamp <= '.$cutoff->format('Y-m-d\TH:i:s\Z')."\n"
             .'ORDER BY SystemModstamp ASC, Id ASC';
     }
@@ -362,10 +355,7 @@ class SalesforceInterestActivitySyncService
             'source_interest_sync_run_id' => null,
             'source_interest_cutoff_at' => null,
             'cutoff' => $cutoff->toIso8601String(),
-            'interests_examined' => 0,
-            'invalid_interest_ids' => 0,
-            'interest_batches' => 0,
-            'salesforce_batches' => 0,
+            'source_interests' => 0,
             'query_all_calls' => 0,
             'task_pages' => 0,
             'event_pages' => 0,
@@ -375,17 +365,16 @@ class SalesforceInterestActivitySyncService
             'activities_active' => 0,
             'activities_deleted' => 0,
             'unresolved_references' => 0,
+            'interest_not_in_source' => 0,
+            'invalid_activity_ids' => 0,
+            'invalid_interest_references' => 0,
             'persist_chunks' => 0,
             'rows_materialized' => 0,
             'errors' => 0,
             'cleanup_errors' => 0,
-            'last_interest_id_processed' => 0,
             'duration_seconds' => 0.0,
         ];
     }
-
-    /** @param array<string, int|float|string|null> $stats */
-    protected function afterInterestBatch(SalesforceInterestActivityRun $run, array $stats): void {}
 
     /** @param array<string, int|float|string|null> $stats */
     protected function afterPersistChunk(SalesforceInterestActivityRun $run, array $stats): void {}

@@ -1,5 +1,65 @@
 # Handoff para agentes
 
+## SF-INTEREST-FOUNDATION-5 — evidencia directa Task/Event–Interest (2026-10-07)
+
+- Rama `feat/sf-interest-foundation-5-activities`, creada desde `main`
+  `4eb62475184b29234024c94c8084174be8020ca5`. FOUNDATION-5 permanece
+  `en_revision`: no se ha desplegado ni ejecutado contra Salesforce, shadow o
+  producción.
+- Se incorporan runs auditables y detalle materializado propios para
+  `Task.What → Interes__c` y `Event.What → Interes__c`. La fuente no modifica ni
+  sustituye `salesforce_activities`, `salesforce_calls` o cualquier consumidor
+  legacy; no existe scheduler ni endpoint nuevo.
+- El servicio usa exactamente dos consultas iniciales queryAll paginadas, una
+  para Task y otra para Event, con cutoff UTC fijo y
+  `What.Type = 'Interes__c'`. No usa `TYPEOF`, prefijos hardcodeados ni un
+  fan-out por los IDs locales. Cada página deduplica sus `WhatId`, valida IDs y
+  los resuelve contra `salesforce_interests` mediante `whereIn` en lotes de 500.
+- Estados auditables: `resolved`, `interest_not_in_source`,
+  `invalid_activity_id` e `invalid_interest_reference`. Una referencia directa
+  devuelta por Salesforce pero ausente del F2 queda observable como
+  `interest_not_in_source`, con `interest_is_deleted=null`; no se busca un
+  Interest alternativo.
+- Task conserva por separado `ActivityDate` y `CreatedDate`; Event conserva
+  `StartDateTime` y `CreatedDate`. Ambos guardan lifecycle, LastModifiedDate y
+  SystemModstamp técnicos. `WhoId` es evidencia técnica nullable y nunca una
+  condición para procesar la relación directa.
+- El run conserva ID/cutoff del F2 canónico y vuelve a comprobar antes de
+  publicar que continúa siendo el último run completed. Cualquier F2 posterior
+  running, failed o completed hace fallar de forma segura el snapshot sin
+  sustituir el último completed.
+- Persistencia bulk en chunks de 200, cleanup por PK en chunks de 1.000,
+  transacciones cortas, lock de seis horas y errores sanitizados. No se guardan
+  Subject, Description, nombres, PII, payloads ni credenciales; no existen
+  escrituras Salesforce.
+- Comando manual:
+  `salesforce:sync-interest-activities --reason="..."`. Las métricas distinguen
+  volumen fuente, páginas Task/Event, filas examinadas/materializadas,
+  lifecycle y cada causa de referencia no resuelta sin persistir listas de IDs.
+- Validación local del correctivo: focal FOUNDATION-5 `15/108`; bloque
+  FOUNDATION-1/2/3/3A/4A/4B/5 más regresiones Activities/Calls `137/850`; suite
+  completa `1.243/9.082`, todas verdes. Pint y `git diff --check` correctos. La
+  migración no cambió y `migrate --pretend` confirmó nuevamente SQL aditiva; no
+  se aplicó persistentemente.
+- ROT-1 es el siguiente lote funcional previsto. FOUNDATION-5 solo prepara la
+  evidencia inequívoca y no rota todavía dashboards ni KPIs.
+
+## Cierre SF-INTEREST-FOUNDATION-4B (2026-10-07)
+
+- PR #68 fusionado en `main` mediante
+  `4eb62475184b29234024c94c8084174be8020ca5`; FOUNDATION-4B queda cerrada y
+  certificada en shadow.
+- Fuente Interest/F4A: F2 run 2692, cutoff `2026-10-07T10:11:26Z`, 96.502
+  Interests y 2.564 referencias inversas únicas y activas, sin review.
+- Fuente directa 4B: cutoff `2026-10-07T10:27:24Z`, 2.561 referencias, 2.560
+  activas y 1 eliminada.
+- Resultado reconciliado: `both_match=2558`, `direct_only=3`,
+  `inverse_only=6`, `contradiction=0`, `inverse_shared=0`, `unresolved=0`,
+  `invalid_references=0`, `lifecycle_mismatches=0`, `requires_review=9`,
+  `errors=0` y `cleanup_errors=0`. Los casos unilaterales no se interpretan como
+  errores de integridad demostrados. No se añadió scheduler ni consumidor de
+  informes.
+
 ## SF-INTEREST-FOUNDATION-4B — evidencia directa y reconciliación bidireccional (2026-10-06)
 
 - Base verificada: `main` en `1813c9bd43a1d46ab8c086fd517aafdb96364217`;
@@ -382,11 +442,11 @@
   parcial failed actual. El detalle superseded se elimina por PK en chunks de
   1.000 y transacciones breves. Un error de cleanup posterior no degrada el
   completed y solo incrementa `cleanup_errors`.
-- FOUNDATION-4B permanece bloqueada: el usuario técnico no ve un lookup
-  Opportunity → `Interes__c`. No se añadió `HRM_Interes_Origen__c` ni se tocó el
-  sincronizador legacy de Opportunity. Antes de operar hacen falta revisión
-  sénior, migración controlada y certificación local/shadow; producción sigue
-  intacta.
+- En esta fase 4A FOUNDATION-4B quedó temporalmente bloqueada porque aquel
+  usuario técnico no veía un lookup Opportunity → `Interes__c`. No se añadió un
+  campo supuesto ni se tocó el sincronizador legacy. El bloqueo se resolvió
+  posteriormente mediante describe productivo de `HRM_Interes_Origen__c`; el
+  cierre y certificación 4B vigentes constan al inicio de este documento.
 - No existe scheduler ni consumidor funcional. Las nuevas migraciones y el
   pipeline dependency-backed permanecen pendientes de revisión/aplicación
   runtime; producción continúa intacta.
