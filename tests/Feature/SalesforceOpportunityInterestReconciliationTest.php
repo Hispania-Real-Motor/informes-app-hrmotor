@@ -190,6 +190,20 @@ class SalesforceOpportunityInterestReconciliationTest extends TestCase
         }
         $this->assertDatabaseHas('salesforce_opportunity_interest_reconciliations', [
             'reconciliation_run_id' => $run->id,
+            'opportunity_salesforce_id' => $this->opportunityId(1),
+            'relationship_status' => 'both_match',
+            'requires_review' => false,
+        ]);
+        foreach ([3, 4] as $sequence) {
+            $this->assertDatabaseHas('salesforce_opportunity_interest_reconciliations', [
+                'reconciliation_run_id' => $run->id,
+                'opportunity_salesforce_id' => $this->opportunityId($sequence),
+                'relationship_status' => 'both_match',
+                'requires_review' => true,
+            ]);
+        }
+        $this->assertDatabaseHas('salesforce_opportunity_interest_reconciliations', [
+            'reconciliation_run_id' => $run->id,
             'opportunity_salesforce_id' => $this->opportunityId(5),
             'relationship_status' => 'direct_only',
             'direct_opportunity_is_deleted' => true,
@@ -208,6 +222,47 @@ class SalesforceOpportunityInterestReconciliationTest extends TestCase
         $this->assertSame(3, $stats['inverse_opportunities_deleted']);
         $this->assertSame(2, $stats['lifecycle_mismatches']);
         $this->assertSame(4, $stats['both_match']);
+    }
+
+    public function test_inverse_presence_and_review_signal_do_not_change_matching_identity(): void
+    {
+        $directRun = $this->directRun();
+        $inverseRun = $this->inverseRun();
+        $cases = [
+            1 => ['present_active', false, false],
+            2 => ['salesforce_missing', false, true],
+            3 => ['present_unresolved', false, true],
+            4 => ['present_active', true, true],
+        ];
+        foreach ($cases as $sequence => [$presence, $inverseReview]) {
+            $interest = $this->interest($sequence);
+            $opportunityId = $this->opportunityId($sequence);
+            $this->direct($directRun, $opportunityId, $interest->salesforce_id);
+            $this->inverse(
+                $inverseRun,
+                $opportunityId,
+                $interest->salesforce_id,
+                presenceStatus: $presence,
+                requiresReview: $inverseReview,
+            );
+        }
+
+        $stats = app(SalesforceOpportunityInterestReconciliationService::class)
+            ->run('Preserve inverse evidence quality independently from identity');
+        $run = SalesforceOpportunityInterestReconciliationRun::query()->latest('id')->firstOrFail();
+
+        foreach ($cases as $sequence => [$presence, $inverseReview, $expectedReview]) {
+            $this->assertDatabaseHas('salesforce_opportunity_interest_reconciliations', [
+                'reconciliation_run_id' => $run->id,
+                'opportunity_salesforce_id' => $this->opportunityId($sequence),
+                'relationship_status' => 'both_match',
+                'inverse_opportunity_presence_status' => $presence,
+                'requires_review' => $expectedReview,
+            ]);
+        }
+        $this->assertSame(4, $stats['both_match']);
+        $this->assertSame(3, $stats['requires_review']);
+        $this->assertSame(0, $stats['contradiction']);
     }
 
     public function test_rejects_inverse_snapshot_when_latest_interest_run_is_newer_running_or_failed(): void
@@ -510,18 +565,20 @@ class SalesforceOpportunityInterestReconciliationTest extends TestCase
         string $opportunityId,
         string $interestId,
         bool $deleted = false,
+        ?string $presenceStatus = null,
+        bool $requiresReview = false,
     ): SalesforceInterestOpportunityReconciliation {
         return SalesforceInterestOpportunityReconciliation::query()->create([
             'reconciliation_run_id' => $run->id,
             'interest_salesforce_id' => $interestId,
             'opportunity_salesforce_id' => $opportunityId,
             'relationship_status' => 'inverse_unique',
-            'opportunity_presence_status' => $deleted ? 'present_deleted' : 'present_active',
+            'opportunity_presence_status' => $presenceStatus ?? ($deleted ? 'present_deleted' : 'present_active'),
             'opportunity_evidence_source' => 'interest_opportunity_dependency_snapshot',
             'interest_is_deleted' => false,
             'opportunity_is_deleted' => $deleted,
             'inverse_reference_count' => 1,
-            'requires_review' => false,
+            'requires_review' => $requiresReview,
         ]);
     }
 

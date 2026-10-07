@@ -36,6 +36,12 @@
   diferencia de lifecycle entre cutoffs se cuantifica en
   `lifecycle_mismatches` y requiere revisión, pero no transforma `both_match` en
   `contradiction` ni establece precedencia directa/inversa.
+- Correctivo final: `requires_review` propaga tanto cualquier señal diagnóstica
+  ya materializada por las filas F4A como los presence inversos
+  `salesforce_missing`, `invalid_reference` y `present_unresolved`. La calidad
+  de evidencia no modifica `relationship_status`: un par de IDs coincidente
+  continúa `both_match` aunque su presence requiera revisión. El cálculo usa la
+  colección inversa ya cargada y no añade queries.
 - Se admiten varias Opportunities por Interest y varias referencias inversas
   por Opportunity. No existe constraint 1:1 basada en la fotografía observada.
   Salesforce ID canónico es la única identidad.
@@ -59,6 +65,10 @@
   4B generan únicamente tablas, índices y FK aditivos; el entorno local mostró
   además una migración AUTH previa todavía pendiente, ajena a este cambio. No se
   aplicó ninguna migración persistente.
+- Validación del correctivo final de propagación review: focales F4B `19/148`,
+  FOUNDATION-1/2/3/3A/4A/4B `116/690` y suite completa `1.228/8.974`, todas
+  verdes. No se modificó el esquema ni fue necesario repetir
+  `migrate --pretend`.
 
 ## EXE-3 — Resumen Ejecutivo global (2026-10-02)
 

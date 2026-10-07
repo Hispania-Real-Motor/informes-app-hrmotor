@@ -272,13 +272,25 @@ class SalesforceOpportunityInterestReconciliationService
         $lifecycleMismatch = $directOpportunityDeleted !== null
             && $inverseOpportunityDeleted !== null
             && $directOpportunityDeleted !== $inverseOpportunityDeleted;
+        $inversePresenceRequiresReview = $inversePresenceStatuses->contains(
+            fn (mixed $status): bool => in_array($status, [
+                'salesforce_missing',
+                'invalid_reference',
+                'present_unresolved',
+            ], true),
+        );
+        $inverseRequiresReview = $inverse->contains(
+            fn (SalesforceInterestOpportunityReconciliation $row): bool => $row->requires_review === true,
+        );
         $requiresReview = in_array($relationship, [
             'direct_only', 'inverse_only', 'contradiction', 'inverse_shared', 'unresolved',
         ], true)
             || $interestPresenceStatus === 'not_local'
             || $directOpportunityDeleted === true
             || $inverseOpportunityDeleted === true
-            || $lifecycleMismatch;
+            || $lifecycleMismatch
+            || $inversePresenceRequiresReview
+            || $inverseRequiresReview;
 
         $stats['opportunities_examined']++;
         $stats[$relationship]++;

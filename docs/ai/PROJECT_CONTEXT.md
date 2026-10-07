@@ -132,6 +132,8 @@ Actualizado: 2026-10-06.
   `inverse_opportunity_presence_status`; diferencias debidas a cutoffs distintos
   son auditables y pueden requerir revisión, pero no se convierten en
   contradicción de identidad. No existe precedencia silenciosa entre 4A y 4B.
+  La señal `requires_review` de F4A y sus estados missing/invalid/unresolved se
+  conservan en 4B sin alterar la clasificación de identidad.
 - El acceso de 4B a `salesforce_interests` queda anclado al run F2 exacto que
   declara 4A. Antes de leer y antes de publicar, el último run por ID de
   `salesforce_interests/salesforce` debe seguir completed y coincidir en ID y
