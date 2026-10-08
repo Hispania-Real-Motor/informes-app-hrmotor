@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\SalesforceLead;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class ExposureFilterTest extends TestCase
 {
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -25,7 +27,7 @@ class ExposureFilterTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_excluir_exposicion_elimina_solo_esos_leads_y_no_existe_modo_solo(): void
+    public function test_legacy_exposition_filter_is_not_exposed_or_applied_to_interests(): void
     {
         SalesforceLead::create([
             'salesforce_id' => '00Q-exp',
@@ -46,7 +48,8 @@ class ExposureFilterTest extends TestCase
         $excluded = $this->getJson('/informes/leads/data/summary?exposition_mode=without');
 
         $this->assertSame(2, $included->json('kpis.leads_totales'));
-        $this->assertSame(1, $excluded->json('kpis.leads_totales'));
+        $this->assertSame(2, $excluded->json('kpis.leads_totales'));
+        $this->assertStringNotContainsString('expositionMode', file_get_contents(resource_path('views/reports/leads/index.blade.php')));
         $this->assertStringNotContainsString('only', file_get_contents(resource_path('js/reports/leads-dashboard.js')));
     }
 }

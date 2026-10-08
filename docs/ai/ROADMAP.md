@@ -122,7 +122,20 @@ Actualizado: 2026-10-07.
   como drift temporal esperado: ambos Interests nacieron después del cutoff F2
   y antes del cutoff F5. No hubo IDs inválidos, errores ni errores de cleanup.
   No existe scheduler ni consumidor funcional y producción permanece intacta.
-  `ROT-1` continúa siendo el siguiente lote funcional, todavía no iniciado.
+  `ROT-1` es el lote funcional activo, todavía no desplegado.
+- `ROT-1 — Leads → Interests` — **en_revision** en
+  `feat/rot-1-leads-to-interests`, base
+  `8a9d476b19d216167c5ebc82f99947393700ac5e`. Rota exclusivamente el informe
+  `/informes/leads`, Monthly Commercial y la métrica ejecutiva técnica `leads`
+  al hecho `salesforce_interests`, conservando rutas, permisos y claves de
+  compatibilidad. La actividad del dashboard procede solo de F5 `completed`
+  alineado con F2; Executive cuenta Interests activos desde F2 sin depender de
+  F5. Los límites Madrid se convierten a UTC y las auditorías CSV son acotadas.
+  Un pipeline horario serializa F2 incremental → F5. Campañas, Llamadas y
+  Reservas/Ventas permanecen sin cambios. Implementación y validación local
+  completas; pendiente de revisión sénior y certificación, no desplegado. Antes
+  del cutover productivo, el pipeline incremental exige bootstrap F2 completo y
+  F5 alineado; no se ejecutaron en este lote.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
@@ -229,8 +242,8 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 - AUTH-PASSWORD-RESET está cerrado operacionalmente.
 - EXE-1 está cerrado tras el PR #65, EXE-2 tras el PR #66 y EXE-3 tras el PR
   #67, fusionado en `1813c9bd43a1d46ab8c086fd517aafdb96364217`.
-  SF-INTEREST-FOUNDATION-5 también está cerrado tras el PR #69. El siguiente
-  lote funcional previsto es `ROT-1`, todavía sin rama activa.
+  SF-INTEREST-FOUNDATION-5 también está cerrado tras el PR #69. El lote funcional
+  activo es `ROT-1` en `feat/rot-1-leads-to-interests`, actualmente en revisión.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 

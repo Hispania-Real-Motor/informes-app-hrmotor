@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\MonthlyCommercialReportSnapshot;
-use App\Models\SalesforceLead;
+use App\Models\SalesforceInterest;
 use App\Services\Reports\MonthlyCommercial\MonthlyCommercialPeriodService;
 use App\Services\Reports\MonthlyCommercial\MonthlyCommercialReportBuilder;
 use Carbon\CarbonImmutable;
@@ -25,17 +25,20 @@ class RefreshMonthlyCommercialReportCommand extends Command
         MonthlyCommercialPeriodService $periodService,
     ): int {
         $days = max((int) $this->option('days'), 1);
-        $now = CarbonImmutable::now();
+        $now = CarbonImmutable::now(MonthlyCommercialPeriodService::TIMEZONE);
         $periods = $periodService->periods($days, $now);
+        $currentStartUtc = $periods['current_start']->setTimezone('UTC');
+        $currentEndUtc = $periods['current_end']->setTimezone('UTC');
 
         try {
-            $currentLeads = SalesforceLead::query()
-                ->where('created_date', '>=', $periods['current_start'])
-                ->where('created_date', '<', $periods['current_end'])
+            $currentLeads = SalesforceInterest::query()
+                ->where('is_deleted', false)
+                ->where('functional_created_at', '>=', $currentStartUtc)
+                ->where('functional_created_at', '<', $currentEndUtc)
                 ->count();
 
             if ($currentLeads === 0) {
-                $this->warn('No hay leads sincronizados en salesforce_leads para el periodo actual. Ejecuta primero php artisan salesforce:sync-monthly-commercial --days=60 --fresh');
+                $this->warn('No hay Interests activos sincronizados en salesforce_interests para el periodo actual. Ejecuta primero el pipeline read-only de Interest.');
 
                 return self::FAILURE;
             }

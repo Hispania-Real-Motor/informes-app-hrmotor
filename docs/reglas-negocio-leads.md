@@ -1,165 +1,135 @@
-# Informe de Leads
+# Informe de Interests — contrato ROT-1
 
-Actualizado: 2026-08-06.
+> La ruta `/informes/leads`, el permiso `leads` y varias claves técnicas
+> `leads_*` se conservan por compatibilidad. Desde ROT-1 el hecho funcional del
+> informe es Salesforce `Interes__c`, no `Lead`.
 
-## Fuente, persistencia y período
+Actualizado: 2026-10-08.
 
-- Fuente: Salesforce `Lead`, `Task`, `Event` y `User`.
-- Tablas principales: `salesforce_leads`, `salesforce_activities`,
-  `salesforce_lead_activity_summaries`, `salesforce_users` y
-  `report_sync_runs`.
-- El período del dashboard se basa en `Lead.CreatedDate`.
-- El dashboard consulta una fotografía local; no consulta Salesforce durante el
-  render.
-- El corte publicado procede de la última sincronización completada. Se muestran
-  sincronización de Leads y actividades, generación, rango, zona horaria y corte
-  del dataset.
+## Fuentes y persistencia vigentes
 
-`salesforce:sync-monthly-commercial` acepta ventana móvil con `--days` o rango
-explícito `--from/--to`; `--to` es exclusivo. La consulta incremental incluye
-registros creados en el rango o modificados mediante `LastModifiedDate`, por lo
-que actualiza también Leads antiguos cuyo estado, propietario, tipo o portal
-haya cambiado.
+El informe usa exclusivamente estas fuentes locales:
 
-## Tipo de Lead
+- `salesforce_interests`: réplica read-only de `Interes__c` (FOUNDATION-2);
+- `salesforce_interest_activity_runs` y `salesforce_interest_activities`:
+  evidencia FOUNDATION-5 de Task/Event relacionados directamente mediante
+  `WhatId → Interes__c`;
+- `salesforce_users`: elegibilidad y dimensión comercial del owner;
+- `report_sync_runs`: estado, run y cutoff F2 auditables.
 
-`LeadRecordTypeNormalizer` es el mapping único utilizado en sincronización,
-dataset, filtros y exportaciones. Aplica `trim`, minúsculas, eliminación de
-tildes, compactación de espacios y aliases controlados.
+El render HTTP no consulta Salesforce. No recupera atributos desde Lead,
+Account o Contact y no utiliza PII como fallback.
 
-| Valor funcional | Clave canónica |
-|---|---|
-| Tasación | `tasacion` |
-| Venta | `venta` |
-| Venta con cambio | `venta_con_cambio` |
-| Lead | `venta` |
-| Ayvens | `venta` |
+## Período funcional
 
-El filtro funcional `Venta` incluye Venta, Venta con cambio, Lead y Ayvens para
-todo el histórico. Durante el despliegue también reconoce temporalmente las
-claves materializadas heredadas `lead` y `ayvens`, hasta ejecutar el reproceso
-local idempotente. No existe fecha de transición.
+- La fecha del hecho es `salesforce_interests.functional_created_at`.
+- La persistencia es UTC.
+- Los períodos visibles y calendarios de negocio se interpretan en
+  `Europe/Madrid`; sus límites se convierten explícitamente a UTC antes de
+  consultar la columna persistida.
+- Los cutoffs se publican con instante y offset inequívocos.
 
-## Canal y portal
+## Estado y lifecycle
 
-El canal se resuelve con `Medio_Nuevo__c`:
+Los estados funcionales proceden de `salesforce_interests.status`: Convertido,
+Descartado y Potencial mantienen la semántica vigente de KPI. Un estado no
+reconocido permanece auditable y no se fuerza a otro estado.
 
-- valor normalizado `Llamada` → `Llamada`;
-- cualquier otro valor → `Formulario`.
+`salesforce_interests.is_deleted = true` excluye el Interest del KPI activo. El
+registro sigue disponible en conciliación con `salesforce_deleted_at` y
+`deletion_detection_source`; nunca se presenta como incluido en el dataset
+activo.
 
-Prioridad del portal:
+## Tipo
 
-| Canal | Prioridad |
-|---|---|
-| Llamada | `Fuente_Nuevo__c` → `Portal_Text__c` → `LEA_SEL_Fuente_Origen__c` → `Sin clasificar` |
-| Formulario | `Portal_Text__c` → `LEA_SEL_Fuente_Origen__c` → `Fuente_Nuevo__c` → `Sin clasificar` |
+El tipo procede exclusivamente de `salesforce_interests.type`.
+`LeadRecordTypeNormalizer` mantiene la normalización compatible para filtros y
+KPIs (`tasacion`, `venta`, `venta_con_cambio`), pero ROT-1 no recupera
+RecordType ni otro atributo desde Lead.
 
-Se conservan el portal final, el campo que lo resolvió y los valores brutos. Por
-esta regla, `Coches.net Coche Nuevo` puede proceder de `Fuente_Nuevo__c` en una
-llamada aunque `Portal_Text__c` sea `Coches.net`.
+## Fuente, medio y canal
 
-## Estado, comercial efectivo y delegaciones
+Los campos vigentes son:
 
-Estados del dashboard:
+- Fuente: `source`;
+- fuente original: `original_source`;
+- medio: `medium`;
+- canal: `channel`.
 
-- `Convertido` → convertido;
-- `Descartado` → descartado;
-- `Potencial` → potencial;
-- cualquier valor no reconocido permanece auditable y no se fuerza a otro
-  estado.
+`portal` continúa únicamente como alias técnico compatible. El informe ROT-1
+no aplica heurísticas basadas en `Portal_Text__c`, `Fuente_Nuevo__c`,
+`LEA_SEL_Fuente_Origen__c` o campos Lead equivalentes.
 
-Prioridad del comercial efectivo:
+## Comercial y procedencia
 
-1. Convertido: persona que trabajó el Lead; fallback propietario actual.
-2. Descartado: propietario al descartarse; después persona que lo trabajó;
-   finalmente propietario actual.
-3. Resto: propietario actual.
+- El comercial candidato es el owner del Interest.
+- Su elegibilidad se determina con `salesforce_users`: usuario activo y perfil
+  `Compra/Venta` o `Comerciales Partner Community`.
+- La delegación y zona comercial proceden de la dimensión del owner elegible.
+- La procedencia del Interest es `origin_delegation` y se normaliza con
+  `LeadDelegationNormalizer` por compatibilidad técnica.
 
-Un comercial es elegible solo si el usuario está activo y su perfil Salesforce
-es `Compra/Venta` o `Comerciales Partner Community`. La ausencia de delegación
-no lo convierte en no elegible.
+No se usa persona que trabajó el Lead, propietario al descarte ni fallback de
+delegación Lead.
 
-Se distinguen dos ejes:
+## Actividad directa FOUNDATION-5
 
-- Delegación del Lead: campos de delegación encargada del propio Lead.
-- Delegación comercial: delegación del usuario comercial efectivo.
+Solo cuenta actividad:
 
-Los KPIs de calidad son independientes:
+- del snapshot F5 `completed` ligado al mismo ID y cutoff F2;
+- con `relationship_status = resolved`;
+- no eliminada;
+- relacionada directamente por `WhatId → Interes__c`.
 
-- `Sin comercial elegible`;
-- `Sin delegación comercial`;
-- `Sin clasificar` para la delegación del Lead.
+Para Task, `ActivityDate` determina el día funcional en `Europe/Madrid` y
+`CreatedDate` solo desempata Tasks del mismo `ActivityDate`; nunca mueve una
+Task a otro día. Una Task sin `ActivityDate` cuenta como evidencia existente,
+pero no demuestra recencia mediante una fecha inventada. Para Event,
+`StartDateTime` es el instante funcional. Los timestamps técnicos de sync no
+sustituyen esas fechas.
 
-Los registros válidos de estas categorías siguen sumando en el KPI general.
+Potencial sin trabajar significa potencial no asignado técnicamente y sin
+actividad directa reciente en los tres días anteriores al corte. Gestionado es
+convertido, descartado o potencial con actividad directa reciente.
 
-La delegación efectiva del Lead prioriza, en este orden,
-`Delegacion_Encargada_Bueno__c` y `Delegacion_Encargada__c`. El API Name del
-tercer campo funcional “Delegación” no ha podido verificarse en el repositorio:
-no se infiere un API Name nuevo ni se atribuye a `Delegacion_Encargada_Text__c`
-la condición de campo funcional aprobado. El fallback histórico ya persistido
-en ese campo se conserva después de los dos campos confirmados para no degradar
-datos existentes. Si todos están vacíos, el Lead queda `Sin clasificar`, salvo
-Exposición, que puede usar la delegación disponible del owner/persona que lo
-trabajó. Ese fallback no se aplica a Venta, Tasación, Branding ni Otros.
+## Exposición
 
-## Actividad y KPIs
-
-- Potencial sin trabajar: potencial no asignado técnicamente y sin actividad o
-  sin actividad en los tres días anteriores al corte.
-- Sin asignar: potencial cuyo propietario es una identidad técnica configurada.
-- Gestionado: convertido, descartado o potencial con actividad reciente.
-- Exposición se determina por el portal final `Exposición`.
-- El modo `Sin Exposición` excluye esos registros; el modo normal los incluye.
-
-Al cambiar filtros se cancela la petición anterior, se vacían los resultados
-obsoletos y solo se pinta la respuesta que corresponde al estado actual.
-
-## Eliminados y fusionados
-
-La sincronización usa consultas que permiten detectar eliminados y fusiones:
-
-- `is_deleted = true` excluye el Lead de todos los KPIs activos;
-- `MasterRecordId` conserva la relación con el registro maestro de una fusión;
-- la reconciliación de ausentes cubre hard deletes;
-- el ID antiguo no se borra de la auditoría;
-- se conservan fuente y fecha de detección de la eliminación.
+ROT-1 no ofrece filtro funcional de Exposición porque Interest no dispone de
+una dimensión canónica equivalente. No se infiere desde Fuente ni desde Lead.
 
 ## Auditoría y permisos
 
-- JSON KPI: `/informes/leads/data/kpi-audit`.
-- CSV KPI: `/informes/leads/export/kpi-audit.csv`.
-- CSV conciliación: `/informes/leads/export/reconciliation-audit.csv`.
-- Inspección puntual: `/informes/leads/data/lead-audit?ids[]=...`, máximo 200
-  IDs.
+- JSON KPI: `/informes/leads/data/kpi-audit`;
+- CSV KPI: `/informes/leads/export/kpi-audit.csv`;
+- CSV conciliación: `/informes/leads/export/reconciliation-audit.csv`;
+- inspección puntual: `/informes/leads/data/lead-audit?ids[]=...`, máximo 200
+  IDs por compatibilidad de ruta.
 
-La exportación incluye Lead ID, fechas, corte, estado, propietarios, comercial
-efectivo, elegibilidad, delegaciones, portal bruto/final, tipo bruto/normalizado,
-eliminación/fusión y motivos de inclusión o exclusión. Los endpoints aplican el
-mismo período, filtros y ámbito del usuario que la pantalla.
+La auditoría es Interest-centric y no expone nombre de cliente, teléfono,
+móvil ni email. Conserva F2/F5, lifecycle, tipo, fuente, medio, canal,
+procedencia, owner/comercial, actividad directa y motivos de inclusión o
+exclusión. El scope autorizado se aplica antes de devolver filas. Los CSV se
+emiten mediante cursor y chunks.
 
 ## Operación
 
+El pipeline ROT-1 es:
+
 ```bash
-php artisan salesforce:sync-monthly-commercial --days=2
-php artisan salesforce:sync-monthly-commercial --from=2026-07-01 --to=2026-08-01
-php artisan salesforce:backfill-lead-audit-metadata --dry-run
-php artisan reports:reprocess-lead-record-types --dry-run
+php artisan salesforce:sync-interest-reporting
 ```
 
-`reports:reprocess-lead-record-types` actualiza únicamente
-`salesforce_leads.record_type_normalized`, trabaja por lotes y es idempotente.
-Su dry-run informa examinados, cambios, conversiones Lead/Ayvens a Venta,
-período y dependencias derivadas. No reconstruye Campañas automáticamente;
-`campaign_salesforce_leads` y sus atribuciones deben planificarse aparte.
+Antes del cutover productivo requiere un bootstrap F2 completo y un F5 alineado
+con el mismo run/cutoff. Después, el comando ejecuta el flujo incremental F2 →
+F5 con lock y está programado cada hora. El dashboard operativo exige F2/F5
+alineados; la métrica ejecutiva técnica `leads`, que solo cuenta Interests
+activos, depende únicamente de un F2 estable.
 
-El backfill local queda marcado como `legacy_local_backfill`: completa campos
-técnicos, pero no demuestra un corte real de Salesforce. Para una conciliación
-formal debe hacerse una sincronización con rango explícito.
+## Referencia legacy — consumidores todavía no rotados
 
-Archivos principales:
-
-- `app/Services/Reports/Leads/LeadRecordTypeNormalizer.php`;
-- `app/Services/Reports/Leads/LeadPortalResolver.php`;
-- `app/Services/Reports/Leads/LeadDelegationNormalizer.php`;
-- `app/Services/Reports/Leads/SalesforceLeadDashboardDatasetService.php`;
-- `app/Services/Reports/MonthlyCommercial/Sync/SalesforceMonthlyLeadsSyncService.php`.
+Campañas y otros consumidores expresamente fuera de ROT-1 continúan usando
+`SalesforceLeadDashboardDatasetService`, `salesforce_leads`,
+`salesforce_activities` y `salesforce_lead_activity_summaries` bajo sus reglas
+Lead históricas. Esa semántica no aplica al informe `/informes/leads`, a Monthly
+Commercial ni a la métrica ejecutiva rotada. ROT-1 no modifica Campañas,
+Llamadas ni Reservas/Ventas.

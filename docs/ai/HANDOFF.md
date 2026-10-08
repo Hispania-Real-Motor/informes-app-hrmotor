@@ -1,5 +1,64 @@
 # Handoff para agentes
 
+## ROT-1 — rotación Leads → Interests (2026-10-08)
+
+- Correctivo final de revisión: Task usa `ActivityDate` como día civil
+  `Europe/Madrid`; `CreatedDate` solo desempata Tasks del mismo día y nunca se
+  combina con la fecha para fabricar otro instante. Task sin `ActivityDate`
+  cuenta en el total pero no acredita recencia. Event conserva
+  `StartDateTime` como instante funcional.
+- Monthly Commercial convierte el instante de ejecución a `Europe/Madrid`
+  antes de derivar calendario y `fecha_analisis`; su precheck transforma los
+  límites Madrid a UTC antes de consultar `functional_created_at`. Se cubrieron
+  medianoche Madrid con día UTC anterior y cambio DST sin offsets fijos.
+- `docs/reglas-negocio-leads.md` se reescribió como contrato ROT-1 vigente. La
+  semántica Lead queda aislada como referencia para Campañas/consumidores no
+  rotados y no se presenta como fuente de `/informes/leads`.
+- Correctivo de revisión sénior sobre `620ad16f8a5a0a85e6e782f40bc5f7c2bcc14f06`:
+  los límites funcionales se interpretan en `Europe/Madrid` y se convierten a
+  UTC antes de consultar `functional_created_at`; los cutoffs se publican en
+  ISO-8601 con offset. Se cubren explícitamente los bordes de día y mes.
+- La métrica ejecutiva técnica `leads` cuenta Interests activos directamente
+  sobre el F2 estable y no consulta ni exige F5. El dashboard operativo y sus
+  auditorías sí conservan la exigencia F2/F5 alineada. Ambos caminos revalidan
+  su fuente antes de publicar el resultado.
+- KPI audit expone exclusivamente evidencia Interest y actividad directa, sin
+  PII ni columnas Lead/Campañas. Conciliación incluye activos y eliminados
+  dentro del scope autorizado, indica `included_in_active_dataset` y motivos de
+  exclusión. Los CSV consumen cursores/chunks y no materializan toda la
+  exportación en memoria.
+- Antes de habilitar el consumo productivo del scheduler incremental
+  `salesforce:sync-interest-reporting` se requiere un bootstrap F2 completo y
+  un snapshot F5 alineado con ese mismo run/cutoff. Este correctivo no ejecutó
+  bootstrap, Salesforce, shadow ni producción.
+- Rama `feat/rot-1-leads-to-interests`, base
+  `8a9d476b19d216167c5ebc82f99947393700ac5e`.
+- `SalesforceInterestDashboardDatasetService` es un dataset funcional separado.
+  El dataset Lead conserva su semántica para Campañas. Solo `/informes/leads`,
+  Monthly Commercial y la métrica ejecutiva técnica `leads` se rewirean.
+- El período usa `functional_created_at`; solo incluye Interests activos. Estado,
+  tipo, fuente, medio, canal, procedencia y owner salen del Interest, sin
+  fallback Lead/Account/Contact ni PII.
+- La actividad se carga en bulk desde F5 `completed` ligado al mismo run/cutoff
+  F2 vigente. Solo cuenta `resolved` no eliminada. Task usa `ActivityDate` con
+  `CreatedDate` como desempate y Event usa `StartDateTime`. Si las fuentes se
+  desalinean o cambian durante el render, el dataset falla de forma segura.
+- La auditoría es Interest-centric y elimina nombre de persona, teléfono, móvil
+  y email. Ruta, permiso `leads` y claves KPI legacy se conservan; `portal` es
+  únicamente alias técnico de `source`.
+- `salesforce:sync-interest-reporting` serializa con lock F2 incremental → F5 y
+  valida el run/cutoff. Se programa cada hora al minuto 5, `Europe/Madrid`, con
+  monitor operacional y `withoutOverlapping`. El scheduler legacy permanece.
+- No hay migraciones ni rotación de Campañas, Llamadas o Reservas/Ventas. El
+  filtro legacy Exposición se retiró de la UI porque Interest no ofrece una
+  dimensión canónica equivalente; no se inventa un fallback desde `source`.
+  No se accedió a Salesforce real, shadow o producción.
+- Validación local final: focal Task/Monthly/Executive 46 pruebas/207
+  aserciones; bloque ampliado ROT-1, Monthly, Executive, Dashboard, Campañas y
+  Foundations 147/1.024; suite completa 1.261/9.169. Pint y
+  `git diff --check` correctos. Vite no aplica porque este correctivo no modifica
+  frontend. No hay migración ni configuración de entorno nueva.
+
 ## SF-INTEREST-FOUNDATION-5 — evidencia directa Task/Event–Interest (2026-10-07)
 
 - Rama cerrada `feat/sf-interest-foundation-5-activities`, creada desde `main`

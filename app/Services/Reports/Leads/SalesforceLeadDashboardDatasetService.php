@@ -753,7 +753,7 @@ class SalesforceLeadDashboardDatasetService
         ];
     }
 
-    private function eachPeriodLead(array $period, callable $callback): void
+    protected function eachPeriodLead(array $period, callable $callback): void
     {
         $referenceDate = CarbonImmutable::parse($period['end']);
 
@@ -791,7 +791,7 @@ class SalesforceLeadDashboardDatasetService
             ]));
     }
 
-    private function passesFilters(array $lead, array $filters): bool
+    protected function passesFilters(array $lead, array $filters): bool
     {
         if (! $this->passesAccessScope($lead, $filters)) {
             return false;
@@ -844,7 +844,7 @@ class SalesforceLeadDashboardDatasetService
         return true;
     }
 
-    private function passesLeadTypeFilter(?string $recordTypeNormalized, ?string $filter): bool
+    protected function passesLeadTypeFilter(?string $recordTypeNormalized, ?string $filter): bool
     {
         if (blank($filter) || $filter === 'all') {
             return true;
@@ -889,7 +889,7 @@ class SalesforceLeadDashboardDatasetService
         return $reasons;
     }
 
-    private function resolveAuditMetric(?string $metric): string
+    protected function resolveAuditMetric(?string $metric): string
     {
         $metric = trim((string) $metric);
 
@@ -909,7 +909,7 @@ class SalesforceLeadDashboardDatasetService
         ], true) ? $metric : 'leads_totales';
     }
 
-    private function auditMetricLabel(string $metric): string
+    protected function auditMetricLabel(string $metric): string
     {
         return match ($metric) {
             'convertidos' => 'Convertidos',
@@ -927,7 +927,7 @@ class SalesforceLeadDashboardDatasetService
         };
     }
 
-    private function qualifiesAuditMetric(array $lead, string $metric): bool
+    protected function qualifiesAuditMetric(array $lead, string $metric): bool
     {
         return match ($metric) {
             'convertidos' => (bool) ($lead['is_convertido'] ?? false),
@@ -1494,7 +1494,7 @@ class SalesforceLeadDashboardDatasetService
         ];
     }
 
-    private function dataVersion(): array
+    protected function dataVersion(): array
     {
         return [
             'dashboard_cache_version' => Cache::get('lead_dashboard_cache_version', 1),
@@ -1509,7 +1509,7 @@ class SalesforceLeadDashboardDatasetService
         ];
     }
 
-    private function lastUpdated(): ?CarbonImmutable
+    protected function lastUpdated(): ?CarbonImmutable
     {
         $updated = SalesforceLead::query()->max('updated_at');
 
@@ -1517,7 +1517,7 @@ class SalesforceLeadDashboardDatasetService
     }
 
     /** @return array<string, mixed> */
-    private function syncMetadata(array $period): array
+    protected function syncMetadata(array $period): array
     {
         $completedRuns = Schema::hasTable('report_sync_runs')
             ? ReportSyncRun::query()

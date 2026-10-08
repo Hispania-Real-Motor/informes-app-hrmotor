@@ -8,10 +8,12 @@ use App\Models\SalesforceLead;
 use App\Models\SalesforceUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class ReportAccessManagementTest extends TestCase
 {
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     public function test_admin_puede_actualizar_el_rol_minimo_por_informe(): void

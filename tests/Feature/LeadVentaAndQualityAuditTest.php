@@ -6,10 +6,12 @@ use App\Models\SalesforceLead;
 use App\Models\SalesforceUser;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class LeadVentaAndQualityAuditTest extends TestCase
 {
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     public function test_incidencias_de_calidad_auditan_exactamente_el_kpi_y_no_fusionan_nombres(): void
@@ -38,7 +40,7 @@ class LeadVentaAndQualityAuditTest extends TestCase
                 $this->assertCount($summary[$expected['key']], $audit['items']);
                 $this->assertEqualsCanonicalizing(
                     $expected['ids'],
-                    collect($audit['items'])->pluck('lead_id')->all(),
+                    collect($audit['items'])->pluck('interest_id')->all(),
                 );
             }
 

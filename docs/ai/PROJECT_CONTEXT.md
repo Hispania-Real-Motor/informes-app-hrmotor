@@ -1,6 +1,30 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-07.
+Actualizado: 2026-10-08.
+
+## ROT-1 — dataset funcional Interest
+
+- `SalesforceInterestDashboardDatasetService` mantiene separado el cutover de
+  `SalesforceLeadDashboardDatasetService`: Campañas continúa en Lead, mientras
+  `/informes/leads`, Monthly Commercial y Executive consumen Interest.
+- Se conservan ruta, permiso `leads` y claves KPI legacy. Un render Interest
+  exige F2 `completed` y F5 `completed` ligado al mismo run/cutoff; su caché se
+  versiona con F2, F5 y usuarios comerciales. Salesforce solo se invoca en el
+  pipeline programado F2 → F5, nunca durante HTTP.
+- Los períodos de negocio se definen en `Europe/Madrid`; sus límites se
+  convierten explícitamente a UTC antes de consultar `functional_created_at`,
+  que se persiste en UTC. Los cutoffs se exponen en ISO-8601 con offset.
+- La métrica ejecutiva técnica `leads` es una excepción deliberada al contrato
+  operativo: solo necesita F2 estable y cuenta Interests activos, por lo que no
+  consulta ni exige F5. Auditorías y dashboard operativo mantienen F2/F5.
+- Las exportaciones de auditoría Interest iteran por cursor/chunks. La
+  conciliación aplica primero el scope de autorización y después explica la
+  exclusión funcional, incluyendo lifecycle eliminado.
+- En F5, Task conserva una fecha civil: `ActivityDate` es su único día
+  funcional y `CreatedDate` solo ordena Tasks del mismo día. Event usa el
+  instante `StartDateTime`. Monthly Commercial deriva sus fechas y
+  `fecha_analisis` en `Europe/Madrid`, convirtiendo límites a UTC únicamente al
+  consultar `functional_created_at`.
 
 ## Autenticación de Informes y recuperación de contraseña
 

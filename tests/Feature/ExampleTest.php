@@ -11,7 +11,7 @@ test('the leads dashboard returns a successful response', function () {
         ->assertOk()
         ->assertSee('Resumen Dirección')
         ->assertSee('Comerciales/Delegaciones/Zonas')
-        ->assertSee('Delegaciones por reparto de leads')
-        ->assertSee('Portales / Procedencia')
+        ->assertSee('Delegaciones de procedencia')
+        ->assertSee('Fuentes')
         ->assertDontSee('Informe mensual');
 });

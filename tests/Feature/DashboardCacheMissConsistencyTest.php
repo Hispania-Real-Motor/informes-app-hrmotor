@@ -7,12 +7,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\Feature\Concerns\CreatesCallDashboardRows;
 use Tests\Feature\Concerns\CreatesLeadDashboardRows;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class DashboardCacheMissConsistencyTest extends TestCase
 {
     use CreatesCallDashboardRows;
     use CreatesLeadDashboardRows;
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -33,7 +35,8 @@ class DashboardCacheMissConsistencyTest extends TestCase
     public function test_leads_summary_cache_hit_preserves_the_cache_miss_payload_for_comparison_periods(): void
     {
         $this->leadRow('lead-current-boundary', ['created_date' => '2026-05-01 00:00:00']);
-        $this->leadRow('lead-previous-boundary', ['created_date' => '2026-04-30 23:59:59']);
+        // Persistencia UTC: 21:59:59Z todavía pertenece al 30 de abril en Madrid.
+        $this->leadRow('lead-previous-boundary', ['created_date' => '2026-04-30 21:59:59']);
 
         $url = '/informes/leads/data/summary?'.http_build_query([
             'period' => 'custom',

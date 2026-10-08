@@ -2,7 +2,7 @@
 
 namespace App\Services\Reports\MonthlyCommercial;
 
-use App\Services\Reports\Leads\SalesforceLeadDashboardDatasetService;
+use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
@@ -10,13 +10,13 @@ use Illuminate\Http\Request;
 class MonthlyCommercialReportBuilder
 {
     public function __construct(
-        private readonly SalesforceLeadDashboardDatasetService $dashboardDataset,
-    ) {
-    }
+        private readonly SalesforceInterestDashboardDatasetService $dashboardDataset,
+    ) {}
 
     public function build(int $days = 30, ?CarbonInterface $now = null): array
     {
-        $now = $now ? CarbonImmutable::parse($now) : CarbonImmutable::now();
+        $now = ($now ? CarbonImmutable::parse($now) : CarbonImmutable::now(MonthlyCommercialPeriodService::TIMEZONE))
+            ->setTimezone(MonthlyCommercialPeriodService::TIMEZONE);
         $currentStart = $now->subDays($days);
         $previousStart = $now->subDays($days * 2);
         $previousEnd = $currentStart->subDay();
@@ -50,7 +50,7 @@ class MonthlyCommercialReportBuilder
         ];
 
         return [
-            'fecha_analisis' => now()->toDateString(),
+            'fecha_analisis' => $now->toDateString(),
             'periodos_estandar' => [
                 'periodo_actual' => $summary['periodo_actual'],
                 'periodo_anterior' => $summary['periodo_comparado'],

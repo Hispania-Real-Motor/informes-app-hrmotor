@@ -1,4 +1,4 @@
-<x-reports.app-shell title="Leads" current-report="leads" :updated-badge-text="'Cargando fotograf'.mb_chr(237).'a local...'">
+<x-reports.app-shell title="Intereses" current-report="leads" :updated-badge-text="'Cargando fotograf'.mb_chr(237).'a local...'">
     <x-slot:head>
         @vite([
             'resources/css/reports/leads-dashboard.css',
@@ -22,7 +22,7 @@
         </div>
 
         <div class="filter-group">
-            <label for="leadType">Tipo de Lead</label>
+            <label for="leadType">Tipo de Interés</label>
             <select id="leadType">
                 <option value="all">Todos</option>
                 <option value="Tasacion">Tasación</option>
@@ -31,7 +31,7 @@
         </div>
 
         <div class="filter-group">
-            <label for="leadDelegation">Delegacion del lead</label>
+            <label for="leadDelegation">Delegación de procedencia</label>
             <select id="leadDelegation">
                 <option value="">Todas</option>
             </select>
@@ -52,7 +52,7 @@
         </div>
 
         <div class="filter-group">
-            <label for="portal">Portal</label>
+            <label for="portal">Fuente</label>
             <select id="portal">
                 <option value="">Todos</option>
             </select>
@@ -65,13 +65,6 @@
             </select>
         </div>
 
-        <div class="filter-group">
-            <label for="expositionMode">Exposición</label>
-            <select id="expositionMode">
-                <option value="with">Incluir</option>
-                <option value="without">Excluir</option>
-            </select>
-        </div>
         <div class="filter-actions filter-actions-with-audit">
             <button type="button" class="filter-reset" id="resetFilters">Limpiar filtros</button>
             @if($reportUserCanAudit ?? false)
@@ -102,8 +95,8 @@
     <nav class="tabs-main" aria-label="Pestanas del informe">
         <button class="main-tab active" data-panel="panel-resumen">Resumen Dirección</button>
         <button class="main-tab" data-panel="panel-comerciales">Comerciales/Delegaciones/Zonas</button>
-        <button class="main-tab" data-panel="panel-delegaciones">Delegaciones por reparto de leads</button>
-        <button class="main-tab" data-panel="panel-portales">Portales / Procedencia</button>
+        <button class="main-tab" data-panel="panel-delegaciones">Delegaciones de procedencia</button>
+        <button class="main-tab" data-panel="panel-portales">Fuentes</button>
     </nav>
 
     <main>
@@ -182,7 +175,7 @@
                         <thead>
                         <tr>
                             <th data-column="zone">Zona</th>
-                            <th class="num" data-column="leads_totales">Leads totales</th>
+                            <th class="num" data-column="leads_totales">Intereses totales</th>
                             <th class="num" data-column="convertidos">Convertidos</th>
                             <th class="num is-hidden" data-column="conversion_pct">% convertidos</th>
                             <th class="num" data-column="descartados">Descartados</th>
@@ -215,7 +208,7 @@
                         <tr>
                             <th data-column="commercial_delegation">Delegacion comercial</th>
                             <th data-column="zone">Zona</th>
-                            <th class="num" data-column="leads_totales">Leads totales</th>
+                            <th class="num" data-column="leads_totales">Intereses totales</th>
                             <th class="num" data-column="convertidos">Convertidos</th>
                             <th class="num is-hidden" data-column="conversion_pct">% convertidos</th>
                             <th class="num" data-column="descartados">Descartados</th>
@@ -255,7 +248,7 @@
                             <th data-column="comercial">Comercial</th>
                             <th data-column="commercial_delegation">Delegacion comercial</th>
                             <th data-column="zone">Zona</th>
-                            <th class="num" data-column="leads_totales">Leads totales</th>
+                            <th class="num" data-column="leads_totales">Intereses totales</th>
                             <th class="num" data-column="convertidos">Convertidos</th>
                             <th class="num is-hidden" data-column="conversion_pct">% convertidos</th>
                             <th class="num" data-column="descartados">Descartados</th>
@@ -277,16 +270,16 @@
             <section class="card panel">
                 <div class="panel-title">
                     <div>
-                        <h2>Delegaciones por reparto de leads</h2>
-                        <div class="small">Total entrado frente a leads en Potencial con owner generico</div>
+                        <h2>Delegaciones de procedencia</h2>
+                        <div class="small">Total de Intereses frente a potenciales con owner técnico</div>
                     </div>
                 </div>
                 <div class="table-wrap">
                     <table>
                         <thead>
                         <tr>
-                            <th>Delegacion del lead</th>
-                            <th class="num">Leads totales</th>
+                            <th>Delegación de procedencia</th>
+                            <th class="num">Intereses totales</th>
                             <th class="num">Potencial con owner generico</th>
                             <th class="num">% pendiente</th>
                         </tr>
@@ -301,16 +294,16 @@
             <section class="card panel">
                 <div class="panel-title">
                     <div>
-                        <h2>Portales / Procedencia</h2>
-                        <div class="small">Procedencia comercial desde Salesforce</div>
+                        <h2>Fuentes</h2>
+                        <div class="small">Fuente del Interest en Salesforce</div>
                     </div>
                 </div>
                 <div class="table-wrap">
                     <table>
                         <thead>
                         <tr>
-                            <th>Portal / Procedencia</th>
-                            <th class="num">Leads totales</th>
+                            <th>Fuente</th>
+                            <th class="num">Intereses totales</th>
                             <th class="num">Convertidos</th>
                             <th class="num">Descartados</th>
                             <th class="num">Potenciales</th>

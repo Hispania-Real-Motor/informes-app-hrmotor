@@ -3,12 +3,14 @@
 namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
-use App\Models\SalesforceLead;
+use App\Models\SalesforceInterest;
+use App\Models\SalesforceInterestActivityRun;
 use App\Models\SalesforceOpportunity;
 use App\Services\Analytics\Executive\ExecutiveDailyDatasetService;
 use App\Services\Analytics\Executive\ExecutiveMetricRulesEngine;
-use App\Services\Reports\Leads\SalesforceLeadDashboardDatasetService;
+use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
 use App\Services\Reports\ReservationsSales\ReservationsSalesDashboardDatasetService;
+use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -108,7 +110,7 @@ class ExecutiveDailyDatasetTest extends TestCase
         ]);
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
-        $leadSummary = app(SalesforceLeadDashboardDatasetService::class)->summary($this->leadRequest('2026-09-30', '2026-09-30'));
+        $leadSummary = app(SalesforceInterestDashboardDatasetService::class)->summary($this->leadRequest('2026-09-30', '2026-09-30'));
         $rvSummary = app(ReservationsSalesDashboardDatasetService::class)->summary($this->reservationSalesRequest('2026-09-30', '2026-09-30'));
 
         $this->assertSame(data_get($leadSummary, 'kpis.leads_totales'), $dataset['metrics']['leads']['current']);
@@ -132,12 +134,14 @@ class ExecutiveDailyDatasetTest extends TestCase
         $this->assertSame(0, $covered['metrics']['leads']['mtd']);
 
         ReportSyncRun::query()->delete();
-        SalesforceLead::query()->delete();
+        SalesforceInterest::query()->delete();
         SalesforceOpportunity::query()->delete();
         Cache::flush();
 
         $missing = app(ExecutiveDailyDatasetService::class)->build();
         $this->assertNull($missing['metrics']['leads']['current']);
+        $this->assertTrue($missing['metrics']['leads']['data_incident']);
+        $this->assertSame(ExecutiveMetricRulesEngine::HEALTH_INCIDENT, $missing['metrics']['leads']['data_health']);
         $this->assertNull($missing['metrics']['reservas']['current']);
         $this->assertNull($missing['metrics']['ventas']['current']);
         $this->assertNull($missing['metrics']['leads']['mtd']);
@@ -394,11 +398,11 @@ class ExecutiveDailyDatasetTest extends TestCase
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
 
         $this->assertSame(0, $dataset['metrics']['leads']['current']);
-        $this->assertNull($dataset['metrics']['leads']['references']['d7']);
-        $this->assertNull($dataset['metrics']['leads']['references']['d14']);
-        $this->assertNull($dataset['metrics']['leads']['references']['d21']);
-        $this->assertNull($dataset['metrics']['leads']['references']['d28']);
-        $this->assertNull($dataset['metrics']['leads']['references']['d364']);
+        $this->assertSame(0, $dataset['metrics']['leads']['references']['d7']);
+        $this->assertSame(0, $dataset['metrics']['leads']['references']['d14']);
+        $this->assertSame(0, $dataset['metrics']['leads']['references']['d21']);
+        $this->assertSame(0, $dataset['metrics']['leads']['references']['d28']);
+        $this->assertSame(0, $dataset['metrics']['leads']['references']['d364']);
     }
 
     public function test_closed_day_with_stale_or_incident_source_is_not_complete(): void
@@ -499,9 +503,9 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     private function coverLeadSource(string $start, string $cutoff): void
     {
-        ReportSyncRun::query()->create([
-            'dataset' => 'leads_dashboard',
-            'source' => 'salesforce',
+        $run = ReportSyncRun::query()->create([
+            'dataset' => SalesforceInterestSyncService::DATASET,
+            'source' => SalesforceInterestSyncService::SOURCE,
             'status' => 'completed',
             'period_start_at' => CarbonImmutable::parse($start, 'Europe/Madrid')->startOfDay(),
             'period_end_at' => CarbonImmutable::parse($cutoff, 'Europe/Madrid'),
@@ -509,6 +513,17 @@ class ExecutiveDailyDatasetTest extends TestCase
             'started_at' => CarbonImmutable::parse($cutoff, 'Europe/Madrid')->subMinutes(5),
             'completed_at' => CarbonImmutable::parse($cutoff, 'Europe/Madrid'),
             'timezone' => 'Europe/Madrid',
+            'stats' => [],
+        ]);
+        SalesforceInterestActivityRun::query()->create([
+            'run_identifier' => (string) str()->uuid(),
+            'reason' => 'Aligned Executive Interest activity coverage',
+            'status' => 'completed',
+            'source_interest_sync_run_id' => $run->id,
+            'source_interest_cutoff_at' => $run->source_cutoff_at,
+            'source_cutoff_at' => $run->source_cutoff_at,
+            'started_at' => $run->started_at,
+            'completed_at' => $run->completed_at,
             'stats' => [],
         ]);
     }
@@ -539,21 +554,31 @@ class ExecutiveDailyDatasetTest extends TestCase
         ]);
     }
 
-    private function lead(string $id, string $createdDate, array $overrides = []): SalesforceLead
+    private function lead(string $id, string $createdDate, array $overrides = []): SalesforceInterest
     {
-        return SalesforceLead::query()->create(array_merge([
+        $mapped = [
             'salesforce_id' => $id,
-            'name' => $id,
-            'created_date' => $createdDate,
+            'salesforce_created_at' => $createdDate,
+            'functional_created_at' => $createdDate,
             'synced_at' => '2026-10-01 00:00:00',
             'salesforce_last_modified_at' => '2026-10-01 00:00:00',
             'is_deleted' => false,
-            'status' => 'Nuevo',
-            'owner_id' => '005-commercial',
+            'status' => 'Potencial',
+            'owner_salesforce_id' => '005-commercial',
             'owner_name' => 'Comercial',
-            'portal_text' => 'Web',
-            'delegacion_encargada_text' => 'HR MOTOR TORREJON',
-        ], $overrides));
+            'source' => 'Web',
+            'origin_delegation' => 'HR MOTOR TORREJON',
+        ];
+        foreach (['is_deleted', 'status', 'synced_at', 'salesforce_last_modified_at'] as $key) {
+            if (array_key_exists($key, $overrides)) {
+                $mapped[$key] = $overrides[$key];
+            }
+        }
+        $interest = new SalesforceInterest;
+        $interest->forceFill($mapped);
+        $interest->save();
+
+        return $interest;
     }
 
     private function leadRequest(string $start, string $end): Request
