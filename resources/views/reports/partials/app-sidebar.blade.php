@@ -4,7 +4,7 @@
     $isAdminActive = static fn (string $key): bool => $currentAdminPage === $key;
 
     $commercialLinks = array_values(array_filter([
-        $canView('leads') ? ['key' => 'leads', 'label' => 'Leads', 'route' => 'reports.leads.index', 'icon' => 'leads'] : null,
+        $canView('leads') ? ['key' => 'leads', 'label' => 'Intereses', 'route' => 'reports.leads.index', 'icon' => 'leads'] : null,
         $canView('reservations-sales') ? ['key' => 'reservations-sales', 'label' => 'Reservas / Ventas', 'route' => 'reports.reservations-sales.index', 'icon' => 'sales'] : null,
         $canView('calls') ? ['key' => 'calls', 'label' => 'Llamadas', 'route' => 'reports.calls.index', 'icon' => 'calls'] : null,
     ]));

@@ -11,7 +11,7 @@ class ReportBrandingTest extends TestCase
         $response = $this->get('/informes/leads');
 
         $response->assertOk();
-        $response->assertSee('Leads | HR Motor - Informes comerciales');
+        $response->assertSee('Intereses | HR Motor - Informes comerciales');
         $response->assertSee('HR Motor - Informes comerciales');
         $response->assertSee('/brand/favicon.ico', false);
         $response->assertSee('/informes/reservas-ventas', false);

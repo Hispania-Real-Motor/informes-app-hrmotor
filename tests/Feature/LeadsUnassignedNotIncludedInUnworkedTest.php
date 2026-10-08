@@ -6,11 +6,13 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\Feature\Concerns\CreatesLeadDashboardRows;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class LeadsUnassignedNotIncludedInUnworkedTest extends TestCase
 {
     use CreatesLeadDashboardRows;
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     protected function setUp(): void

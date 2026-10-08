@@ -1,6 +1,16 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-07.
+Actualizado: 2026-10-08.
+
+## ROT-1 — dataset funcional Interest
+
+- `SalesforceInterestDashboardDatasetService` mantiene separado el cutover de
+  `SalesforceLeadDashboardDatasetService`: Campañas continúa en Lead, mientras
+  `/informes/leads`, Monthly Commercial y Executive consumen Interest.
+- Se conservan ruta, permiso `leads` y claves KPI legacy. Un render Interest
+  exige F2 `completed` y F5 `completed` ligado al mismo run/cutoff; su caché se
+  versiona con F2, F5 y usuarios comerciales. Salesforce solo se invoca en el
+  pipeline programado F2 → F5, nunca durante HTTP.
 
 ## Autenticación de Informes y recuperación de contraseña
 

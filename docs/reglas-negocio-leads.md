@@ -1,6 +1,17 @@
 # Informe de Leads
 
-Actualizado: 2026-08-06.
+> Desde ROT-1 la ruta y el permiso conservan el nombre histórico `leads`, pero
+> el hecho funcional del informe es `salesforce_interests`.
+
+Solo se incluyen Interests activos y el período usa `functional_created_at`.
+Estado, tipo, fuente, medio, canal, procedencia y owner proceden del Interest sin
+fallback Lead. Solo cuentan actividades FOUNDATION-5 `resolved` y no eliminadas
+de un snapshot alineado con F2. Task usa `ActivityDate`; Event usa
+`StartDateTime`. Las claves KPI históricas continúan por compatibilidad y
+Campañas conserva el universo Lead. La auditoría no recupera PII desde Lead,
+Account o Contact.
+
+Actualizado: 2026-10-08.
 
 ## Fuente, persistencia y período
 

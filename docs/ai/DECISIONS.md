@@ -1,5 +1,17 @@
 # Decisiones técnicas
 
+## 2026-10-08 — ROT-1 separa Interest del dataset Lead legacy
+
+- Dashboard, Monthly Commercial y la métrica ejecutiva `leads` consumen un
+  dataset Interest dedicado; el nombre técnico se conserva por compatibilidad.
+  El dataset Lead no cambia porque Campañas lo necesita hasta ROT-4.
+- Solo cuenta actividad F5 directa `resolved`, activa y ligada al F2 exacto. La
+  desalineación falla de forma segura y nunca recupera actividad por `WhoId`.
+- F2 incremental y F5 se orquestan cada hora bajo un lock de pipeline. Los locks
+  internos y el pipeline comercial legacy permanecen.
+- `source` es Fuente. `portal` solo se conserva como alias técnico compatible,
+  sin afirmar equivalencia semántica Salesforce.
+
 ## 2026-10-07 — Fuente directa Task/Event–Interest separada del pipeline legacy
 
 - FOUNDATION-5 usa el calificador polimórfico Salesforce

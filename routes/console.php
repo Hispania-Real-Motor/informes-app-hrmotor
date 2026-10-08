@@ -69,6 +69,18 @@ $monitor(
     'sincronización comercial incremental',
 );
 
+// ROT-1 mantiene F2 y F5 en una única secuencia read-only. La cadencia horaria
+// es suficiente para el volumen certificado de F5 y evita competir cada 15
+// minutos con el pipeline comercial legacy, que conserva otros consumidores.
+$monitor(
+    Schedule::command('salesforce:sync-interest-reporting')
+        ->hourlyAt(5)
+        ->timezone('Europe/Madrid')
+        ->withoutOverlapping(30),
+    'salesforce-sync-interest-reporting',
+    'sincronización Interest para informes',
+);
+
 // Ventana movil: no requiere editar fechas cada dia. El comando calcula
 // [ahora - 120 dias, ahora) e incluye registros antiguos modificados.
 $monitor(

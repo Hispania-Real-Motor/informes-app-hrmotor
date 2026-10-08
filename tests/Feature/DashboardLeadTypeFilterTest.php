@@ -6,10 +6,12 @@ use App\Models\SalesforceLead;
 use App\Models\SalesforceUser;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class DashboardLeadTypeFilterTest extends TestCase
 {
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     protected function setUp(): void

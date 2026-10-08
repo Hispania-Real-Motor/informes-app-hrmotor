@@ -11,10 +11,12 @@ use App\Models\SalesforceUser;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class SalesforceDashboardRowsTest extends TestCase
 {
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -171,12 +173,12 @@ class SalesforceDashboardRowsTest extends TestCase
         $summaryBefore = $summary->fresh();
         $response = $this->getJson('/informes/leads/data/summary')->assertOk();
 
+        $f2 = ReportSyncRun::query()->where('dataset', 'salesforce_interests')->latest('id')->firstOrFail();
         $response
-            ->assertJsonPath('salesforce_leads_synced_at', '2026-05-13 11:45:00')
-            ->assertJsonPath('activities_synced_at', '2026-05-13 11:45:00')
-            ->assertJsonPath('dataset_sync_run_id', $run->id)
+            ->assertJsonPath('salesforce_leads_synced_at', $f2->source_cutoff_at->toDateTimeString())
+            ->assertJsonPath('dataset_sync_run_id', $f2->id)
             ->assertJsonPath('dataset_sync_run_status', 'completed')
-            ->assertJsonPath('dataset_cutoff_at', '2026-05-10 23:00:00');
+            ->assertJsonPath('dataset_cutoff_at', $f2->source_cutoff_at->toDateTimeString());
 
         $leadAfter = $lead->fresh();
         $summaryAfter = $summary->fresh();
@@ -211,8 +213,8 @@ class SalesforceDashboardRowsTest extends TestCase
 
         $this->assertSame('convertidos', $payload['metric']);
         $this->assertSame(1, $payload['total']);
-        $this->assertSame('00Q1', $payload['items'][0]['lead_id']);
-        $this->assertSame('Campaña Test', $payload['items'][0]['campaign_acquired']);
+        $this->assertSame('00Q1', $payload['items'][0]['interest_id']);
+        $this->assertArrayNotHasKey('campaign_acquired', $payload['items'][0]);
 
         $this->get('/informes/leads/export/kpi-audit.csv?metric=convertidos')
             ->assertOk()
@@ -259,7 +261,7 @@ class SalesforceDashboardRowsTest extends TestCase
             ->assertOk()
             ->streamedContent();
 
-        $this->assertStringContainsString('Delegacion bruta', $csv);
+        $this->assertStringContainsString('lead_delegation_raw', $csv);
         $this->assertStringContainsString('00Q-director-audit', $csv);
         $this->assertStringContainsString('Zona Madrid', $csv);
     }
@@ -283,12 +285,9 @@ class SalesforceDashboardRowsTest extends TestCase
 
         $this->assertStringContainsString('00Q-active-audit', $csv);
         $this->assertStringContainsString('00Q-merged-audit', $csv);
-        $this->assertStringContainsString('00Q-master-audit', $csv);
-        $this->assertStringContainsString('merged', $csv);
-        $this->assertStringContainsString('source_resolution', $csv);
-        $this->assertStringContainsString('effective_value', $csv);
-        $this->assertStringContainsString('Fuente_origen__c', $csv);
-        $this->assertStringContainsString('Málaga', $csv);
+        $this->assertStringContainsString('source_interest_sync_run_id', $csv);
+        $this->assertStringContainsString('source_activity_run_id', $csv);
+        $this->assertStringContainsString('is_deleted', $csv);
         $this->assertStringContainsString('No', $csv);
     }
 

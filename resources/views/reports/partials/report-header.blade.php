@@ -9,7 +9,7 @@
         ['key' => 'commission-settings', 'label' => 'Coeficientes', 'route' => 'reports.commission-settings.index'],
     ];
     $tabs = [
-        ['key' => 'leads', 'label' => 'Leads', 'subtitle' => 'Captacion y seguimiento comercial', 'route' => 'reports.leads.index'],
+        ['key' => 'leads', 'label' => 'Intereses', 'subtitle' => 'Captacion y seguimiento comercial', 'route' => 'reports.leads.index'],
         ['key' => 'reservations-sales', 'label' => 'Reservas / Ventas', 'subtitle' => 'Reservas, ventas y contratos', 'route' => 'reports.reservations-sales.index'],
         ['key' => 'calls', 'label' => 'Llamadas', 'subtitle' => 'Actividad telefonica y atencion', 'route' => 'reports.calls.index'],
         ['key' => 'campaigns', 'label' => 'Campañas', 'subtitle' => 'Rentabilidad digital', 'route' => 'reports.campaigns.index'],

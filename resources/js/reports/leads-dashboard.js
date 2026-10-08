@@ -5,7 +5,7 @@ const leadCommercialColumnDefinitions = [
     { key: 'comercial', label: 'Comercial', alwaysVisible: true },
     { key: 'commercial_delegation', label: 'Delegacion comercial', alwaysVisible: true },
     { key: 'zone', label: 'Zona', alwaysVisible: true },
-    { key: 'leads_totales', label: 'Leads totales', alwaysVisible: true },
+    { key: 'leads_totales', label: 'Intereses totales', alwaysVisible: true },
     { key: 'convertidos', label: 'Convertidos', alwaysVisible: true },
     { key: 'conversion_pct', label: '% convertidos' },
     { key: 'descartados', label: 'Descartados', alwaysVisible: true },
@@ -18,7 +18,7 @@ const leadCommercialColumnDefinitions = [
 const leadCommercialZoneColumnsStorageKey = 'leadCommercialZoneColumns';
 const leadCommercialZoneColumnDefinitions = [
     { key: 'zone', label: 'Zona', alwaysVisible: true },
-    { key: 'leads_totales', label: 'Leads totales', alwaysVisible: true },
+    { key: 'leads_totales', label: 'Intereses totales', alwaysVisible: true },
     { key: 'convertidos', label: 'Convertidos', alwaysVisible: true },
     { key: 'conversion_pct', label: '% convertidos' },
     { key: 'descartados', label: 'Descartados', alwaysVisible: true },
@@ -32,7 +32,7 @@ const leadCommercialDelegationColumnsStorageKey = 'leadCommercialDelegationColum
 const leadCommercialDelegationColumnDefinitions = [
     { key: 'commercial_delegation', label: 'Delegacion comercial', alwaysVisible: true },
     { key: 'zone', label: 'Zona', alwaysVisible: true },
-    { key: 'leads_totales', label: 'Leads totales', alwaysVisible: true },
+    { key: 'leads_totales', label: 'Intereses totales', alwaysVisible: true },
     { key: 'convertidos', label: 'Convertidos', alwaysVisible: true },
     { key: 'conversion_pct', label: '% convertidos' },
     { key: 'descartados', label: 'Descartados', alwaysVisible: true },
@@ -157,7 +157,6 @@ function bindResetFilters() {
 
         document.getElementById('period').value = 'last_30_days';
         document.getElementById('leadType').value = 'all';
-        document.getElementById('expositionMode').value = 'with';
         toggleCustomPeriods();
         await reloadAllData();
     });
@@ -172,7 +171,6 @@ function bindFilters() {
         'commercialDelegation',
         'zone',
         'commercial',
-        'expositionMode',
         'currentStart',
         'currentEnd',
         'comparisonStart',
@@ -231,7 +229,7 @@ function renderSummary(data) {
         ? `Datos actualizados: ${formatDateTime(data.datos_actualizados)}`
         : 'Datos actualizados: pendiente';
     updatedBadge.title = [
-        data.salesforce_leads_synced_at ? `Leads: ${formatDateTime(data.salesforce_leads_synced_at)}` : null,
+        data.salesforce_leads_synced_at ? `Intereses: ${formatDateTime(data.salesforce_leads_synced_at)}` : null,
         data.activities_synced_at ? `Actividades: ${formatDateTime(data.activities_synced_at)}` : null,
         data.dataset_generated_at ? `Dataset: ${formatDateTime(data.dataset_generated_at)}` : null,
         data.dataset_cutoff_at ? `Corte de sincronizacion: ${formatDateTime(data.dataset_cutoff_at)}` : null,
@@ -245,7 +243,7 @@ function renderSummary(data) {
     const empty = document.getElementById('emptyMessage');
     const hasNoData = data.empty ?? !data.ok;
     empty.classList.toggle('is-hidden', !hasNoData);
-    empty.textContent = data.message || 'No hay leads que coincidan con el periodo y los filtros seleccionados.';
+    empty.textContent = data.message || 'No hay Interests que coincidan con el periodo y los filtros seleccionados.';
 
     renderKpis(data.kpis || {});
     renderComparison(data.comparativa || []);
@@ -255,14 +253,14 @@ function renderSummary(data) {
 function renderKpis(kpis) {
     const root = document.getElementById('summaryKpis');
     const cards = [
-        { label: 'Leads totales', value: formatNumber(kpis.leads_totales), hint: 'Muestra del periodo', metric: 'leads_totales' },
+        { label: 'Intereses totales', value: formatNumber(kpis.leads_totales), hint: 'Muestra del periodo', metric: 'leads_totales' },
         { label: 'Convertidos', value: formatNumber(kpis.convertidos), hint: `${formatPercent(kpis.conversion_pct)} sobre total`, metric: 'convertidos' },
         { label: 'Descartados', value: formatNumber(kpis.descartados), hint: `${formatPercent(kpis.descarte_pct)} sobre total`, metric: 'descartados' },
         { label: 'Potenciales', value: formatNumber(kpis.potenciales), hint: 'Bolsa viva', metric: 'potenciales' },
         { label: 'Sin comercial elegible', value: formatNumber(kpis.without_eligible_commercial), hint: 'Sin usuario activo de perfil comercial válido', metric: 'without_eligible_commercial' },
         { label: 'Sin delegación comercial', value: formatNumber(kpis.without_commercial_delegation), hint: 'Comercial elegible sin delegación resoluble', metric: 'without_commercial_delegation' },
-        { label: 'Sin clasificar', value: formatNumber(kpis.unclassified), hint: 'Lead válido sin delegación clasificada', metric: 'unclassified' },
-        { label: 'Leads sin asignar', value: formatNumber(kpis.leads_unassigned), hint: 'Bolsa viva tecnica', metric: 'leads_unassigned' },
+        { label: 'Sin clasificar', value: formatNumber(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: 'unclassified' },
+        { label: 'Intereses sin asignar', value: formatNumber(kpis.leads_unassigned), hint: 'Bolsa viva técnica', metric: 'leads_unassigned' },
         { label: 'Potenciales sin trabajar', value: formatNumber(kpis.potenciales_sin_trabajar), hint: 'Solo Status Potencial', metric: 'potenciales_sin_trabajar' },
         { label: 'Gestionados', value: formatNumber(kpis.gestionados), hint: `${formatPercent(kpis.gestionados_pct)} sobre total`, metric: 'gestionados' },
         { label: 'Llamadas', value: formatNumber(kpis.llamadas), hint: `${formatPercent(kpis.llamadas_pct)} del total`, metric: 'llamadas' },
@@ -739,7 +737,6 @@ function currentFilters() {
     setParam(params, 'commercial_delegation', document.getElementById('commercialDelegation')?.value);
     setParam(params, 'zone', document.getElementById('zone')?.value);
     setParam(params, 'commercial', document.getElementById('commercial')?.value);
-    setParam(params, 'exposition_mode', document.getElementById('expositionMode')?.value);
 
     if (document.getElementById('period')?.value === 'custom') {
         setParam(params, 'current_start', document.getElementById('currentStart')?.value);

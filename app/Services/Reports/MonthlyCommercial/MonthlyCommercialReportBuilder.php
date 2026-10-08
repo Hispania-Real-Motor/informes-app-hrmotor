@@ -2,7 +2,7 @@
 
 namespace App\Services\Reports\MonthlyCommercial;
 
-use App\Services\Reports\Leads\SalesforceLeadDashboardDatasetService;
+use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
@@ -10,9 +10,8 @@ use Illuminate\Http\Request;
 class MonthlyCommercialReportBuilder
 {
     public function __construct(
-        private readonly SalesforceLeadDashboardDatasetService $dashboardDataset,
-    ) {
-    }
+        private readonly SalesforceInterestDashboardDatasetService $dashboardDataset,
+    ) {}
 
     public function build(int $days = 30, ?CarbonInterface $now = null): array
     {

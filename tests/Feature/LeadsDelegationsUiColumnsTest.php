@@ -18,9 +18,9 @@ class LeadsDelegationsUiColumnsTest extends TestCase
             '<section id="panel-portales"'
         );
 
-        $this->assertMatchesRegularExpression('/Delegaci.{1,4}n del lead/', $section);
+        $this->assertMatchesRegularExpression('/Delegaci.{1,4}n de procedencia/', $section);
         $this->assertStringContainsString('delegationRows', $section);
-        $this->assertStringContainsString('Leads totales', $section);
+        $this->assertStringContainsString('Intereses totales', $section);
         $this->assertStringContainsString('Potencial con owner gen', $section);
         $this->assertStringContainsString('% pendiente', $section);
         $this->assertStringNotContainsString('Zona comercial', $section);

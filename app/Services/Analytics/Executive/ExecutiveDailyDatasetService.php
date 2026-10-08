@@ -2,9 +2,10 @@
 
 namespace App\Services\Analytics\Executive;
 
-use App\Services\Reports\Leads\SalesforceLeadDashboardDatasetService;
+use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
 use App\Services\Reports\ReservationsSales\ReservationsSalesDashboardDatasetService;
 use Carbon\CarbonImmutable;
+use RuntimeException;
 
 final class ExecutiveDailyDatasetService
 {
@@ -19,7 +20,7 @@ final class ExecutiveDailyDatasetService
     ];
 
     public function __construct(
-        private readonly SalesforceLeadDashboardDatasetService $leads,
+        private readonly SalesforceInterestDashboardDatasetService $leads,
         private readonly ReservationsSalesDashboardDatasetService $reservationsSales,
     ) {}
 
@@ -145,7 +146,19 @@ final class ExecutiveDailyDatasetService
     private function leadSample(CarbonImmutable $start, CarbonImmutable $endExclusive): array
     {
         $endInclusive = $endExclusive->subSecond();
-        $sample = $this->leads->executiveLeadTotal($start, $endInclusive);
+        try {
+            $sample = $this->leads->executiveLeadTotal($start, $endInclusive);
+        } catch (RuntimeException) {
+            return [
+                'value' => 0,
+                'source_cutoff' => [
+                    'dataset_cutoff_at' => null,
+                    'sync_run_status' => 'missing_or_unaligned',
+                ],
+                'coverage' => [],
+                'data_incident' => true,
+            ];
+        }
 
         return [
             'value' => $sample['value'],

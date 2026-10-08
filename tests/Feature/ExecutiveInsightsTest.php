@@ -7,10 +7,12 @@ use App\Models\SalesforceUser;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class ExecutiveInsightsTest extends TestCase
 {
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     protected function setUp(): void

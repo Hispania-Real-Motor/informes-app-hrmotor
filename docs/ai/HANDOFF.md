@@ -1,5 +1,37 @@
 # Handoff para agentes
 
+## ROT-1 — rotación Leads → Interests (2026-10-08)
+
+- Rama `feat/rot-1-leads-to-interests`, base
+  `8a9d476b19d216167c5ebc82f99947393700ac5e`.
+- `SalesforceInterestDashboardDatasetService` es un dataset funcional separado.
+  El dataset Lead conserva su semántica para Campañas. Solo `/informes/leads`,
+  Monthly Commercial y la métrica ejecutiva técnica `leads` se rewirean.
+- El período usa `functional_created_at`; solo incluye Interests activos. Estado,
+  tipo, fuente, medio, canal, procedencia y owner salen del Interest, sin
+  fallback Lead/Account/Contact ni PII.
+- La actividad se carga en bulk desde F5 `completed` ligado al mismo run/cutoff
+  F2 vigente. Solo cuenta `resolved` no eliminada. Task usa `ActivityDate` con
+  `CreatedDate` como desempate y Event usa `StartDateTime`. Si las fuentes se
+  desalinean o cambian durante el render, el dataset falla de forma segura.
+- La auditoría es Interest-centric y elimina nombre de persona, teléfono, móvil
+  y email. Ruta, permiso `leads` y claves KPI legacy se conservan; `portal` es
+  únicamente alias técnico de `source`.
+- `salesforce:sync-interest-reporting` serializa con lock F2 incremental → F5 y
+  valida el run/cutoff. Se programa cada hora al minuto 5, `Europe/Madrid`, con
+  monitor operacional y `withoutOverlapping`. El scheduler legacy permanece.
+- No hay migraciones ni rotación de Campañas, Llamadas o Reservas/Ventas. El
+  filtro legacy Exposición se retiró de la UI porque Interest no ofrece una
+  dimensión canónica equivalente; no se inventa un fallback desde `source`.
+  No se accedió a Salesforce real, shadow o producción.
+- Validación local: batería ROT-1 7 pruebas/26 aserciones; dashboard completo
+  201/1.907; Monthly Commercial 1/5; Executive Daily 26/116; regresiones de
+  Activities/Calls 6/52. Suite completa final: 1.250 pruebas y 9.111 aserciones.
+  Pint sobre todo el PHP modificado, build Vite y `git diff --check` correctos.
+  El build mantiene únicamente los avisos conocidos de `/images/login-bg.jpg`
+  resuelto en runtime y deprecación de Node. No hay migración ni configuración
+  de entorno nueva.
+
 ## SF-INTEREST-FOUNDATION-5 — evidencia directa Task/Event–Interest (2026-10-07)
 
 - Rama cerrada `feat/sf-interest-foundation-5-activities`, creada desde `main`

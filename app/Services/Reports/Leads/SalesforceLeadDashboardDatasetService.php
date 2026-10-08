@@ -753,7 +753,7 @@ class SalesforceLeadDashboardDatasetService
         ];
     }
 
-    private function eachPeriodLead(array $period, callable $callback): void
+    protected function eachPeriodLead(array $period, callable $callback): void
     {
         $referenceDate = CarbonImmutable::parse($period['end']);
 
@@ -1494,7 +1494,7 @@ class SalesforceLeadDashboardDatasetService
         ];
     }
 
-    private function dataVersion(): array
+    protected function dataVersion(): array
     {
         return [
             'dashboard_cache_version' => Cache::get('lead_dashboard_cache_version', 1),
@@ -1509,7 +1509,7 @@ class SalesforceLeadDashboardDatasetService
         ];
     }
 
-    private function lastUpdated(): ?CarbonImmutable
+    protected function lastUpdated(): ?CarbonImmutable
     {
         $updated = SalesforceLead::query()->max('updated_at');
 
@@ -1517,7 +1517,7 @@ class SalesforceLeadDashboardDatasetService
     }
 
     /** @return array<string, mixed> */
-    private function syncMetadata(array $period): array
+    protected function syncMetadata(array $period): array
     {
         $completedRuns = Schema::hasTable('report_sync_runs')
             ? ReportSyncRun::query()

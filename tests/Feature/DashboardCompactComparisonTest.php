@@ -5,10 +5,12 @@ namespace Tests\Feature;
 use App\Models\SalesforceLead;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Feature\Concerns\MirrorsLeadFixturesToInterestReporting;
 use Tests\TestCase;
 
 class DashboardCompactComparisonTest extends TestCase
 {
+    use MirrorsLeadFixturesToInterestReporting;
     use RefreshDatabase;
 
     protected function setUp(): void
