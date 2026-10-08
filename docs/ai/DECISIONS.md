@@ -23,6 +23,9 @@
   clasificación usa `interest_dependency_changed`; el resto de cambios locales
   usa `local_classification_changed`. `exact_interest` exige igualdad limpia de
   WhatId e Interest ID; un mismatch nunca habilita fallback.
+- `historical_preserved` no demuestra causalidad Interest. Solo la combinación
+  `exact_interest` + `interest_source_used=true` habilita provenance Interest;
+  la preservación permanece en la huella exclusivamente como auditoría.
 
 ## 2026-10-08 — ROT-1 separa Interest del dataset Lead legacy
 

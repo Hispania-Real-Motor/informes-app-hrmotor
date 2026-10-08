@@ -395,8 +395,8 @@ SOQL;
     /** @param  array<string,mixed>  $dependency */
     private function interestDependencyParticipates(array $dependency): bool
     {
-        return (bool) ($dependency['interest_source_used'] ?? false)
-            || (bool) ($dependency['preserved_historical'] ?? false);
+        return ($dependency['relationship_status'] ?? null) === 'exact_interest'
+            && (bool) ($dependency['interest_source_used'] ?? false);
     }
 
     private function dashboardInclusion(mixed $callObject, ?string $operationalProfile): array

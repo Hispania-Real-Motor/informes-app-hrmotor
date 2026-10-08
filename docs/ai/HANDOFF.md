@@ -10,6 +10,11 @@
   clasificación. Con Task estable, otros cambios se registran neutralmente
   como `local_classification_changed`; Task modificada conserva
   `salesforce_source_modified`. No hay queries, schema ni PII adicionales.
+- Correctivo final sobre `dca6e91db82b80ad9a349dd0ce5914718dffbe8e`:
+  `preserved_historical` continúa auditable pero deja de demostrar causalidad.
+  Solo `exact_interest` junto con `interest_source_used=true` habilita
+  `interest_dependency_changed`; un cambio local sobre una clasificación
+  meramente preservada queda `local_classification_changed`.
 - Rama `feat/rot-2-calls-to-interests`, creada desde `main`
   `dc8e7d59d7e5bdc6ce065a4ce873fb2364493eb1` (merge ROT-1, PR #71).
 - Task sigue siendo el hecho y conserva universo, fecha, CallObject, equipos,
@@ -30,14 +35,11 @@
   estable, y no se duplica en reejecuciones idénticas.
 - No hay migraciones, cambios de scheduler, frontend, rutas, informes ajenos ni
   ejecución real contra Salesforce. La versión de reglas es `2026-10-08.1`.
-- Validación local tras el correctivo: focal resolver/sync/reproceso 21 pruebas
-  y 113 aserciones; batería completa de Llamadas 81/622; Foundations Interest
-  relacionadas 106/666; suite completa 1.270 pruebas y 9.208 aserciones. Un
-  primer pase global bajo carga agotó el proceso y otro excedió únicamente un
-  umbral temporal ajeno de Stock; ese test aislado pasó 2/13 y la repetición
-  global final quedó completamente verde. Pint y `git diff --check` correctos.
-  Vite no aplica porque no cambió frontend; no hay migración ni configuración
-  manual.
+- Validación local final: focal resolver/sync/reproceso 22 pruebas y 121
+  aserciones; batería completa de Llamadas 82/630; Foundations Interest
+  relacionadas 106/666; suite completa 1.271 pruebas y 9.216 aserciones. Pint
+  y `git diff --check` correctos. Vite no aplica porque no cambió frontend; no
+  hay migración ni configuración manual.
 
 ## ROT-1 — rotación Leads → Interests (2026-10-08)
 

@@ -239,6 +239,66 @@ class SalesforceCallSyncServiceTest extends TestCase
         $this->assertSame('Pamplona', SalesforceCall::query()->where('salesforce_id', '00T-local-change')->value('delegation'));
     }
 
+    public function test_historical_preservation_does_not_claim_interest_causality_for_local_change(): void
+    {
+        SalesforceCall::query()->create([
+            'salesforce_id' => '00T-preserved-local-change',
+            'created_date' => '2026-05-10 10:00:00',
+            'last_modified_date' => '2026-05-10 10:05:00',
+            'what_id' => 'a01ZZZ000000000AAA',
+            'call_object' => 'call-object-preserved',
+            'portales_raw' => '3CX',
+            'call_origin' => 'portal',
+            'portal_resolved' => 'Coches.net',
+            'portal_resolution_source' => 'interest',
+            'operational_team' => 'commercial',
+            'delegation' => 'Alcobendas',
+            'zone' => 'Zona Sur y Centro',
+            'classification_rule_version' => CallClassificationRules::VERSION,
+        ]);
+        $delegation = 'HR MOTOR ALCOBENDAS';
+        $client = Mockery::mock(SalesforceClient::class);
+        $client->shouldReceive('query')->andReturnUsing(function (string $soql) use (&$delegation): array {
+            if (str_contains($soql, 'FROM User')) {
+                return [[
+                    'Id' => '005-preserved-owner',
+                    'Name' => 'Comercial Preservado',
+                    'IsActive' => true,
+                    'Profile' => ['Name' => 'Compra/Venta'],
+                    'USR_SEL_Delegacion__c' => $delegation,
+                ]];
+            }
+
+            return [[
+                'Id' => '00T-preserved-local-change',
+                'Type' => 'Call',
+                'CreatedDate' => '2026-05-10T10:00:00.000Z',
+                'LastModifiedDate' => '2026-05-10T10:05:00.000Z',
+                'OwnerId' => '005-preserved-owner',
+                'Owner' => ['Name' => 'Comercial Preservado', 'Profile' => ['Name' => 'Compra/Venta']],
+                'WhatId' => 'a01ZZZ000000000AAA',
+                'CallObject' => 'call-object-preserved',
+                'Portales__c' => '3CX',
+            ]];
+        });
+
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+        SalesforceCallClassificationHistory::query()->delete();
+        $delegation = 'HR MOTOR PAMPLONA';
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+
+        $call = SalesforceCall::query()->where('salesforce_id', '00T-preserved-local-change')->firstOrFail();
+        $history = SalesforceCallClassificationHistory::query()->sole();
+        $this->assertSame('local_classification_changed', $history->change_source);
+        $this->assertTrue(data_get($history->raw_values, 'interest_dependency.previous.preserved_historical'));
+        $this->assertTrue(data_get($history->raw_values, 'interest_dependency.current.preserved_historical'));
+        $this->assertSame('interest_not_local', data_get($call->parse_debug, 'portal_debug.relationship_status'));
+        $this->assertFalse(data_get($call->parse_debug, 'portal_debug.interest_matched'));
+        $this->assertSame('Coches.net', $call->portal_resolved);
+        $this->assertSame('historical_preserved', $call->portal_resolution_source);
+        $this->assertSame('Pamplona', $call->delegation);
+    }
+
     public function test_task_last_modified_change_keeps_salesforce_history_provenance(): void
     {
         $taskState = ['last_modified' => '2026-05-10T10:05:00.000Z', 'portal' => 'Web'];

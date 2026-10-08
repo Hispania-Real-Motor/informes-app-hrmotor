@@ -20,7 +20,9 @@ Actualizado: 2026-10-08.
   cambie la Task. Esa procedencia solo se afirma si cambia la huella Interest
   usada; otros cambios con Task estable quedan `local_classification_changed`.
   `exact_interest` requiere igualdad limpia de ambos IDs y una entrada
-  incoherente queda `interest_mismatch` sin usar su source.
+  incoherente queda `interest_mismatch` sin usar su source. La conservación
+  `historical_preserved` es evidencia auditable, no participación Interest: la
+  causalidad exige `exact_interest` e `interest_source_used=true`.
 
 ## ROT-1 — dataset funcional Interest
 
