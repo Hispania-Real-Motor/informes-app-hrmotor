@@ -23,8 +23,9 @@ Actualizado: 2026-10-08.
   incoherente queda `interest_mismatch` sin usar su source. La conservación
   `historical_preserved` es evidencia auditable, no participación Interest: la
   causalidad exige `exact_interest`, `interest_source_used=true` y cambio real
-  en portal, origen, overflow o duración ajustada. Equipo, delegación, zona,
-  estado e inclusión no se atribuyen a Interest.
+  en `portal_resolved` o `call_origin`. Overflow, su motivo, duración ajustada,
+  equipo, delegación, zona, estado e inclusión no prueban por sí solos
+  causalidad Interest.
 
 ## ROT-1 — dataset funcional Interest
 

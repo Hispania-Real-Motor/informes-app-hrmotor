@@ -422,9 +422,6 @@ SOQL;
         foreach ([
             'portal_resolved',
             'call_origin',
-            'is_overflow',
-            'overflow_reason',
-            'adjusted_duration_seconds',
         ] as $field) {
             if (($previous[$field] ?? null) != ($current[$field] ?? null)) {
                 return true;

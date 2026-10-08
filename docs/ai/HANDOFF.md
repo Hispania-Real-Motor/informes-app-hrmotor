@@ -17,10 +17,10 @@
   meramente preservada queda `local_classification_changed`.
 - Hardening de causalidad sobre `a140725689009d50ec2980e3293a19fbc8856069`:
   incluso con huella Interest modificada y participación exacta, provenance
-  Interest exige que cambie `portal_resolved`, `call_origin`, `is_overflow`,
-  `overflow_reason` o `adjusted_duration_seconds`. Estos son los únicos campos
-  del snapshot funcional afectados directa o transitivamente por la resolución
-  de portal; cambios de equipo/delegación/zona permanecen locales.
+  Interest exige que cambie directamente `portal_resolved` o `call_origin`.
+  Overflow, su motivo y la duración ajustada son efectos derivados con otras
+  causas posibles y no demuestran causalidad por sí solos; cambios de
+  equipo/delegación/zona permanecen locales.
 - Rama `feat/rot-2-calls-to-interests`, creada desde `main`
   `dc8e7d59d7e5bdc6ce065a4ce873fb2364493eb1` (merge ROT-1, PR #71).
 - Task sigue siendo el hecho y conserva universo, fecha, CallObject, equipos,
@@ -41,9 +41,9 @@
   estable, y no se duplica en reejecuciones idénticas.
 - No hay migraciones, cambios de scheduler, frontend, rutas, informes ajenos ni
   ejecución real contra Salesforce. La versión de reglas es `2026-10-08.1`.
-- Validación local final: focal resolver/sync/reproceso 24 pruebas y 134
-  aserciones; batería completa de Llamadas 84/643; Foundations Interest
-  relacionadas 106/666; suite completa 1.273 pruebas y 9.229 aserciones. Pint
+- Validación local final: focal resolver/sync/reproceso 24 pruebas y 138
+  aserciones; batería completa de Llamadas 102/782; Foundations Interest
+  relacionadas 147/874; suite completa 1.273 pruebas y 9.233 aserciones. Pint
   y `git diff --check` correctos. Vite no aplica porque no cambió frontend; no
   hay migración ni configuración manual.
 

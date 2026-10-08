@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CallAgentMapping;
 use App\Models\SalesforceCall;
 use App\Models\SalesforceCallClassificationHistory;
 use App\Models\SalesforceInterest;
@@ -354,11 +355,18 @@ class SalesforceCallSyncServiceTest extends TestCase
 
     public function test_different_interest_sources_with_same_normalized_portal_do_not_claim_causality(): void
     {
+        $agentMapping = CallAgentMapping::query()->create([
+            'salesforce_user_id' => '005-stable-owner',
+            'user_name' => 'Comercial Estable',
+            'normalized_name' => 'comercialestable',
+            'team_type' => 'commercial',
+            'active' => true,
+        ]);
         $interest = SalesforceInterest::query()->create([
             'salesforce_id' => 'a01XXX000000000AAA',
             'salesforce_created_at' => '2026-05-10 09:00:00',
             'salesforce_last_modified_at' => '2026-05-10 09:00:00',
-            'source' => 'Web Alcobendas',
+            'source' => 'Coches.net Alcobendas',
             'is_deleted' => false,
         ]);
         $delegation = 'HR MOTOR ALCOBENDAS';
@@ -369,7 +377,8 @@ class SalesforceCallSyncServiceTest extends TestCase
         );
         $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
 
-        $interest->update(['source' => 'Web Pamplona']);
+        $interest->update(['source' => 'Coches.net Pamplona']);
+        $agentMapping->update(['team_type' => 'customer_service']);
         $delegation = 'HR MOTOR PAMPLONA';
         $client = $this->clientForStableTaskWithOwner(
             '00T-same-normalized-portal',
@@ -380,10 +389,14 @@ class SalesforceCallSyncServiceTest extends TestCase
 
         $history = SalesforceCallClassificationHistory::query()->sole();
         $this->assertSame('local_classification_changed', $history->change_source);
-        $this->assertSame('Web Alcobendas', data_get($history->raw_values, 'interest_dependency.previous.interest_source_raw'));
-        $this->assertSame('Web Pamplona', data_get($history->raw_values, 'interest_dependency.current.interest_source_raw'));
-        $this->assertSame('Web', data_get($history->previous_classification, 'portal_resolved'));
-        $this->assertSame('Web', data_get($history->new_classification, 'portal_resolved'));
+        $this->assertSame('Coches.net Alcobendas', data_get($history->raw_values, 'interest_dependency.previous.interest_source_raw'));
+        $this->assertSame('Coches.net Pamplona', data_get($history->raw_values, 'interest_dependency.current.interest_source_raw'));
+        $this->assertSame('Coches.net', data_get($history->previous_classification, 'portal_resolved'));
+        $this->assertSame('Coches.net', data_get($history->new_classification, 'portal_resolved'));
+        $this->assertSame('commercial', data_get($history->previous_classification, 'operational_team'));
+        $this->assertSame('customer_service', data_get($history->new_classification, 'operational_team'));
+        $this->assertFalse(data_get($history->previous_classification, 'is_overflow'));
+        $this->assertTrue(data_get($history->new_classification, 'is_overflow'));
     }
 
     public function test_task_last_modified_change_keeps_salesforce_history_provenance(): void
@@ -524,6 +537,7 @@ class SalesforceCallSyncServiceTest extends TestCase
 
             return [[
                 'Id' => $taskId,
+                'Description' => 'Resultado: ANSWERED',
                 'Type' => 'Call',
                 'CreatedDate' => '2026-05-10T10:00:00.000Z',
                 'LastModifiedDate' => '2026-05-10T10:05:00.000Z',

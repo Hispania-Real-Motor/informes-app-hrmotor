@@ -26,11 +26,12 @@
 - `historical_preserved` no demuestra causalidad Interest. Solo la combinación
   `exact_interest` + `interest_source_used=true` habilita provenance Interest;
   la preservación permanece en la huella exclusivamente como auditoría.
-- La causalidad exige además una diferencia en `portal_resolved`, `call_origin`,
-  `is_overflow`, `overflow_reason` o `adjusted_duration_seconds`, únicos campos
-  funcionales que la resolución de portal puede afectar directa o
-  transitivamente. Cambios locales de equipo, geografía, estado o inclusión no
-  se atribuyen a Interest aunque su metadata cambie simultáneamente.
+- La causalidad exige además una diferencia en los outputs directos
+  `portal_resolved` o `call_origin`. `is_overflow`, `overflow_reason` y
+  `adjusted_duration_seconds` son efectos derivados con causas adicionales y
+  no bastan como prueba causal. Cambios locales de equipo, geografía, estado o
+  inclusión tampoco se atribuyen a Interest aunque su metadata cambie
+  simultáneamente.
 
 ## 2026-10-08 — ROT-1 separa Interest del dataset Lead legacy
 
