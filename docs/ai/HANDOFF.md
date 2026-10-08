@@ -2,6 +2,14 @@
 
 ## ROT-2 — rotación de atribución de Llamadas a Interest (2026-10-08)
 
+- Correctivo de revisión sobre `f7c70a65518a639b9052454bd4d4a12b3da9d899`:
+  `exact_interest` exige igualdad limpia entre WhatId e Interest ID; una
+  incoherencia queda `interest_mismatch` y nunca usa la fuente suministrada.
+  El histórico compara la huella Interest previa/nueva y solo declara
+  `interest_dependency_changed` cuando esa evidencia cambió y participó en la
+  clasificación. Con Task estable, otros cambios se registran neutralmente
+  como `local_classification_changed`; Task modificada conserva
+  `salesforce_source_modified`. No hay queries, schema ni PII adicionales.
 - Rama `feat/rot-2-calls-to-interests`, creada desde `main`
   `dc8e7d59d7e5bdc6ce065a4ce873fb2364493eb1` (merge ROT-1, PR #71).
 - Task sigue siendo el hecho y conserva universo, fecha, CallObject, equipos,
@@ -22,11 +30,14 @@
   estable, y no se duplica en reejecuciones idénticas.
 - No hay migraciones, cambios de scheduler, frontend, rutas, informes ajenos ni
   ejecución real contra Salesforce. La versión de reglas es `2026-10-08.1`.
-- Validación local: focal ROT-2/auditoría/scheduler 26 pruebas y 167
-  aserciones; batería completa de Llamadas 77/605; Foundations Interest
-  relacionadas incluidas en el focal ampliado 67/412; suite completa 1.267
-  pruebas y 9.195 aserciones. Pint y `git diff --check` correctos. Vite no
-  aplica porque no cambió frontend; no hay migración ni configuración manual.
+- Validación local tras el correctivo: focal resolver/sync/reproceso 21 pruebas
+  y 113 aserciones; batería completa de Llamadas 81/622; Foundations Interest
+  relacionadas 106/666; suite completa 1.270 pruebas y 9.208 aserciones. Un
+  primer pase global bajo carga agotó el proceso y otro excedió únicamente un
+  umbral temporal ajeno de Stock; ese test aislado pasó 2/13 y la repetición
+  global final quedó completamente verde. Pint y `git diff --check` correctos.
+  Vite no aplica porque no cambió frontend; no hay migración ni configuración
+  manual.
 
 ## ROT-1 — rotación Leads → Interests (2026-10-08)
 

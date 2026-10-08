@@ -97,4 +97,19 @@ class CallInterestPortalResolverTest extends TestCase
         $this->assertSame('interest_not_local', $result['debug']['relationship_status']);
         $this->assertTrue($result['debug']['preserved_historical']);
     }
+
+    public function test_supplied_interest_with_different_id_is_auditable_mismatch_and_never_used(): void
+    {
+        $result = $this->resolver->resolve('3CX', 'a01AAA000000000AAA', [
+            'salesforce_id' => 'a01BBB000000000AAA',
+            'source' => 'Coches.net',
+            'is_deleted' => false,
+        ]);
+
+        $this->assertSame('interest_mismatch', $result['debug']['relationship_status']);
+        $this->assertFalse($result['debug']['interest_matched']);
+        $this->assertFalse($result['debug']['interest_source_used']);
+        $this->assertSame(CallPortalNormalizer::UNCLASSIFIED, $result['visible']['portal']);
+        $this->assertSame('unclassified', $result['visible']['source']);
+    }
 }

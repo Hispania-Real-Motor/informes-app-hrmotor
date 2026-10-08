@@ -18,6 +18,11 @@
   El histórico compara campos funcionales para registrar cambios de fuente
   Interest aunque `Task.LastModifiedDate` permanezca estable, sin ruido en
   reejecuciones idénticas.
+- La procedencia del histórico se demuestra con la huella Interest anterior y
+  nueva ya persistida. Solo una huella modificada que participe en la
+  clasificación usa `interest_dependency_changed`; el resto de cambios locales
+  usa `local_classification_changed`. `exact_interest` exige igualdad limpia de
+  WhatId e Interest ID; un mismatch nunca habilita fallback.
 
 ## 2026-10-08 — ROT-1 separa Interest del dataset Lead legacy
 

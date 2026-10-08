@@ -303,21 +303,21 @@ SOQL;
             && $this->classificationSnapshot($existing) != $this->classificationSnapshot($call);
         if ($classificationChanged) {
             $sourceChanged = (string) $existing->last_modified_date !== (string) $call->last_modified_date;
+            $provenance = $this->classificationChangeProvenance($existing, $call, $sourceChanged);
             SalesforceCallClassificationHistory::query()->create([
                 'salesforce_call_id' => $call->id,
                 'task_salesforce_id' => $call->salesforce_id,
                 'previous_rule_version' => $existing->classification_rule_version,
                 'new_rule_version' => CallClassificationRules::VERSION,
-                'change_source' => $sourceChanged ? 'salesforce_source_modified' : 'interest_dependency_changed',
-                'reason' => $sourceChanged
-                    ? 'Salesforce modificó el registro original; se reclasificó durante la sincronización.'
-                    : 'La evidencia local exacta de Interest modificó la clasificación funcional.',
+                'change_source' => $provenance['source'],
+                'reason' => $provenance['reason'],
                 'raw_values' => [
                     'result_raw' => $parsed['result_raw'] ?? null,
                     'answered_by_raw' => $parsed['answered_by_raw'] ?? null,
                     'call_object' => data_get($record, 'CallObject'),
                     'description' => data_get($record, 'Description'),
                     'last_modified_date' => data_get($record, 'LastModifiedDate'),
+                    'interest_dependency' => $provenance['interest_dependency'],
                 ],
                 'previous_classification' => $this->classificationSnapshot($existing),
                 'new_classification' => $this->classificationSnapshot($call),
@@ -336,6 +336,67 @@ SOQL;
             'call_duration_seconds', 'parsed_duration_seconds', 'adjusted_duration_seconds',
             'included_in_dashboard', 'dashboard_exclusion_reason',
         ])->mapWithKeys(fn (string $field): array => [$field => $call->{$field}])->all();
+    }
+
+    /** @return array{source:string,reason:string,interest_dependency:array<string,array<string,mixed>>} */
+    private function classificationChangeProvenance(
+        SalesforceCall $existing,
+        SalesforceCall $call,
+        bool $salesforceSourceChanged,
+    ): array {
+        $interestDependency = [
+            'previous' => $this->interestDependencySnapshot($existing),
+            'current' => $this->interestDependencySnapshot($call),
+        ];
+
+        if ($salesforceSourceChanged) {
+            return [
+                'source' => 'salesforce_source_modified',
+                'reason' => 'Salesforce modificó el registro original; se reclasificó durante la sincronización.',
+                'interest_dependency' => $interestDependency,
+            ];
+        }
+
+        $interestChanged = $interestDependency['previous'] != $interestDependency['current'];
+        $interestParticipates = $this->interestDependencyParticipates($interestDependency['previous'])
+            || $this->interestDependencyParticipates($interestDependency['current']);
+
+        if ($interestChanged && $interestParticipates) {
+            return [
+                'source' => 'interest_dependency_changed',
+                'reason' => 'La evidencia local de Interest utilizada por la clasificación funcional cambió.',
+                'interest_dependency' => $interestDependency,
+            ];
+        }
+
+        return [
+            'source' => 'local_classification_changed',
+            'reason' => 'Una dependencia o regla local no atribuible a Interest modificó la clasificación funcional.',
+            'interest_dependency' => $interestDependency,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function interestDependencySnapshot(SalesforceCall $call): array
+    {
+        $debug = (array) data_get($call->parse_debug, 'portal_debug', []);
+
+        return collect([
+            'what_id',
+            'relationship_status',
+            'interest_id',
+            'interest_source_raw',
+            'interest_source_used',
+            'interest_is_deleted',
+            'preserved_historical',
+        ])->mapWithKeys(fn (string $field): array => [$field => data_get($debug, $field)])->all();
+    }
+
+    /** @param  array<string,mixed>  $dependency */
+    private function interestDependencyParticipates(array $dependency): bool
+    {
+        return (bool) ($dependency['interest_source_used'] ?? false)
+            || (bool) ($dependency['preserved_historical'] ?? false);
     }
 
     private function dashboardInclusion(mixed $callObject, ?string $operationalProfile): array

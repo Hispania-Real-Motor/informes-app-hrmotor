@@ -60,7 +60,13 @@ class CallInterestPortalResolver
             return 'invalid_reference';
         }
 
-        return $interest === null ? 'interest_not_local' : 'exact_interest';
+        if ($interest === null) {
+            return 'interest_not_local';
+        }
+
+        $interestId = $this->portalNormalizer->clean(data_get($interest, 'salesforce_id'));
+
+        return $whatId === $interestId ? 'exact_interest' : 'interest_mismatch';
     }
 
     private function isMeaningfulHistorical(array $visible): bool

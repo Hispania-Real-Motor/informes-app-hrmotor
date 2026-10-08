@@ -195,7 +195,77 @@ class SalesforceCallSyncServiceTest extends TestCase
 
         $history = SalesforceCallClassificationHistory::query()->sole();
         $this->assertSame('interest_dependency_changed', $history->change_source);
+        $this->assertSame('Coches.net', data_get($history->raw_values, 'interest_dependency.previous.interest_source_raw'));
+        $this->assertSame('Wallapop', data_get($history->raw_values, 'interest_dependency.current.interest_source_raw'));
+        $this->assertTrue(data_get($history->raw_values, 'interest_dependency.current.interest_source_used'));
         $this->assertSame('Wallapop', SalesforceCall::query()->where('salesforce_id', '00T-call-history')->value('portal_resolved'));
+    }
+
+    public function test_local_user_dependency_change_uses_neutral_history_provenance(): void
+    {
+        $delegation = 'HR MOTOR ALCOBENDAS';
+        $client = Mockery::mock(SalesforceClient::class);
+        $client->shouldReceive('query')->andReturnUsing(function (string $soql) use (&$delegation): array {
+            if (str_contains($soql, 'FROM User')) {
+                return [[
+                    'Id' => '005-local-owner',
+                    'Name' => 'Comercial Local',
+                    'IsActive' => true,
+                    'Profile' => ['Name' => 'Compra/Venta'],
+                    'USR_SEL_Delegacion__c' => $delegation,
+                ]];
+            }
+
+            return [[
+                'Id' => '00T-local-change',
+                'Type' => 'Call',
+                'CreatedDate' => '2026-05-10T10:00:00.000Z',
+                'LastModifiedDate' => '2026-05-10T10:05:00.000Z',
+                'OwnerId' => '005-local-owner',
+                'Owner' => ['Name' => 'Comercial Local', 'Profile' => ['Name' => 'Compra/Venta']],
+                'WhatId' => null,
+                'CallObject' => 'call-object-local-change',
+                'Portales__c' => 'Web',
+            ]];
+        });
+
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+        $delegation = 'HR MOTOR PAMPLONA';
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+
+        $history = SalesforceCallClassificationHistory::query()->sole();
+        $this->assertSame('local_classification_changed', $history->change_source);
+        $this->assertStringContainsString('no atribuible a Interest', $history->reason);
+        $this->assertSame('Pamplona', SalesforceCall::query()->where('salesforce_id', '00T-local-change')->value('delegation'));
+    }
+
+    public function test_task_last_modified_change_keeps_salesforce_history_provenance(): void
+    {
+        $taskState = ['last_modified' => '2026-05-10T10:05:00.000Z', 'portal' => 'Web'];
+        $client = Mockery::mock(SalesforceClient::class);
+        $client->shouldReceive('query')->andReturnUsing(function (string $soql) use (&$taskState): array {
+            if (str_contains($soql, 'FROM User')) {
+                return [];
+            }
+
+            return [[
+                'Id' => '00T-salesforce-change',
+                'Type' => 'Call',
+                'CreatedDate' => '2026-05-10T10:00:00.000Z',
+                'LastModifiedDate' => $taskState['last_modified'],
+                'WhatId' => null,
+                'CallObject' => 'call-object-salesforce-change',
+                'Portales__c' => $taskState['portal'],
+            ]];
+        });
+
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+        $taskState = ['last_modified' => '2026-05-10T11:05:00.000Z', 'portal' => 'Wallapop'];
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+
+        $history = SalesforceCallClassificationHistory::query()->sole();
+        $this->assertSame('salesforce_source_modified', $history->change_source);
+        $this->assertSame('Wallapop', SalesforceCall::query()->where('salesforce_id', '00T-salesforce-change')->value('portal_resolved'));
     }
 
     public function test_lead_who_id_cannot_supply_fallback_without_exact_interest_what_id(): void

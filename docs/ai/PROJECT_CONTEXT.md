@@ -17,7 +17,10 @@ Actualizado: 2026-10-08.
 - La auditoría existente conserva una fila por Task y publica relación,
   lifecycle y provenance sin PII. La versión vigente es `2026-10-08.1` y el
   historial registra cambios funcionales derivados del Interest aunque no
-  cambie la Task.
+  cambie la Task. Esa procedencia solo se afirma si cambia la huella Interest
+  usada; otros cambios con Task estable quedan `local_classification_changed`.
+  `exact_interest` requiere igualdad limpia de ambos IDs y una entrada
+  incoherente queda `interest_mismatch` sin usar su source.
 
 ## ROT-1 — dataset funcional Interest
 
