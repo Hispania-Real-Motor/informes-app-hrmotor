@@ -128,10 +128,14 @@ Actualizado: 2026-10-07.
   `8a9d476b19d216167c5ebc82f99947393700ac5e`. Rota exclusivamente el informe
   `/informes/leads`, Monthly Commercial y la métrica ejecutiva técnica `leads`
   al hecho `salesforce_interests`, conservando rutas, permisos y claves de
-  compatibilidad. La actividad procede solo de F5 `completed` alineado con F2.
+  compatibilidad. La actividad del dashboard procede solo de F5 `completed`
+  alineado con F2; Executive cuenta Interests activos desde F2 sin depender de
+  F5. Los límites Madrid se convierten a UTC y las auditorías CSV son acotadas.
   Un pipeline horario serializa F2 incremental → F5. Campañas, Llamadas y
   Reservas/Ventas permanecen sin cambios. Implementación y validación local
-  completas; pendiente de revisión sénior y certificación, no desplegado.
+  completas; pendiente de revisión sénior y certificación, no desplegado. Antes
+  del cutover productivo, el pipeline incremental exige bootstrap F2 completo y
+  F5 alineado; no se ejecutaron en este lote.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.

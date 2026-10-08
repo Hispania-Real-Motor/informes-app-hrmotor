@@ -57,7 +57,7 @@ class LeadsSummaryIncludesUnassignedTest extends TestCase
         $comparison = collect($payload['comparativa'])->firstWhere('key', 'leads_unassigned');
 
         $this->assertSame(2, $payload['kpis']['leads_unassigned']);
-        $this->assertSame('Leads sin asignar', $comparison['metrica']);
+        $this->assertSame('Intereses sin asignar', $comparison['metrica']);
         $this->assertSame(2, $comparison['periodo_actual']);
         $this->assertSame(1, $comparison['periodo_comparado']);
         $this->assertEquals(1, $comparison['diferencia']);

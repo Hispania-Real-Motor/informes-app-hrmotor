@@ -414,7 +414,7 @@ function renderPortals(rows) {
         [(row) => formatCountPercent(row.gestionados, row.gestionados_pct), true, (row) => row.gestionados, true],
         [(row) => formatCountPercent(row.llamadas, row.llamadas_pct), true, (row) => row.llamadas, true],
         [(row) => formatCountPercent(row.formularios, row.formularios_pct), true, (row) => row.formularios, true],
-    ], 'No hay datos de portales para los filtros seleccionados.');
+    ], 'No hay datos de fuentes para los filtros seleccionados.');
 }
 
 function renderRows(rootId, rows, columns, emptyMessage, rowMeta = null) {

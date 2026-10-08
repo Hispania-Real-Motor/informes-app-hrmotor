@@ -11,6 +11,15 @@ Actualizado: 2026-10-08.
   exige F2 `completed` y F5 `completed` ligado al mismo run/cutoff; su caché se
   versiona con F2, F5 y usuarios comerciales. Salesforce solo se invoca en el
   pipeline programado F2 → F5, nunca durante HTTP.
+- Los períodos de negocio se definen en `Europe/Madrid`; sus límites se
+  convierten explícitamente a UTC antes de consultar `functional_created_at`,
+  que se persiste en UTC. Los cutoffs se exponen en ISO-8601 con offset.
+- La métrica ejecutiva técnica `leads` es una excepción deliberada al contrato
+  operativo: solo necesita F2 estable y cuenta Interests activos, por lo que no
+  consulta ni exige F5. Auditorías y dashboard operativo mantienen F2/F5.
+- Las exportaciones de auditoría Interest iteran por cursor/chunks. La
+  conciliación aplica primero el scope de autorización y después explica la
+  exclusión funcional, incluyendo lifecycle eliminado.
 
 ## Autenticación de Informes y recuperación de contraseña
 

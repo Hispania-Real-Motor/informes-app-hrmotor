@@ -35,7 +35,8 @@ class DashboardCacheMissConsistencyTest extends TestCase
     public function test_leads_summary_cache_hit_preserves_the_cache_miss_payload_for_comparison_periods(): void
     {
         $this->leadRow('lead-current-boundary', ['created_date' => '2026-05-01 00:00:00']);
-        $this->leadRow('lead-previous-boundary', ['created_date' => '2026-04-30 23:59:59']);
+        // Persistencia UTC: 21:59:59Z todavía pertenece al 30 de abril en Madrid.
+        $this->leadRow('lead-previous-boundary', ['created_date' => '2026-04-30 21:59:59']);
 
         $url = '/informes/leads/data/summary?'.http_build_query([
             'period' => 'custom',

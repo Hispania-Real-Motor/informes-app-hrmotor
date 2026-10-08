@@ -8,6 +8,11 @@ use App\Models\SalesforceInterestActivity;
 use App\Models\SalesforceInterestActivityRun;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceUser;
+use App\Services\Reports\Leads\LeadClassificationResolver;
+use App\Services\Reports\Leads\LeadDashboardAiInsightsService;
+use App\Services\Reports\Leads\LeadDelegationNormalizer;
+use App\Services\Reports\Leads\LeadPortalResolver;
+use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
 use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
 use App\Services\Salesforce\SalesforceInterestReportingPipelineService;
@@ -100,6 +105,129 @@ class SalesforceInterestDashboardDatasetTest extends TestCase
 
         $this->assertSame(1, $summary['kpis']['leads_totales']);
         $this->assertSame(1, $summary['kpis']['potenciales_sin_trabajar']);
+    }
+
+    public function test_madrid_business_day_and_month_boundaries_are_converted_to_utc(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 12:00:00', 'Europe/Madrid'));
+        $this->alignedRuns();
+        $this->interest([
+            'salesforce_id' => 'a01000000000001001',
+            'functional_created_at' => '2026-10-07 22:30:00',
+            'origin_created_at' => '2026-10-07 22:30:00',
+            'status' => 'Potencial',
+        ]);
+        $this->interest([
+            'salesforce_id' => 'a01000000000001002',
+            'functional_created_at' => '2026-09-30 22:30:00',
+            'origin_created_at' => '2026-09-30 22:30:00',
+            'status' => 'Potencial',
+        ]);
+
+        $service = app(SalesforceInterestDashboardDatasetService::class);
+        $day = $service->summary($this->customRequest('2026-10-08', '2026-10-08'));
+        $month = $service->summary($this->customRequest('2026-10-01', '2026-10-31'));
+
+        $this->assertSame(1, $day['kpis']['leads_totales']);
+        $this->assertSame(2, $month['kpis']['leads_totales']);
+        $this->assertSame('2026-10-08T00:00:00+02:00', $day['dataset_period_start']);
+        $this->assertStringContainsString('+00:00', $day['dataset_cutoff_at']);
+    }
+
+    public function test_executive_uses_f2_without_f5_and_never_queries_activity_tables(): void
+    {
+        $f2 = $this->completedF2();
+        $this->interest([
+            'salesforce_id' => 'a01000000000001003',
+            'functional_created_at' => '2026-10-07 22:30:00',
+            'origin_created_at' => '2026-10-07 22:30:00',
+        ]);
+        $f5Queries = 0;
+        DB::listen(function ($query) use (&$f5Queries): void {
+            if (str_contains($query->sql, 'salesforce_interest_activit')) {
+                $f5Queries++;
+            }
+        });
+
+        $sample = app(SalesforceInterestDashboardDatasetService::class)->executiveLeadTotal(
+            CarbonImmutable::parse('2026-10-08 00:00:00', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-10-08 23:59:59', 'Europe/Madrid'),
+        );
+
+        $this->assertSame(1, $sample['value']);
+        $this->assertSame($f2->id, $sample['source_cutoff']['sync_run_id']);
+        $this->assertNull($sample['source_cutoff']['activities_synced_at']);
+        $this->assertSame(0, $f5Queries);
+    }
+
+    public function test_operational_dashboard_still_requires_f5(): void
+    {
+        $this->completedF2();
+
+        $this->expectException(RuntimeException::class);
+        app(SalesforceInterestDashboardDatasetService::class)->summary($this->request());
+    }
+
+    public function test_executive_fails_safe_when_f2_changes_during_count(): void
+    {
+        $this->completedF2();
+        $service = new class(app(LeadDelegationNormalizer::class), app(LeadRecordTypeNormalizer::class), app(LeadDashboardAiInsightsService::class), app(LeadPortalResolver::class), app(LeadClassificationResolver::class)) extends SalesforceInterestDashboardDatasetService
+        {
+            protected function beforeExecutiveSourceValidation(): void
+            {
+                ReportSyncRun::query()->create([
+                    'dataset' => SalesforceInterestSyncService::DATASET,
+                    'source' => SalesforceInterestSyncService::SOURCE,
+                    'status' => 'running',
+                    'started_at' => now('UTC'),
+                    'timezone' => 'UTC',
+                ]);
+            }
+        };
+
+        $this->expectException(RuntimeException::class);
+        $service->executiveLeadTotal(
+            CarbonImmutable::parse('2026-10-08 00:00:00', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-10-08 23:59:59', 'Europe/Madrid'),
+        );
+    }
+
+    public function test_interest_audits_are_interest_centric_and_explain_exclusions(): void
+    {
+        $this->alignedRuns();
+        $active = $this->interest([
+            'salesforce_id' => 'a01000000000001004',
+            'status' => 'Convertido',
+            'source' => 'Fuente A',
+        ]);
+        $deleted = $this->interest([
+            'salesforce_id' => 'a01000000000001005',
+            'status' => 'Convertido',
+            'source' => 'Fuente A',
+            'is_deleted' => true,
+            'salesforce_deleted_at' => '2026-10-07 12:00:00',
+            'deletion_detection_source' => 'query_all_deleted',
+        ]);
+
+        $service = app(SalesforceInterestDashboardDatasetService::class);
+        $audit = $service->kpiAudit($this->request('convertidos'));
+        $row = $audit['items'][0];
+        $this->assertSame($active->salesforce_id, $row['interest_id']);
+        foreach (['functional_created_at', 'salesforce_created_at', 'type_raw', 'type_normalized', 'source', 'original_source', 'medium', 'channel', 'owner_id', 'effective_commercial_id', 'total_direct_activities', 'source_interest_sync_run_id', 'source_activity_run_id'] as $field) {
+            $this->assertArrayHasKey($field, $row);
+        }
+        foreach (['lead_id', 'lead_name', 'phone', 'mobile_phone', 'email', 'converted_opportunity_id', 'campaign_acquired'] as $field) {
+            $this->assertArrayNotHasKey($field, $row);
+        }
+
+        $reconciliation = collect($service->reconciliationAudit($this->request()))->keyBy('interest_id');
+        $this->assertTrue($reconciliation[$active->salesforce_id]['included_in_active_dataset']);
+        $this->assertFalse($reconciliation[$deleted->salesforce_id]['included_in_active_dataset']);
+        $this->assertContains('deleted', $reconciliation[$deleted->salesforce_id]['exclusion_reasons']);
+
+        $filtered = collect($service->reconciliationAudit($this->customRequest('2026-10-01', '2026-10-08', ['portal' => 'Otra fuente'])))->keyBy('interest_id');
+        $this->assertFalse($filtered[$active->salesforce_id]['included_in_active_dataset']);
+        $this->assertContains('source', $filtered[$active->salesforce_id]['exclusion_reasons']);
     }
 
     public function test_unaligned_f2_and_f5_fail_safe_and_audit_excludes_pii(): void
@@ -201,6 +329,33 @@ class SalesforceInterestDashboardDatasetTest extends TestCase
         $this->assertLessThanOrEqual(2, $activityQueries);
     }
 
+    public function test_comparison_uses_interest_vocabulary_and_exports_iterate_in_chunks(): void
+    {
+        $this->alignedRuns();
+        foreach (range(1, 2001) as $sequence) {
+            $this->interest([
+                'salesforce_id' => 'a02'.str_pad((string) $sequence, 15, '0', STR_PAD_LEFT),
+                'status' => 'Convertido',
+            ]);
+        }
+
+        $activityQueries = 0;
+        DB::listen(function ($query) use (&$activityQueries): void {
+            if (str_contains($query->sql, 'from "salesforce_interest_activities"')) {
+                $activityQueries++;
+            }
+        });
+
+        $summary = app(SalesforceInterestDashboardDatasetService::class)->summary($this->request());
+        $labels = collect($summary['comparativa'])->pluck('metrica')->implode(' ');
+        $this->assertStringNotContainsString('Leads', $labels);
+
+        $rows = app(SalesforceInterestDashboardDatasetService::class)
+            ->kpiAuditRows($this->request('convertidos'));
+        $this->assertSame(2001, $rows->count());
+        $this->assertLessThanOrEqual(6, $activityQueries);
+    }
+
     public function test_pipeline_never_runs_f5_after_f2_failure_and_rejects_failed_f5(): void
     {
         [$f2, $f5] = $this->alignedRuns();
@@ -275,9 +430,20 @@ class SalesforceInterestDashboardDatasetTest extends TestCase
         ]));
     }
 
-    private function alignedRuns(): array
+    private function customRequest(string $start, string $end, array $extra = []): Request
     {
-        $f2 = ReportSyncRun::query()->create([
+        return Request::create('/informes/leads/data/summary', 'GET', array_merge([
+            'period' => 'custom',
+            'current_start' => $start,
+            'current_end' => $end,
+            'comparison_start' => $start,
+            'comparison_end' => $end,
+        ], $extra));
+    }
+
+    private function completedF2(): ReportSyncRun
+    {
+        return ReportSyncRun::query()->create([
             'dataset' => SalesforceInterestSyncService::DATASET,
             'source' => SalesforceInterestSyncService::SOURCE,
             'status' => 'completed',
@@ -286,6 +452,11 @@ class SalesforceInterestDashboardDatasetTest extends TestCase
             'completed_at' => '2026-10-08 10:00:00',
             'timezone' => 'UTC',
         ]);
+    }
+
+    private function alignedRuns(): array
+    {
+        $f2 = $this->completedF2();
         $f5 = SalesforceInterestActivityRun::query()->create([
             'run_identifier' => (string) str()->uuid(),
             'reason' => 'Aligned activity snapshot for ROT-1 tests',

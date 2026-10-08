@@ -174,11 +174,16 @@ class SalesforceDashboardRowsTest extends TestCase
         $response = $this->getJson('/informes/leads/data/summary')->assertOk();
 
         $f2 = ReportSyncRun::query()->where('dataset', 'salesforce_interests')->latest('id')->firstOrFail();
+        $f2CutoffUtc = CarbonImmutable::createFromFormat(
+            'Y-m-d H:i:s',
+            $f2->source_cutoff_at->format('Y-m-d H:i:s'),
+            'UTC',
+        )->toIso8601String();
         $response
-            ->assertJsonPath('salesforce_leads_synced_at', $f2->source_cutoff_at->toDateTimeString())
+            ->assertJsonPath('salesforce_leads_synced_at', $f2CutoffUtc)
             ->assertJsonPath('dataset_sync_run_id', $f2->id)
             ->assertJsonPath('dataset_sync_run_status', 'completed')
-            ->assertJsonPath('dataset_cutoff_at', $f2->source_cutoff_at->toDateTimeString());
+            ->assertJsonPath('dataset_cutoff_at', $f2CutoffUtc);
 
         $leadAfter = $lead->fresh();
         $summaryAfter = $summary->fresh();
@@ -251,17 +256,17 @@ class SalesforceDashboardRowsTest extends TestCase
             ->assertJsonPath('total', 1)
             ->json('items.0');
 
-        $this->assertSame('Tasación', $payload['lead_type_raw']);
-        $this->assertSame('tasacion', $payload['lead_type_normalized']);
-        $this->assertSame('Zona Madrid', $payload['lead_delegation_raw']);
-        $this->assertSame('Madrid General', $payload['lead_delegation']);
+        $this->assertSame('Tasación', $payload['type_raw']);
+        $this->assertSame('tasacion', $payload['type_normalized']);
+        $this->assertSame('Zona Madrid', $payload['origin_delegation_raw']);
+        $this->assertSame('Madrid General', $payload['origin_delegation_normalized']);
 
         $csv = $this->withSession($session)
             ->get('/informes/leads/export/kpi-audit.csv?metric=convertidos')
             ->assertOk()
             ->streamedContent();
 
-        $this->assertStringContainsString('lead_delegation_raw', $csv);
+        $this->assertStringContainsString('origin_delegation_raw', $csv);
         $this->assertStringContainsString('00Q-director-audit', $csv);
         $this->assertStringContainsString('Zona Madrid', $csv);
     }

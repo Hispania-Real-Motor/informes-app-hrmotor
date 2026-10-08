@@ -13,10 +13,15 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\LazyCollection;
 use RuntimeException;
 
-final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardDatasetService
+class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardDatasetService
 {
+    private const FUNCTIONAL_TIMEZONE = 'Europe/Madrid';
+
+    private const STORAGE_TIMEZONE = 'UTC';
+
     private const COMMERCIAL_PROFILES = ['Compra/Venta', 'Comerciales Partner Community'];
 
     private const TECHNICAL_OWNER_IDS = [
@@ -59,7 +64,7 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
         $payload['summary']['compatibility_aliases'] = ['portal' => 'source'];
         $payload['summary']['comparativa'] = collect($payload['summary']['comparativa'] ?? [])
             ->map(function (array $item): array {
-                $item['label'] = $this->interestVocabulary((string) ($item['label'] ?? ''));
+                $item['metrica'] = $this->interestVocabulary((string) ($item['metrica'] ?? ''));
 
                 return $item;
             })->all();
@@ -80,34 +85,63 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
 
     public function executiveLeadTotal(CarbonImmutable $start, CarbonImmutable $end): array
     {
-        $this->sourceContext = $this->resolveAlignedContext();
-        $result = parent::executiveLeadTotal($start, $end);
-        $this->assertContextStillCurrent($this->sourceContext);
+        $f2 = $this->resolveF2Context();
+        [$startUtc, $endUtc] = $this->utcBounds(['start' => $start, 'end' => $end]);
+        $query = SalesforceInterest::query()
+            ->where('is_deleted', false)
+            ->where('functional_created_at', '>=', $startUtc)
+            ->where('functional_created_at', '<=', $endUtc);
+        $value = (clone $query)->count();
+        $coverage = [
+            'total' => $value,
+            'without_synced_at' => (clone $query)->whereNull('synced_at')->count(),
+            'without_last_modified_at' => (clone $query)->whereNull('salesforce_last_modified_at')->count(),
+        ];
 
-        return $result;
+        $this->beforeExecutiveSourceValidation();
+        $this->assertF2StillCurrent($f2);
+
+        return [
+            'value' => $value,
+            'coverage' => $coverage,
+            'source_cutoff' => [
+                'dataset_cutoff_at' => $this->utcIso($f2->source_cutoff_at),
+                'salesforce_leads_synced_at' => $this->utcIso($f2->source_cutoff_at),
+                'activities_synced_at' => null,
+                'sync_run_id' => $f2->id,
+                'sync_run_status' => $f2->status,
+            ],
+        ];
     }
 
     public function kpiAudit(Request $request): array
     {
-        $this->sourceContext = $this->resolveAlignedContext();
-        $result = parent::kpiAudit($request);
-        $this->assertContextStillCurrent($this->sourceContext);
+        $metric = $this->resolveAuditMetric($request->string('metric')->toString());
+        $items = $this->kpiAuditRows($request)->all();
 
-        $result['items'] = collect($result['items'] ?? [])->map(function (array $item): array {
-            $item['interest_id'] = $item['lead_id'] ?? null;
-            $item['functional_created_at'] = $item['created_date'] ?? null;
-            $item['source'] = $item['portal'] ?? null;
+        return [
+            'ok' => true,
+            'metric' => $metric,
+            'metric_label' => $this->interestVocabulary($this->auditMetricLabel($metric)),
+            'periodo_actual' => $this->auditPeriodPayload($this->periods($this->filters($request, 'summary'))['current']),
+            'total' => count($items),
+            'items' => $items,
+        ];
+    }
 
-            return collect($item)->except([
-                'lead_id', 'lead_name', 'phone', 'mobile_phone', 'email',
-                'persona_que_trabajo_id', 'persona_que_trabajo_name',
-                'propietario_descarte_id', 'propietario_descarte_name',
-                'campaign_acquired', 'acquired_id', 'content_acquired',
-            ])->all();
-        })->all();
-        $result['metric_label'] = $this->interestVocabulary((string) ($result['metric_label'] ?? ''));
+    public function kpiAuditRows(Request $request): LazyCollection
+    {
+        $context = $this->resolveAlignedContext();
+        $filters = $this->filters($request, 'summary');
+        $period = $this->periods($filters)['current'];
+        $metric = $this->resolveAuditMetric($request->string('metric')->toString());
 
-        return $result;
+        $rows = $this->auditRows($period, $context, true)->filter(function (array $interest) use ($filters, $metric): bool {
+            return $this->passesFilters($interest['_decorated'], $filters)
+                && $this->qualifiesAuditMetric($interest['_decorated'], $metric);
+        })->map(fn (array $interest): array => $this->kpiAuditRow($interest, $metric));
+
+        return $this->validatedRows($rows, $context);
     }
 
     public function leadAudit(array $salesforceIds, ?Request $request = null): array
@@ -136,8 +170,8 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
                     'salesforce_id' => $id,
                     'exists_local' => true,
                     'salesforce_state' => $row->is_deleted ? 'deleted' : 'active_at_last_sync',
-                    'functional_created_at' => $this->auditDateValue($row->functional_created_at),
-                    'salesforce_created_at' => $this->auditDateValue($row->salesforce_created_at),
+                    'functional_created_at' => $this->utcIso($row->functional_created_at),
+                    'salesforce_created_at' => $this->utcIso($row->salesforce_created_at),
                     'status' => $row->status,
                     'type' => $row->type,
                     'source' => $row->source,
@@ -148,7 +182,7 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
                     'owner_salesforce_id' => $row->owner_salesforce_id,
                     'owner_name' => $row->owner_name,
                     'is_deleted' => (bool) $row->is_deleted,
-                    'salesforce_deleted_at' => $this->auditDateValue($row->salesforce_deleted_at),
+                    'salesforce_deleted_at' => $this->utcIso($row->salesforce_deleted_at),
                     'deletion_detection_source' => $row->deletion_detection_source,
                     'total_direct_activities' => $decorated['total_actividades'],
                     'last_functional_activity_at' => $this->auditDateValue($decorated['fecha_ultima_actividad']),
@@ -164,54 +198,20 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
 
     public function reconciliationAudit(Request $request): array
     {
-        $this->sourceContext = $this->resolveAlignedContext();
+        return $this->reconciliationAuditRows($request)->all();
+    }
+
+    public function reconciliationAuditRows(Request $request): LazyCollection
+    {
+        $context = $this->resolveAlignedContext();
         $filters = $this->filters($request, 'summary');
         $period = $this->periods($filters)['current'];
-        $items = [];
 
-        SalesforceInterest::query()
-            ->where('functional_created_at', '>=', $period['start'])
-            ->where('functional_created_at', '<=', $period['end'])
-            ->orderBy('id')
-            ->chunkById(1000, function (Collection $rows) use (&$items, $filters): void {
-                $summaries = $this->activitySummaries($this->sourceContext['f5']->id, $rows->pluck('salesforce_id')->all());
-                foreach ($rows as $row) {
-                    $interest = $this->decorateLead($row, $summaries->get($row->salesforce_id));
-                    if (! $this->passesAccessScopeInterest($interest, $filters)) {
-                        continue;
-                    }
-                    $items[] = [
-                        'interest_id' => $interest['salesforce_id'],
-                        'functional_created_at' => $this->auditDateValue($interest['created_date']),
-                        'salesforce_created_at' => $this->auditDateValue($interest['salesforce_created_at']),
-                        'status' => $interest['status'],
-                        'type_raw' => $interest['lead_type_raw'],
-                        'type_normalized' => $interest['lead_type_normalized'],
-                        'source' => $interest['portal'],
-                        'original_source' => $interest['original_source'],
-                        'medium' => $interest['medio_efectivo'],
-                        'channel' => $interest['canal'],
-                        'origin_delegation_raw' => $interest['lead_delegation_raw'],
-                        'origin_delegation_normalized' => $interest['lead_delegation'],
-                        'owner_id' => $interest['owner_id'],
-                        'owner_name' => $interest['owner_name'],
-                        'effective_commercial_id' => $interest['gestor_id'],
-                        'effective_commercial_name' => $interest['gestor_nombre'],
-                        'commercial_delegation' => $interest['commercial_delegation'],
-                        'commercial_zone' => $interest['commercial_zone'],
-                        'is_deleted' => $interest['is_deleted'],
-                        'total_direct_activities' => $interest['total_actividades'],
-                        'last_functional_activity_at' => $this->auditDateValue($interest['fecha_ultima_actividad']),
-                        'source_interest_sync_run_id' => $this->sourceContext['f2']->id,
-                        'source_activity_run_id' => $this->sourceContext['f5']->id,
-                        'included_in_active_dataset' => true,
-                    ];
-                }
-            });
+        $rows = $this->auditRows($period, $context, false)
+            ->filter(fn (array $interest): bool => $this->passesAccessScopeInterest($interest['_decorated'], $filters))
+            ->map(fn (array $interest): array => $this->reconciliationAuditRow($interest, $filters));
 
-        $this->assertContextStillCurrent($this->sourceContext);
-
-        return $items;
+        return $this->validatedRows($rows, $context);
     }
 
     public function decorateLead(mixed $interest, mixed $summary = null, ?CarbonInterface $referenceDate = null): array
@@ -298,12 +298,13 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
     protected function eachPeriodLead(array $period, callable $callback): void
     {
         $context = $this->sourceContext ??= $this->resolveAlignedContext();
-        $referenceDate = CarbonImmutable::parse($period['end']);
+        $referenceDate = $this->functionalBoundary($period['end']);
+        [$startUtc, $endUtc] = $this->utcBounds($period);
 
         SalesforceInterest::query()
             ->where('is_deleted', false)
-            ->where('functional_created_at', '>=', $period['start'])
-            ->where('functional_created_at', '<=', $period['end'])
+            ->where('functional_created_at', '>=', $startUtc)
+            ->where('functional_created_at', '<=', $endUtc)
             ->orderBy('id')
             ->chunkById(1000, function (Collection $rows) use ($callback, $context, $referenceDate): void {
                 $summaries = $this->activitySummaries($context['f5']->id, $rows->pluck('salesforce_id')->all());
@@ -319,9 +320,9 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
 
         return [
             'interest_sync_run_id' => $context['f2']->id,
-            'interest_cutoff' => $context['f2']->source_cutoff_at?->toIso8601String(),
+            'interest_cutoff' => $this->utcIso($context['f2']->source_cutoff_at),
             'activity_run_id' => $context['f5']->id,
-            'activity_cutoff' => $context['f5']->source_cutoff_at?->toIso8601String(),
+            'activity_cutoff' => $this->utcIso($context['f5']->source_cutoff_at),
             'users_version' => SalesforceUser::query()->max('updated_at'),
         ];
     }
@@ -336,18 +337,19 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
     protected function syncMetadata(array $period): array
     {
         $context = $this->sourceContext ??= $this->resolveAlignedContext();
+        [$startUtc, $endUtc] = $this->utcBounds($period);
         $query = SalesforceInterest::query()->where('is_deleted', false)
-            ->where('functional_created_at', '>=', $period['start'])
-            ->where('functional_created_at', '<=', $period['end']);
+            ->where('functional_created_at', '>=', $startUtc)
+            ->where('functional_created_at', '<=', $endUtc);
 
         return [
-            'salesforce_leads_synced_at' => $context['f2']->source_cutoff_at?->toDateTimeString(),
-            'activities_synced_at' => $context['f5']->source_cutoff_at?->toDateTimeString(),
-            'dataset_generated_at' => now()->toDateTimeString(),
-            'dataset_cutoff_at' => $context['f2']->source_cutoff_at?->toDateTimeString(),
-            'period_start' => CarbonImmutable::parse($period['start'])->toDateTimeString(),
-            'period_end' => CarbonImmutable::parse($period['end'])->toDateTimeString(),
-            'timezone' => 'Europe/Madrid',
+            'salesforce_leads_synced_at' => $this->utcIso($context['f2']->source_cutoff_at),
+            'activities_synced_at' => $this->utcIso($context['f5']->source_cutoff_at),
+            'dataset_generated_at' => CarbonImmutable::now(self::FUNCTIONAL_TIMEZONE)->toIso8601String(),
+            'dataset_cutoff_at' => $this->utcIso($context['f2']->source_cutoff_at),
+            'period_start' => $this->functionalBoundary($period['start'])->toIso8601String(),
+            'period_end' => $this->functionalBoundary($period['end'])->toIso8601String(),
+            'timezone' => self::FUNCTIONAL_TIMEZONE,
             'sync_run_id' => $context['f2']->id,
             'sync_run_status' => 'completed',
             'interest_sync_run_id' => $context['f2']->id,
@@ -358,6 +360,179 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
                 'without_synced_at' => (clone $query)->whereNull('synced_at')->count(),
                 'without_last_modified_at' => (clone $query)->whereNull('salesforce_last_modified_at')->count(),
             ],
+        ];
+    }
+
+    protected function beforeExecutiveSourceValidation(): void
+    {
+        // Test seam: the production path performs no work between the count and F2 revalidation.
+    }
+
+    /** @return array{0: CarbonImmutable, 1: CarbonImmutable} */
+    private function utcBounds(array $period): array
+    {
+        return [
+            $this->functionalBoundary($period['start'])->setTimezone(self::STORAGE_TIMEZONE),
+            $this->functionalBoundary($period['end'])->setTimezone(self::STORAGE_TIMEZONE),
+        ];
+    }
+
+    private function functionalBoundary(mixed $value): CarbonImmutable
+    {
+        $date = CarbonImmutable::parse($value);
+
+        return $date->getTimezone()->getName() === self::FUNCTIONAL_TIMEZONE
+            ? $date
+            : $date->shiftTimezone(self::FUNCTIONAL_TIMEZONE);
+    }
+
+    private function utcIso(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return CarbonImmutable::createFromFormat(
+            'Y-m-d H:i:s',
+            CarbonImmutable::parse($value)->format('Y-m-d H:i:s'),
+            self::STORAGE_TIMEZONE,
+        )->toIso8601String();
+    }
+
+    private function auditRows(array $period, array $context, bool $activeOnly): LazyCollection
+    {
+        [$startUtc, $endUtc] = $this->utcBounds($period);
+
+        return LazyCollection::make(function () use ($startUtc, $endUtc, $context, $activeOnly): \Generator {
+            $buffer = [];
+            $query = SalesforceInterest::query()
+                ->where('functional_created_at', '>=', $startUtc)
+                ->where('functional_created_at', '<=', $endUtc)
+                ->orderBy('id');
+            if ($activeOnly) {
+                $query->where('is_deleted', false);
+            }
+
+            foreach ($query->lazyById(1000) as $row) {
+                $buffer[] = $row;
+                if (count($buffer) < 1000) {
+                    continue;
+                }
+
+                yield from $this->decorateAuditChunk(collect($buffer), $context);
+                $buffer = [];
+            }
+            if (! empty($buffer)) {
+                yield from $this->decorateAuditChunk(collect($buffer), $context);
+            }
+        });
+    }
+
+    private function validatedRows(LazyCollection $rows, array $context): LazyCollection
+    {
+        return LazyCollection::make(function () use ($rows, $context): \Generator {
+            foreach ($rows as $row) {
+                yield $row;
+            }
+
+            $this->assertContextStillCurrent($context);
+        });
+    }
+
+    private function decorateAuditChunk(Collection $rows, array $context): \Generator
+    {
+        $summaries = $this->activitySummaries($context['f5']->id, $rows->pluck('salesforce_id')->all());
+        foreach ($rows as $row) {
+            yield [
+                '_model' => $row,
+                '_decorated' => $this->decorateLead($row, $summaries->get($row->salesforce_id)),
+                '_context' => $context,
+            ];
+        }
+    }
+
+    private function kpiAuditRow(array $record, string $metric): array
+    {
+        $interest = $record['_decorated'];
+        $context = $record['_context'];
+
+        return [
+            'metric' => $metric,
+            'metric_label' => $this->interestVocabulary($this->auditMetricLabel($metric)),
+            'interest_id' => $interest['salesforce_id'],
+            'functional_created_at' => $this->utcIso($interest['created_date']),
+            'salesforce_created_at' => $this->utcIso($interest['salesforce_created_at']),
+            'status' => $interest['status'],
+            'type_raw' => $interest['lead_type_raw'],
+            'type_normalized' => $interest['lead_type_normalized'],
+            'source' => $interest['portal'],
+            'original_source' => $interest['original_source'],
+            'medium' => $interest['medio_efectivo'],
+            'channel' => $interest['canal'],
+            'origin_delegation_raw' => $interest['lead_delegation_raw'],
+            'origin_delegation_normalized' => $interest['lead_delegation'],
+            'owner_id' => $interest['owner_id'],
+            'owner_name' => $interest['owner_name'],
+            'effective_commercial_id' => $interest['gestor_id'],
+            'effective_commercial_name' => $interest['gestor_nombre'],
+            'commercial_delegation' => $interest['commercial_delegation'],
+            'commercial_zone' => $interest['commercial_zone'],
+            'is_deleted' => $interest['is_deleted'],
+            'salesforce_deleted_at' => $this->utcIso($interest['salesforce_deleted_at']),
+            'deletion_detection_source' => $interest['deletion_detection_source'],
+            'total_direct_activities' => $interest['total_actividades'],
+            'last_functional_activity_at' => $this->auditDateValue($interest['fecha_ultima_actividad']),
+            'source_interest_sync_run_id' => $context['f2']->id,
+            'source_activity_run_id' => $context['f5']->id,
+        ];
+    }
+
+    private function reconciliationAuditRow(array $record, array $filters): array
+    {
+        $interest = $record['_decorated'];
+        $row = $record['_model'];
+        $reasons = $this->interestFilterExclusionReasons($interest, $filters);
+        if ($row->is_deleted) {
+            array_unshift($reasons, 'deleted');
+        }
+
+        return array_merge($this->kpiAuditRow($record, 'leads_totales'), [
+            'exclusion_reasons' => array_values(array_unique($reasons)),
+            'included_in_active_dataset' => $reasons === [],
+        ]);
+    }
+
+    /** @return list<string> */
+    private function interestFilterExclusionReasons(array $interest, array $filters): array
+    {
+        $reasons = [];
+        if ($filters['portal'] && $interest['portal'] !== $filters['portal']) {
+            $reasons[] = 'source';
+        }
+        if ($filters['lead_delegation'] && $interest['lead_delegation'] !== $filters['lead_delegation']) {
+            $reasons[] = 'origin_delegation';
+        }
+        if (! $this->passesLeadTypeFilter($interest['lead_type_normalized'], $filters['lead_type'])) {
+            $reasons[] = 'type';
+        }
+        if ($filters['commercial_delegation'] && $interest['commercial_delegation'] !== $filters['commercial_delegation']) {
+            $reasons[] = 'commercial_delegation';
+        }
+        if ($filters['zone'] && $interest['commercial_zone'] !== $filters['zone']) {
+            $reasons[] = 'zone';
+        }
+        if ($filters['commercial'] && $interest['gestor_id'] !== $filters['commercial']) {
+            $reasons[] = 'commercial';
+        }
+
+        return $reasons;
+    }
+
+    private function auditPeriodPayload(array $period): array
+    {
+        return [
+            'inicio' => $this->functionalBoundary($period['start'])->toDateString(),
+            'fin' => $this->functionalBoundary($period['end'])->toDateString(),
         ];
     }
 
@@ -394,13 +569,7 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
 
     private function resolveAlignedContext(): array
     {
-        $f2 = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->latest('id')->first();
-        if ($f2 === null || $f2->status !== 'completed' || $f2->source_cutoff_at === null) {
-            throw new RuntimeException('Interest dashboard source is not a completed F2 snapshot.');
-        }
+        $f2 = $this->resolveF2Context();
 
         $f5 = SalesforceInterestActivityRun::query()
             ->where('status', 'completed')
@@ -412,6 +581,28 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
         }
 
         return ['f2' => $f2, 'f5' => $f5];
+    }
+
+    private function resolveF2Context(): ReportSyncRun
+    {
+        $f2 = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->latest('id')->first();
+        if ($f2 === null || $f2->status !== 'completed' || $f2->source_cutoff_at === null) {
+            throw new RuntimeException('Interest dashboard source is not a completed F2 snapshot.');
+        }
+
+        return $f2;
+    }
+
+    private function assertF2StillCurrent(ReportSyncRun $expected): void
+    {
+        $current = $this->resolveF2Context();
+        if ($current->id !== $expected->id
+            || ! $current->source_cutoff_at->equalTo($expected->source_cutoff_at)) {
+            throw new RuntimeException('Interest source changed during dataset construction.');
+        }
     }
 
     private function assertContextStillCurrent(array $context): void
@@ -472,6 +663,10 @@ final class SalesforceInterestDashboardDatasetService extends SalesforceLeadDash
 
     private function interestVocabulary(string $value): string
     {
-        return str_ireplace(['leads', 'lead', 'portales', 'portal'], ['intereses', 'Interest', 'fuentes', 'fuente'], $value);
+        return str_replace(
+            ['Leads', 'leads', 'Lead', 'lead', 'Portales', 'portales', 'Portal', 'portal'],
+            ['Intereses', 'intereses', 'Interest', 'Interest', 'Fuentes', 'fuentes', 'Fuente', 'fuente'],
+            $value,
+        );
     }
 }

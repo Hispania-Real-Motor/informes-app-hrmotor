@@ -2,6 +2,23 @@
 
 ## ROT-1 — rotación Leads → Interests (2026-10-08)
 
+- Correctivo de revisión sénior sobre `620ad16f8a5a0a85e6e782f40bc5f7c2bcc14f06`:
+  los límites funcionales se interpretan en `Europe/Madrid` y se convierten a
+  UTC antes de consultar `functional_created_at`; los cutoffs se publican en
+  ISO-8601 con offset. Se cubren explícitamente los bordes de día y mes.
+- La métrica ejecutiva técnica `leads` cuenta Interests activos directamente
+  sobre el F2 estable y no consulta ni exige F5. El dashboard operativo y sus
+  auditorías sí conservan la exigencia F2/F5 alineada. Ambos caminos revalidan
+  su fuente antes de publicar el resultado.
+- KPI audit expone exclusivamente evidencia Interest y actividad directa, sin
+  PII ni columnas Lead/Campañas. Conciliación incluye activos y eliminados
+  dentro del scope autorizado, indica `included_in_active_dataset` y motivos de
+  exclusión. Los CSV consumen cursores/chunks y no materializan toda la
+  exportación en memoria.
+- Antes de habilitar el consumo productivo del scheduler incremental
+  `salesforce:sync-interest-reporting` se requiere un bootstrap F2 completo y
+  un snapshot F5 alineado con ese mismo run/cutoff. Este correctivo no ejecutó
+  bootstrap, Salesforce, shadow ni producción.
 - Rama `feat/rot-1-leads-to-interests`, base
   `8a9d476b19d216167c5ebc82f99947393700ac5e`.
 - `SalesforceInterestDashboardDatasetService` es un dataset funcional separado.
@@ -24,10 +41,11 @@
   filtro legacy Exposición se retiró de la UI porque Interest no ofrece una
   dimensión canónica equivalente; no se inventa un fallback desde `source`.
   No se accedió a Salesforce real, shadow o producción.
-- Validación local: batería ROT-1 7 pruebas/26 aserciones; dashboard completo
-  201/1.907; Monthly Commercial 1/5; Executive Daily 26/116; regresiones de
-  Activities/Calls 6/52. Suite completa final: 1.250 pruebas y 9.111 aserciones.
-  Pint sobre todo el PHP modificado, build Vite y `git diff --check` correctos.
+- Validación local final del correctivo: focales dashboard/Executive 49
+  pruebas/266 aserciones; bloque ROT-1 + Monthly Commercial + Executive +
+  Campañas + Foundations + Activities/Calls 220/1.437. Suite completa: 1.256
+  pruebas y 9.151 aserciones. Pint sobre todo el PHP modificado, build Vite y
+  `git diff --check` correctos.
   El build mantiene únicamente los avisos conocidos de `/images/login-bg.jpg`
   resuelto en runtime y deprecación de Node. No hay migración ni configuración
   de entorno nueva.

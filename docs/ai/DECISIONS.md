@@ -11,6 +11,14 @@
   internos y el pipeline comercial legacy permanecen.
 - `source` es Fuente. `portal` solo se conserva como alias técnico compatible,
   sin afirmar equivalencia semántica Salesforce.
+- `functional_created_at` es UTC en persistencia, mientras que los períodos
+  visibles son `Europe/Madrid`; toda consulta ROT-1 convierte los límites a UTC
+  y toda metadata temporal conserva offset. Executive depende únicamente de
+  F2 porque su conteo no usa actividad; F5 sigue siendo obligatorio para el
+  dashboard operativo.
+- Los CSV de auditoría se generan por cursor/chunks. KPI audit no hereda el
+  payload Lead: publica un contrato Interest explícito sin PII, y conciliación
+  separa scope autorizado de motivos de exclusión funcional.
 
 ## 2026-10-07 — Fuente directa Task/Event–Interest separada del pipeline legacy
 

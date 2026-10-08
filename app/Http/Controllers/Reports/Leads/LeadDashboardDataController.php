@@ -92,17 +92,22 @@ class LeadDashboardDataController extends Controller
     {
         abort_unless(ReportUserAccess::canAuditReport($request, 'leads'), 403);
 
-        $payload = $this->dataset->kpiAudit($request);
-        $rows = $payload['items'] ?? [];
-        $metric = $payload['metric'] ?? 'leads_totales';
-        $headers = $rows === [] ? ['Interest ID'] : array_keys($rows[0]);
+        $rows = $this->dataset->kpiAuditRows($request);
+        $metric = $request->string('metric')->toString() ?: 'leads_totales';
 
-        return response()->streamDownload(function () use ($rows, $headers): void {
+        return response()->streamDownload(function () use ($rows): void {
             $output = fopen('php://output', 'w');
-            fputcsv($output, $headers);
+            $headerWritten = false;
 
             foreach ($rows as $row) {
+                if (! $headerWritten) {
+                    fputcsv($output, array_keys($row));
+                    $headerWritten = true;
+                }
                 fputcsv($output, array_map($this->csvValue(...), $row));
+            }
+            if (! $headerWritten) {
+                fputcsv($output, ['Interest ID']);
             }
 
             fclose($output);
@@ -115,15 +120,21 @@ class LeadDashboardDataController extends Controller
     {
         abort_unless(ReportUserAccess::canAuditReport($request, 'leads'), 403);
 
-        $rows = $this->dataset->reconciliationAudit($request);
-        $headers = $rows === [] ? ['Interest ID'] : array_keys($rows[0]);
+        $rows = $this->dataset->reconciliationAuditRows($request);
 
-        return response()->streamDownload(function () use ($rows, $headers): void {
+        return response()->streamDownload(function () use ($rows): void {
             $output = fopen('php://output', 'w');
             fwrite($output, "\xEF\xBB\xBF");
-            fputcsv($output, $headers);
+            $headerWritten = false;
             foreach ($rows as $row) {
+                if (! $headerWritten) {
+                    fputcsv($output, array_keys($row));
+                    $headerWritten = true;
+                }
                 fputcsv($output, array_map($this->csvValue(...), $row));
+            }
+            if (! $headerWritten) {
+                fputcsv($output, ['Interest ID']);
             }
             fclose($output);
         }, 'intereses-conciliacion.csv', [
