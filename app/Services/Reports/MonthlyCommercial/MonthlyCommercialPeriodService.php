@@ -7,10 +7,13 @@ use Carbon\CarbonInterface;
 
 class MonthlyCommercialPeriodService
 {
+    public const TIMEZONE = 'Europe/Madrid';
+
     public function periods(int $days = 30, ?CarbonInterface $now = null): array
     {
         $days = max($days, 1);
-        $end = $now ? CarbonImmutable::parse($now) : CarbonImmutable::now();
+        $end = ($now ? CarbonImmutable::parse($now) : CarbonImmutable::now(self::TIMEZONE))
+            ->setTimezone(self::TIMEZONE);
         $start = $end->subDays($days);
         $previousEnd = $start;
         $previousStart = $previousEnd->subDays($days);

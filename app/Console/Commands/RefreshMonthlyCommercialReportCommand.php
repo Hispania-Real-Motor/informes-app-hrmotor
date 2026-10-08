@@ -25,14 +25,16 @@ class RefreshMonthlyCommercialReportCommand extends Command
         MonthlyCommercialPeriodService $periodService,
     ): int {
         $days = max((int) $this->option('days'), 1);
-        $now = CarbonImmutable::now();
+        $now = CarbonImmutable::now(MonthlyCommercialPeriodService::TIMEZONE);
         $periods = $periodService->periods($days, $now);
+        $currentStartUtc = $periods['current_start']->setTimezone('UTC');
+        $currentEndUtc = $periods['current_end']->setTimezone('UTC');
 
         try {
             $currentLeads = SalesforceInterest::query()
                 ->where('is_deleted', false)
-                ->where('functional_created_at', '>=', $periods['current_start'])
-                ->where('functional_created_at', '<', $periods['current_end'])
+                ->where('functional_created_at', '>=', $currentStartUtc)
+                ->where('functional_created_at', '<', $currentEndUtc)
                 ->count();
 
             if ($currentLeads === 0) {

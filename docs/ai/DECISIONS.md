@@ -19,6 +19,10 @@
 - Los CSV de auditoría se generan por cursor/chunks. KPI audit no hereda el
   payload Lead: publica un contrato Interest explícito sin PII, y conciliación
   separa scope autorizado de motivos de exclusión funcional.
+- Task se modela como fecha de negocio, no como instante: `ActivityDate` fija el
+  día Madrid y `CreatedDate` solo desempata dentro de ese día. Event mantiene
+  `StartDateTime` como instante. Monthly Commercial comparte el calendario
+  Madrid de ROT-1 y convierte sus límites a UTC al consultar persistencia.
 
 ## 2026-10-07 — Fuente directa Task/Event–Interest separada del pipeline legacy
 

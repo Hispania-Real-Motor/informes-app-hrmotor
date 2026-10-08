@@ -20,6 +20,11 @@ Actualizado: 2026-10-08.
 - Las exportaciones de auditoría Interest iteran por cursor/chunks. La
   conciliación aplica primero el scope de autorización y después explica la
   exclusión funcional, incluyendo lifecycle eliminado.
+- En F5, Task conserva una fecha civil: `ActivityDate` es su único día
+  funcional y `CreatedDate` solo ordena Tasks del mismo día. Event usa el
+  instante `StartDateTime`. Monthly Commercial deriva sus fechas y
+  `fecha_analisis` en `Europe/Madrid`, convirtiendo límites a UTC únicamente al
+  consultar `functional_created_at`.
 
 ## Autenticación de Informes y recuperación de contraseña
 

@@ -107,6 +107,133 @@ class SalesforceInterestDashboardDatasetTest extends TestCase
         $this->assertSame(1, $summary['kpis']['potenciales_sin_trabajar']);
     }
 
+    public function test_task_activity_date_is_the_functional_day_and_created_date_only_breaks_ties(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 23:59:59', 'Europe/Madrid'));
+        [, $f5] = $this->alignedRuns();
+        $interest = $this->interest([
+            'salesforce_id' => 'a01000000000002001',
+            'status' => 'Potencial',
+            'origin_created_at' => '2026-10-08 08:00:00',
+        ]);
+
+        foreach (['2026-10-08 08:00:00', '2026-10-08 23:30:00'] as $index => $createdAt) {
+            SalesforceInterestActivity::query()->create([
+                'activity_run_id' => $f5->id,
+                'activity_kind' => 'Task',
+                'activity_salesforce_id' => '00T'.str_pad((string) ($index + 20), 15, '0', STR_PAD_LEFT),
+                'interest_salesforce_id' => $interest->salesforce_id,
+                'relationship_status' => 'resolved',
+                'activity_is_deleted' => false,
+                'interest_is_deleted' => false,
+                'activity_date' => '2026-10-08',
+                'salesforce_created_at' => $createdAt,
+            ]);
+        }
+
+        $service = app(SalesforceInterestDashboardDatasetService::class);
+        $summary = $service->summary($this->customRequest('2026-10-08', '2026-10-08'));
+        $audit = $service->leadAudit([$interest->salesforce_id]);
+        $summaries = (new \ReflectionMethod($service, 'activitySummaries'))->invoke(
+            $service,
+            $f5->id,
+            [$interest->salesforce_id],
+        );
+
+        $this->assertSame(0, $summary['kpis']['potenciales_sin_trabajar']);
+        $this->assertSame(2, $audit['items'][0]['total_direct_activities']);
+        $this->assertSame('2026-10-08T00:00:00+02:00', $audit['items'][0]['last_functional_activity_at']);
+        $this->assertSame(
+            '2026-10-08T23:30:00+00:00',
+            $summaries[$interest->salesforce_id]['fecha_ultima_actividad_desempate']->toIso8601String(),
+        );
+    }
+
+    public function test_task_without_activity_date_counts_but_does_not_invent_recency_and_event_uses_start_datetime(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 12:00:00', 'Europe/Madrid'));
+        [, $f5] = $this->alignedRuns();
+        $taskOnly = $this->interest([
+            'salesforce_id' => 'a01000000000002002',
+            'status' => 'Potencial',
+            'origin_created_at' => '2026-10-08 08:00:00',
+        ]);
+        $eventInterest = $this->interest([
+            'salesforce_id' => 'a01000000000002003',
+            'status' => 'Potencial',
+            'origin_created_at' => '2026-10-08 08:00:00',
+        ]);
+        SalesforceInterestActivity::query()->create([
+            'activity_run_id' => $f5->id,
+            'activity_kind' => 'Task',
+            'activity_salesforce_id' => '00T000000000000030',
+            'interest_salesforce_id' => $taskOnly->salesforce_id,
+            'relationship_status' => 'resolved',
+            'activity_is_deleted' => false,
+            'interest_is_deleted' => false,
+            'activity_date' => null,
+            'salesforce_created_at' => '2026-10-08 09:00:00',
+        ]);
+        SalesforceInterestActivity::query()->create([
+            'activity_run_id' => $f5->id,
+            'activity_kind' => 'Event',
+            'activity_salesforce_id' => '00U000000000000030',
+            'interest_salesforce_id' => $eventInterest->salesforce_id,
+            'relationship_status' => 'resolved',
+            'activity_is_deleted' => false,
+            'interest_is_deleted' => false,
+            'start_datetime' => '2026-10-07 23:30:00',
+            'salesforce_created_at' => '2026-10-07 20:00:00',
+        ]);
+
+        $service = app(SalesforceInterestDashboardDatasetService::class);
+        $summary = $service->summary($this->customRequest('2026-10-08', '2026-10-08'));
+        $taskAudit = $service->leadAudit([$taskOnly->salesforce_id]);
+        $eventAudit = $service->leadAudit([$eventInterest->salesforce_id]);
+
+        $this->assertSame(1, $summary['kpis']['potenciales_sin_trabajar']);
+        $this->assertSame(1, $taskAudit['items'][0]['total_direct_activities']);
+        $this->assertNull($taskAudit['items'][0]['last_functional_activity_at']);
+        $this->assertSame('2026-10-08T01:30:00+02:00', $eventAudit['items'][0]['last_functional_activity_at']);
+    }
+
+    public function test_event_in_same_business_day_keeps_its_instant_over_task_day_marker(): void
+    {
+        [, $f5] = $this->alignedRuns();
+        $interest = $this->interest([
+            'salesforce_id' => 'a01000000000002004',
+            'status' => 'Potencial',
+            'origin_created_at' => '2026-10-08 08:00:00',
+        ]);
+        SalesforceInterestActivity::query()->create([
+            'activity_run_id' => $f5->id,
+            'activity_kind' => 'Task',
+            'activity_salesforce_id' => '00T000000000000031',
+            'interest_salesforce_id' => $interest->salesforce_id,
+            'relationship_status' => 'resolved',
+            'activity_is_deleted' => false,
+            'interest_is_deleted' => false,
+            'activity_date' => '2026-10-08',
+            'salesforce_created_at' => '2026-10-08 23:30:00',
+        ]);
+        SalesforceInterestActivity::query()->create([
+            'activity_run_id' => $f5->id,
+            'activity_kind' => 'Event',
+            'activity_salesforce_id' => '00U000000000000031',
+            'interest_salesforce_id' => $interest->salesforce_id,
+            'relationship_status' => 'resolved',
+            'activity_is_deleted' => false,
+            'interest_is_deleted' => false,
+            'start_datetime' => '2026-10-08 08:00:00',
+            'salesforce_created_at' => '2026-10-08 07:00:00',
+        ]);
+
+        $audit = app(SalesforceInterestDashboardDatasetService::class)->leadAudit([$interest->salesforce_id]);
+
+        $this->assertSame(2, $audit['items'][0]['total_direct_activities']);
+        $this->assertSame('2026-10-08T10:00:00+02:00', $audit['items'][0]['last_functional_activity_at']);
+    }
+
     public function test_madrid_business_day_and_month_boundaries_are_converted_to_utc(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 12:00:00', 'Europe/Madrid'));

@@ -546,25 +546,57 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
             ->get(['interest_salesforce_id', 'activity_kind', 'activity_date', 'start_datetime', 'salesforce_created_at'])
             ->groupBy('interest_salesforce_id')
             ->map(function (Collection $activities): array {
-                $dated = $activities->map(function (SalesforceInterestActivity $activity): ?CarbonImmutable {
+                $dated = $activities->map(function (SalesforceInterestActivity $activity): ?array {
                     if ($activity->activity_kind === 'Task' && $activity->activity_date !== null) {
-                        $date = CarbonImmutable::parse($activity->activity_date)->startOfDay();
+                        $createdAt = $this->databaseUtcInstant($activity->salesforce_created_at);
 
-                        return $activity->salesforce_created_at
-                            ? $date->setTimeFrom(CarbonImmutable::parse($activity->salesforce_created_at))
-                            : $date;
+                        return [
+                            'functional' => CarbonImmutable::parse(
+                                $activity->activity_date->toDateString(),
+                                self::FUNCTIONAL_TIMEZONE,
+                            )->startOfDay(),
+                            'tie_breaker' => $createdAt?->getTimestamp() ?? 0,
+                            'ordering_created_at' => $createdAt,
+                        ];
                     }
 
-                    return $activity->activity_kind === 'Event' && $activity->start_datetime !== null
-                        ? CarbonImmutable::parse($activity->start_datetime)
-                        : null;
+                    if ($activity->activity_kind === 'Event' && $activity->start_datetime !== null) {
+                        $functional = $this->databaseUtcInstant($activity->start_datetime)?->setTimezone(self::FUNCTIONAL_TIMEZONE);
+
+                        return $functional === null ? null : [
+                            'functional' => $functional,
+                            'tie_breaker' => $functional->getTimestamp(),
+                            'ordering_created_at' => null,
+                        ];
+                    }
+
+                    return null;
                 })->filter();
+
+                $latest = $dated->sortByDesc(fn (array $date): array => [
+                    $date['functional']->getTimestamp(),
+                    $date['tie_breaker'],
+                ])->first();
 
                 return [
                     'total_actividades' => $activities->count(),
-                    'fecha_ultima_actividad' => $dated->sortByDesc(fn (CarbonImmutable $date) => $date->getTimestamp())->first(),
+                    'fecha_ultima_actividad' => $latest['functional'] ?? null,
+                    'fecha_ultima_actividad_desempate' => $latest['ordering_created_at'] ?? null,
                 ];
             });
+    }
+
+    private function databaseUtcInstant(mixed $value): ?CarbonImmutable
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return CarbonImmutable::createFromFormat(
+            'Y-m-d H:i:s',
+            CarbonImmutable::parse($value)->format('Y-m-d H:i:s'),
+            self::STORAGE_TIMEZONE,
+        );
     }
 
     private function resolveAlignedContext(): array

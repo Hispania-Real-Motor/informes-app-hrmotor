@@ -2,6 +2,18 @@
 
 ## ROT-1 — rotación Leads → Interests (2026-10-08)
 
+- Correctivo final de revisión: Task usa `ActivityDate` como día civil
+  `Europe/Madrid`; `CreatedDate` solo desempata Tasks del mismo día y nunca se
+  combina con la fecha para fabricar otro instante. Task sin `ActivityDate`
+  cuenta en el total pero no acredita recencia. Event conserva
+  `StartDateTime` como instante funcional.
+- Monthly Commercial convierte el instante de ejecución a `Europe/Madrid`
+  antes de derivar calendario y `fecha_analisis`; su precheck transforma los
+  límites Madrid a UTC antes de consultar `functional_created_at`. Se cubrieron
+  medianoche Madrid con día UTC anterior y cambio DST sin offsets fijos.
+- `docs/reglas-negocio-leads.md` se reescribió como contrato ROT-1 vigente. La
+  semántica Lead queda aislada como referencia para Campañas/consumidores no
+  rotados y no se presenta como fuente de `/informes/leads`.
 - Correctivo de revisión sénior sobre `620ad16f8a5a0a85e6e782f40bc5f7c2bcc14f06`:
   los límites funcionales se interpretan en `Europe/Madrid` y se convierten a
   UTC antes de consultar `functional_created_at`; los cutoffs se publican en
@@ -41,14 +53,11 @@
   filtro legacy Exposición se retiró de la UI porque Interest no ofrece una
   dimensión canónica equivalente; no se inventa un fallback desde `source`.
   No se accedió a Salesforce real, shadow o producción.
-- Validación local final del correctivo: focales dashboard/Executive 49
-  pruebas/266 aserciones; bloque ROT-1 + Monthly Commercial + Executive +
-  Campañas + Foundations + Activities/Calls 220/1.437. Suite completa: 1.256
-  pruebas y 9.151 aserciones. Pint sobre todo el PHP modificado, build Vite y
-  `git diff --check` correctos.
-  El build mantiene únicamente los avisos conocidos de `/images/login-bg.jpg`
-  resuelto en runtime y deprecación de Node. No hay migración ni configuración
-  de entorno nueva.
+- Validación local final: focal Task/Monthly/Executive 46 pruebas/207
+  aserciones; bloque ampliado ROT-1, Monthly, Executive, Dashboard, Campañas y
+  Foundations 147/1.024; suite completa 1.261/9.169. Pint y
+  `git diff --check` correctos. Vite no aplica porque este correctivo no modifica
+  frontend. No hay migración ni configuración de entorno nueva.
 
 ## SF-INTEREST-FOUNDATION-5 — evidencia directa Task/Event–Interest (2026-10-07)
 
