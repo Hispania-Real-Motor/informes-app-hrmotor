@@ -1,6 +1,6 @@
 # Informe de Llamadas
 
-Actualizado: 2026-08-06.
+Actualizado: 2026-10-08.
 
 ## Universo
 
@@ -10,12 +10,12 @@ Actualizado: 2026-08-06.
 - Las Tasks de llamada sin `CallObject` se conservan para conciliación con
   motivo `missing_call_object`, pero no suman en los KPIs operativos.
 - Fecha pivote: `Task.CreatedDate`.
-- Tablas: `salesforce_calls`, `salesforce_users`, `call_agent_mappings` y
-  `salesforce_call_classification_history`.
+- Tablas: `salesforce_calls`, `salesforce_interests`, `salesforce_users`,
+  `call_agent_mappings` y `salesforce_call_classification_history`.
 
 ## Clasificación vigente
 
-Versión de reglas: `2026-08-07.1`.
+Versión de reglas: `2026-10-08.1`.
 
 - Atendida: resultado normalizado `ANSWERED` o valor válido extraído de
   `Respondido por`, salvo una regla más fuerte de no atención.
@@ -39,6 +39,28 @@ Versión de reglas: `2026-08-07.1`.
 El parser extrae de `Description` resultado, `Respondido por`, agente, cola,
 opción de teclado, duración y demás valores brutos. Esos valores se conservan
 en la auditoría junto con la interpretación final.
+
+## Atribución CRM ROT-2
+
+- `Task` continúa siendo el hecho contado. La única relación CRM autorizada es
+  la coincidencia exacta local `Task.WhatId = salesforce_interests.salesforce_id`.
+  `WhoId` se conserva como evidencia bruta, pero no atribuye Interest ni fuente.
+- `Portales__c = null` continúa siendo `commercial_direct`. Un valor Task
+  reconocido continúa siendo autoritativo aunque el Interest indique otra
+  fuente. Solo cuando Task está informado pero queda `Sin clasificar` se usa
+  `salesforce_interests.source` como fallback, con el mismo normalizador de
+  portales. No existe cascada por Lead, `original_source`, medium, channel ni
+  procedencia.
+- Un Interest eliminado conserva la relación histórica y puede aportar su
+  fuente; no excluye la llamada. Si `WhatId` no resuelve localmente, no se
+  infiere otra relación ni se consulta Salesforce. Una clasificación histórica
+  visible de una llamada existente puede conservarse de forma explícita como
+  `historical_preserved`, sin presentarse como evidencia Interest actual.
+- Owner y `origin_delegation` del Interest no cambian agente, equipo,
+  delegación o zona operativos de la llamada.
+- El runtime no depende de FOUNDATION-5: la relación procede del `WhatId` ya
+  persistido en `salesforce_calls` y el enrichment se realiza por lotes contra
+  la réplica local de Interests.
 
 ## Duración
 
@@ -68,9 +90,10 @@ ejemplos antes de aprobar una exclusión o reasignación.
 ## Versionado e histórico
 
 Cada llamada conserva clasificación, versión, fecha, valores brutos y motivo de
-inclusión/exclusión. Si Salesforce cambia el registro original, la
-sincronización puede reclasificarlo y guarda la clasificación anterior en
-`salesforce_call_classification_history`.
+inclusión/exclusión. La sincronización guarda la clasificación anterior cuando
+cambia un campo funcional, tanto si Salesforce modifica la Task como si cambia
+la evidencia local exacta de Interest. Una reejecución idéntica no genera
+histórico.
 
 Un cambio de parser no reprocesa históricos automáticamente. El reproceso es
 manual, exige período explícito y `--dry-run` o motivo:
@@ -101,7 +124,10 @@ materializar el conjunto completo en memoria y sin consultas por fila.
 
 Contiene inclusión/exclusión, resultado bruto e interpretado, duraciones,
 segundos descontados, portal, equipo, usuario, valores del parser, regla,
-versión y corte. Los valores estructurados de `classification_raw_values` se
+versión y corte. También expone `WhatId`, coincidencia exacta, ID y lifecycle
+del Interest, source de fallback y procedencia efectiva Task/Interest/histórica/
+sin clasificar, sin payload ni PII del Interest. Los valores estructurados de
+`classification_raw_values` se
 serializan como JSON UTF-8 estable, sin escapar Unicode ni barras y sustituyendo
 secuencias UTF-8 inválidas. `null` se exporta vacío y un array vacío como `[]`.
 
@@ -115,5 +141,6 @@ Archivos principales:
 - `app/Services/Reports/Calls/SalesforceCallSyncService.php`;
 - `app/Services/Reports/Calls/CallDescriptionParser.php`;
 - `app/Services/Reports/Calls/CallClassificationRules.php`;
+- `app/Services/Reports/Calls/CallInterestPortalResolver.php`;
 - `app/Services/Reports/Calls/CallDashboardDatasetService.php`;
 - `app/Console/Commands/ReprocessCallsClassificationCommand.php`.

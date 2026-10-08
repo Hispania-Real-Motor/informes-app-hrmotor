@@ -1,5 +1,38 @@
 # Decisiones técnicas
 
+## 2026-10-08 — ROT-2 atribuye llamadas solo por Task.WhatId exacto
+
+- Salesforce Task continúa siendo el hecho del informe. La única dimensión CRM
+  es la coincidencia exacta local `Task.WhatId = SalesforceInterest.salesforce_id`;
+  WhoId queda auditable pero no participa en atribución ni fallback.
+- `Portales__c` Task mantiene prioridad: null es llamada directa y un portal
+  reconocido es autoritativo. `Interest.source` solo interviene cuando el valor
+  Task informado no se clasifica. No se usan Lead, PII, owner, procedencia ni
+  otros campos Interest como heurística.
+- La relación con un Interest eliminado sigue siendo evidencia histórica. La
+  ausencia local no dispara consultas Salesforce ni degrada silenciosamente una
+  clasificación previa: puede preservarse con procedencia
+  `historical_preserved`, separada de una coincidencia Interest demostrada.
+- Sync y reproceso resuelven Interests localmente por lotes. El dashboard no
+  depende de FOUNDATION-5, no cambia sus scopes operativos y no consulta Lead.
+  El histórico compara campos funcionales para registrar cambios de fuente
+  Interest aunque `Task.LastModifiedDate` permanezca estable, sin ruido en
+  reejecuciones idénticas.
+- La procedencia del histórico se demuestra con la huella Interest anterior y
+  nueva ya persistida. Solo una huella modificada que participe en la
+  clasificación usa `interest_dependency_changed`; el resto de cambios locales
+  usa `local_classification_changed`. `exact_interest` exige igualdad limpia de
+  WhatId e Interest ID; un mismatch nunca habilita fallback.
+- `historical_preserved` no demuestra causalidad Interest. Solo la combinación
+  `exact_interest` + `interest_source_used=true` habilita provenance Interest;
+  la preservación permanece en la huella exclusivamente como auditoría.
+- La causalidad exige además una diferencia en los outputs directos
+  `portal_resolved` o `call_origin`. `is_overflow`, `overflow_reason` y
+  `adjusted_duration_seconds` son efectos derivados con causas adicionales y
+  no bastan como prueba causal. Cambios locales de equipo, geografía, estado o
+  inclusión tampoco se atribuyen a Interest aunque su metadata cambie
+  simultáneamente.
+
 ## 2026-10-08 — ROT-1 separa Interest del dataset Lead legacy
 
 - Dashboard, Monthly Commercial y la métrica ejecutiva `leads` consumen un

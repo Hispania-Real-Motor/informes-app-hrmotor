@@ -163,6 +163,35 @@ class CallDashboardEndpointTest extends TestCase
             ->assertHeader('content-type', 'text/csv; charset=UTF-8');
     }
 
+    public function test_auditoria_expone_relacion_interest_y_procedencia_sin_pii_nueva(): void
+    {
+        $this->callRow([
+            'salesforce_id' => '00T-interest-audit',
+            'what_id' => 'a01AAA000000000AAA',
+            'portal_resolution_source' => 'interest',
+            'parse_debug' => [
+                'parsed' => [],
+                'portal_debug' => [
+                    'relationship_status' => 'exact_interest',
+                    'interest_matched' => true,
+                    'interest_id' => 'a01AAA000000000AAA',
+                    'interest_is_deleted' => true,
+                    'interest_source_raw' => 'Coches.net',
+                ],
+            ],
+        ]);
+
+        $row = $this->getJson('/informes/llamadas/data/audit')->assertOk()->json('items.0');
+
+        $this->assertSame('a01AAA000000000AAA', $row['what_id']);
+        $this->assertTrue($row['interest_exact_match']);
+        $this->assertTrue($row['interest_is_deleted']);
+        $this->assertSame('Coches.net', $row['interest_source_fallback']);
+        $this->assertSame('interest', $row['portal_provenance']);
+        $this->assertArrayNotHasKey('interest_raw_payload', $row);
+        $this->assertArrayNotHasKey('client_phone', $row);
+    }
+
     private function callRow(array $overrides = []): void
     {
         SalesforceCall::create(array_merge([

@@ -1,5 +1,52 @@
 # Handoff para agentes
 
+## ROT-2 — rotación de atribución de Llamadas a Interest (2026-10-08)
+
+- Correctivo de revisión sobre `f7c70a65518a639b9052454bd4d4a12b3da9d899`:
+  `exact_interest` exige igualdad limpia entre WhatId e Interest ID; una
+  incoherencia queda `interest_mismatch` y nunca usa la fuente suministrada.
+  El histórico compara la huella Interest previa/nueva y solo declara
+  `interest_dependency_changed` cuando esa evidencia cambió y participó en la
+  clasificación. Con Task estable, otros cambios se registran neutralmente
+  como `local_classification_changed`; Task modificada conserva
+  `salesforce_source_modified`. No hay queries, schema ni PII adicionales.
+- Correctivo final sobre `dca6e91db82b80ad9a349dd0ce5914718dffbe8e`:
+  `preserved_historical` continúa auditable pero deja de demostrar causalidad.
+  Solo `exact_interest` junto con `interest_source_used=true` habilita
+  `interest_dependency_changed`; un cambio local sobre una clasificación
+  meramente preservada queda `local_classification_changed`.
+- Hardening de causalidad sobre `a140725689009d50ec2980e3293a19fbc8856069`:
+  incluso con huella Interest modificada y participación exacta, provenance
+  Interest exige que cambie directamente `portal_resolved` o `call_origin`.
+  Overflow, su motivo y la duración ajustada son efectos derivados con otras
+  causas posibles y no demuestran causalidad por sí solos; cambios de
+  equipo/delegación/zona permanecen locales.
+- Rama `feat/rot-2-calls-to-interests`, creada desde `main`
+  `dc8e7d59d7e5bdc6ce065a4ce873fb2364493eb1` (merge ROT-1, PR #71).
+- Task sigue siendo el hecho y conserva universo, fecha, CallObject, equipos,
+  duraciones, ABANDONED, filtros y scopes. La relación CRM única pasa a ser
+  `Task.WhatId → salesforce_interests.salesforce_id` exacta; WhoId permanece
+  como evidencia bruta y nunca atribuye.
+- Se sustituye `CallLeadPortalResolver` por `CallInterestPortalResolver`. El
+  sync deja de consultar `FROM Lead` y el reproceso deja de usar
+  `SalesforceLead`; ambos cargan en lote solo ID, source y lifecycle de los
+  Interests referenciados. No se consulta Salesforce Interest ni FOUNDATION-5.
+- `Portales__c` null/directo y reconocido mantienen prioridad. Solo un valor
+  Task no clasificable usa `Interest.source`. Interest eliminado es evidencia
+  válida. La ausencia local no infiere otra relación y una clasificación previa
+  solo puede conservarse con provenance `historical_preserved` explícita.
+- Auditoría JSON/CSV añade WhatId, match exacto, ID/lifecycle/source Interest y
+  provenance sin PII ni payload. El histórico se crea por diferencias en la
+  clasificación funcional, incluida una modificación Interest-derived con Task
+  estable, y no se duplica en reejecuciones idénticas.
+- No hay migraciones, cambios de scheduler, frontend, rutas, informes ajenos ni
+  ejecución real contra Salesforce. La versión de reglas es `2026-10-08.1`.
+- Validación local final: focal resolver/sync/reproceso 24 pruebas y 138
+  aserciones; batería completa de Llamadas 102/782; Foundations Interest
+  relacionadas 147/874; suite completa 1.273 pruebas y 9.233 aserciones. Pint
+  y `git diff --check` correctos. Vite no aplica porque no cambió frontend; no
+  hay migración ni configuración manual.
+
 ## ROT-1 — rotación Leads → Interests (2026-10-08)
 
 - Correctivo final de revisión: Task usa `ActivityDate` como día civil

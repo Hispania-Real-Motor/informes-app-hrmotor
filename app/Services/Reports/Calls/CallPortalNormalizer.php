@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 class CallPortalNormalizer
 {
     public const COMMERCIAL_DIRECT = 'Comercial directo';
+
     public const UNCLASSIFIED = 'Sin clasificar';
 
     public function normalize(?string $value): array
@@ -35,6 +36,15 @@ class CallPortalNormalizer
         }
 
         return $this->result($raw, $this->portalForKey($this->key($raw)), 'portal', 'lead');
+    }
+
+    public function normalizeInterestSource(?string $value): array
+    {
+        $normalized = $this->normalizeLeadPortal($value);
+
+        return array_merge($normalized, [
+            'source' => $normalized['portal'] === self::UNCLASSIFIED ? 'unclassified' : 'interest',
+        ]);
     }
 
     public function clean(mixed $value): ?string
