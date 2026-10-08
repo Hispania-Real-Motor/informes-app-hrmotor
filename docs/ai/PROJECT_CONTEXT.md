@@ -22,7 +22,9 @@ Actualizado: 2026-10-08.
   `exact_interest` requiere igualdad limpia de ambos IDs y una entrada
   incoherente queda `interest_mismatch` sin usar su source. La conservación
   `historical_preserved` es evidencia auditable, no participación Interest: la
-  causalidad exige `exact_interest` e `interest_source_used=true`.
+  causalidad exige `exact_interest`, `interest_source_used=true` y cambio real
+  en portal, origen, overflow o duración ajustada. Equipo, delegación, zona,
+  estado e inclusión no se atribuyen a Interest.
 
 ## ROT-1 — dataset funcional Interest
 

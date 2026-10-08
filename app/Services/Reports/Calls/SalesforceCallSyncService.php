@@ -299,11 +299,19 @@ SOQL;
             ]
         );
 
-        $classificationChanged = $existing !== null
-            && $this->classificationSnapshot($existing) != $this->classificationSnapshot($call);
+        $previousClassification = $existing === null ? null : $this->classificationSnapshot($existing);
+        $newClassification = $this->classificationSnapshot($call);
+        $classificationChanged = $previousClassification !== null
+            && $previousClassification != $newClassification;
         if ($classificationChanged) {
             $sourceChanged = (string) $existing->last_modified_date !== (string) $call->last_modified_date;
-            $provenance = $this->classificationChangeProvenance($existing, $call, $sourceChanged);
+            $provenance = $this->classificationChangeProvenance(
+                $existing,
+                $call,
+                $sourceChanged,
+                $previousClassification,
+                $newClassification,
+            );
             SalesforceCallClassificationHistory::query()->create([
                 'salesforce_call_id' => $call->id,
                 'task_salesforce_id' => $call->salesforce_id,
@@ -319,8 +327,8 @@ SOQL;
                     'last_modified_date' => data_get($record, 'LastModifiedDate'),
                     'interest_dependency' => $provenance['interest_dependency'],
                 ],
-                'previous_classification' => $this->classificationSnapshot($existing),
-                'new_classification' => $this->classificationSnapshot($call),
+                'previous_classification' => $previousClassification,
+                'new_classification' => $newClassification,
                 'classified_at' => now(),
             ]);
         }
@@ -343,6 +351,8 @@ SOQL;
         SalesforceCall $existing,
         SalesforceCall $call,
         bool $salesforceSourceChanged,
+        array $previousClassification,
+        array $newClassification,
     ): array {
         $interestDependency = [
             'previous' => $this->interestDependencySnapshot($existing),
@@ -360,8 +370,12 @@ SOQL;
         $interestChanged = $interestDependency['previous'] != $interestDependency['current'];
         $interestParticipates = $this->interestDependencyParticipates($interestDependency['previous'])
             || $this->interestDependencyParticipates($interestDependency['current']);
+        $interestFunctionalChanged = $this->interestFunctionalClassificationChanged(
+            $previousClassification,
+            $newClassification,
+        );
 
-        if ($interestChanged && $interestParticipates) {
+        if ($interestChanged && $interestParticipates && $interestFunctionalChanged) {
             return [
                 'source' => 'interest_dependency_changed',
                 'reason' => 'La evidencia local de Interest utilizada por la clasificación funcional cambió.',
@@ -397,6 +411,27 @@ SOQL;
     {
         return ($dependency['relationship_status'] ?? null) === 'exact_interest'
             && (bool) ($dependency['interest_source_used'] ?? false);
+    }
+
+    /**
+     * @param  array<string,mixed>  $previous
+     * @param  array<string,mixed>  $current
+     */
+    private function interestFunctionalClassificationChanged(array $previous, array $current): bool
+    {
+        foreach ([
+            'portal_resolved',
+            'call_origin',
+            'is_overflow',
+            'overflow_reason',
+            'adjusted_duration_seconds',
+        ] as $field) {
+            if (($previous[$field] ?? null) != ($current[$field] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function dashboardInclusion(mixed $callObject, ?string $operationalProfile): array

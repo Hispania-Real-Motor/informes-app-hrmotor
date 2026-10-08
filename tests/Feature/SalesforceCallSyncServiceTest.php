@@ -299,6 +299,93 @@ class SalesforceCallSyncServiceTest extends TestCase
         $this->assertSame('Pamplona', $call->delegation);
     }
 
+    public function test_historical_to_exact_same_portal_with_local_change_remains_local_provenance(): void
+    {
+        SalesforceCall::query()->create([
+            'salesforce_id' => '00T-preserved-to-exact',
+            'created_date' => '2026-05-10 10:00:00',
+            'last_modified_date' => '2026-05-10 10:05:00',
+            'what_id' => 'a01YYY000000000AAA',
+            'call_object' => 'call-object-preserved-to-exact',
+            'portales_raw' => '3CX',
+            'call_origin' => 'portal',
+            'portal_resolved' => 'Coches.net',
+            'portal_resolution_source' => 'interest',
+            'operational_team' => 'commercial',
+            'delegation' => 'Alcobendas',
+            'zone' => 'Zona Sur y Centro',
+            'classification_rule_version' => CallClassificationRules::VERSION,
+        ]);
+        $delegation = 'HR MOTOR ALCOBENDAS';
+        $client = $this->clientForStableTaskWithOwner(
+            '00T-preserved-to-exact',
+            'a01YYY000000000AAA',
+            $delegation,
+        );
+
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+        SalesforceCallClassificationHistory::query()->delete();
+        SalesforceInterest::query()->create([
+            'salesforce_id' => 'a01YYY000000000AAA',
+            'salesforce_created_at' => '2026-05-10 09:00:00',
+            'salesforce_last_modified_at' => '2026-05-10 09:00:00',
+            'source' => 'Coches.net',
+            'is_deleted' => false,
+        ]);
+        $delegation = 'HR MOTOR PAMPLONA';
+        $client = $this->clientForStableTaskWithOwner(
+            '00T-preserved-to-exact',
+            'a01YYY000000000AAA',
+            $delegation,
+        );
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+
+        $call = SalesforceCall::query()->where('salesforce_id', '00T-preserved-to-exact')->firstOrFail();
+        $history = SalesforceCallClassificationHistory::query()->sole();
+        $this->assertSame('local_classification_changed', $history->change_source);
+        $this->assertTrue(data_get($history->raw_values, 'interest_dependency.previous.preserved_historical'));
+        $this->assertSame('exact_interest', data_get($history->raw_values, 'interest_dependency.current.relationship_status'));
+        $this->assertTrue(data_get($history->raw_values, 'interest_dependency.current.interest_source_used'));
+        $this->assertSame('Coches.net', data_get($history->previous_classification, 'portal_resolved'));
+        $this->assertSame('Coches.net', data_get($history->new_classification, 'portal_resolved'));
+        $this->assertSame('Coches.net', $call->portal_resolved);
+        $this->assertSame('Pamplona', $call->delegation);
+    }
+
+    public function test_different_interest_sources_with_same_normalized_portal_do_not_claim_causality(): void
+    {
+        $interest = SalesforceInterest::query()->create([
+            'salesforce_id' => 'a01XXX000000000AAA',
+            'salesforce_created_at' => '2026-05-10 09:00:00',
+            'salesforce_last_modified_at' => '2026-05-10 09:00:00',
+            'source' => 'Web Alcobendas',
+            'is_deleted' => false,
+        ]);
+        $delegation = 'HR MOTOR ALCOBENDAS';
+        $client = $this->clientForStableTaskWithOwner(
+            '00T-same-normalized-portal',
+            'a01XXX000000000AAA',
+            $delegation,
+        );
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+
+        $interest->update(['source' => 'Web Pamplona']);
+        $delegation = 'HR MOTOR PAMPLONA';
+        $client = $this->clientForStableTaskWithOwner(
+            '00T-same-normalized-portal',
+            'a01XXX000000000AAA',
+            $delegation,
+        );
+        $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
+
+        $history = SalesforceCallClassificationHistory::query()->sole();
+        $this->assertSame('local_classification_changed', $history->change_source);
+        $this->assertSame('Web Alcobendas', data_get($history->raw_values, 'interest_dependency.previous.interest_source_raw'));
+        $this->assertSame('Web Pamplona', data_get($history->raw_values, 'interest_dependency.current.interest_source_raw'));
+        $this->assertSame('Web', data_get($history->previous_classification, 'portal_resolved'));
+        $this->assertSame('Web', data_get($history->new_classification, 'portal_resolved'));
+    }
+
     public function test_task_last_modified_change_keeps_salesforce_history_provenance(): void
     {
         $taskState = ['last_modified' => '2026-05-10T10:05:00.000Z', 'portal' => 'Web'];
@@ -416,5 +503,38 @@ class SalesforceCallSyncServiceTest extends TestCase
             app(CallAgentResolver::class),
             app(CallClassificationRules::class),
         );
+    }
+
+    private function clientForStableTaskWithOwner(
+        string $taskId,
+        string $interestId,
+        string $delegation,
+    ): SalesforceClient {
+        $client = Mockery::mock(SalesforceClient::class);
+        $client->shouldReceive('query')->andReturnUsing(function (string $soql) use ($taskId, $interestId, $delegation): array {
+            if (str_contains($soql, 'FROM User')) {
+                return [[
+                    'Id' => '005-stable-owner',
+                    'Name' => 'Comercial Estable',
+                    'IsActive' => true,
+                    'Profile' => ['Name' => 'Compra/Venta'],
+                    'USR_SEL_Delegacion__c' => $delegation,
+                ]];
+            }
+
+            return [[
+                'Id' => $taskId,
+                'Type' => 'Call',
+                'CreatedDate' => '2026-05-10T10:00:00.000Z',
+                'LastModifiedDate' => '2026-05-10T10:05:00.000Z',
+                'OwnerId' => '005-stable-owner',
+                'Owner' => ['Name' => 'Comercial Estable', 'Profile' => ['Name' => 'Compra/Venta']],
+                'WhatId' => $interestId,
+                'CallObject' => 'call-object-stable',
+                'Portales__c' => '3CX',
+            ]];
+        });
+
+        return $client;
     }
 }
