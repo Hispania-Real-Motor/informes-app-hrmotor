@@ -1,5 +1,24 @@
 # Decisiones técnicas
 
+## 2026-10-08 — ROT-2 atribuye llamadas solo por Task.WhatId exacto
+
+- Salesforce Task continúa siendo el hecho del informe. La única dimensión CRM
+  es la coincidencia exacta local `Task.WhatId = SalesforceInterest.salesforce_id`;
+  WhoId queda auditable pero no participa en atribución ni fallback.
+- `Portales__c` Task mantiene prioridad: null es llamada directa y un portal
+  reconocido es autoritativo. `Interest.source` solo interviene cuando el valor
+  Task informado no se clasifica. No se usan Lead, PII, owner, procedencia ni
+  otros campos Interest como heurística.
+- La relación con un Interest eliminado sigue siendo evidencia histórica. La
+  ausencia local no dispara consultas Salesforce ni degrada silenciosamente una
+  clasificación previa: puede preservarse con procedencia
+  `historical_preserved`, separada de una coincidencia Interest demostrada.
+- Sync y reproceso resuelven Interests localmente por lotes. El dashboard no
+  depende de FOUNDATION-5, no cambia sus scopes operativos y no consulta Lead.
+  El histórico compara campos funcionales para registrar cambios de fuente
+  Interest aunque `Task.LastModifiedDate` permanezca estable, sin ruido en
+  reejecuciones idénticas.
+
 ## 2026-10-08 — ROT-1 separa Interest del dataset Lead legacy
 
 - Dashboard, Monthly Commercial y la métrica ejecutiva `leads` consumen un

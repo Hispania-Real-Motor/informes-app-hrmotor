@@ -4,9 +4,9 @@ namespace App\Services\Reports\Calls;
 
 use App\Models\SalesforceCall;
 use App\Models\SalesforceCallClassificationHistory;
+use App\Models\SalesforceInterest;
 use App\Models\SalesforceUser;
 use App\Services\Salesforce\SalesforceClient;
-use App\Services\Salesforce\SalesforceLeadFieldResolver;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -23,9 +23,8 @@ class SalesforceCallSyncService
         private readonly CallPortalNormalizer $portalNormalizer,
         private readonly CallAgentResolver $agentResolver,
         private readonly CallClassificationRules $rules,
-        private readonly CallLeadPortalResolver $leadPortalResolver = new CallLeadPortalResolver(
+        private readonly CallInterestPortalResolver $interestPortalResolver = new CallInterestPortalResolver(
             new CallPortalNormalizer,
-            new SalesforceLeadFieldResolver,
         ),
     ) {}
 
@@ -57,14 +56,14 @@ class SalesforceCallSyncService
             $records = $this->client->query($soql);
             $soqls[] = $soql;
             $queried += count($records);
-            $leadMatches = $this->relatedLeadMatches($records);
+            $interestMatches = $this->relatedInterestMatches($records);
 
             foreach ($records as $record) {
                 if (blank(data_get($record, 'Id'))) {
                     continue;
                 }
 
-                $call = $this->saveRecord($record, $leadMatches);
+                $call = $this->saveRecord($record, $interestMatches);
                 $saved++;
                 $this->addStats($stats, $call);
             }
@@ -186,10 +185,22 @@ SOQL;
         return $this->rules->adjustedDuration($duration, $origin);
     }
 
-    private function saveRecord(array $record, Collection $leadMatches): SalesforceCall
+    private function saveRecord(array $record, Collection $interestMatches): SalesforceCall
     {
+        $existing = SalesforceCall::query()->where('salesforce_id', data_get($record, 'Id'))->first();
         $parsed = $this->parser->parse(data_get($record, 'Description'));
-        $portalResolution = $this->leadPortalResolver->resolve(data_get($record, 'Portales__c'), $leadMatches->get(data_get($record, 'WhoId')));
+        $existingVisible = $existing === null ? null : [
+            'portal' => $existing->portal_resolved,
+            'origin' => $existing->call_origin,
+            'source' => $existing->portal_resolution_source,
+        ];
+        $whatId = data_get($record, 'WhatId');
+        $portalResolution = $this->interestPortalResolver->resolve(
+            data_get($record, 'Portales__c'),
+            $whatId,
+            $interestMatches->get($whatId),
+            $existingVisible,
+        );
         $operationalPortal = $portalResolution['operational'];
         $portal = $portalResolution['visible'];
         $duration = $this->duration(data_get($record, 'CallDurationInSeconds'), $parsed['parsed_duration_seconds']);
@@ -218,7 +229,6 @@ SOQL;
             $agent['operational_profile_name'] ?? data_get($record, 'Owner.Profile.Name'),
         );
 
-        $existing = SalesforceCall::query()->where('salesforce_id', data_get($record, 'Id'))->first();
         $call = SalesforceCall::updateOrCreate(
             ['salesforce_id' => data_get($record, 'Id')],
             [
@@ -289,16 +299,19 @@ SOQL;
             ]
         );
 
-        $sourceChanged = $existing !== null
-            && (string) $existing->last_modified_date !== (string) $call->last_modified_date;
-        if ($sourceChanged) {
+        $classificationChanged = $existing !== null
+            && $this->classificationSnapshot($existing) != $this->classificationSnapshot($call);
+        if ($classificationChanged) {
+            $sourceChanged = (string) $existing->last_modified_date !== (string) $call->last_modified_date;
             SalesforceCallClassificationHistory::query()->create([
                 'salesforce_call_id' => $call->id,
                 'task_salesforce_id' => $call->salesforce_id,
                 'previous_rule_version' => $existing->classification_rule_version,
                 'new_rule_version' => CallClassificationRules::VERSION,
-                'change_source' => 'salesforce_source_modified',
-                'reason' => 'Salesforce modificó el registro original; se reclasificó durante la sincronización.',
+                'change_source' => $sourceChanged ? 'salesforce_source_modified' : 'interest_dependency_changed',
+                'reason' => $sourceChanged
+                    ? 'Salesforce modificó el registro original; se reclasificó durante la sincronización.'
+                    : 'La evidencia local exacta de Interest modificó la clasificación funcional.',
                 'raw_values' => [
                     'result_raw' => $parsed['result_raw'] ?? null,
                     'answered_by_raw' => $parsed['answered_by_raw'] ?? null,
@@ -338,37 +351,22 @@ SOQL;
         return [true, null];
     }
 
-    private function relatedLeadMatches(array $records): Collection
+    private function relatedInterestMatches(array $records): Collection
     {
         $ids = collect($records)
-            ->pluck('WhoId')
-            ->filter(fn ($id) => is_string($id) && str_starts_with($id, '00Q'))
+            ->pluck('WhatId')
+            ->filter(fn ($id) => is_string($id) && preg_match('/^[A-Za-z0-9]{18}$/', $id) === 1)
             ->unique()
             ->values();
 
-        $leads = collect();
-
-        foreach ($ids->chunk(80) as $chunk) {
-            $in = $chunk->map(fn (string $id) => "'".$this->escape($id)."'")->implode(', ');
-            $leads = $leads->merge($this->client->query(<<<SOQL
-SELECT
-    Id,
-    Name,
-    CreatedDate,
-    Portal_Text__c,
-    LEA_SEL_Fuente_Origen__c,
-    Fuente_Nuevo__c,
-    Fuente_origen__c,
-    Medio_Nuevo__c,
-    Delegacion_Encargada_Text__c,
-    Delegacion_Encargada__c,
-    Delegacion_Encargada_Bueno__c
-FROM Lead
-WHERE Id IN ({$in})
-SOQL));
+        if ($ids->isEmpty()) {
+            return collect();
         }
 
-        return $leads->keyBy('Id');
+        return SalesforceInterest::query()
+            ->whereIn('salesforce_id', $ids)
+            ->get(['salesforce_id', 'source', 'is_deleted'])
+            ->keyBy('salesforce_id');
     }
 
     private function duration(mixed $callDuration, ?int $parsedDuration): int
@@ -433,10 +431,5 @@ SOQL));
     private function parseDateTime(mixed $value): ?CarbonImmutable
     {
         return blank($value) ? null : CarbonImmutable::parse($value);
-    }
-
-    private function escape(string $value): string
-    {
-        return str_replace("'", "\\'", $value);
     }
 }

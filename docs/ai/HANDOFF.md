@@ -1,5 +1,33 @@
 # Handoff para agentes
 
+## ROT-2 — rotación de atribución de Llamadas a Interest (2026-10-08)
+
+- Rama `feat/rot-2-calls-to-interests`, creada desde `main`
+  `dc8e7d59d7e5bdc6ce065a4ce873fb2364493eb1` (merge ROT-1, PR #71).
+- Task sigue siendo el hecho y conserva universo, fecha, CallObject, equipos,
+  duraciones, ABANDONED, filtros y scopes. La relación CRM única pasa a ser
+  `Task.WhatId → salesforce_interests.salesforce_id` exacta; WhoId permanece
+  como evidencia bruta y nunca atribuye.
+- Se sustituye `CallLeadPortalResolver` por `CallInterestPortalResolver`. El
+  sync deja de consultar `FROM Lead` y el reproceso deja de usar
+  `SalesforceLead`; ambos cargan en lote solo ID, source y lifecycle de los
+  Interests referenciados. No se consulta Salesforce Interest ni FOUNDATION-5.
+- `Portales__c` null/directo y reconocido mantienen prioridad. Solo un valor
+  Task no clasificable usa `Interest.source`. Interest eliminado es evidencia
+  válida. La ausencia local no infiere otra relación y una clasificación previa
+  solo puede conservarse con provenance `historical_preserved` explícita.
+- Auditoría JSON/CSV añade WhatId, match exacto, ID/lifecycle/source Interest y
+  provenance sin PII ni payload. El histórico se crea por diferencias en la
+  clasificación funcional, incluida una modificación Interest-derived con Task
+  estable, y no se duplica en reejecuciones idénticas.
+- No hay migraciones, cambios de scheduler, frontend, rutas, informes ajenos ni
+  ejecución real contra Salesforce. La versión de reglas es `2026-10-08.1`.
+- Validación local: focal ROT-2/auditoría/scheduler 26 pruebas y 167
+  aserciones; batería completa de Llamadas 77/605; Foundations Interest
+  relacionadas incluidas en el focal ampliado 67/412; suite completa 1.267
+  pruebas y 9.195 aserciones. Pint y `git diff --check` correctos. Vite no
+  aplica porque no cambió frontend; no hay migración ni configuración manual.
+
 ## ROT-1 — rotación Leads → Interests (2026-10-08)
 
 - Correctivo final de revisión: Task usa `ActivityDate` como día civil

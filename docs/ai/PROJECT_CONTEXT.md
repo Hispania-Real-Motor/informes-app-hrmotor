@@ -2,6 +2,23 @@
 
 Actualizado: 2026-10-08.
 
+## ROT-2 — atribución CRM de Llamadas mediante Interest
+
+- `/informes/llamadas` conserva Task como hecho, `Task.CreatedDate` como pivote,
+  el universo CallObject y todas las reglas operativas. La única atribución CRM
+  es `salesforce_calls.what_id = salesforce_interests.salesforce_id` exacta.
+- Sync y reproceso cargan únicamente `salesforce_id`, `source` e `is_deleted`
+  de los Interests referenciados por cada lote. No existe consulta Salesforce
+  `FROM Lead`/`Interes__c`, lookup por WhoId, N+1 ni dependencia runtime F5.
+- Task reconocido prevalece; `Interest.source` es fallback exclusivo del Task
+  informado pero no clasificable. Lifecycle eliminado permanece auditable y
+  no excluye la llamada. Owner y procedencia Interest no alteran identidad ni
+  geografía operativas.
+- La auditoría existente conserva una fila por Task y publica relación,
+  lifecycle y provenance sin PII. La versión vigente es `2026-10-08.1` y el
+  historial registra cambios funcionales derivados del Interest aunque no
+  cambie la Task.
+
 ## ROT-1 — dataset funcional Interest
 
 - `SalesforceInterestDashboardDatasetService` mantiene separado el cutover de

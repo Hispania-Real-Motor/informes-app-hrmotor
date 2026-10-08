@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\SalesforceCall;
-use App\Models\SalesforceLead;
+use App\Models\SalesforceInterest;
 use App\Models\SalesforceUser;
 use App\Services\Reports\Calls\CallClassificationRules;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,23 +102,24 @@ class CallsReprocessClassificationCommandTest extends TestCase
         $this->assertDatabaseCount('salesforce_call_classification_history', 0);
     }
 
-    public function test_reproceso_usa_lead_local_en_lote_y_conserva_operativa_legacy(): void
+    public function test_reproceso_usa_interest_local_exacto_en_lote(): void
     {
-        SalesforceLead::create([
-            'salesforce_id' => '00Q-local-source',
-            'created_date' => '2026-05-20 09:00:00',
-            'source_origin_new' => 'Coches.net',
-            'portal_text' => 'Google Maps',
-            'fuente_origen' => 'Wallapop',
+        SalesforceInterest::create([
+            'salesforce_id' => 'a01AAA000000000AAA',
+            'salesforce_created_at' => '2026-05-20 09:00:00',
+            'salesforce_last_modified_at' => '2026-05-20 09:00:00',
+            'source' => 'Coches.net',
+            'is_deleted' => false,
         ]);
         SalesforceCall::create([
             'salesforce_id' => 'call-local-source',
             'created_date' => '2026-05-20 10:00:00',
-            'who_id' => '00Q-local-source',
+            'who_id' => '00QAAA000000000AAA',
+            'what_id' => 'a01AAA000000000AAA',
             'portales_raw' => '3CX',
             'call_origin' => 'portal',
             'portal_resolved' => 'Google Maps',
-            'portal_resolution_source' => 'lead',
+            'portal_resolution_source' => 'unclassified',
             'call_duration_seconds' => 80,
             'call_status' => 'answered',
             'is_answered' => true,
@@ -128,7 +129,7 @@ class CallsReprocessClassificationCommandTest extends TestCase
         $this->artisan('reports:reprocess-calls-classification', [
             '--from' => '2026-05-01',
             '--to' => '2026-05-31',
-            '--reason' => 'Reclasificacion local de procedencia de Lead.',
+            '--reason' => 'Reclasificacion local exacta de Interest.',
         ])->assertExitCode(0);
 
         $call = SalesforceCall::where('salesforce_id', 'call-local-source')->firstOrFail();
@@ -136,19 +137,21 @@ class CallsReprocessClassificationCommandTest extends TestCase
         $this->assertSame('portal', $call->call_origin);
         $this->assertSame(CallClassificationRules::VERSION, $call->classification_rule_version);
         $this->assertSame(70, $call->adjusted_duration_seconds);
-        $this->assertSame('Fuente_origen__c', data_get($call->parse_debug, 'portal_debug.effective_source_field'));
+        $this->assertSame('interest', $call->portal_resolution_source);
+        $this->assertSame('exact_interest', data_get($call->parse_debug, 'portal_debug.relationship_status'));
+        $this->assertSame('00QAAA000000000AAA', $call->who_id);
     }
 
-    public function test_reproceso_con_lead_local_ausente_preserva_clasificacion_visible_y_operativa(): void
+    public function test_reproceso_con_interest_local_ausente_preserva_clasificacion_visible_y_operativa(): void
     {
         SalesforceCall::create([
             'salesforce_id' => 'call-missing-local-lead',
             'created_date' => '2026-05-20 10:00:00',
-            'who_id' => '00Q-missing-local-source',
+            'what_id' => 'a01AAA000000000AAA',
             'portales_raw' => '3CX',
             'call_origin' => 'portal',
             'portal_resolved' => 'Coches.net',
-            'portal_resolution_source' => 'lead',
+            'portal_resolution_source' => 'interest',
             'call_duration_seconds' => 80,
             'adjusted_duration_seconds' => 70,
             'call_status' => 'answered',
@@ -161,17 +164,17 @@ class CallsReprocessClassificationCommandTest extends TestCase
         $this->artisan('reports:reprocess-calls-classification', [
             '--from' => '2026-05-01',
             '--to' => '2026-05-31',
-            '--reason' => 'Conservar procedencia cuando el Lead local no existe.',
+            '--reason' => 'Conservar procedencia cuando el Interest local no existe.',
         ])->assertExitCode(0);
 
         $call = SalesforceCall::where('salesforce_id', 'call-missing-local-lead')->firstOrFail();
         $this->assertSame('Coches.net', $call->portal_resolved);
-        $this->assertSame('lead', $call->portal_resolution_source);
+        $this->assertSame('historical_preserved', $call->portal_resolution_source);
         $this->assertSame('portal', $call->call_origin);
         $this->assertSame(70, $call->adjusted_duration_seconds);
         $this->assertFalse($call->is_overflow);
         $this->assertNull($call->overflow_reason);
-        $this->assertTrue(data_get($call->parse_debug, 'portal_debug.lead_unavailable_locally'));
+        $this->assertTrue(data_get($call->parse_debug, 'portal_debug.preserved_historical'));
     }
 
     public function test_reproceso_con_lead_local_ausente_preserva_duracion_operativa_nullable(): void
@@ -179,11 +182,11 @@ class CallsReprocessClassificationCommandTest extends TestCase
         SalesforceCall::create([
             'salesforce_id' => 'call-missing-local-null-duration',
             'created_date' => '2026-05-20 10:00:00',
-            'who_id' => '00Q-missing-local-null-duration',
+            'what_id' => 'a01BBB000000000AAA',
             'portales_raw' => '3CX',
             'call_origin' => 'portal',
             'portal_resolved' => 'Coches.net',
-            'portal_resolution_source' => 'lead',
+            'portal_resolution_source' => 'interest',
             'call_duration_seconds' => 80,
             'adjusted_duration_seconds' => null,
             'call_status' => 'answered',
@@ -204,12 +207,12 @@ class CallsReprocessClassificationCommandTest extends TestCase
             ->firstOrFail();
 
         $this->assertSame('Coches.net', $call->portal_resolved);
-        $this->assertSame('lead', $call->portal_resolution_source);
+        $this->assertSame('historical_preserved', $call->portal_resolution_source);
         $this->assertSame('portal', $call->call_origin);
         $this->assertNull($call->adjusted_duration_seconds);
         $this->assertFalse($call->is_overflow);
         $this->assertNull($call->overflow_reason);
-        $this->assertTrue(data_get($call->parse_debug, 'portal_debug.lead_unavailable_locally'));
+        $this->assertTrue(data_get($call->parse_debug, 'portal_debug.preserved_historical'));
     }
 
     public function test_reprocesado_considera_respondido_por_como_atendida_sin_pisar_abandoned(): void

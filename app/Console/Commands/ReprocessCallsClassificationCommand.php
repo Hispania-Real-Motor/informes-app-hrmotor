@@ -4,11 +4,11 @@ namespace App\Console\Commands;
 
 use App\Models\SalesforceCall;
 use App\Models\SalesforceCallClassificationHistory;
-use App\Models\SalesforceLead;
+use App\Models\SalesforceInterest;
 use App\Models\SalesforceUser;
 use App\Services\Reports\Calls\CallClassificationRules;
 use App\Services\Reports\Calls\CallDescriptionParser;
-use App\Services\Reports\Calls\CallLeadPortalResolver;
+use App\Services\Reports\Calls\CallInterestPortalResolver;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -27,7 +27,7 @@ class ReprocessCallsClassificationCommand extends Command
     protected $description = 'Recalcula origen, portal, equipo operativo, delegacion y zona de llamadas ya sincronizadas.';
 
     public function handle(
-        CallLeadPortalResolver $leadPortalResolver,
+        CallInterestPortalResolver $interestPortalResolver,
         CallDescriptionParser $parser,
         CallClassificationRules $rules,
         LeadDelegationNormalizer $delegationNormalizer,
@@ -63,28 +63,27 @@ class ReprocessCallsClassificationCommand extends Command
             ->where('created_date', '>=', $from->startOfDay())
             ->where('created_date', '<', $to->addDay()->startOfDay())
             ->orderBy('id')
-            ->chunkById(1000, function ($calls) use ($leadPortalResolver, $parser, $rules, $delegationNormalizer, $users, &$updated, &$dryRunStats, $dryRun, $reason): void {
+            ->chunkById(1000, function ($calls) use ($interestPortalResolver, $parser, $rules, $delegationNormalizer, $users, &$updated, &$dryRunStats, $dryRun, $reason): void {
                 $updates = [];
                 $history = [];
-                $leadMatches = $this->relatedLeadMatches($calls);
+                $interestMatches = $this->relatedInterestMatches($calls);
 
                 foreach ($calls as $call) {
                     $parsed = $parser->parse($call->description);
-                    $existingVisible = is_string($call->who_id) && str_starts_with($call->who_id, '00Q')
-                        ? [
-                            'portal' => $call->portal_resolved,
-                            'origin' => $call->call_origin,
-                            'source' => $call->portal_resolution_source,
-                        ]
-                        : null;
-                    $portalResolution = $leadPortalResolver->resolve(
+                    $existingVisible = [
+                        'portal' => $call->portal_resolved,
+                        'origin' => $call->call_origin,
+                        'source' => $call->portal_resolution_source,
+                    ];
+                    $portalResolution = $interestPortalResolver->resolve(
                         $call->portales_raw,
-                        $leadMatches->get($call->who_id),
+                        $call->what_id,
+                        $interestMatches->get($call->what_id),
                         $existingVisible,
                     );
                     $operationalPortal = $portalResolution['operational'];
                     $portal = $portalResolution['visible'];
-                    $preserveOperational = (bool) data_get($portalResolution, 'debug.lead_unavailable_locally', false);
+                    $preserveOperational = (bool) data_get($portalResolution, 'debug.preserved_historical', false);
                     $origin = $preserveOperational ? $call->call_origin : $operationalPortal['origin'];
                     $classificationResult = $parsed['result_raw'] ?? $call->result_raw;
                     $callStatus = $this->classifyStatus($classificationResult, $call->call_status);
@@ -374,10 +373,10 @@ class ReprocessCallsClassificationCommand extends Command
             ]);
     }
 
-    private function relatedLeadMatches(Collection $calls): Collection
+    private function relatedInterestMatches(Collection $calls): Collection
     {
-        $ids = $calls->pluck('who_id')
-            ->filter(fn ($id) => is_string($id) && str_starts_with($id, '00Q'))
+        $ids = $calls->pluck('what_id')
+            ->filter(fn ($id) => is_string($id) && preg_match('/^[A-Za-z0-9]{18}$/', $id) === 1)
             ->unique()
             ->values();
 
@@ -385,14 +384,12 @@ class ReprocessCallsClassificationCommand extends Command
             return collect();
         }
 
-        return SalesforceLead::query()
+        return SalesforceInterest::query()
             ->whereIn('salesforce_id', $ids)
             ->get([
                 'salesforce_id',
-                'source_origin_new',
-                'portal_text',
-                'fuente_origen',
-                'fuente_nuevo',
+                'source',
+                'is_deleted',
             ])
             ->keyBy('salesforce_id');
     }

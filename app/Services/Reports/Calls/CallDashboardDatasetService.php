@@ -136,6 +136,13 @@ class CallDashboardDatasetService
                     'portal_raw' => $row->portales_raw,
                     'portal_resolved' => $row->portal_resolved,
                     'portal_resolution_source' => $row->portal_resolution_source,
+                    'what_id' => $row->what_id,
+                    'interest_relationship_status' => data_get($parseDebug, 'portal_debug.relationship_status'),
+                    'interest_exact_match' => (bool) data_get($parseDebug, 'portal_debug.interest_matched', false),
+                    'interest_id' => data_get($parseDebug, 'portal_debug.interest_id'),
+                    'interest_is_deleted' => data_get($parseDebug, 'portal_debug.interest_is_deleted'),
+                    'interest_source_fallback' => data_get($parseDebug, 'portal_debug.interest_source_raw'),
+                    'portal_provenance' => $row->portal_resolution_source,
                     'team_resolved' => $team,
                     'operational_user_id' => $row->operational_user_id,
                     'operational_user_name' => $row->operational_user_name,
@@ -157,6 +164,8 @@ class CallDashboardDatasetService
             'answered_by_raw', 'result_interpreted', 'duration_initial_seconds',
             'seconds_deducted', 'duration_adjusted_seconds', 'portal_raw',
             'portal_resolved', 'portal_resolution_source', 'team_resolved',
+            'what_id', 'interest_relationship_status', 'interest_exact_match',
+            'interest_id', 'interest_is_deleted', 'interest_source_fallback', 'portal_provenance',
             'operational_user_id', 'operational_user_name', 'classified_at',
         ];
     }
