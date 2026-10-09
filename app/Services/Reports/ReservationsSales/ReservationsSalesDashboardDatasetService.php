@@ -8,6 +8,7 @@ use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\ReservasVentas\OpportunityPortalNormalizer;
 use App\Support\ReportUserAccess;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -28,9 +29,16 @@ class ReservationsSalesDashboardDatasetService
     /** @var array<string, ReportSyncRun|null> */
     private array $opportunityFreshnessRuns = [];
 
+    /** @var array<string, mixed>|null */
+    private ?array $interestAttributionContext = null;
+
+    /** @var array<string, array<string, mixed>> */
+    private array $interestAttributions = [];
+
     public function __construct(
         private readonly LeadDelegationNormalizer $delegationNormalizer,
         private readonly OpportunityPortalNormalizer $portalNormalizer,
+        private readonly OpportunityInterestAttributionService $interestAttribution,
     ) {}
 
     public function summary(Request $request): array
@@ -40,12 +48,14 @@ class ReservationsSalesDashboardDatasetService
 
     public function executiveProduction(CarbonImmutable $start, CarbonImmutable $endExclusive): array
     {
+        $this->beginInterestAttribution($this->opportunityFreshnessRun($start, $endExclusive)?->source_cutoff_at);
         $filters = $this->filters(Request::create('/internal/executive/reservas-ventas', 'GET', [
             'period' => 'custom',
             'date_criterion' => 'created_date',
         ]));
         $period = ['start' => $start, 'end' => $endExclusive];
         $aggregate = $this->aggregate($filters, $period);
+        $this->validateInterestAttribution();
 
         return [
             'reservas' => $aggregate['bucket']['reservas_totales'],
@@ -61,7 +71,12 @@ class ReservationsSalesDashboardDatasetService
         $periods = $this->periods($filters);
         $metric = $this->resolveAuditMetric($request->string('metric')->toString());
 
-        return Cache::remember(
+        $this->beginInterestAttribution($this->opportunityFreshnessRun(
+            $periods['current']['start'],
+            $periods['current']['end'],
+        )?->source_cutoff_at);
+
+        $payload = Cache::remember(
             'reservas-ventas-dashboard-audit-v1:'.md5(json_encode([
                 'filters' => $filters,
                 'period' => $this->periodPayload($periods['current']),
@@ -71,6 +86,10 @@ class ReservationsSalesDashboardDatasetService
             now()->addMinutes(self::CACHE_TTL_MINUTES),
             fn () => $this->buildAuditPayload($filters, $periods['current'], $metric)
         );
+
+        $this->validateInterestAttribution();
+
+        return $payload;
     }
 
     public function cohortOpportunityIds(Request $request): array
@@ -109,7 +128,12 @@ class ReservationsSalesDashboardDatasetService
         $filters = $this->filters($request);
         $periods = $this->periods($filters);
 
-        return Cache::remember(
+        $this->beginInterestAttribution($this->opportunityFreshnessRun(
+            $periods['current']['start'],
+            $periods['current']['end'],
+        )?->source_cutoff_at);
+
+        $payload = Cache::remember(
             'reservas-ventas-dashboard-v7:'.md5(json_encode([
                 'filters' => $filters,
                 'periods' => $this->cachePeriodIdentity($periods),
@@ -118,6 +142,10 @@ class ReservationsSalesDashboardDatasetService
             now()->addMinutes(self::CACHE_TTL_MINUTES),
             fn () => $this->buildPayload($filters, $periods)
         );
+
+        $this->validateInterestAttribution();
+
+        return $payload;
     }
 
     private function buildPayload(array $filters, array $periods): array
@@ -208,6 +236,7 @@ class ReservationsSalesDashboardDatasetService
                 'universe_date_criterion' => $filters['date_criterion'],
                 'universe_date_label' => $this->dateCriterionLabel($filters['date_criterion']),
                 'data_quality' => $dataQuality,
+                'interest_attribution' => $this->interestAttributionMetadata(),
             ],
             'commercial_zones' => $current['zones'],
             'commercial_delegations' => $current['delegations'],
@@ -449,8 +478,16 @@ class ReservationsSalesDashboardDatasetService
         $resolved = collect();
 
         $query->orderBy('id')->chunkById(1000, function (Collection $opportunities) use ($filters, $resolved): void {
+            $attributions = $this->interestAttribution->resolve($opportunities, $this->interestAttributionContext ?? []);
             foreach ($opportunities as $opportunity) {
-                $row = $this->decorate($opportunity);
+                $attribution = $attributions->get((string) $opportunity->salesforce_id, [
+                    'relationship_status' => 'no_reference',
+                    'inverse_interest_ids' => [],
+                    'inverse_reference_count' => 0,
+                ]);
+                $this->interestAttributions[(string) $opportunity->salesforce_id] = $attribution;
+                $opportunity->setAttribute('_rot3_interest_attribution', $attribution);
+                $row = $this->decorate($opportunity, $attribution);
 
                 if ($this->passesFilters($row, $filters)) {
                     $resolved->push([
@@ -489,7 +526,6 @@ class ReservationsSalesDashboardDatasetService
             'owner_name',
             'owner_delegation',
             'delivery_store',
-            'portal_resolved',
             'stage_name',
             'reservation',
             'cv_signed',
@@ -498,8 +534,6 @@ class ReservationsSalesDashboardDatasetService
             'record_type_name',
             'account_id',
             'portal_original',
-            'portal_resolution_source',
-            'portal_resolution_lead_id',
             'opportunity_source_raw',
             'opportunity_source_normalized',
         ];
@@ -568,14 +602,18 @@ class ReservationsSalesDashboardDatasetService
         return $query;
     }
 
-    private function decorate(SalesforceOpportunity $opportunity): array
+    /** @param array<string,mixed>|null $interestAttribution */
+    private function decorate(SalesforceOpportunity $opportunity, ?array $interestAttribution = null): array
     {
         $delegation = $this->normalizeCommercialDelegation($opportunity->owner_delegation);
         $stage = (string) $opportunity->stage_name;
         $isClosedLost = strcasecmp($stage, 'Cerrada Perdida') === 0;
         $reservation = (bool) $opportunity->reservation;
         $cvSigned = (bool) $opportunity->cv_signed;
-        $portal = $this->portalNormalizer->normalize($opportunity->portal_resolved);
+        $interestAttribution ??= $opportunity->getAttribute('_rot3_interest_attribution')
+            ?: $this->interestAttributions[(string) $opportunity->salesforce_id]
+            ?? ['relationship_status' => 'no_reference'];
+        $effectivePortal = $this->interestAttribution->effectivePortal($opportunity, $interestAttribution);
 
         return [
             'opportunity_id' => $opportunity->salesforce_id,
@@ -589,7 +627,9 @@ class ReservationsSalesDashboardDatasetService
             'delivery_store' => $opportunity->delivery_store,
             'commercial_delegation' => $delegation['delegation'],
             'zone' => $delegation['zone'],
-            'portal' => $portal['is_valid_final'] ? $portal['portal'] : OpportunityPortalNormalizer::UNCLASSIFIED,
+            'portal' => $effectivePortal['portal'],
+            'portal_resolution_source' => $effectivePortal['source'],
+            'interest_attribution' => $interestAttribution,
             'stage_name' => $stage,
             'is_cv_signed' => $cvSigned,
             'is_reserva_viva' => $reservation && ! $cvSigned && ! $isClosedLost,
@@ -623,9 +663,19 @@ class ReservationsSalesDashboardDatasetService
             'zone' => $row['zone'],
             'account_id' => $opportunity->account_id,
             'portal_original' => $opportunity->portal_original,
-            'portal_resolved' => $opportunity->portal_resolved,
-            'portal_resolution_source' => $opportunity->portal_resolution_source,
-            'portal_resolution_lead_id' => $opportunity->portal_resolution_lead_id,
+            'portal_resolved' => $row['portal'],
+            'portal_resolution_source' => $row['portal_resolution_source'],
+            'interest_id' => data_get($row, 'interest_attribution.interest_id'),
+            'relationship_status' => data_get($row, 'interest_attribution.relationship_status'),
+            'direct_interest_id' => data_get($row, 'interest_attribution.direct_interest_id'),
+            'inverse_interest_ids' => data_get($row, 'interest_attribution.inverse_interest_ids', []),
+            'inverse_reference_count' => data_get($row, 'interest_attribution.inverse_reference_count', 0),
+            'interest_source' => data_get($row, 'interest_attribution.interest_source'),
+            'interest_is_deleted' => data_get($row, 'interest_attribution.interest_is_deleted'),
+            'direct_run_id' => data_get($this->interestAttributionContext, 'direct_run_id'),
+            'direct_cutoff_at' => data_get($this->interestAttributionContext, 'direct_cutoff_at'),
+            'f2_run_id' => data_get($this->interestAttributionContext, 'interest_run_id'),
+            'f2_cutoff_at' => data_get($this->interestAttributionContext, 'interest_cutoff_at'),
             'opportunity_source_raw' => $opportunity->opportunity_source_raw,
             'opportunity_source_normalized' => $opportunity->opportunity_source_normalized,
             'is_reserva_viva' => $row['is_reserva_viva'],
@@ -1391,6 +1441,51 @@ class ReservationsSalesDashboardDatasetService
             'max_id' => SalesforceOpportunity::query()->max('id'),
             'updated_at' => SalesforceOpportunity::query()->max('updated_at'),
             'dashboard_cache_version' => Cache::get('reservas_ventas_dashboard_cache_version', 1),
+            'interest_attribution' => collect($this->interestAttributionContext ?? [])->only([
+                'direct_latest_id',
+                'direct_run_id',
+                'direct_status',
+                'direct_cutoff_at',
+                'interest_run_id',
+                'interest_status',
+                'interest_cutoff_at',
+                'available',
+                'reason',
+                'required_opportunity_cutoff_at',
+            ])->all(),
         ];
+    }
+
+    private function beginInterestAttribution(?CarbonInterface $requiredOpportunityCutoff): void
+    {
+        $this->interestAttributions = [];
+        $this->interestAttributionContext = $this->interestAttribution->capture($requiredOpportunityCutoff);
+    }
+
+    private function validateInterestAttribution(): void
+    {
+        if ($this->interestAttributionContext !== null) {
+            $this->interestAttribution->validate($this->interestAttributionContext);
+        }
+    }
+
+    /** @return array<string,mixed> */
+    private function interestAttributionMetadata(): array
+    {
+        $counts = collect($this->interestAttributions)->countBy('relationship_status');
+
+        return array_merge($this->interestAttributionContext ?? [], [
+            'both_match' => (int) $counts->get('both_match', 0),
+            'direct_only' => (int) $counts->get('direct_only', 0),
+            'inverse_only' => (int) $counts->get('inverse_only', 0),
+            'contradiction' => (int) $counts->get('contradiction', 0),
+            'inverse_shared' => (int) $counts->get('inverse_shared', 0),
+            'unresolved' => (int) $counts->get('unresolved', 0),
+            'no_reference' => (int) $counts->get('no_reference', 0),
+            'deleted_interests_used' => collect($this->interestAttributions)
+                ->where('relationship_status', 'both_match')->where('interest_is_deleted', true)->count(),
+            'interest_attributions_used' => collect($this->interestAttributions)
+                ->where('relationship_status', 'both_match')->filter(fn (array $row): bool => filled($row['interest_source'] ?? null))->count(),
+        ]);
     }
 }

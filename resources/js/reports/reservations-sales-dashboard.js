@@ -12,7 +12,7 @@ const performanceColumnDefinitions = [
     { key: 'commercial', label: 'Comercial', alwaysVisible: true },
     { key: 'delegation', label: 'Delegación', defaultVisible: true },
     { key: 'zone', label: 'Zona' },
-    { key: 'leads', label: 'Leads' },
+    { key: 'leads', label: 'Intereses' },
     { key: 'opportunities', label: 'Oportunidades' },
     { key: 'reservations_total', label: 'Reservas totales', defaultVisible: true },
     { key: 'team_average_reservations', label: 'Media delegación' },
@@ -21,8 +21,8 @@ const performanceColumnDefinitions = [
     { key: 'reservations_dropped', label: 'Reservas caídas', defaultVisible: true },
     { key: 'objective', label: 'Objetivo' },
     { key: 'fulfillment_pct', label: 'Cumplimiento', defaultVisible: true },
-    { key: 'lead_to_reservation_pct', label: 'Lead → Reserva' },
-    { key: 'lead_to_reservation_vs_team', label: 'Ratio Lead → Reserva · Comparativa con su delegación' },
+    { key: 'lead_to_reservation_pct', label: 'Interés → Reserva' },
+    { key: 'lead_to_reservation_vs_team', label: 'Ratio Interés → Reserva · Comparativa con su delegación' },
     { key: 'opportunity_to_reservation_pct', label: 'Oportunidad → Reserva' },
     { key: 'opportunity_to_reservation_vs_team', label: 'Ratio Oportunidad → Reserva · Comparativa con su delegación' },
     { key: 'sales', label: 'Ventas válidas', defaultVisible: true },
@@ -376,7 +376,7 @@ function renderCommercialPerformanceAudit(data) {
         <div class="report-ui-data-panel__scroll performance-audit-wrap" id="performanceAuditWrap" tabindex="0" aria-label="Eventos de auditoría de rendimiento comercial">
             <table class="performance-audit-table report-ui-table report-ui-table--sticky-header">
                 <thead><tr>
-                    <th scope="col">Evento</th><th scope="col">Fecha</th><th scope="col">ID Lead</th><th scope="col">ID oportunidad</th>
+                    <th scope="col">Evento</th><th scope="col">Fecha</th><th scope="col">ID Interest</th><th scope="col">ID oportunidad</th>
                     <th scope="col">Responsable</th><th scope="col">Delegación / cobertura</th><th scope="col">Universo mensual</th><th scope="col">Funnel / cumplimiento</th><th scope="col">Contado</th><th scope="col">Incidencia / exclusión</th>
                 </tr></thead>
                 <tbody id="performanceAuditRows"></tbody>
@@ -394,7 +394,7 @@ function renderCommercialPerformanceAudit(data) {
 
     root.innerHTML = rows.map((row) => `<tr>
         <td>${escapeHtml(row.event_type || '-')}</td><td>${escapeHtml(formatDate(row.event_at))}</td>
-        <td>${escapeHtml(row.lead_id || '-')}</td><td>${escapeHtml(row.opportunity_id || '-')}</td>
+        <td>${escapeHtml(row.interest_id || '-')}</td><td>${escapeHtml(row.opportunity_id || '-')}</td>
         <td><strong>${escapeHtml(row.commercial || '-')}</strong><br><small>${escapeHtml(row.commercial_id || '-')}</small></td>
         <td>${escapeHtml(row.delegation || '-')}<br><small>${escapeHtml(formatDelegationStatus(row.delegation_status, row.delegation_issue))}</small></td>
         <td>${escapeHtml(formatEvaluationStatus(row.monthly_evaluation_status, row.monthly_evaluation_reason))}<br><small>${row.objective_applies ? `Objetivo ${escapeHtml(formatNumber(row.monthly_objective))}` : 'Sin objetivo mensual'}</small></td>
@@ -511,7 +511,7 @@ function renderPerformanceKpis(summary, universe, commercialSelected) {
         : ['Cumplimiento global', formatFulfillmentCalculation(universe.global_reservations_valid_for_objective, universe.global_target, universe.global_fulfillment_pct)];
     const marginCoverage = formatSummaryMarginCoverage(summary);
     const cards = [
-        ['Leads', formatNumber(summary.leads)],
+        ['Intereses', formatNumber(summary.leads)],
         ['Oportunidades', formatNumber(summary.opportunities)],
         ['Reservas totales', formatNumber(summary.reservations_total)],
         ['Reservas vivas', formatNumber(summary.reservations_active)],

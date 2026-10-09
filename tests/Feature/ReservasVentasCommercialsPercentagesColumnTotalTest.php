@@ -83,7 +83,7 @@ class ReservasVentasCommercialsPercentagesColumnTotalTest extends TestCase
 
         for ($i = 1; $i <= $count; $i++) {
             $id = "$prefix-$i";
-            $rows[] = array_merge([
+            $row = array_merge([
                 'salesforce_id' => $id,
                 'name' => $id,
                 'created_date' => '2026-05-10 10:00:00',
@@ -93,12 +93,15 @@ class ReservasVentasCommercialsPercentagesColumnTotalTest extends TestCase
                 'owner_name' => 'Comercial',
                 'owner_delegation' => 'Alcobendas',
                 'portal_resolved' => 'Web',
+                'portal_original' => 'Web',
                 'portal_resolution_source' => 'opportunity',
                 'reservation' => false,
                 'cv_signed' => false,
                 'created_at' => $now,
                 'updated_at' => $now,
             ], $attributes);
+            $row['portal_original'] = $attributes['portal_resolved'] ?? $row['portal_original'];
+            $rows[] = $row;
         }
 
         foreach (array_chunk($rows, 200) as $chunk) {

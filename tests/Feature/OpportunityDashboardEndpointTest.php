@@ -196,6 +196,7 @@ class OpportunityDashboardEndpointTest extends TestCase
 
     private function createOpportunity(string $id, array $attributes): void
     {
+        $attributes['portal_original'] ??= $attributes['portal_resolved'] ?? 'Web';
         SalesforceOpportunity::query()->create(array_merge([
             'salesforce_id' => $id,
             'name' => $id,
@@ -203,6 +204,7 @@ class OpportunityDashboardEndpointTest extends TestCase
             'owner_name' => 'Comercial',
             'owner_delegation' => 'Alcobendas',
             'portal_resolved' => 'Web',
+            'portal_original' => 'Web',
             'portal_resolution_source' => 'opportunity',
             'reservation' => false,
             'cv_signed' => false,

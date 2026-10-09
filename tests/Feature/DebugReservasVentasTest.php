@@ -17,6 +17,7 @@ class DebugReservasVentasTest extends TestCase
             'name' => 'Oportunidad',
             'portal_original' => '3CX',
             'portal_resolved' => 'Sin clasificar',
+            'portal_original' => '3CX',
             'portal_resolution_source' => 'unclassified',
             'opportunity_source_raw' => 'COCHES.NET',
             'opportunity_source_normalized' => 'Coches.net',

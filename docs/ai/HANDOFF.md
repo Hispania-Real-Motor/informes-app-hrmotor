@@ -1,5 +1,70 @@
 # Handoff para agentes
 
+## Correctivo final ROT-3 — caché y lookup indexable (2026-10-09)
+
+- La identidad de caché del dashboard incorpora el contexto completo y estable
+  de atribución: IDs, status y cutoffs direct/F2, disponibilidad, razón de
+  degradación y cutoff Opportunity requerido. Una transición sobre la misma
+  fila `running → completed` genera una clave distinta y no reutiliza el
+  payload degradado.
+- El lookup inverso vuelve a usar directamente el índice existente sobre
+  `salesforce_interests.inverse_opportunity_salesforce_id`; no aplica funciones
+  SQL a la columna. Los valores no canónicos no se normalizan mediante scans o
+  heurísticas en runtime.
+- Cuando la atribución no está disponible, la resolución devuelve `unresolved`
+  en memoria y no consulta detalles directos ni Interests. Con contexto válido
+  conserva exactamente dos consultas bulk por chunk. Sin migraciones, índices,
+  Salesforce, Lead fallback ni cambios funcionales de precedencia.
+- Validación: focal de atribución 10 tests/37 aserciones; Reservas/Ventas
+  104/1.252; Foundation 4A/4B, Campañas, Executive y Commercial Performance
+  210/1.985; suite completa 1.284/9.278. Pint focal y `git diff --check`
+  correctos. Archivos modificados: servicio de atribución, dataset del
+  dashboard, regresiones focales y este HANDOFF. No hay acciones manuales ni
+  cambios de base de datos para aplicar.
+
+## ROT-3 — Reservas/Ventas → Interests (2026-10-09)
+
+- Rama `feat/rot-3-reservations-sales-to-interests`, base exacta de `main`
+  `dd6d3e1a68d3cfbf9118f178e8781adda67221fb`. Opportunity conserva universo,
+  fechas, stages, reservas, ventas, caídas, vehículo, margen, deduplicación,
+  responsable y geografía.
+- La atribución ROT-3 es efímera y local: fija el último snapshot directo 4B y
+  el F2 actual, carga por lote direct evidence e Interests inversos y solo usa
+  `Interest.source` en `both_match`. Estados unilaterales, contradicción,
+  multiplicidad, referencia inválida y ausencia nunca eligen un Interest.
+- La precedencia es Portal Opportunity concluyente, Interest `both_match`,
+  Fuente de origen Opportunity, Exposición, Web y Sin clasificar. El dashboard
+  no usa `portal_resolved` ni `portal_resolution_lead_id` como autoridad ROT-3.
+  El productor legacy y sus columnas permanecen intactos por Campañas hasta
+  ROT-4.
+- Snapshot directo missing/stale/failed/running degrada de forma segura: el
+  informe sigue disponible sin atribución Interest y publica metadata de
+  calidad. Direct/F2 se revalidan antes de devolver/cachear para impedir mezcla
+  de snapshots.
+- Rendimiento comercial consulta `SalesforceInterest` activo, fecha
+  `functional_created_at` con límites Madrid→UTC, tipo normalizado compatible y
+  owner actual `owner_salesforce_id/owner_name`. No consulta SalesforceLead ni
+  inventa histórico: la semántica es `current_interest_owner_at_last_sync`.
+  `leads` y ratios `lead_*` sobreviven solo como aliases técnicos; UI y auditoría
+  muestran Interest e `interest_id`, sin PII.
+- Cache base sube a v5 e incluye ID/cutoff F2. El snapshot directo se programa
+  diariamente a las 07:35 Europe/Madrid, después del sync Opportunity 07:10,
+  con `withoutOverlapping` y motivo auditable. No se modifican F2/F5.
+- No hay migraciones, APIs, escrituras Salesforce ni cambios de Campañas,
+  Comisiones, Stock, ROT-1 o ROT-2. Queda pendiente despliegue/certificación; no
+  ejecutar bootstrap, reproceso ni sincronizaciones reales desde desarrollo.
+- Validación local final: focal ROT-3/Rendimiento comercial 83 tests y 1.048
+  aserciones; Reservas/Ventas 99/1.235; Foundations y regresiones transversales
+  270/2.006; suite completa 1.279/9.261. Pint focal y `git diff --check`
+  correctos; Vite compila correctamente. El `pint --test` global sigue
+  señalando deuda histórica en archivos ajenos al lote, que no se reformateó.
+- Archivos funcionales ROT-3: nuevo
+  `OpportunityInterestAttributionService`; dataset/auditoría/controlador de
+  Reservas/Ventas; rendimiento comercial; scheduler; UI y tests asociados.
+  Documentación actualizada en ROADMAP, HANDOFF, PROJECT_CONTEXT, DECISIONS e
+  `informe-reservas-ventas.md`. No hay cambios de base de datos ni variables de
+  entorno. Acción manual futura: desplegar y certificar antes de cerrar ROT-3.
+
 ## ROT-2 — rotación de atribución de Llamadas a Interest (2026-10-08)
 
 - Correctivo de revisión sobre `f7c70a65518a639b9052454bd4d4a12b3da9d899`:

@@ -18,6 +18,7 @@ trait CreatesOpportunityDashboardRows
             'owner_name' => 'Comercial Real',
             'owner_delegation' => 'Alcobendas',
             'portal_resolved' => 'Web',
+            'portal_original' => 'Web',
             'portal_resolution_source' => 'opportunity',
             'reservation' => false,
             'cv_signed' => false,

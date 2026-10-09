@@ -1,14 +1,21 @@
 # Informe de Reservas / Ventas
 
-Actualizado: 2026-09-23.
+Actualizado: 2026-10-09.
 
 ## Fuente y datos locales
 
-- Fuente principal: Salesforce `Opportunity`, con relaciones a `Account`,
-  `Owner`, `RecordType` y `Product2`.
-- Procedencia: Lead relacionado por señales inequívocas y fallback local
-  documentado.
+- Fuente principal: Salesforce `Opportunity`, que continúa siendo el hecho de
+  reserva/venta, con relaciones a `Owner`, `RecordType` y `Product2`.
+- Procedencia ROT-3: `Opportunity.Portal__c`; después `Interest.source` solo si
+  coinciden exactamente la referencia directa Opportunity→Interest del último
+  snapshot 4B y una única referencia inversa Interest→Opportunity del F2
+  vigente; después Fuente de origen Opportunity y fallbacks propios.
+- No participan Lead, Account, email, teléfono, owner, vehículo ni proximidad
+  temporal en Opportunity↔Interest. La fotografía legacy `portal_resolved`
+  permanece por compatibilidad con Campañas, pero no es autoridad del informe.
 - Tabla principal: `salesforce_opportunities`.
+- Evidencia CRM local: `salesforce_opportunity_interest_direct_runs`,
+  `salesforce_opportunity_interest_directs` y `salesforce_interests`.
 - Fechas sincronizadas: `CreatedDate`, `OPO_FEC_Fecha_de_reserva__c` y
   `Fecha_firma_contrato__c`.
 - Vehículo: `OPP_BUS_Vehiculo_de_interes__c` y matrícula de la relación ya

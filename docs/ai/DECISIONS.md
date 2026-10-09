@@ -1,5 +1,22 @@
 # Decisiones técnicas
 
+## 2026-10-09 — ROT-3 exige evidencia Opportunity↔Interest bidireccional
+
+- Opportunity continúa siendo el hecho completo de Reservas/Ventas. Interest
+  solo aporta `source`; nunca sustituye owner, delegación, fechas, lifecycle ni
+  hitos Opportunity.
+- Solo `both_match` exacto entre el snapshot directo 4B y el inverso F2 vivo
+  autoriza Interest. `direct_only`, `inverse_only`, `contradiction`,
+  `inverse_shared`, `unresolved` y `no_reference` no eligen ganador ni activan
+  heurísticas.
+- La atribución se calcula localmente por chunks y se fija/revalida con IDs y
+  cutoffs. No depende del snapshot reconciliado manual 4B ni modifica
+  `portal_resolved`, preservando compatibilidad con Campañas hasta ROT-4.
+- Rendimiento comercial rota su denominador a Interests activos de Venta. Usa
+  `functional_created_at` y el owner actual del último F2; no se presenta como
+  owner histórico. Las claves técnicas Lead se mantienen temporalmente como
+  aliases para evitar una ruptura del dashboard existente.
+
 ## 2026-10-08 — ROT-2 atribuye llamadas solo por Task.WhatId exacto
 
 - Salesforce Task continúa siendo el hecho del informe. La única dimensión CRM

@@ -4,8 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\CommercialDelegationSnapshot;
 use App\Models\CommercialPerformanceMonthlyTarget;
+use App\Models\ReportSyncRun;
 use App\Models\ReportUser;
-use App\Models\SalesforceLead;
+use App\Models\SalesforceInterest;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceOpportunityHistorySyncInterval;
 use App\Models\SalesforceOpportunityStageTransition;
@@ -29,21 +30,35 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_cache_base_no_reconstruye_leads_para_filtros_y_se_invalida_por_version(): void
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        ReportSyncRun::query()->create([
+            'dataset' => 'salesforce_interests',
+            'source' => 'salesforce',
+            'status' => 'completed',
+            'source_cutoff_at' => '2026-10-09 09:00:00',
+            'started_at' => '2026-10-09 09:00:00',
+            'completed_at' => '2026-10-09 09:01:00',
+        ]);
+    }
+
+    public function test_cache_base_no_reconstruye_interests_para_filtros_y_se_invalida_por_version(): void
     {
         Cache::flush();
         $this->commercial('005-cache', 'Comercial cache');
         $this->snapshot('005-cache', 'Alicante', 'Zona Mediterraneo', '2026-05-01');
         $this->seedPerformanceMetrics('005-cache', 'Comercial cache', 1, 0, 0, 0);
         $sourceQueries = [
-            'leads' => 0,
+            'interests' => 0,
             'opportunities' => 0,
             'transitions' => 0,
             'snapshots' => 0,
         ];
         DB::listen(function ($query) use (&$sourceQueries): void {
             foreach ([
-                'leads' => 'salesforce_leads',
+                'interests' => 'salesforce_interests',
                 'opportunities' => 'salesforce_opportunities',
                 'transitions' => 'salesforce_opportunity_stage_transitions',
                 'snapshots' => 'commercial_delegation_snapshots',
@@ -59,13 +74,13 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         $firstBuildSourceQueries = $sourceQueries;
         $service->payload(['month' => '2026-08', 'zone' => 'Zona Mediterraneo', 'delegation' => 'Alicante', 'commercial' => '005-cache']);
 
-        $this->assertGreaterThan(0, $firstBuildSourceQueries['leads']);
+        $this->assertGreaterThan(0, $firstBuildSourceQueries['interests']);
         $this->assertSame($firstBuildSourceQueries, $sourceQueries);
 
-        Cache::forever('lead_dashboard_cache_version', 2);
+        Cache::forever('commercial_performance_cache_version', 2);
         $service->payload(['month' => '2026-08']);
 
-        $this->assertGreaterThan($firstBuildSourceQueries['leads'], $sourceQueries['leads']);
+        $this->assertGreaterThan($firstBuildSourceQueries['interests'], $sourceQueries['interests']);
     }
 
     public function test_cache_base_preserva_dataset_generated_at_hasta_que_cambia_la_version(): void
@@ -84,10 +99,42 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             $this->assertSame($first['dataset_generated_at'], $filtered['dataset_generated_at']);
 
             CarbonImmutable::setTestNow($fixedNow->addSecond());
-            Cache::forever('lead_dashboard_cache_version', 2);
+            Cache::forever('commercial_performance_cache_version', 2);
             $rebuilt = $service->payload(['month' => '2026-08']);
 
             $this->assertNotSame($first['dataset_generated_at'], $rebuilt['dataset_generated_at']);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_cache_base_cambia_con_el_snapshot_f2_exacto(): void
+    {
+        Cache::flush();
+        $fixedNow = CarbonImmutable::parse('2026-10-09 12:00:00', 'Europe/Madrid');
+        CarbonImmutable::setTestNow($fixedNow);
+
+        try {
+            $service = app(CommercialPerformanceDatasetService::class);
+            $first = $service->payload(['month' => '2026-08']);
+
+            ReportSyncRun::query()->create([
+                'dataset' => 'salesforce_interests',
+                'source' => 'salesforce',
+                'status' => 'completed',
+                'source_cutoff_at' => '2026-10-09 10:00:00',
+                'started_at' => '2026-10-09 10:00:00',
+                'completed_at' => '2026-10-09 10:01:00',
+            ]);
+            CarbonImmutable::setTestNow($fixedNow->addSecond());
+
+            $second = $service->payload(['month' => '2026-08']);
+
+            $this->assertNotSame($first['dataset_generated_at'], $second['dataset_generated_at']);
+            $this->assertNotSame(
+                $first['data_quality']['interest_sync_run_id'],
+                $second['data_quality']['interest_sync_run_id'],
+            );
         } finally {
             CarbonImmutable::setTestNow();
         }
@@ -168,7 +215,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         Cache::flush();
         $this->commercial('005-quality-history', 'Histórico no certificable');
         foreach (['2026-07-02', '2026-08-02', '2026-08-03'] as $index => $assignedAt) {
-            SalesforceLead::query()->create([
+            $this->interestFromLegacyFixture([
                 'salesforce_id' => '00Q-quality-history-'.$index,
                 'name' => 'Lead histórico '.$index,
                 'created_date' => $assignedAt,
@@ -198,7 +245,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
     {
         Cache::flush();
         for ($index = 1; $index <= 3; $index++) {
-            SalesforceLead::query()->create([
+            $this->interestFromLegacyFixture([
                 'salesforce_id' => "00Q-unresolved-{$index}",
                 'name' => "Lead sin responsable {$index}",
                 'created_date' => '2026-08-01 08:00:00',
@@ -224,7 +271,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         Cache::flush();
         $this->commercial('005-uncertified-leads', 'Comercial no certificable');
         for ($index = 1; $index <= 3; $index++) {
-            SalesforceLead::query()->create([
+            $this->interestFromLegacyFixture([
                 'salesforce_id' => "00Q-uncertified-{$index}",
                 'name' => "Lead no certificable {$index}",
                 'created_date' => '2026-08-01 08:00:00',
@@ -271,12 +318,12 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             ->assertJsonPath('data_quality.unresolved_attribution_events', 2);
     }
 
-    public function test_lead_con_responsable_valido_y_nombre_vacio_usa_el_nombre_del_roster(): void
+    public function test_interest_con_owner_valido_y_nombre_vacio_usa_el_nombre_del_roster(): void
     {
         Cache::flush();
         $this->commercial('005-roster-name', 'Nombre del roster');
         $this->snapshot('005-roster-name', 'Alicante', 'Zona Mediterraneo', '2026-05-01');
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-roster-name',
             'name' => 'Lead con nombre vacío',
             'created_date' => '2026-08-01 08:00:00',
@@ -284,10 +331,8 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             'status' => 'Convertido',
             'record_type_name' => 'Venta',
             'record_type_normalized' => 'venta',
-            'owner_id' => '005-owner',
-            'owner_name' => 'Nombre owner que no debe prevalecer',
-            'persona_que_trabajo_id' => '005-roster-name',
-            'persona_que_trabajo_name' => '   ',
+            'owner_id' => '005-roster-name',
+            'owner_name' => '   ',
             'is_deleted' => false,
         ]);
 
@@ -304,7 +349,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         $this->commercial('005-worker', 'Comercial Worker');
         $this->snapshot('005-worker', 'Alicante', 'Zona Mediterraneo', '2026-05-01');
 
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-converted',
             'name' => 'Lead convertido',
             'created_date' => '2026-07-01 08:00:00',
@@ -312,13 +357,11 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             'status' => 'Convertido',
             'record_type_name' => 'Lead',
             'record_type_normalized' => 'venta',
-            'owner_id' => '005-owner-different',
-            'owner_name' => 'Owner distinto',
-            'persona_que_trabajo_id' => '005-worker',
-            'persona_que_trabajo_name' => 'Comercial Worker',
+            'owner_id' => '005-worker',
+            'owner_name' => 'Comercial Worker',
             'is_deleted' => false,
         ]);
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-appraisal',
             'name' => 'Tasación fuera',
             'created_date' => '2026-08-01 08:00:00',
@@ -1177,7 +1220,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         $this->assertStringContainsString("{ key: 'sales_dropped', label: 'Ventas caídas', defaultVisible: true }", $javascript);
         $this->assertStringContainsString("{ key: 'traffic_light', label: 'Estado', alwaysVisible: true }", $javascript);
         $this->assertStringContainsString("{ key: 'commercial', label: 'Comercial', alwaysVisible: true }", $javascript);
-        $this->assertStringContainsString("{ key: 'lead_to_reservation_vs_team', label: 'Ratio Lead → Reserva · Comparativa con su delegación' }", $javascript);
+        $this->assertStringContainsString("{ key: 'lead_to_reservation_vs_team', label: 'Ratio Interés → Reserva · Comparativa con su delegación' }", $javascript);
         $this->assertStringContainsString("{ key: 'opportunity_to_reservation_vs_team', label: 'Ratio Oportunidad → Reserva · Comparativa con su delegación' }", $javascript);
         $this->assertStringContainsString("{ key: 'reservation_to_sale_vs_team', label: 'Ratio Reserva → Venta · Comparativa con su delegación' }", $javascript);
         $this->assertStringContainsString("label: 'Resumen'", $javascript);
@@ -1389,7 +1432,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             'observed_from' => '2026-08-01 00:00:00',
             'source' => CommercialDelegationSnapshotService::SOURCE_OBSERVED,
         ]);
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-bootstrap-filter', 'name' => 'Actividad bootstrap',
             'created_date' => '2026-07-01', 'fecha_asignacion' => '2026-07-05',
             'status' => 'Potencial', 'record_type_name' => 'Venta', 'record_type_normalized' => 'venta',
@@ -1420,7 +1463,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             ['00Q-ayvens', 'Ayvens', 'ayvens'],
             ['00Q-tasacion', 'Tasación', 'tasacion'],
         ] as [$id, $raw, $normalized]) {
-            SalesforceLead::query()->create([
+            $this->interestFromLegacyFixture([
                 'salesforce_id' => $id,
                 'name' => $id,
                 'created_date' => '2026-08-01 08:00:00',
@@ -1480,7 +1523,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
     {
         $this->commercial('005-historical-profile', 'Histórico tras perfil');
         $this->snapshot('005-historical-profile', 'Alicante', 'Zona Mediterraneo', '2026-05-01');
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-historical-profile', 'name' => 'Lead histórico',
             'created_date' => '2026-06-05 10:00:00', 'fecha_asignacion' => '2026-06-05 10:00:00',
             'status' => 'Potencial', 'record_type_name' => 'Venta', 'record_type_normalized' => 'venta',
@@ -1702,7 +1745,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             'profile_name' => 'Comerciales Partner Community', 'user_delegation' => 'Alicante', 'is_active' => false,
         ]);
         $this->snapshot('005-partner', 'Alicante', 'Zona Mediterraneo', '2026-05-01');
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-partner', 'name' => 'Lead partner',
             'created_date' => '2026-08-01', 'fecha_asignacion' => '2026-08-05',
             'status' => 'Potencial', 'record_type_name' => 'Venta', 'record_type_normalized' => 'venta',
@@ -1973,7 +2016,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
     {
         $this->commercial('005-audit', 'Auditable');
         $this->snapshot('005-audit', 'Alicante', 'Zona Mediterraneo', '2026-05-01');
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-audit', 'name' => 'PII que no debe salir',
             'created_date' => '2026-08-01', 'fecha_asignacion' => '2026-08-05',
             'status' => 'Potencial', 'record_type_name' => 'Venta', 'record_type_normalized' => 'venta',
@@ -1983,7 +2026,8 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         $response = $this->getJson('/informes/reservas-ventas/data/commercial-performance/audit?month=2026-08')
             ->assertOk()
             ->assertJsonPath('pii_excluded', true)
-            ->assertJsonPath('items.0.lead_id', '00Q-audit')
+            ->assertJsonPath('items.0.interest_id', 'a01-audit')
+            ->assertJsonMissingPath('items.0.lead_id')
             ->assertJsonPath('items.0.commercial_id', '005-audit')
             ->assertJsonPath('items.0.delegation', 'Alicante')
             ->assertJsonPath('items.0.delegation_status', 'observed')
@@ -2006,7 +2050,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             ['00Q-audit-murcia', '005-audit-murcia', 'Audit Murcia'],
             ['00Q-audit-incident', '005-missing-audit', 'No resoluble'],
         ] as [$id, $ownerId, $ownerName]) {
-            SalesforceLead::query()->create([
+            $this->interestFromLegacyFixture([
                 'salesforce_id' => $id, 'name' => 'Lead '.$id,
                 'created_date' => '2026-08-01', 'fecha_asignacion' => '2026-08-05',
                 'status' => 'Potencial', 'record_type_name' => 'Venta', 'record_type_normalized' => 'venta',
@@ -2041,7 +2085,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             ['005-audit-uncertified', 'Audit uncertified'],
         ] as [$id, $name]) {
             $this->commercial($id, $name);
-            SalesforceLead::query()->create([
+            $this->interestFromLegacyFixture([
                 'salesforce_id' => '00Q-'.$id, 'name' => 'Dato excluido de respuesta',
                 'created_date' => '2026-08-01', 'fecha_asignacion' => '2026-08-05',
                 'status' => 'Potencial', 'record_type_name' => 'Venta', 'record_type_normalized' => 'venta',
@@ -2086,7 +2130,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
     {
         $this->commercial('005-audit-target-default', 'Auditoría objetivo default');
         $this->snapshot('005-audit-target-default', 'Alicante', 'Zona Mediterraneo', '2026-05-01');
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-audit-target-default', 'name' => 'Lead auditoría objetivo',
             'created_date' => '2026-08-01', 'fecha_asignacion' => '2026-08-05',
             'status' => 'Potencial', 'record_type_name' => 'Venta', 'record_type_normalized' => 'venta',
@@ -2120,7 +2164,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        SalesforceLead::query()->create([
+        $this->interestFromLegacyFixture([
             'salesforce_id' => '00Q-audit-target-explicit', 'name' => 'Lead auditoría objetivo explícito',
             'created_date' => '2026-08-01', 'fecha_asignacion' => '2026-08-05',
             'status' => 'Potencial', 'record_type_name' => 'Venta', 'record_type_normalized' => 'venta',
@@ -2230,6 +2274,9 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         $monthlyCommand = file_get_contents(app_path('Console/Commands/SalesforceSyncMonthlyCommercialCommand.php'));
 
         $this->assertStringContainsString("dailyAt('07:10')", $scheduler);
+        $this->assertStringContainsString('salesforce:sync-opportunity-interest-direct --reason="Snapshot diario ROT-3 posterior al sync de Opportunities"', $scheduler);
+        $this->assertStringContainsString("dailyAt('07:35')", $scheduler);
+        $this->assertSame(1, substr_count($scheduler, 'salesforce:sync-opportunity-interest-direct'));
         $this->assertStringNotContainsString("dailyAt('02:45')", $scheduler);
         $this->assertStringNotContainsString('CommercialDelegationSnapshotService', $opportunitiesCommand);
         $this->assertStringNotContainsString('captureCurrentUsers', $opportunitiesCommand);
@@ -2657,15 +2704,12 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         int $sales,
     ): void {
         for ($index = 1; $index <= $leads; $index++) {
-            SalesforceLead::query()->create([
-                'salesforce_id' => "00Q-{$commercialId}-{$index}",
-                'name' => "Lead {$commercialName} {$index}",
-                'created_date' => '2026-08-01 08:00:00',
-                'fecha_asignacion' => '2026-08-02 10:00:00',
-                'status' => 'Potencial',
-                'record_type_name' => 'Venta',
-                'record_type_normalized' => 'venta',
-                'owner_id' => $commercialId,
+            SalesforceInterest::query()->create([
+                'salesforce_id' => "a01-{$commercialId}-{$index}",
+                'salesforce_created_at' => '2026-08-02 10:00:00',
+                'salesforce_last_modified_at' => '2026-08-02 10:00:00',
+                'type' => 'Venta',
+                'owner_salesforce_id' => $commercialId,
                 'owner_name' => $commercialName,
                 'is_deleted' => false,
             ]);
@@ -2682,6 +2726,28 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
                 'stage_name' => $index <= $sales ? 'Contrato' : 'Reserva',
             ]);
         }
+    }
+
+    private function interestFromLegacyFixture(array $attributes): SalesforceInterest
+    {
+        $functionalCreatedAt = $attributes['fecha_asignacion'] ?? $attributes['created_date'] ?? '2026-08-01 08:00:00';
+        $normalizedType = strtolower((string) ($attributes['record_type_normalized'] ?? ''));
+        $type = match ($normalizedType) {
+            'venta' => 'Venta',
+            'tasacion' => 'Tasación',
+            default => $attributes['record_type_name'] ?? 'Venta',
+        };
+
+        return SalesforceInterest::query()->create([
+            'salesforce_id' => str_replace('00Q', 'a01', (string) $attributes['salesforce_id']),
+            'salesforce_created_at' => $functionalCreatedAt,
+            'salesforce_last_modified_at' => $functionalCreatedAt,
+            'status' => $attributes['status'] ?? null,
+            'type' => $type,
+            'owner_salesforce_id' => $attributes['owner_id'] ?? null,
+            'owner_name' => $attributes['owner_name'] ?? null,
+            'is_deleted' => (bool) ($attributes['is_deleted'] ?? false),
+        ]);
     }
 
     private function opportunity(string $id, array $overrides = []): SalesforceOpportunity
