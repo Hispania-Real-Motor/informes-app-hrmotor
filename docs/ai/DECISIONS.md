@@ -10,10 +10,18 @@
   `both_match`. El first touch histórico por Account se conserva como método
   distinto, de menor confianza, usando exclusivamente IDs Account y nunca PII;
   no se presenta como relación CRM demostrada.
-- El matching de campañas conserva reglas UTM/campaña auditables. No se recrea
-  la inferencia Meta basada en `Portal_Text__c`/Facebook porque no existe una
-  evidencia Interest equivalente; una procedencia sin campaña puede conservarse
-  como `salesforce_origin` sin inventar inversión.
+- El universo funcional exige evidencia explícita de campaña en `utm_campaign`,
+  `utm_id` o `utm_content`. `source`, `original_source`, `medium` y `channel`
+  permanecen como contexto, pero nunca fabrican una campaña ni una identidad
+  `salesforce_origin`. Tampoco se recrea la inferencia Meta histórica basada en
+  campos Lead.
+- Las filas Lead históricas se conservan para rollback y pueden coexistir con
+  una fila Interest para la misma Opportunity. La unicidad Opportunity del
+  universo ROT-4 se aplica en el algoritmo de claiming sobre `interest_id`, no
+  mediante el UNIQUE legacy que cruzaba ambos universos.
+- El estado CRM (`both_match`, unilateral, conflicto o ausencia) se conserva
+  separado del método Campañas (`both_match` o first touch Account). Los estados
+  `contradiction` e `inverse_shared` bloquean cualquier ganador heurístico.
 - F2 y el contexto Opportunity↔Interest se capturan y revalidan antes de
   publicar. La caché versiona estados y cutoffs además de IDs para impedir que
   una transición `running → completed` reutilice una respuesta degradada.

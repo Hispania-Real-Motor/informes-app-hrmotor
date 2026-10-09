@@ -11,7 +11,9 @@ Actualizado: 2026-10-09.
 - La persistencia mantiene los nombres históricos `campaign_attributions` y
   `campaign_lead_attributions` por compatibilidad. Las filas ROT-4 usan
   columnas Interest explícitas y dejan `lead_id` y demás identidad Lead a
-  `NULL`; las claves técnicas `leads_*` de payload son aliases temporales.
+  `NULL`; las claves técnicas `leads_*` de payload son aliases temporales. Las
+  filas Lead previas se conservan para rollback y no bloquean el claim ROT-4;
+  ambas identidades pueden coexistir para una misma Opportunity.
 - La relación exacta Opportunity↔Interest usa el servicio compartido y solo
   `both_match` autoriza atribución. El first touch por Account es una heurística
   distinta: compara exclusivamente IDs Account, aplica la precedencia de
@@ -19,7 +21,13 @@ Actualizado: 2026-10-09.
 - Status, tipo, fuente, UTM, procedencia, lifecycle y owner proceden del último
   F2. No existe fallback a Lead, Account o Contact para completar dimensiones
   Interest. La inferencia histórica Meta basada en campos Lead no se reproduce
-  sin evidencia Interest equivalente.
+  sin evidencia Interest equivalente. Solo `utm_campaign`, `utm_id` o
+  `utm_content` admiten un Interest al universo Campañas; las procedencias
+  genéricas se mantienen como contexto pero no crean campañas.
+- `opportunity_relationship_status` conserva la evidencia CRM original y
+  `opportunity_attribution_method` conserva por separado el método Campañas.
+  First touch puede complementar estados no conflictivos sin reescribirlos;
+  `contradiction` e `inverse_shared` no eligen ganador automáticamente.
 - El builder fija y revalida el F2 y el contexto Opportunity↔Interest antes de
   publicar. La caché versiona IDs, status, cutoffs, disponibilidad y razón; una
   transición `running → completed` no puede reutilizar un payload degradado.

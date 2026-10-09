@@ -138,9 +138,13 @@ Actualizado: 2026-10-09.
   y sus auditorías consumen exclusivamente Interests activos de un F2 estable;
   solo `both_match` autoriza la relación exacta Opportunity↔Interest y el first
   touch por Account permanece como heurística separada, auditable y sin PII.
+  Solo evidencia explícita `utm_campaign`/`utm_id`/`utm_content` admite al
+  universo; procedencias genéricas no generan campañas. El estado CRM queda
+  separado del método de atribución y los conflictos no obtienen ganador.
   Las tablas conservan nombres legacy por compatibilidad, pero las nuevas filas
-  usan identidad y dimensiones Interest explícitas y dejan columnas Lead a
-  `NULL`. El sync Salesforce Lead de Campañas queda aislado y fuera del
+  usan identidad y dimensiones Interest explícitas, dejan columnas Lead a
+  `NULL` y pueden convivir con las filas Lead conservadas para rollback. El
+  sync Salesforce Lead de Campañas queda aislado y fuera del
   scheduler. No se ha desplegado ni certificado en shadow, no se ha ejecutado
   backfill y la migración aditiva continúa pendiente de revisión/aplicación.
 - **Secuencia acordada tras ROT-4:** ROT-5 SEO; despliegue a shadow;

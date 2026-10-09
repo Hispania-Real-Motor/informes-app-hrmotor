@@ -8,8 +8,10 @@ use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceOpportunityInterestDirect;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\ProvidesRot4CampaignContext;
 use Tests\TestCase;
 
@@ -43,7 +45,53 @@ class CampaignAttributionFieldMigrationTest extends TestCase
         ]);
     }
 
-    public function test_interest_without_utm_is_materialized_as_salesforce_origin_without_lead_fallback(): void
+    public function test_opportunity_index_is_non_unique_during_legacy_and_interest_coexistence(): void
+    {
+        $indexes = collect(Schema::getIndexes('campaign_attributions'))->keyBy('name');
+
+        $this->assertArrayHasKey('campaign_attributions_opportunity_id_index', $indexes);
+        $this->assertFalse($indexes['campaign_attributions_opportunity_id_index']['unique']);
+        $this->assertArrayNotHasKey('campaign_attributions_opportunity_id_unique', $indexes);
+    }
+
+    public function test_migration_rollback_removes_rot4_rows_and_restores_the_legacy_opportunity_unique(): void
+    {
+        DB::table('campaign_attributions')->insert([
+            'lead_id' => '00Q000000000000081',
+            'opportunity_id' => '006000000000000081',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('campaign_attributions')->insert([
+            'interest_id' => 'a0I000000000000081',
+            'opportunity_id' => '006000000000000081',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $migration = require database_path('migrations/2026_10_09_090000_add_interest_identity_to_campaign_attributions.php');
+
+        $migration->down();
+
+        $this->assertSame(1, DB::table('campaign_attributions')->count());
+        $this->assertDatabaseHas('campaign_attributions', [
+            'lead_id' => '00Q000000000000081',
+            'opportunity_id' => '006000000000000081',
+        ]);
+        $this->assertFalse(Schema::hasColumn('campaign_attributions', 'interest_id'));
+
+        try {
+            DB::table('campaign_attributions')->insert([
+                'lead_id' => '00Q000000000000082',
+                'opportunity_id' => '006000000000000081',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $this->fail('El rollback debía restaurar el UNIQUE legacy de Opportunity.');
+        } catch (QueryException) {
+            $this->addToAssertionCount(1);
+        } finally {
+            $migration->up();
+        }
+    }
+
+    public function test_interest_without_explicit_campaign_evidence_is_not_materialized(): void
     {
         $this->createInterest([
             'salesforce_id' => 'a0I000000000000002', 'source' => 'Web',
@@ -52,11 +100,7 @@ class CampaignAttributionFieldMigrationTest extends TestCase
 
         $this->build();
 
-        $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => null, 'interest_id' => 'a0I000000000000002',
-            'campaign_source_type' => 'salesforce_origin',
-            'matched_source_field' => 'salesforce_interests.source', 'matched_source_value' => 'Web',
-        ]);
+        $this->assertDatabaseMissing('campaign_attributions', ['interest_id' => 'a0I000000000000002']);
     }
 
     public function test_deleted_interest_is_excluded_and_type_selects_the_correct_vehicle(): void
@@ -121,7 +165,7 @@ class CampaignAttributionFieldMigrationTest extends TestCase
             'interest_id' => 'a0I000000000000006', 'opportunity_id' => '006000000000000002',
             'opportunity_attribution_method' => 'account_first_touch',
             'opportunity_attribution_confidence' => 'medium',
-            'opportunity_relationship_status' => 'account_first_touch',
+            'opportunity_relationship_status' => 'no_reference',
         ]);
         $sql = strtolower(implode(' ', $queries));
         $this->assertStringNotContainsString('email', $sql);
@@ -136,9 +180,7 @@ class CampaignAttributionFieldMigrationTest extends TestCase
 
         $this->build();
 
-        $this->assertDatabaseHas('campaign_attributions', [
-            'interest_id' => 'a0I000000000000007', 'campaign_source_type' => 'salesforce_origin',
-        ]);
+        $this->assertDatabaseMissing('campaign_attributions', ['interest_id' => 'a0I000000000000007']);
         $this->assertDatabaseMissing('campaign_attributions', [
             'interest_id' => 'a0I000000000000007', 'campaign_name' => 'Formulario directo Meta',
         ]);
@@ -244,6 +286,139 @@ class CampaignAttributionFieldMigrationTest extends TestCase
         $this->assertDatabaseCount('campaign_lead_attributions', 25);
         $this->assertLessThanOrEqual(4, $interestSelects->count());
         $this->assertCount(1, $unresolvedWrites);
+    }
+
+    public function test_legacy_lead_opportunity_does_not_block_the_interest_attribution_for_the_same_opportunity(): void
+    {
+        DB::table('campaign_attributions')->insert([
+            'lead_id' => '00Q000000000000001',
+            'opportunity_id' => '006000000000000090',
+            'campaign_name' => 'Legacy campaign',
+            'has_opportunity' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $interest = $this->createInterest([
+            'salesforce_id' => 'a0I000000000000090',
+            'utm_campaign' => 'ROT-4 campaign',
+            'inverse_opportunity_salesforce_id' => '006000000000000090',
+        ]);
+        $this->createOpportunity('006000000000000090');
+        SalesforceOpportunityInterestDirect::query()->create([
+            'direct_run_id' => $this->rot4DirectRunId,
+            'opportunity_salesforce_id' => '006000000000000090',
+            'interest_salesforce_id' => $interest->salesforce_id,
+            'reference_status' => 'valid',
+            'opportunity_is_deleted' => false,
+        ]);
+
+        app(CampaignAttributionBuilderService::class)->build(
+            CarbonImmutable::parse('2026-05-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-06-01', 'Europe/Madrid'),
+            true,
+        );
+        $this->assertSame(1, DB::table('campaign_attributions')->where('opportunity_id', '006000000000000090')->count());
+
+        $this->build();
+
+        $this->assertSame(2, DB::table('campaign_attributions')->where('opportunity_id', '006000000000000090')->count());
+        $this->assertDatabaseHas('campaign_attributions', [
+            'lead_id' => '00Q000000000000001',
+            'interest_id' => null,
+            'opportunity_id' => '006000000000000090',
+        ]);
+        $this->assertDatabaseHas('campaign_attributions', [
+            'lead_id' => null,
+            'interest_id' => $interest->salesforce_id,
+            'opportunity_id' => '006000000000000090',
+            'opportunity_relationship_status' => 'both_match',
+        ]);
+    }
+
+    public function test_crm_relationship_status_is_separate_from_account_attribution_and_conflicts_do_not_choose_a_winner(): void
+    {
+        $directOnly = $this->createInterest([
+            'salesforce_id' => 'a0I000000000000101', 'utm_campaign' => 'Direct only',
+            'account_salesforce_id' => '001000000000000101',
+        ]);
+        $inverseOnly = $this->createInterest([
+            'salesforce_id' => 'a0I000000000000102', 'utm_campaign' => 'Inverse only',
+            'account_salesforce_id' => '001000000000000102',
+            'inverse_opportunity_salesforce_id' => '006000000000000102',
+        ]);
+        $unresolved = $this->createInterest([
+            'salesforce_id' => 'a0I000000000000103', 'utm_campaign' => 'Unresolved',
+            'account_salesforce_id' => '001000000000000103',
+        ]);
+        $contradictionDirect = $this->createInterest([
+            'salesforce_id' => 'a0I000000000000104', 'utm_campaign' => 'Contradiction direct',
+            'account_salesforce_id' => '001000000000000104',
+        ]);
+        $this->createInterest([
+            'salesforce_id' => 'a0I000000000000105', 'utm_campaign' => 'Contradiction inverse',
+            'account_salesforce_id' => '001000000000000104',
+            'inverse_opportunity_salesforce_id' => '006000000000000104',
+        ]);
+        foreach (['106', '107'] as $suffix) {
+            $this->createInterest([
+                'salesforce_id' => 'a0I000000000000'.$suffix,
+                'utm_campaign' => 'Shared '.$suffix,
+                'account_salesforce_id' => '001000000000000106',
+                'inverse_opportunity_salesforce_id' => '006000000000000106',
+            ]);
+        }
+        $this->createInterest([
+            'salesforce_id' => 'a0I000000000000108', 'utm_campaign' => 'No reference',
+            'account_salesforce_id' => '001000000000000108',
+        ]);
+
+        foreach (['101', '102', '103', '104', '106', '108'] as $suffix) {
+            $this->createOpportunity('006000000000000'.$suffix, '001000000000000'.$suffix);
+        }
+        foreach ([
+            ['101', $directOnly->salesforce_id, 'valid'],
+            ['103', $unresolved->salesforce_id, 'invalid_reference'],
+            ['104', $contradictionDirect->salesforce_id, 'valid'],
+        ] as [$suffix, $interestId, $status]) {
+            SalesforceOpportunityInterestDirect::query()->create([
+                'direct_run_id' => $this->rot4DirectRunId,
+                'opportunity_salesforce_id' => '006000000000000'.$suffix,
+                'interest_salesforce_id' => $interestId,
+                'reference_status' => $status,
+                'opportunity_is_deleted' => false,
+            ]);
+        }
+
+        $this->build();
+
+        foreach ([
+            $directOnly->salesforce_id => 'direct_only',
+            $inverseOnly->salesforce_id => 'inverse_only',
+            $unresolved->salesforce_id => 'unresolved',
+            'a0I000000000000108' => 'no_reference',
+        ] as $interestId => $status) {
+            $this->assertDatabaseHas('campaign_attributions', [
+                'interest_id' => $interestId,
+                'opportunity_relationship_status' => $status,
+                'opportunity_attribution_method' => 'account_first_touch',
+            ]);
+        }
+        foreach (['a0I000000000000104', 'a0I000000000000105'] as $interestId) {
+            $this->assertDatabaseHas('campaign_attributions', [
+                'interest_id' => $interestId,
+                'opportunity_id' => null,
+                'opportunity_relationship_status' => 'contradiction',
+                'opportunity_attribution_method' => null,
+            ]);
+        }
+        foreach (['a0I000000000000106', 'a0I000000000000107'] as $interestId) {
+            $this->assertDatabaseHas('campaign_attributions', [
+                'interest_id' => $interestId,
+                'opportunity_id' => null,
+                'opportunity_relationship_status' => 'inverse_shared',
+                'opportunity_attribution_method' => null,
+            ]);
+        }
     }
 
     private function createInterest(array $attributes): SalesforceInterest

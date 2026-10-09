@@ -673,7 +673,7 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->assertSame(2, CampaignAttribution::query()->count());
+        $this->assertSame(1, CampaignAttribution::query()->count());
         $this->assertDatabaseHas('campaign_attributions', [
             'interest_id' => '00Q-1',
             'opportunity_id' => '006-1',
@@ -997,13 +997,7 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->assertDatabaseHas('campaign_lead_attributions', [
-            'interest_id' => '00Q-meta-direct-1',
-            'campaign_name' => 'Facebook',
-            'campaign_type' => 'venta',
-            'campaign_acquired' => null,
-            'campaign_source_type' => 'salesforce_origin',
-        ]);
+        $this->assertDatabaseMissing('campaign_lead_attributions', ['interest_id' => '00Q-meta-direct-1']);
         $this->assertDatabaseHas('campaign_lead_attributions', [
             'interest_id' => '00Q-meta-direct-2',
             'campaign_name' => 'Formulario Directo Meta',
@@ -1456,7 +1450,7 @@ class CampaignDashboardTest extends TestCase
             ->assertJsonPath('kpis.sale_amount', null);
     }
 
-    public function test_salesforce_source_medium_only_genera_procedencia_auditable_sin_inversion(): void
+    public function test_salesforce_source_medium_only_does_not_enter_the_campaign_universe(): void
     {
         SalesforceInterest::query()->create([
             'salesforce_id' => '00Q-origin',
@@ -1478,22 +1472,18 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->assertDatabaseHas('campaign_lead_attributions', [
-            'interest_id' => '00Q-origin',
-            'campaign_source_type' => 'salesforce_origin',
-        ]);
+        $this->assertDatabaseMissing('campaign_lead_attributions', ['interest_id' => '00Q-origin']);
 
         $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
             ->assertOk()
-            ->assertJsonPath('total', 1)
-            ->assertJsonPath('items.0.campaign_source_type', 'salesforce_origin');
+            ->assertJsonPath('total', 0);
 
         $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->json();
         $this->assertSame(0, $summary['kpis']['leads_salesforce']);
-        $this->assertSame(1, $summary['diagnostics']['salesforce_origins'], json_encode($summary['diagnostics']));
-        $this->assertSame(1, $summary['diagnostics']['salesforce_only_by_origin'], json_encode($summary['diagnostics']));
+        $this->assertSame(0, $summary['diagnostics']['salesforce_origins'], json_encode($summary['diagnostics']));
+        $this->assertSame(0, $summary['diagnostics']['salesforce_only_by_origin'], json_encode($summary['diagnostics']));
     }
 
     public function test_rankings_and_charts_no_recuperan_procedencias_sin_campaign_acquired(): void
@@ -1534,7 +1524,7 @@ class CampaignDashboardTest extends TestCase
         $rankingJson = json_encode($rankings);
 
         $this->assertStringContainsString('Meta Real', $rankingJson);
-        $this->assertStringContainsString('Chatbot', $rankingJson);
+        $this->assertStringNotContainsString('Chatbot', $rankingJson);
         $this->assertArrayNotHasKey('salesforce_origin', $rankings);
         $this->assertArrayNotHasKey('review_investment_tracking', $rankings);
 
@@ -1545,7 +1535,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertArrayHasKey('rankings', $summary);
         $this->assertSame(900, $summary['charts']['funnel'][0]['value']);
         $this->assertSame(90, $summary['charts']['funnel'][1]['value']);
-        $this->assertSame(1, $summary['diagnostics']['salesforce_origins']);
+        $this->assertSame(0, $summary['diagnostics']['salesforce_origins']);
     }
 
     public function test_periodo_local_madrid_incluye_y_excluye_bordes_utc_en_leads_salesforce(): void
@@ -1636,11 +1626,8 @@ class CampaignDashboardTest extends TestCase
             ->assertOk()
             ->json();
 
-        $this->assertSame(3, $payload['total']);
-        $this->assertEqualsCanonicalizing(
-            ['Google Maps · Llamada', 'Chatbot · CPC', 'Exposicion'],
-            array_column($payload['items'], 'campaign_name'),
-        );
+        $this->assertSame(0, $payload['total']);
+        $this->assertSame([], $payload['items']);
     }
 
     public function test_sale_amount_column_when_available_calculates_roas_and_roi(): void

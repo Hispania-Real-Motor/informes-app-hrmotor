@@ -10,6 +10,11 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('campaign_attributions', function (Blueprint $table): void {
+            $table->dropUnique('campaign_attributions_opportunity_id_unique');
+            $table->index('opportunity_id', 'campaign_attributions_opportunity_id_index');
+        });
+
+        Schema::table('campaign_attributions', function (Blueprint $table): void {
             $table->string('lead_id')->nullable()->change();
             $table->string('interest_id', 18)->nullable()->unique('campaign_attr_interest_uq');
             $table->dateTime('interest_functional_created_at')->nullable()->index('campaign_attr_interest_date_idx');
@@ -56,8 +61,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::table('campaign_lead_attributions')->whereNull('lead_id')->delete();
-        DB::table('campaign_attributions')->whereNull('lead_id')->delete();
+        DB::table('campaign_lead_attributions')->whereNotNull('interest_id')->delete();
+        DB::table('campaign_attributions')->whereNotNull('interest_id')->delete();
 
         Schema::table('campaign_lead_attributions', function (Blueprint $table): void {
             $table->dropIndex('campaign_interest_attr_interest_opp_idx');
@@ -74,6 +79,8 @@ return new class extends Migration
         });
 
         Schema::table('campaign_attributions', function (Blueprint $table): void {
+            $table->dropIndex('campaign_attributions_opportunity_id_index');
+            $table->unique('opportunity_id', 'campaign_attributions_opportunity_id_unique');
             $table->dropIndex('campaign_attr_interest_date_campaign_idx');
             $table->dropIndex('campaign_attr_interest_date_idx');
             $table->dropUnique('campaign_attr_interest_uq');

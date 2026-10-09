@@ -113,7 +113,7 @@ $monitor(
 
 $monitor(
     Schedule::command('campaigns:build-attribution --days=120')
-        ->dailyAt('08:00')
+        ->dailyAt('08:30')
         ->timezone('Europe/Madrid')
         ->withoutOverlapping(240),
     'campaigns-build-attribution',
@@ -122,7 +122,7 @@ $monitor(
 
 $monitor(
     Schedule::command('reports:refresh-campaigns --days=120 --store')
-        ->dailyAt('08:15')
+        ->dailyAt('09:00')
         ->timezone('Europe/Madrid')
         ->withoutOverlapping(120),
     'reports-refresh-campaigns',
@@ -130,7 +130,7 @@ $monitor(
 );
 
 // Se programa a las 07:10, después de Stock, antes del snapshot directo y
-// del bloque de atribución de campañas (08:00). También queda fuera
+// del bloque de atribución de campañas (08:30). También queda fuera
 // del bloque SEO (05:15-06:30). El sync mensual de Leads no escribe Opportunities.
 // LastModifiedDate solo descubre registros antiguos modificados; las fechas
 // funcionales proceden de los hitos y de OpportunityHistory.

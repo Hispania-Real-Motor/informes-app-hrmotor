@@ -2,6 +2,31 @@
 
 ## ROT-4 — Campañas → Interests (2026-10-09)
 
+### Hardening de revisión sénior
+
+- El universo funcional vuelve a exigir evidencia explícita de campaña en
+  `utm_campaign`, `utm_id` o `utm_content`. `source`, `original_source`,
+  `medium` y `channel` continúan auditables, pero Google Maps, Chatbot,
+  Exposición, Web y otras procedencias sin esa evidencia no materializan una
+  campaña ni una pseudo-campaña `salesforce_origin`.
+- Se retiró el UNIQUE histórico de `campaign_attributions.opportunity_id` y se
+  sustituyó por un índice no único. Así una fila Lead legacy preservada para
+  rollback puede coexistir con la fila Interest ROT-4 de la misma Opportunity;
+  el claiming funcional filtra `interest_id IS NOT NULL` y mantiene una única
+  asignación dentro del universo Interest. El rollback elimina primero filas
+  ROT-4 y restaura el UNIQUE legacy.
+- El `--dry-run` no escribe ni borra en `campaign_attributions`,
+  `campaign_lead_attributions` o `campaign_unresolved_attributions`, incluso
+  cuando simula crear o resolver una ambigüedad. Tampoco invalida caché.
+- `opportunity_relationship_status` conserva la evidencia CRM obtenida del
+  resolver y `opportunity_attribution_method` registra separadamente
+  `both_match`/first touch. Los estados `contradiction` e `inverse_shared`
+  quedan auditables y no reciben ganador Account; los estados no conflictivos
+  pueden usar first touch sin perder su status original.
+- El orden diario queda Opportunity 07:10, snapshot directo 07:35, F2/F5
+  horario de las 08:05, builder Campañas 08:30 y refresh 09:00. No se añade
+  otro sync F2 y el sync Lead de Campañas sigue fuera del scheduler.
+
 - Rama `feat/rot-4-campaigns-to-interests`, creada desde `main`
   `bbb435ae3536e3d4f0d139b6b57caa48a370d07e` (merge ROT-3, PR #73).
   `/informes/campanas`, su builder y auditorías rotan a Interests activos del
@@ -23,22 +48,23 @@
   menor confianza; no emplea PII ni afirma relación bidireccional. Status, tipo,
   fuente/UTM, procedencia, owner y lifecycle proceden únicamente del Interest.
 - Se mantienen Google Ads, Meta Ads y resultados Opportunity. La antigua
-  inferencia Meta desde campos Lead no se replica sin evidencia Interest; las
-  procedencias sin UTM quedan auditables como `salesforce_origin`, sin coste
-  ficticio. UI y CSV usan terminología Interest; las auditorías no exponen PII.
+  inferencia Meta desde campos Lead no se replica sin evidencia Interest y las
+  procedencias genéricas sin campaña explícita no entran en el universo. UI y
+  CSV usan terminología Interest; las auditorías no exponen PII.
 - `salesforce:sync-campaign-leads`, `CampaignLeadSyncService` y
   `campaign_salesforce_leads` quedan aislados como infraestructura legacy y se
   retira únicamente su entrada programada. El orden diario queda Opportunity
-  07:10, snapshot directo 07:35, atribución Campañas 08:00 y refresh 08:15,
-  conservando Google/Meta y el pipeline F2/F5 existentes.
+  07:10, snapshot directo 07:35, F2/F5 horario 08:05, atribución Campañas
+  08:30 y refresh 09:00, conservando Google/Meta y la cadencia F2/F5 existente.
 - Seguridad: no hay consultas/escrituras Salesforce nuevas, payloads, secretos,
   Lead fallback ni cambios de autorización. Rendimiento: cursor/chunks, lookups
   bulk, sin N+1 y sin funciones sobre IDs Salesforce indexados.
-- Validación local: focal ROT-4/Campañas 82 tests y 685 aserciones; regresiones
-  Interest/F4/ROT-3/Executive 291/2.329; suite completa 1.283/9.285. Composer
-  validate correcto; Composer audit conserva dos advisories previos de
-  `league/commonmark` (uno medium y uno high), ajenos al lote. Pint focal, Vite,
-  `migrate --pretend` y `git diff --check` correctos.
+- Validación local del hardening: suite Campañas 86 tests/714 aserciones;
+  regresiones Interest/F4/ROT-3/Executive 331/2.439; suite completa
+  1.287/9.314. Composer validate correcto; Composer audit conserva
+  dos advisories previos de `league/commonmark` (uno medium y uno high), ajenos
+  al lote y sin cambios de lock. Pint, Vite, `migrate --pretend` y
+  `git diff --check` correctos.
 - Acción manual futura: aplicar la migración, disponer de F2 completo/estable y
   snapshot directo coherente, reconstruir el período y certificar en shadow
   antes de habilitar ROT-4. No se ejecutó backfill, migración persistente,

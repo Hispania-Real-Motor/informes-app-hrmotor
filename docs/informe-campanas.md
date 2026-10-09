@@ -56,9 +56,10 @@ Se preservan los métodos auditables:
 - exclusión y ambigüedad.
 
 La traza registra el campo Interest real ganador, su valor, candidatos, método,
-confianza y versión de reglas. Las procedencias Interest sin UTM pueden quedar
-como `salesforce_origin`: son evidencia diagnóstica, no una campaña de pago ni
-un coste ficticio.
+confianza y versión de reglas. La admisión exige al menos una evidencia válida
+en `utm_campaign`, `utm_id` o `utm_content`. `source`, `original_source`,
+`medium` y `channel` permanecen como contexto auditable, pero no crean por sí
+solos una campaña ni una pseudo-campaña `salesforce_origin`.
 
 Meta Instant Forms solo se identifica cuando el nombre de campaña aporta la
 evidencia explícita `instantforms`/Formulario Directo Meta. La antigua
@@ -81,9 +82,11 @@ mantiene separado:
 3. ordena por `functional_created_at`;
 4. deja ambiguos los candidatos incompatibles de igual precedencia;
 5. persiste un método `account_first_touch`/equivalente y confianza inferior a
-   la relación exacta.
+   la relación exacta, conservando por separado el estado CRM original.
 
 Esta heurística no se presenta como relación CRM bidireccional y no utiliza PII.
+`contradiction` e `inverse_shared` no pueden seleccionar un ganador mediante
+first touch; quedan visibles como evidencia CRM conflictiva.
 
 ## Estado, tipo, owner y lifecycle
 
@@ -135,9 +138,9 @@ El scheduler usa `Europe/Madrid`:
 - Google: 01:45;
 - Opportunity legacy: 07:10;
 - snapshot directo Opportunity→Interest: 07:35;
-- atribución Campañas: 08:00;
-- snapshot del informe: 08:15;
-- F2/F5 canónicos continúan en su pipeline horario existente.
+- F2/F5 canónicos: cadencia horaria en minuto `:05`, incluido 08:05;
+- atribución Campañas: 08:30;
+- snapshot del informe: 09:00.
 
 Comandos locales del pipeline ROT-4:
 
@@ -149,7 +152,8 @@ php artisan reports:refresh-campaigns --days=120 --store
 ```
 
 `campaigns:build-attribution --dry-run` reutiliza el builder real, compara por
-`interest_id` y no escribe ni invalida caché. Antes de habilitar ROT-4 en un
+`interest_id` y no escribe ninguna de las tres tablas de atribución/ambigüedad
+ni invalida caché. Antes de habilitar ROT-4 en un
 entorno debe aplicarse la migración aditiva, disponer de un F2 completo/estable,
 un snapshot directo coherente y reconstruir el período bajo procedimiento
 operacional revisado. Esta implementación no ejecuta backfill ni despliegue.

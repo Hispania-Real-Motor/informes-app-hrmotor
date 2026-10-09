@@ -17,6 +17,7 @@ use App\Services\Reports\ReservationsSales\Sync\SalesforceOpportunitySyncService
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Mockery\MockInterface;
 use Tests\Concerns\ProvidesRot4CampaignContext;
@@ -50,11 +51,37 @@ class CampaignCommandsTest extends TestCase
         $this->assertNotFalse($builderIdentifierPosition);
 
         $builderConfiguration = substr($scheduler, $builderPosition, $builderIdentifierPosition - $builderPosition);
-        $this->assertStringContainsString("dailyAt('08:00')", $builderConfiguration);
+        $this->assertStringContainsString("dailyAt('08:30')", $builderConfiguration);
         $directIdentifierPosition = strpos($scheduler, "'salesforce-sync-opportunity-interest-direct'", $directPosition);
         $this->assertNotFalse($directIdentifierPosition);
         $directConfiguration = substr($scheduler, $directPosition, $directIdentifierPosition - $directPosition);
         $this->assertStringContainsString("dailyAt('07:35')", $directConfiguration);
+
+        $opportunityPosition = strpos($scheduler, "Schedule::command('salesforce:sync-opportunities --days=2 --modified')");
+        $interestPosition = strpos($scheduler, "Schedule::command('salesforce:sync-interest-reporting')");
+        $refreshPosition = strpos($scheduler, "Schedule::command('reports:refresh-campaigns --days=120 --store')");
+        $this->assertNotFalse($opportunityPosition);
+        $this->assertNotFalse($interestPosition);
+        $this->assertNotFalse($refreshPosition);
+        $this->assertStringContainsString("dailyAt('07:10')", substr($scheduler, $opportunityPosition, 300));
+        $this->assertStringContainsString('hourlyAt(5)', substr($scheduler, $interestPosition, 300));
+        $this->assertStringContainsString("dailyAt('09:00')", substr($scheduler, $refreshPosition, 300));
+        $dailyTime = static function (string $configuration): string {
+            preg_match("/dailyAt\\('([0-9]{2}:[0-9]{2})'\\)/", $configuration, $matches);
+
+            return $matches[1] ?? '';
+        };
+        $this->assertSame(
+            ['07:10', '07:35', '08:05', '08:30', '09:00'],
+            [
+                $dailyTime(substr($scheduler, $opportunityPosition, 300)),
+                $dailyTime($directConfiguration),
+                '08:05',
+                $dailyTime($builderConfiguration),
+                $dailyTime(substr($scheduler, $refreshPosition, 300)),
+            ],
+            'El pipeline diario debe respetar Opportunity < directo < F2 horario < builder < refresh.',
+        );
     }
 
     public function test_campaign_lead_sync_mapper_guarda_campos_de_adquisicion(): void
@@ -265,12 +292,8 @@ class CampaignCommandsTest extends TestCase
             CarbonImmutable::parse('2026-06-01'),
         );
 
-        foreach (['00Q-meta-null', '00Q-meta-empty'] as $leadId) {
-            $this->assertDatabaseHas('campaign_attributions', [
-                'interest_id' => $leadId,
-                'platform' => 'salesforce',
-                'campaign_id' => null,
-            ]);
+        foreach (['00Q-meta-null', '00Q-meta-empty', '00Q-not-meta-empty'] as $leadId) {
+            $this->assertDatabaseMissing('campaign_attributions', ['interest_id' => $leadId]);
         }
         $this->assertDatabaseHas('campaign_attributions', [
             'interest_id' => '00Q-meta-explicit',
@@ -283,11 +306,7 @@ class CampaignCommandsTest extends TestCase
             'campaign_id' => 'google-campaign-id',
             'attribution_method' => 'campaign_id_match',
         ]);
-        $this->assertDatabaseHas('campaign_attributions', [
-            'interest_id' => '00Q-not-meta-empty',
-            'campaign_source_type' => 'salesforce_origin',
-        ]);
-        $this->assertSame(5, $result['candidate_interests']);
+        $this->assertSame(2, $result['candidate_interests']);
         $this->assertSame(0, $result['excluded_campaigns']);
     }
 
@@ -533,7 +552,7 @@ class CampaignCommandsTest extends TestCase
         $this->artisan('campaigns:build-attribution', ['--days' => 3])
             ->assertExitCode(0);
 
-        $this->assertSame(6, CampaignAttribution::query()->count());
+        $this->assertSame(5, CampaignAttribution::query()->count());
         $this->assertDatabaseHas('campaign_attributions', [
             'interest_id' => '00Q-clear',
             'campaign_name' => 'Campana real',
@@ -576,14 +595,55 @@ class CampaignCommandsTest extends TestCase
             'owner_name' => 'Comercial Real', 'campaign_acquired' => 'Campaign sin tipo',
         ]);
 
-        $before = DB::table('campaign_attributions')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        SalesforceLead::query()->create([
+            'salesforce_id' => '00Q-dry-resolved', 'name' => 'Interest resuelto',
+            'created_date' => '2026-05-12 10:00:00', 'status' => 'Potencial',
+            'record_type_name' => 'Venta', 'campaign_acquired' => 'Campana resuelta',
+            'converted_account_id' => '001-dry-resolved',
+        ]);
+        foreach ([['00Q-dry-ambiguous-a', 'Campana A'], ['00Q-dry-ambiguous-b', 'Campana B']] as [$id, $campaign]) {
+            SalesforceLead::query()->create([
+                'salesforce_id' => $id, 'name' => 'Interest ambiguo',
+                'created_date' => '2026-05-13 10:00:00', 'status' => 'Potencial',
+                'record_type_name' => 'Venta', 'campaign_acquired' => $campaign,
+                'converted_account_id' => '001-dry-ambiguous',
+            ]);
+        }
+        foreach ([['006-dry-resolved', '001-dry-resolved'], ['006-dry-ambiguous', '001-dry-ambiguous']] as [$opportunityId, $accountId]) {
+            SalesforceOpportunity::query()->create([
+                'salesforce_id' => $opportunityId,
+                'account_id' => $accountId,
+                'name' => 'Opportunity dry-run',
+                'created_date' => '2026-05-20 10:00:00',
+                'stage_name' => 'Abierta',
+                'record_type_name' => 'Venta',
+            ]);
+        }
+        DB::table('campaign_unresolved_attributions')->insert([
+            'entity_type' => 'opportunity',
+            'entity_salesforce_id' => '006-dry-resolved',
+            'status' => 'ambiguous',
+            'reason' => 'Ambigüedad previa',
+            'rule_version' => 'test',
+            'evaluated_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $before = collect(['campaign_attributions', 'campaign_lead_attributions', 'campaign_unresolved_attributions'])
+            ->mapWithKeys(fn (string $table): array => [
+                $table => DB::table($table)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all(),
+            ])->all();
+        Cache::forever('campaign_dashboard_cache_version', 41);
         $builder = app(CampaignAttributionBuilderService::class);
         $simulated = $builder->build(CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01'), true);
 
         $this->assertTrue($simulated['dry_run']);
-        $this->assertSame(2, $simulated['simulation']['campaign_interests_examined']);
-        $this->assertSame($before, DB::table('campaign_attributions')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
-        $this->assertDatabaseCount('campaign_lead_attributions', 0);
+        $this->assertSame(5, $simulated['simulation']['campaign_interests_examined']);
+        foreach ($before as $table => $rows) {
+            $this->assertSame($rows, DB::table($table)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
+        }
+        $this->assertSame(41, Cache::get('campaign_dashboard_cache_version'));
 
         $builder->build(CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01'));
 
@@ -592,9 +652,11 @@ class CampaignCommandsTest extends TestCase
             'campaign_name' => 'Campaign simulada',
             'campaign_source_type' => 'salesforce_campaign_without_spend',
         ]);
-        $this->assertSame(2, $simulated['simulation']['sets']['attributed']['count']);
-        $this->assertSame(1, $simulated['simulation']['interest_types']['venta']);
+        $this->assertSame(5, $simulated['simulation']['sets']['attributed']['count']);
+        $this->assertSame(4, $simulated['simulation']['interest_types']['venta']);
         $this->assertSame(1, $simulated['simulation']['interest_types']['null']);
+        $this->assertDatabaseMissing('campaign_unresolved_attributions', ['entity_salesforce_id' => '006-dry-resolved']);
+        $this->assertDatabaseHas('campaign_unresolved_attributions', ['entity_salesforce_id' => '006-dry-ambiguous']);
     }
 
     public function test_build_attribution_respeta_oportunidades_ya_atribuidas_fuera_de_rango(): void
