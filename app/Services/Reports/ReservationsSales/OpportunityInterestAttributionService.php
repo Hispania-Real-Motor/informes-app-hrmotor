@@ -10,7 +10,6 @@ use App\Services\Reports\ReservasVentas\OpportunityPortalNormalizer;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class OpportunityInterestAttributionService
@@ -61,13 +60,19 @@ class OpportunityInterestAttributionService
      */
     public function resolve(Collection $opportunities, array $context): Collection
     {
-        $opportunityIds = $opportunities->pluck('salesforce_id')->filter()->map(fn ($id) => trim((string) $id))->unique()->values();
+        $opportunityIds = $opportunities->pluck('salesforce_id')->filter()->map(fn ($id) => (string) $id)->unique()->values();
         if ($opportunityIds->isEmpty()) {
             return collect();
         }
 
+        if (! ($context['available'] ?? false)) {
+            return $opportunityIds->mapWithKeys(fn (string $opportunityId): array => [
+                $opportunityId => $this->resolution(null, collect(), collect(), $context),
+            ]);
+        }
+
         $directs = collect();
-        if (($context['available'] ?? false) && filled($context['direct_run_id'] ?? null)) {
+        if (filled($context['direct_run_id'] ?? null)) {
             $directs = SalesforceOpportunityInterestDirect::query()
                 ->select([
                     'opportunity_salesforce_id', 'interest_salesforce_id', 'reference_status',
@@ -79,20 +84,20 @@ class OpportunityInterestAttributionService
                 ->keyBy('opportunity_salesforce_id');
         }
 
-        $directInterestIds = $directs->pluck('interest_salesforce_id')->filter()->map(fn ($id) => trim((string) $id));
+        $directInterestIds = $directs->pluck('interest_salesforce_id')->filter()->map(fn ($id) => (string) $id);
         $interests = SalesforceInterest::query()
             ->select(['salesforce_id', 'inverse_opportunity_salesforce_id', 'source', 'is_deleted'])
             ->where(function ($query) use ($opportunityIds, $directInterestIds): void {
-                $query->whereIn(DB::raw('TRIM(inverse_opportunity_salesforce_id)'), $opportunityIds->all());
+                $query->whereIn('inverse_opportunity_salesforce_id', $opportunityIds->all());
                 if ($directInterestIds->isNotEmpty()) {
                     $query->orWhereIn('salesforce_id', $directInterestIds->unique()->values()->all());
                 }
             })
             ->get();
-        $interestById = $interests->keyBy(fn (SalesforceInterest $interest): string => trim((string) $interest->salesforce_id));
+        $interestById = $interests->keyBy(fn (SalesforceInterest $interest): string => (string) $interest->salesforce_id);
         $inverseByOpportunity = $interests
             ->filter(fn (SalesforceInterest $interest): bool => filled($interest->inverse_opportunity_salesforce_id))
-            ->groupBy(fn (SalesforceInterest $interest): string => trim((string) $interest->inverse_opportunity_salesforce_id));
+            ->groupBy(fn (SalesforceInterest $interest): string => (string) $interest->inverse_opportunity_salesforce_id);
 
         return $opportunityIds->mapWithKeys(function (string $opportunityId) use ($context, $directs, $interestById, $inverseByOpportunity): array {
             $direct = $directs->get($opportunityId);
@@ -154,8 +159,8 @@ class OpportunityInterestAttributionService
     /** @param Collection<int, SalesforceInterest> $inverse @param Collection<string, SalesforceInterest> $interestById @param array<string,mixed> $context */
     private function resolution(mixed $direct, Collection $inverse, Collection $interestById, array $context): array
     {
-        $directId = filled($direct?->interest_salesforce_id) ? trim((string) $direct->interest_salesforce_id) : null;
-        $inverseIds = $inverse->pluck('salesforce_id')->map(fn ($id) => trim((string) $id))->filter()->unique()->values();
+        $directId = filled($direct?->interest_salesforce_id) ? (string) $direct->interest_salesforce_id : null;
+        $inverseIds = $inverse->pluck('salesforce_id')->map(fn ($id) => (string) $id)->filter()->unique()->values();
         $directInterest = $directId === null ? null : $interestById->get($directId);
         $status = match (true) {
             ! ($context['available'] ?? false) => 'unresolved',

@@ -1,5 +1,27 @@
 # Handoff para agentes
 
+## Correctivo final ROT-3 — caché y lookup indexable (2026-10-09)
+
+- La identidad de caché del dashboard incorpora el contexto completo y estable
+  de atribución: IDs, status y cutoffs direct/F2, disponibilidad, razón de
+  degradación y cutoff Opportunity requerido. Una transición sobre la misma
+  fila `running → completed` genera una clave distinta y no reutiliza el
+  payload degradado.
+- El lookup inverso vuelve a usar directamente el índice existente sobre
+  `salesforce_interests.inverse_opportunity_salesforce_id`; no aplica funciones
+  SQL a la columna. Los valores no canónicos no se normalizan mediante scans o
+  heurísticas en runtime.
+- Cuando la atribución no está disponible, la resolución devuelve `unresolved`
+  en memoria y no consulta detalles directos ni Interests. Con contexto válido
+  conserva exactamente dos consultas bulk por chunk. Sin migraciones, índices,
+  Salesforce, Lead fallback ni cambios funcionales de precedencia.
+- Validación: focal de atribución 10 tests/37 aserciones; Reservas/Ventas
+  104/1.252; Foundation 4A/4B, Campañas, Executive y Commercial Performance
+  210/1.985; suite completa 1.284/9.278. Pint focal y `git diff --check`
+  correctos. Archivos modificados: servicio de atribución, dataset del
+  dashboard, regresiones focales y este HANDOFF. No hay acciones manuales ni
+  cambios de base de datos para aplicar.
+
 ## ROT-3 — Reservas/Ventas → Interests (2026-10-09)
 
 - Rama `feat/rot-3-reservations-sales-to-interests`, base exacta de `main`

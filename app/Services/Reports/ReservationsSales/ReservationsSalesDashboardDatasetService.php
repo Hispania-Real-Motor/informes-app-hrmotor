@@ -1441,8 +1441,18 @@ class ReservationsSalesDashboardDatasetService
             'max_id' => SalesforceOpportunity::query()->max('id'),
             'updated_at' => SalesforceOpportunity::query()->max('updated_at'),
             'dashboard_cache_version' => Cache::get('reservas_ventas_dashboard_cache_version', 1),
-            'interest_attribution_direct_run_id' => data_get($this->interestAttributionContext, 'direct_latest_id'),
-            'interest_attribution_f2_run_id' => data_get($this->interestAttributionContext, 'interest_run_id'),
+            'interest_attribution' => collect($this->interestAttributionContext ?? [])->only([
+                'direct_latest_id',
+                'direct_run_id',
+                'direct_status',
+                'direct_cutoff_at',
+                'interest_run_id',
+                'interest_status',
+                'interest_cutoff_at',
+                'available',
+                'reason',
+                'required_opportunity_cutoff_at',
+            ])->all(),
         ];
     }
 
