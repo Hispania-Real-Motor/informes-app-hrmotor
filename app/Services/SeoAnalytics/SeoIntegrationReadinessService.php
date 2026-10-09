@@ -2,6 +2,9 @@
 
 namespace App\Services\SeoAnalytics;
 
+use App\Models\ReportSyncRun;
+use App\Services\Salesforce\SalesforceInterestSyncService;
+
 final class SeoIntegrationReadinessService
 {
     public function __construct(
@@ -13,7 +16,7 @@ final class SeoIntegrationReadinessService
     /** @return array<int, array{key: string, title: string, detail: string, badge: string}> */
     public function sources(): array
     {
-        $salesforceConfigured = $this->salesforceConfigured();
+        $salesforceConfigured = $this->salesforceAvailable();
 
         return [
             $this->source(
@@ -27,8 +30,8 @@ final class SeoIntegrationReadinessService
                 'salesforce',
                 'Salesforce',
                 $salesforceConfigured,
-                'Configuración Salesforce incompleta',
-                'Fuente Salesforce disponible · campo orgánico pendiente de validar'
+                'F2 Interests no dispone de un último run completed con cutoff',
+                'F2 Interests disponible · proyección SEO local preparada'
             ),
             $this->source(
                 'ga4',
@@ -47,16 +50,15 @@ final class SeoIntegrationReadinessService
         ];
     }
 
-    private function salesforceConfigured(): bool
+    private function salesforceAvailable(): bool
     {
-        $mode = config('salesforce.auth_mode');
-        $base = filled(config('salesforce.token_url'))
-            && filled(config('salesforce.client_id'))
-            && filled(config('salesforce.client_secret'));
+        $latest = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->orderByDesc('id')
+            ->first();
 
-        return $base
-            && in_array($mode, ['client_credentials', 'refresh_token'], true)
-            && ($mode !== 'refresh_token' || filled(config('salesforce.refresh_token')));
+        return $latest?->status === 'completed' && $latest->source_cutoff_at !== null;
     }
 
     /** @return array{key: string, title: string, detail: string, badge: string} */

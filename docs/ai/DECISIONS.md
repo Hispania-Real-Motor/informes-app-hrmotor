@@ -1,5 +1,27 @@
 # Decisiones técnicas
 
+## 2026-10-09 — ROT-5 desacopla SEO de Lead y de Salesforce remoto
+
+- La métrica Salesforce vigente de SEO se deriva únicamente del snapshot local
+  FOUNDATION-2: `salesforce_interests.is_deleted = false` y
+  `medium = 'Orgánico'`, con fecha `functional_created_at`. No usa UTM,
+  source/channel ni fallback Lead y no consulta Salesforce.
+- El calendario funcional es `Europe/Madrid`, pero la persistencia de Interest
+  está en UTC. Las ventanas se convierten a límites UTC semiabiertos y el último
+  día publicable queda acotado por el cutoff F2 menos un día local.
+- La proyección está versionada por el ID/cutoff del último F2 por ID, que debe
+  estar `completed`; se revalida durante la construcción y antes de publicar.
+  Un run F2 posterior, cualquiera que sea su estado, hace fallar el build sin
+  sustituir la última proyección válida.
+- La identidad analítica nueva es `salesforce_organic_interests` con source
+  identifier `salesforce-organic-interests`. La tabla, snapshots,
+  evaluaciones y reglas Lead anteriores se conservan como histórico aislado.
+  Una migración crea una versión de reglas posterior copiando exactamente los
+  umbrales y cambiando solo la identidad Salesforce.
+- El comando y horario existentes se conservan por compatibilidad operativa.
+  Diagnóstico y readiness pasan a verificar F2/proyección locales; no dependen
+  de describe, credenciales o acceso remoto para esta fuente.
+
 ## 2026-10-09 — ROT-4 mantiene Campañas sobre evidencia Interest explícita
 
 - El hecho de adquisición funcional pasa a ser el Interest activo del último
@@ -887,6 +909,10 @@ el patron principal para datos detallados. Referencias externas solo orientan
 estructura y densidad; colores, marca e identidad permanecen HR Motor.
 
 ## 2026-08-17 - Readiness e ingesta SEO desacoplados del render
+
+> Histórico: ROT-5 sustituye únicamente la fuente Salesforce Lead descrita en
+> esta decisión por la proyección Interest local definida el 2026-10-09. Los
+> contratos Search Console/GA4 y la conservación del histórico siguen vigentes.
 
 La pantalla SEO solo interpreta configuración local y no llama proveedores. La
 verificación real y la ingesta son procesos CLI/scheduler read-only y

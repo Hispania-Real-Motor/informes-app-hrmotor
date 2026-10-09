@@ -84,10 +84,11 @@ API Names contra la metadata de Salesforce.
    `campaign_salesforce_leads` y, si existe, en `salesforce_leads`. La segunda
    escritura es parcial y puede reemplazar por `null` columnas de procedencia o
    contacto obtenidas por el sincronizador mensual.
-5. `Medio_origen__c` ya existe en una integración aislada de SEO para contar
-   Leads orgánicos. No alimenta `salesforce_leads.medio_origen` ni los informes
-   de Leads/Campañas. Ningún otro campo candidato nuevo aparece en PHP
-   productivo.
+5. Históricamente `Medio_origen__c` se usó en una integración aislada de SEO
+   para contar Leads orgánicos. ROT-5 conserva esa tabla como histórico, pero la
+   métrica vigente usa `Interes__c.IN_Medio_Origen__c`, ya persistido en
+   `salesforce_interests.medium`; no alimenta ni reinterpreta
+   `salesforce_leads.medio_origen`.
 6. Hay lógicas legacy paralelas con prioridades diferentes: el dashboard
    Salesforce usa `LeadPortalResolver`; la canalización histórica
    `leads_raw`/`leads_normalized` usa `LeadNormalizationService`; Llamadas y
@@ -130,7 +131,8 @@ no solo su etiqueta.
 | `Fuente_Adquirida__c` | fallback de fuente adquirida | sync y attribution builder | `acquired_source_legacy`, `source_acquired` efectivo | Campañas | No | Alto | Fallback exclusivo de `utm_source__c`; no confundir con procedencia general |
 | `Medio_Adquirido__c` | fallback de medio adquirido | sync y attribution builder | `acquired_medium_legacy`, `medium_acquired` efectivo | Campañas | No | Alto | Fallback exclusivo de `utm_medium__c` |
 | `Fuente_origen__c` | sin referencia | búsqueda global | Ninguna | Ninguno observado | No hoy | Crítico | Verificar API Name; crear destino inequívoco en fase posterior |
-| `Medio_origen__c` | filtro SOQL aislado | `SalesforceOrganicLeadSyncService::soql` | `seo_salesforce_organic_daily_metrics.lead_count` agregado diario | SEO/Analytics | Sí, solo universo SEO orgánico | Alto | No mezclar con `salesforce_leads.medio_origen` legacy |
+| `Medio_origen__c` | histórico Lead previo a ROT-5 | servicio retirado; sin lectura runtime | `seo_salesforce_organic_daily_metrics.lead_count` histórico | SEO/Analytics histórico | No | Alto | No mezclar con la serie Interest vigente |
+| `Interes__c.IN_Medio_Origen__c` | sync F2 canónico | `SalesforceInterestSyncService` → proyección local ROT-5 | `salesforce_interests.medium` → `seo_salesforce_organic_interest_daily_metrics.interest_count` | SEO/Analytics vigente | Sí, igualdad exacta `Orgánico` | Alto | F2 completed/estable; `functional_created_at` y límites Madrid→UTC |
 | `Canal__c` | sin referencia | búsqueda global | Ninguna | Ninguno observado | No hoy | Alto | Pendiente definir autoridad y valores válidos |
 | `Delegacion_procedencia__c` | sin referencia | búsqueda global | Ninguna | Ninguno observado | No hoy | Crítico | Pendiente prioridad, Exposición y aliases |
 | `utm_campaign__c`, `utm_id__c`, `utm_source__c`, `utm_medium__c`, `utm_content__c` | SELECT y resolución efectiva tras gate legacy | ambos sync y attribution builder | columnas `utm_*_new`, `field_resolution`, atribuciones | Campañas | No en universo; sí en atribución | Crítico | Nuevo no vacío gana por dimensión; `utm_id__c` conserva la posición funcional del ID legacy |
@@ -279,12 +281,13 @@ no debe alterar las Tasks, estados, duraciones, atendidas o desbordamientos.
 
 ### SEO/Analytics
 
-`SalesforceOrganicLeadSyncService` consulta directamente
-`Medio_origen__c = 'Orgánico'` y materializa únicamente conteos diarios en
-`seo_salesforce_organic_daily_metrics`. Es una proyección separada y ya existente;
-no constituye precedente para sobrescribir `salesforce_leads.medio_origen`.
-`SalesforceLeadMediumFieldResolver` inspecciona describe y candidatos con label
-“medio”, pero el sync orgánico tiene hoy el API Name literal.
+ROT-5 retira la consulta Lead directa y su resolver describe. La proyección SEO
+vigente lee exclusivamente el F2 local estable, filtra
+`salesforce_interests.medium = 'Orgánico'` y materializa conteos diarios en
+`seo_salesforce_organic_interest_daily_metrics` mediante
+`functional_created_at`. La tabla `seo_salesforce_organic_daily_metrics` se
+conserva solo como histórico Lead; ninguna de las dos series sobrescribe
+`salesforce_leads.medio_origen`.
 
 ### Otros consumidores y trazabilidad
 

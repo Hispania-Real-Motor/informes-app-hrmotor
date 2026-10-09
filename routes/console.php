@@ -179,7 +179,7 @@ $monitor(
         ->timezone('Europe/Madrid')
         ->withoutOverlapping(120),
     'seo-sync-salesforce-organic',
-    'sincronizacion SEO de Leads organicos Salesforce',
+    'proyeccion SEO de Intereses organicos Salesforce desde F2 local',
 );
 
 $monitor(

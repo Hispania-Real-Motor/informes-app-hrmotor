@@ -3,10 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
-use App\Models\SeoSalesforceOrganicDailyMetric;
+use App\Models\SeoSalesforceOrganicInterestDailyMetric;
 use App\Models\SeoSearchConsoleDailyMetric;
 use App\Models\SeoSearchConsoleDimensionMetric;
-use App\Services\SeoAnalytics\SalesforceOrganicLeadSyncService;
+use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\SeoAnalytics\SalesforceOrganicInterestProjectionService;
 use App\Services\SeoAnalytics\SearchConsoleSyncService;
 use App\Services\SeoAnalytics\SeoAnalyticsDatasetService;
 use Carbon\CarbonImmutable;
@@ -26,7 +27,7 @@ class SeoAnalyticsDashboardDataTest extends TestCase
         $this->seedSearchPeriod('2026-08-09', '2026-08-16');
         $this->seedSalesforcePeriod('2026-08-09', '2026-08-15');
         $this->completedRun(SearchConsoleSyncService::DATASET, '2026-08-16', ['property' => self::PROPERTY]);
-        $this->completedRun(SalesforceOrganicLeadSyncService::DATASET, '2026-08-15');
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, '2026-08-15');
         $this->seedQueryRanking('2026-08-10', '2026-08-16', '<script>alert(1)</script>');
         Http::fake();
 
@@ -35,7 +36,9 @@ class SeoAnalyticsDashboardDataTest extends TestCase
         $this->assertSame(['start' => '2026-08-10', 'end' => '2026-08-16'], $dataset['search_console_period']);
         $this->assertTrue($dataset['kpis']['spain']['available']);
         $this->assertSame(70, $dataset['kpis']['spain']['clicks']);
+        $this->assertSame(6, $dataset['kpis']['salesforce_interests']);
         $this->assertSame(6, $dataset['kpis']['salesforce_leads']);
+        $this->assertSame($dataset['daily'][0]['interests'], $dataset['daily'][0]['leads']);
         $this->assertLessThan(
             $dataset['kpis']['spain']['clicks'],
             $dataset['segments']['brand']['clicks'] + $dataset['segments']['non_brand']['clicks'],
@@ -59,7 +62,7 @@ class SeoAnalyticsDashboardDataTest extends TestCase
     {
         $this->configureProperty();
         $this->completedRun(SearchConsoleSyncService::DATASET, '2026-08-16', ['property' => self::PROPERTY]);
-        $this->completedRun(SalesforceOrganicLeadSyncService::DATASET, '2026-08-16');
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, '2026-08-16');
         $this->seedSearchPeriod('2026-08-15', '2026-08-16');
         $this->seedSalesforcePeriod('2026-08-15', '2026-08-16');
 
@@ -71,7 +74,7 @@ class SeoAnalyticsDashboardDataTest extends TestCase
         $this->assertFalse($partial['has_salesforce']);
 
         SeoSearchConsoleDailyMetric::query()->delete();
-        SeoSalesforceOrganicDailyMetric::query()->delete();
+        SeoSalesforceOrganicInterestDailyMetric::query()->delete();
         $this->seedSearchPeriod('2026-08-10', '2026-08-16', ['2026-08-13']);
         $this->seedSalesforcePeriod('2026-08-10', '2026-08-16', ['2026-08-13']);
         $gapped = app(SeoAnalyticsDatasetService::class)->build('7', 'summary');
@@ -81,7 +84,7 @@ class SeoAnalyticsDashboardDataTest extends TestCase
         $this->assertFalse($gapped['has_salesforce']);
 
         SeoSearchConsoleDailyMetric::query()->delete();
-        SeoSalesforceOrganicDailyMetric::query()->delete();
+        SeoSalesforceOrganicInterestDailyMetric::query()->delete();
         $this->seedSearchPeriod('2026-08-10', '2026-08-16', [], true);
         $this->seedSalesforcePeriod('2026-08-10', '2026-08-16', [], true);
         $completeZeros = app(SeoAnalyticsDatasetService::class)->build('7', 'summary');
@@ -107,7 +110,7 @@ class SeoAnalyticsDashboardDataTest extends TestCase
         ReportSyncRun::query()->delete();
         config(['services.google_search_console.property' => null]);
         $this->seedSalesforcePeriod('2026-08-10', '2026-08-16');
-        $this->completedRun(SalesforceOrganicLeadSyncService::DATASET, '2026-08-16');
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, '2026-08-16');
 
         $salesforceOnly = app(SeoAnalyticsDatasetService::class)->build('7', 'summary');
         $this->assertFalse($salesforceOnly['kpis']['spain']['available']);
@@ -148,6 +151,30 @@ class SeoAnalyticsDashboardDataTest extends TestCase
         $this->assertSame('2026-08-15', $dataset['cutoffs']['search_console']);
         $this->assertSame('Sincronizada', $dataset['sources'][0]['badge']);
         $this->assertStringNotContainsString('falló', $dataset['sources'][0]['detail']);
+    }
+
+    public function test_salesforce_source_status_preserves_completed_projection_cutoff_when_latest_projection_fails(): void
+    {
+        ReportSyncRun::query()->create([
+            'dataset' => SalesforceInterestSyncService::DATASET,
+            'source' => SalesforceInterestSyncService::SOURCE,
+            'status' => 'completed',
+            'period_start_at' => '2026-08-01 00:00:00',
+            'period_end_at' => '2026-08-17 10:00:00',
+            'source_cutoff_at' => '2026-08-17 10:00:00',
+            'started_at' => '2026-08-17 09:00:00',
+            'completed_at' => '2026-08-17 10:01:00',
+            'timezone' => 'UTC',
+        ]);
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, '2026-08-15', [], '2026-08-16 05:30:00');
+        $this->createSyncRun(SalesforceOrganicInterestProjectionService::DATASET, 'failed', '2026-08-17 05:30:00');
+
+        $dataset = app(SeoAnalyticsDatasetService::class)->build('7', 'summary');
+        $source = collect($dataset['sources'])->firstWhere('key', 'salesforce');
+
+        $this->assertSame('2026-08-15', $dataset['cutoffs']['salesforce']);
+        $this->assertSame('Error último sync', $source['badge']);
+        $this->assertStringContainsString('Datos anteriores cerrados hasta: 2026-08-15', $source['detail']);
     }
 
     public function test_range_whitelist_is_exact_text_and_invalid_values_fall_back_to_28(): void
@@ -225,9 +252,11 @@ class SeoAnalyticsDashboardDataTest extends TestCase
                 continue;
             }
 
-            SeoSalesforceOrganicDailyMetric::query()->create([
+            SeoSalesforceOrganicInterestDailyMetric::query()->create([
                 'data_date' => $date,
-                'lead_count' => $allZero || $date->equalTo(CarbonImmutable::parse($start)) ? 0 : 1,
+                'interest_count' => $allZero || $date->equalTo(CarbonImmutable::parse($start)) ? 0 : 1,
+                'source_interest_sync_run_id' => 1,
+                'source_interest_cutoff_at' => $end.' 23:59:59',
                 'source_timezone' => 'Europe/Madrid',
                 'extracted_at' => now(),
             ]);
@@ -267,7 +296,11 @@ class SeoAnalyticsDashboardDataTest extends TestCase
     {
         ReportSyncRun::query()->create([
             'dataset' => $dataset,
-            'source' => $dataset === SearchConsoleSyncService::DATASET ? 'google_search_console' : 'salesforce',
+            'source' => match ($dataset) {
+                SearchConsoleSyncService::DATASET => 'google_search_console',
+                SalesforceOrganicInterestProjectionService::DATASET => SalesforceOrganicInterestProjectionService::SOURCE,
+                default => 'salesforce',
+            },
             'status' => $status,
             'period_start_at' => $startedAt,
             'period_end_at' => $startedAt,

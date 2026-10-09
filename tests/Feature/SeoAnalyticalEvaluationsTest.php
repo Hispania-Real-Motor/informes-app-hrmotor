@@ -9,6 +9,7 @@ use App\Models\AnalyticalRuleSet;
 use App\Models\OperationalAlert;
 use App\Models\ReportSyncRun;
 use App\Models\ReportUser;
+use App\Services\Analytics\AnalyticalSnapshotFingerprint;
 use App\Services\Analytics\SameWeekdayComparisonEngine;
 use App\Services\SeoAnalytics\SeoAnalyticalComparisonDatasetService;
 use App\Services\SeoAnalytics\SeoAnalyticalEvaluationDatasetService;
@@ -46,7 +47,7 @@ class SeoAnalyticalEvaluationsTest extends TestCase
         Http::preventStrayRequests();
     }
 
-    public function test_migration_bootstraps_exactly_one_complete_immutable_v1_rule_set(): void
+    public function test_rot5_migration_versions_the_complete_rule_set_and_preserves_thresholds(): void
     {
         $this->assertTrue(Schema::hasTable('analytical_rule_sets'));
         $this->assertTrue(Schema::hasTable('analytical_metric_rules'));
@@ -84,16 +85,21 @@ class SeoAnalyticalEvaluationsTest extends TestCase
         $this->assertStringContainsString("->decimal('evaluated_absolute_change', 24, 8)", $migrationSource);
         $this->assertStringContainsString("->decimal('evaluated_relative_change', 20, 8)", $migrationSource);
 
-        $ruleSet = AnalyticalRuleSet::query()->with('rules')->sole();
-        $this->assertSame('seo_rules_v1', $ruleSet->version_key);
+        $this->assertSame(2, AnalyticalRuleSet::query()->count());
+        $legacy = AnalyticalRuleSet::query()->where('version_number', 1)->with('rules')->sole();
+        $ruleSet = AnalyticalRuleSet::query()->where('status', 'active')->with('rules')->sole();
+        $this->assertSame('seo_rules_v2', $ruleSet->version_key);
         $this->assertSame('active', $ruleSet->status);
+        $this->assertSame('superseded', $legacy->status);
         $this->assertNull($ruleSet->created_by_report_user_id);
         $this->assertCount(6, $ruleSet->rules);
+        $this->assertNotNull($legacy->rules->firstWhere('metric_key', 'salesforce_organic_leads'));
+        $this->assertNull($ruleSet->rules->firstWhere('metric_key', 'salesforce_organic_leads'));
 
         $rules = $ruleSet->rules->keyBy('metric_key');
         $this->assertRule($rules['search_console_clicks'], 'relative_percent', 'increase', 'percent', '10.00000000', '20.00000000', '35.00000000', '50.00000000', '10.00000000');
         $this->assertRule($rules['search_console_impressions'], 'relative_percent', 'increase', 'percent', '10.00000000', '20.00000000', '35.00000000', '1000.00000000', '100.00000000');
-        $this->assertRule($rules['salesforce_organic_leads'], 'relative_percent', 'increase', 'percent', '10.00000000', '20.00000000', '35.00000000', '5.00000000', '2.00000000');
+        $this->assertRule($rules['salesforce_organic_interests'], 'relative_percent', 'increase', 'percent', '10.00000000', '20.00000000', '35.00000000', '5.00000000', '2.00000000');
         $this->assertRule($rules['ga4_organic_key_events'], 'relative_percent', 'increase', 'percent', '10.00000000', '20.00000000', '35.00000000', '10.00000000', '3.00000000');
         $this->assertRule($rules['search_console_ctr'], 'absolute_percentage_points', 'increase', 'percentage_points', '0.50000000', '1.00000000', '2.00000000', null, null);
         $this->assertRule($rules['search_console_position'], 'absolute_value', 'decrease', 'positions', '0.50000000', '1.00000000', '2.00000000', null, null);
@@ -116,7 +122,7 @@ class SeoAnalyticalEvaluationsTest extends TestCase
         $this->assertDatabaseHas('analytical_metric_evaluations', ['metric_key' => 'search_console_impressions', 'status' => 'deviation', 'direction' => 'unfavorable']);
         $this->assertDatabaseHas('analytical_metric_evaluations', ['metric_key' => 'search_console_ctr', 'status' => 'critical', 'direction' => 'unfavorable']);
         $this->assertDatabaseHas('analytical_metric_evaluations', ['metric_key' => 'search_console_position', 'status' => 'critical', 'direction' => 'unfavorable']);
-        $this->assertDatabaseHas('analytical_metric_evaluations', ['metric_key' => 'salesforce_organic_leads', 'status' => 'observation', 'reason_code' => 'low_baseline_material_change']);
+        $this->assertDatabaseHas('analytical_metric_evaluations', ['metric_key' => 'salesforce_organic_interests', 'status' => 'observation', 'reason_code' => 'low_baseline_material_change']);
         $this->assertDatabaseHas('analytical_metric_evaluations', ['metric_key' => 'ga4_organic_key_events', 'status' => 'observation', 'direction' => 'favorable', 'magnitude_band' => 'critical']);
     }
 
@@ -137,18 +143,18 @@ class SeoAnalyticalEvaluationsTest extends TestCase
     {
         $this->seedCurrentSnapshots();
         app(SeoAnalyticalEvaluationService::class)->evaluate();
-        $v1 = AnalyticalRuleSet::query()->where('version_number', 1)->with('rules')->sole();
+        $v1 = AnalyticalRuleSet::query()->where('status', 'active')->with('rules')->sole();
         $director = $this->user(ReportUser::ROLE_DIRECTOR, 'director-rules@example.test');
         $this->authenticate($director);
         $payload = $this->settingsPayload($v1, 'Ajuste aprobado por Dirección');
 
         $this->get(route('reports.seo-analytics.settings.index'))
             ->assertOk()
-            ->assertSee('seo_rules_v1')
-            ->assertSee('Configuración inicial aprobada');
+            ->assertSee('seo_rules_v2')
+            ->assertSee('ROT-5');
         $this->put(route('reports.seo-analytics.settings.update'), $payload)->assertRedirect();
 
-        $v2 = AnalyticalRuleSet::query()->where('version_number', 2)->with('rules')->sole();
+        $v2 = AnalyticalRuleSet::query()->where('version_number', 3)->with('rules')->sole();
         $this->assertSame('active', $v2->status);
         $this->assertSame('superseded', $v1->fresh()->status);
         $this->assertSame($director->id, $v2->created_by_report_user_id);
@@ -165,23 +171,23 @@ class SeoAnalyticalEvaluationsTest extends TestCase
             ->assertSee('Los umbrales han cambiado desde que abriste esta pantalla.')
             ->assertSee('value="12.00000000"', false)
             ->assertDontSee('value="99"', false);
-        $this->assertSame(2, AnalyticalRuleSet::query()->count());
+        $this->assertSame(3, AnalyticalRuleSet::query()->count());
 
         $payloadV2 = $this->settingsPayload($v2, 'Segundo ajuste auditado');
         $this->put(route('reports.seo-analytics.settings.update'), $payloadV2)->assertRedirect();
-        $this->assertDatabaseHas('analytical_rule_sets', ['version_key' => 'seo_rules_v3', 'status' => 'active']);
+        $this->assertDatabaseHas('analytical_rule_sets', ['version_key' => 'seo_rules_v4', 'status' => 'active']);
         $this->assertSame(18, AnalyticalMetricEvaluation::query()->count());
     }
 
     public function test_validation_retry_preserves_stale_base_and_cannot_bypass_optimistic_locking(): void
     {
-        $v1 = AnalyticalRuleSet::query()->where('version_number', 1)->with('rules')->sole();
+        $v1 = AnalyticalRuleSet::query()->where('status', 'active')->with('rules')->sole();
         $director = $this->user(ReportUser::ROLE_DIRECTOR, 'director-validation-lock@example.test');
         $this->authenticate($director);
 
         $payloadA = $this->settingsPayload($v1, 'Ajuste concurrente aprobado');
         $this->put(route('reports.seo-analytics.settings.update'), $payloadA)->assertRedirect();
-        $v2 = AnalyticalRuleSet::query()->where('version_number', 2)->with('rules')->sole();
+        $v2 = AnalyticalRuleSet::query()->where('version_number', 3)->with('rules')->sole();
         $this->assertSame('12.00000000', $v2->rules->firstWhere('metric_key', 'search_console_clicks')->observation_threshold);
 
         $stalePayload = $this->settingsPayload($v1, '');
@@ -192,14 +198,14 @@ class SeoAnalyticalEvaluationsTest extends TestCase
             ->assertRedirect(route('reports.seo-analytics.settings.index'))
             ->assertSessionHasErrors('change_reason')
             ->assertSessionHasInput('base_rule_set_id', $v1->id)
-            ->assertSessionHasInput('base_version_number', 1);
+            ->assertSessionHasInput('base_version_number', 2);
 
         $this->get(route('reports.seo-analytics.settings.index'))
             ->assertOk()
             ->assertSee('name="base_rule_set_id" value="'.$v1->id.'"', false)
-            ->assertSee('name="base_version_number" value="1"', false)
+            ->assertSee('name="base_version_number" value="2"', false)
             ->assertSee('value="99"', false)
-            ->assertDontSee('name="base_version_number" value="2"', false);
+            ->assertDontSee('name="base_version_number" value="3"', false);
 
         $retryPayload = $stalePayload;
         $retryPayload['change_reason'] = 'Reintento deliberado tras validación';
@@ -209,22 +215,22 @@ class SeoAnalyticalEvaluationsTest extends TestCase
             ->assertOk()
             ->assertSee('Los umbrales han cambiado desde que abriste esta pantalla.')
             ->assertSee('name="base_rule_set_id" value="'.$v2->id.'"', false)
-            ->assertSee('name="base_version_number" value="2"', false)
+            ->assertSee('name="base_version_number" value="3"', false)
             ->assertSee('value="12.00000000"', false)
             ->assertDontSee('value="99"', false);
 
-        $this->assertSame(2, AnalyticalRuleSet::query()->count());
-        $this->assertFalse(AnalyticalRuleSet::query()->where('version_number', 3)->exists());
+        $this->assertSame(3, AnalyticalRuleSet::query()->count());
+        $this->assertFalse(AnalyticalRuleSet::query()->where('version_number', 4)->exists());
     }
 
     public function test_settings_reject_contract_tampering_and_unauthorized_roles_without_http(): void
     {
-        $v1 = AnalyticalRuleSet::query()->where('version_number', 1)->with('rules')->sole();
+        $v1 = AnalyticalRuleSet::query()->where('status', 'active')->with('rules')->sole();
         $payload = $this->settingsPayload($v1, 'Intento manipulado');
         $payload['rules']['search_console_clicks']['comparison_mode'] = 'absolute_value';
         $this->put(route('reports.seo-analytics.settings.update'), $payload)
             ->assertSessionHasErrors('rules.search_console_clicks');
-        $this->assertSame(1, AnalyticalRuleSet::query()->count());
+        $this->assertSame(2, AnalyticalRuleSet::query()->count());
 
         foreach ([ReportUser::ROLE_VIEWER, ReportUser::ROLE_MARKETING, ReportUser::ROLE_AREA_MANAGER] as $role) {
             $this->authenticate($this->user($role, $role.'-rules@example.test'));
@@ -236,7 +242,7 @@ class SeoAnalyticalEvaluationsTest extends TestCase
 
     public function test_admin_can_open_settings_and_invalid_numeric_rules_are_rejected(): void
     {
-        $v1 = AnalyticalRuleSet::query()->where('version_number', 1)->with('rules')->sole();
+        $v1 = AnalyticalRuleSet::query()->where('status', 'active')->with('rules')->sole();
         $this->authenticate(ReportUser::query()->where('role', ReportUser::ROLE_ADMIN)->firstOrFail());
         $this->get(route('reports.seo-analytics.settings.index'))->assertOk();
 
@@ -257,7 +263,7 @@ class SeoAnalyticalEvaluationsTest extends TestCase
         $this->put(route('reports.seo-analytics.settings.update'), $missingReason)
             ->assertSessionHasErrors('change_reason');
 
-        $this->assertSame(1, AnalyticalRuleSet::query()->count());
+        $this->assertSame(2, AnalyticalRuleSet::query()->count());
         Http::assertNothingSent();
     }
 
@@ -268,20 +274,19 @@ class SeoAnalyticalEvaluationsTest extends TestCase
         $this->artisan('seo:evaluate-analytical-snapshots')->assertSuccessful();
         $this->artisan('seo:evaluate-analytical-snapshots', ['--days' => 0])->assertFailed();
         $this->artisan('seo:evaluate-analytical-snapshots', ['--days' => 91])->assertFailed();
-        $this->artisan('seo:evaluate-analytical-snapshots', ['--days' => 30])->assertSuccessful();
+        $this->artisan('seo:evaluate-analytical-snapshots', ['--days' => 30])->assertFailed();
 
         $completed = ReportSyncRun::query()->where('dataset', SeoAnalyticalEvaluationService::DATASET)->where('status', 'completed')->get();
-        $this->assertCount(2, $completed);
-        $this->assertSame('seo_rules_v1', data_get($completed->first()->stats, 'rule_version'));
+        $this->assertCount(1, $completed);
+        $this->assertSame('seo_rules_v2', data_get($completed->first()->stats, 'rule_version'));
         $this->assertSame(6, data_get($completed->first()->stats, 'snapshots_evaluated'));
-        $this->assertSame(12, data_get($completed->last()->stats, 'snapshots_evaluated'));
 
-        $v1 = AnalyticalRuleSet::query()->where('version_number', 1)->with('rules')->sole();
+        $v1 = AnalyticalRuleSet::query()->where('status', 'active')->with('rules')->sole();
         $admin = ReportUser::query()->where('role', ReportUser::ROLE_ADMIN)->firstOrFail();
-        app(SeoAnalyticalRuleSetService::class)->createVersion($v1->id, 1, $this->ruleValues($v1), 'Nueva versión', $admin->id);
+        app(SeoAnalyticalRuleSetService::class)->createVersion($v1->id, 2, $this->ruleValues($v1), 'Nueva versión', $admin->id);
         $this->artisan('seo:evaluate-analytical-snapshots', ['--days' => 2])->assertFailed();
         $this->assertDatabaseHas('report_sync_runs', ['dataset' => SeoAnalyticalEvaluationService::DATASET, 'status' => 'failed']);
-        $failed = ReportSyncRun::query()->where('dataset', SeoAnalyticalEvaluationService::DATASET)->where('status', 'failed')->latest('id')->sole();
+        $failed = ReportSyncRun::query()->where('dataset', SeoAnalyticalEvaluationService::DATASET)->where('status', 'failed')->latest('id')->firstOrFail();
         $this->assertNotEmpty($failed->error_message);
         $this->assertStringNotContainsString('select ', strtolower($failed->error_message));
 
@@ -296,11 +301,11 @@ class SeoAnalyticalEvaluationsTest extends TestCase
     {
         $this->seedCurrentSnapshots();
         app(SeoAnalyticalEvaluationService::class)->evaluate();
-        $v1 = AnalyticalRuleSet::query()->where('version_number', 1)->with('rules')->sole();
+        $v1 = AnalyticalRuleSet::query()->where('status', 'active')->with('rules')->sole();
         $admin = ReportUser::query()->where('role', ReportUser::ROLE_ADMIN)->firstOrFail();
         app(SeoAnalyticalRuleSetService::class)->createVersion(
             $v1->id,
-            1,
+            2,
             $this->ruleValues($v1),
             'Validacion de version visible unica',
             $admin->id,
@@ -313,14 +318,54 @@ class SeoAnalyticalEvaluationsTest extends TestCase
                 ->assertSee('Señales recientes')
                 ->assertSee('Oportunidad / posible anomalía.')
                 ->assertSee('data-report-status="critical"', false)
-                ->assertSee('seo_rules_v2');
+                ->assertSee('seo_rules_v3');
         }
 
         $signals = app(SeoAnalyticalEvaluationDatasetService::class)->recentSignals();
         $this->assertLessThanOrEqual(50, count($signals));
         $this->assertCount(6, $signals);
-        $this->assertSame(['seo_rules_v2'], collect($signals)->pluck('rule_version')->unique()->values()->all());
+        $this->assertSame(['seo_rules_v3'], collect($signals)->pluck('rule_version')->unique()->values()->all());
         Http::assertNothingSent();
+    }
+
+    public function test_recent_signals_exclude_historical_lead_identity(): void
+    {
+        $this->seedCurrentSnapshots();
+        app(SeoAnalyticalEvaluationService::class)->evaluate();
+        $legacySnapshot = AnalyticalMetricSnapshot::query()->create([
+            'module_key' => 'seo', 'metric_key' => 'salesforce_organic_leads',
+            'metric_label' => 'Lead orgánico (Salesforce)', 'source_key' => 'salesforce',
+            'source_identifier' => 'salesforce-organic-leads',
+            'source_identifier_hash' => hash('sha256', 'salesforce-organic-leads'),
+            'scope_key' => 'all', 'value_format' => 'integer', 'data_date' => '2026-08-20',
+            'source_cutoff_at' => '2026-08-20 23:59:59', 'current_value' => '1',
+            'reference_count' => 4, 'baseline_value' => '10', 'absolute_change' => '-9',
+            'relative_change' => '-0.9', 'is_evaluable' => true,
+            'engine_version' => SameWeekdayComparisonEngine::VERSION, 'computed_at' => now(),
+        ]);
+        $legacySet = AnalyticalRuleSet::query()->where('version_number', 1)->sole();
+        $legacyRule = AnalyticalMetricRule::query()
+            ->where('rule_set_id', $legacySet->id)
+            ->where('metric_key', 'salesforce_organic_leads')
+            ->sole();
+        AnalyticalMetricEvaluation::query()->create([
+            'analytical_metric_snapshot_id' => $legacySnapshot->id,
+            'analytical_rule_set_id' => $legacySet->id,
+            'analytical_metric_rule_id' => $legacyRule->id,
+            'module_key' => 'seo', 'metric_key' => 'salesforce_organic_leads',
+            'data_date' => '2026-08-20', 'evaluated_current_value' => '1',
+            'evaluated_baseline_value' => '10', 'evaluated_absolute_change' => '-9',
+            'evaluated_relative_change' => '-0.9', 'evaluated_snapshot_is_evaluable' => true,
+            'evaluated_snapshot_fingerprint' => app(AnalyticalSnapshotFingerprint::class)
+                ->hash($legacySnapshot->toArray()),
+            'status' => 'critical', 'direction' => 'unfavorable', 'magnitude_band' => 'critical',
+            'reason_code' => 'relative_threshold', 'evaluated_at' => now(),
+        ]);
+
+        $signals = app(SeoAnalyticalEvaluationDatasetService::class)->recentSignals();
+
+        $this->assertNotContains('Lead orgánico (Salesforce)', collect($signals)->pluck('metric')->all());
+        $this->assertContains('Interés orgánico (Salesforce)', collect($signals)->pluck('metric')->all());
     }
 
     public function test_evaluation_captures_facts_detects_rolling_revision_and_refreshes_idempotently(): void
@@ -400,7 +445,7 @@ class SeoAnalyticalEvaluationsTest extends TestCase
         $this->snapshot('search_console_impressions', 'search_console', self::SEARCH_PROPERTY, '2026-08-20', '750', '1000', '-250', '-0.25');
         $this->snapshot('search_console_ctr', 'search_console', self::SEARCH_PROPERTY, '2026-08-20', '0.005', '0.03', '-0.025', '-0.83333333');
         $this->snapshot('search_console_position', 'search_console', self::SEARCH_PROPERTY, '2026-08-20', '7.5', '5', '2.5', '0.5');
-        $this->snapshot('salesforce_organic_leads', 'salesforce', SeoAnalyticalMetricRegistry::SALESFORCE_SOURCE_IDENTIFIER, '2026-08-20', '0', '4', '-4', '-1');
+        $this->snapshot('salesforce_organic_interests', 'salesforce', SeoAnalyticalMetricRegistry::SALESFORCE_SOURCE_IDENTIFIER, '2026-08-20', '0', '4', '-4', '-1');
         $this->snapshot('ga4_organic_key_events', 'ga4', self::GA4_PROPERTY, '2026-08-20', '14', '10', '4', '0.4');
     }
 
@@ -410,7 +455,7 @@ class SeoAnalyticalEvaluationsTest extends TestCase
         $this->snapshot('search_console_impressions', 'search_console', self::SEARCH_PROPERTY, '2026-08-19', '900', '1000', '-100', '-0.1');
         $this->snapshot('search_console_ctr', 'search_console', self::SEARCH_PROPERTY, '2026-08-19', '0.025', '0.03', '-0.005', '-0.16666667');
         $this->snapshot('search_console_position', 'search_console', self::SEARCH_PROPERTY, '2026-08-19', '5.5', '5', '0.5', '0.1');
-        $this->snapshot('salesforce_organic_leads', 'salesforce', SeoAnalyticalMetricRegistry::SALESFORCE_SOURCE_IDENTIFIER, '2026-08-19', '5', '5', '0', '0');
+        $this->snapshot('salesforce_organic_interests', 'salesforce', SeoAnalyticalMetricRegistry::SALESFORCE_SOURCE_IDENTIFIER, '2026-08-19', '5', '5', '0', '0');
         $this->snapshot('ga4_organic_key_events', 'ga4', self::GA4_PROPERTY, '2026-08-19', '10', '10', '0', '0');
     }
 

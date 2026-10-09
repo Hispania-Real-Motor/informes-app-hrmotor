@@ -14,6 +14,7 @@ final class SeoAnalyticalEvaluationDatasetService
     public function __construct(
         private readonly SeoAnalyticalSnapshotScope $scope,
         private readonly AnalyticalSnapshotFingerprint $fingerprints,
+        private readonly SeoAnalyticalMetricRegistry $registry,
     ) {}
 
     /** @param Collection<int, AnalyticalMetricSnapshot> $snapshots
@@ -37,8 +38,10 @@ final class SeoAnalyticalEvaluationDatasetService
     /** @return array<int, array<string, mixed>> */
     public function recentSignals(): array
     {
+        $metricKeys = collect($this->registry->metrics())->pluck('key')->all();
         $latestDate = AnalyticalMetricSnapshot::query()
             ->where('module_key', SeoAnalyticalMetricRegistry::MODULE)
+            ->whereIn('metric_key', $metricKeys)
             ->where(fn (Builder $query) => $this->scope->apply($query))
             ->max('data_date');
         if (! $latestDate) {
@@ -52,6 +55,7 @@ final class SeoAnalyticalEvaluationDatasetService
             ->join('analytical_metric_snapshots as snapshots', 'snapshots.id', '=', 'evaluations.analytical_metric_snapshot_id')
             ->join('analytical_rule_sets as rule_sets', 'rule_sets.id', '=', 'evaluations.analytical_rule_set_id')
             ->where('evaluations.module_key', SeoAnalyticalMetricRegistry::MODULE)
+            ->whereIn('evaluations.metric_key', $metricKeys)
             ->where('evaluations.status', '!=', 'ok')
             ->whereDate('evaluations.data_date', '>=', $start)
             ->where(fn (Builder $query) => $this->scope->apply($query, 'snapshots.'))

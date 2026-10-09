@@ -4,7 +4,7 @@ namespace App\Services\SeoAnalytics;
 
 use App\Models\SeoGa4OrganicDailyMetric;
 use App\Models\SeoGa4OrganicKeyEventDailyMetric;
-use App\Models\SeoSalesforceOrganicDailyMetric;
+use App\Models\SeoSalesforceOrganicInterestDailyMetric;
 use App\Models\SeoSearchConsoleDailyMetric;
 use App\Models\SeoSearchConsoleDimensionMetric;
 use Carbon\CarbonImmutable;
@@ -54,7 +54,7 @@ final class SeoAnalyticsDatasetService
                 ->get()
             : collect();
         $salesforceRows = ($salesforceCutoff && $commonCutoff)
-            ? SeoSalesforceOrganicDailyMetric::query()
+            ? SeoSalesforceOrganicInterestDailyMetric::query()
                 ->where('data_date', '>=', $commonStart->toDateString())
                 ->where('data_date', '<', $commonCutoff->addDay()->toDateString())
                 ->get()
@@ -72,11 +72,11 @@ final class SeoAnalyticsDatasetService
         $brand = $this->summarize($searchRows->where('country_scope', 'ESP')->where('brand_segment', 'brand'), $commonStart, $commonCutoff);
         $nonBrand = $this->summarize($searchRows->where('country_scope', 'ESP')->where('brand_segment', 'non_brand'), $commonStart, $commonCutoff);
         $rest = $this->restMetric($global, $spain);
-        $salesforceLeads = $this->hasCompleteCoverage($salesforceRows, $commonStart, $commonCutoff)
-            ? (int) $salesforceRows->sum('lead_count')
+        $salesforceInterests = $this->hasCompleteCoverage($salesforceRows, $commonStart, $commonCutoff)
+            ? (int) $salesforceRows->sum('interest_count')
             : null;
         $hasSearchConsole = $spain['available'] && $global['available'];
-        $hasSalesforce = $salesforceLeads !== null;
+        $hasSalesforce = $salesforceInterests !== null;
         $ga4Spain = $this->ga4Metric($ga4Rows->where('country_scope', 'ESP'), $commonStart, $commonCutoff);
         $ga4Global = $this->ga4Metric($ga4Rows->where('country_scope', 'ALL'), $commonStart, $commonCutoff);
         $ga4Rest = $this->ga4RestMetric($ga4Global, $ga4Spain);
@@ -86,7 +86,7 @@ final class SeoAnalyticsDatasetService
             fn (SeoSearchConsoleDailyMetric $row): string => $row->data_date->toDateString()
         );
         $dailySalesforce = $salesforceRows->keyBy(
-            fn (SeoSalesforceOrganicDailyMetric $row): string => $row->data_date->toDateString()
+            fn (SeoSalesforceOrganicInterestDailyMetric $row): string => $row->data_date->toDateString()
         );
         $dailyGa4 = $ga4Rows->where('country_scope', 'ESP')->keyBy(
             fn (SeoGa4OrganicDailyMetric $row): string => $row->data_date->toDateString()
@@ -104,7 +104,8 @@ final class SeoAnalyticsDatasetService
                     'impressions' => $sc?->impressions,
                     'ctr' => $sc?->ctr !== null ? (float) $sc->ctr : null,
                     'position' => $sc?->position !== null ? (float) $sc->position : null,
-                    'leads' => $sf?->lead_count,
+                    'interests' => $sf?->interest_count,
+                    'leads' => $sf?->interest_count,
                     'ga4_key_events' => $ga4?->key_events !== null ? (float) $ga4->key_events : null,
                 ];
             }
@@ -162,7 +163,8 @@ final class SeoAnalyticsDatasetService
             'has_ga4' => $hasGa4,
             'kpis' => [
                 'spain' => $spain,
-                'salesforce_leads' => $salesforceLeads,
+                'salesforce_interests' => $salesforceInterests,
+                'salesforce_leads' => $salesforceInterests,
                 'ga4_key_events' => $ga4Spain['key_events'],
             ],
             'segments' => ['brand' => $brand, 'non_brand' => $nonBrand],

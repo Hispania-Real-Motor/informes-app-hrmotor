@@ -322,8 +322,17 @@ php artisan seo:sync-salesforce-organic --days=120
 php artisan seo:sync-ga4-organic --days=120
 ```
 
+Desde ROT-5, `seo:sync-salesforce-organic` es una proyección local y no depende
+del diagnóstico live ni de credenciales Salesforce. Antes de ejecutarla debe
+existir un último `report_sync_runs` canónico de
+`salesforce_interests/salesforce` en estado `completed` y con
+`source_cutoff_at`; el comando falla de forma segura si F2 no cumple el
+contrato o cambia durante la proyección. Search Console y GA4 sí conservan sus
+diagnósticos remotos.
+
 Verificar después `php artisan schedule:list`, los últimos `report_sync_runs` de
-`seo_search_console`/`seo_salesforce_organic`/`seo_ga4_organic_conversions` y los
+`seo_search_console`/`seo_salesforce_organic_interests`/
+`seo_ga4_organic_conversions` y los
 cutoffs mostrados en el panel. Para GA4, confirmar previamente property,
 timezone, web streams y Key Events con el diagnóstico live; después verificar
 `php artisan schedule:list` y el horario 05:45.
@@ -398,6 +407,13 @@ exponer identities ni secretos:
 Los comandos de ingesta aceptan `--days=1..480`. El builder es distinto: acepta
 `--days=1..90`, usa 30 cuando se omite la opción y su scheduler invoca ese
 default para reconstruir 30 días. No ampliar el builder a 400 durante el backfill.
+
+En despliegues posteriores a ROT-5, aplicar primero las migraciones que crean
+`seo_salesforce_organic_interest_daily_metrics` y la versión de reglas vN+1.
+Verificar después un F2 completo/estable, ejecutar la proyección Interest y solo
+entonces construir snapshots/evaluaciones. No copiar ni reinterpretar filas de
+`seo_salesforce_organic_daily_metrics`: esa tabla y sus identidades Lead son
+histórico inmutable.
 
 ```bash
 php artisan schedule:list

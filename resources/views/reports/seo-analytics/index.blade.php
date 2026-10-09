@@ -4,7 +4,7 @@
             <x-reports.ui.page-header
                 eyebrow="Marketing estratégico"
                 title="SEO y Analytics"
-                description="Visibilidad orgánica de Search Console y Leads orgánicos registrados en Salesforce."
+                description="Visibilidad orgánica de Search Console e Intereses orgánicos registrados en Salesforce."
             >
                 @if ($canManageAnalyticalRules || in_array($section, ['summary', 'traffic', 'search'], true))
                     <x-slot:actions>
@@ -73,7 +73,7 @@
                             ['Impresiones orgánicas', $kpis['spain']['impressions'], null],
                             ['CTR', $kpis['spain']['ctr'], 'percent'],
                             ['Posición media', $kpis['spain']['position'], 'decimal'],
-                            ['Lead orgánico (Salesforce)', $kpis['salesforce_leads'], null],
+                            ['Interés orgánico (Salesforce)', $kpis['salesforce_interests'], null],
                             ['Conversiones web orgánicas (GA4)', $kpis['ga4_key_events'], 'ga4'],
                         ] as [$label, $value, $format])
                             <div class="report-ui-kpi-strip__item">
@@ -214,14 +214,14 @@
                     @endif
                 </section>
             @elseif ($section === 'traffic')
-                <div class="report-ui-data-panel"><div class="report-ui-data-panel__header"><x-reports.ui.section-header title="Tráfico y conversión" description="Search Console, Lead orgánico Salesforce y Conversiones web orgánicas GA4 son fuentes distintas y no se suman." /></div>
+                <div class="report-ui-data-panel"><div class="report-ui-data-panel__header"><x-reports.ui.section-header title="Tráfico y conversión" description="Search Console, Interés orgánico Salesforce y Conversiones web orgánicas GA4 son fuentes distintas y no se suman." /></div>
                     @if ($daily === []) <div class="report-ui-data-panel__body"><x-reports.ui.empty-state title="Sin serie diaria sincronizada" description="Las fuentes se cargan exclusivamente mediante sus comandos y scheduler." /></div>
-                    @else <div class="report-ui-data-panel__scroll" tabindex="0" aria-label="Tráfico orgánico diario"><table class="report-ui-table report-ui-table--sticky-header"><thead><tr><th scope="col">Fecha</th><th scope="col" class="report-ui-table__numeric">Clicks España</th><th scope="col" class="report-ui-table__numeric">Impresiones España</th><th scope="col" class="report-ui-table__numeric">CTR</th><th scope="col" class="report-ui-table__numeric">Posición</th><th scope="col" class="report-ui-table__numeric">Lead orgánico Salesforce</th><th scope="col" class="report-ui-table__numeric">Conversiones web orgánicas GA4</th></tr></thead><tbody>
-                        @foreach ($daily as $row)<tr><td>{{ $row['date'] }}</td><td class="report-ui-table__numeric">{{ $row['clicks'] ?? '—' }}</td><td class="report-ui-table__numeric">{{ $row['impressions'] ?? '—' }}</td><td class="report-ui-table__numeric">{{ $row['ctr'] === null ? '—' : number_format($row['ctr'] * 100, 2, ',', '.').'%' }}</td><td class="report-ui-table__numeric">{{ $row['position'] === null ? '—' : number_format($row['position'], 2, ',', '.') }}</td><td class="report-ui-table__numeric">{{ $row['leads'] ?? '—' }}</td><td class="report-ui-table__numeric">{{ $row['ga4_key_events'] === null ? '—' : number_format($row['ga4_key_events'], 2, ',', '.') }}</td></tr>@endforeach
+                    @else <div class="report-ui-data-panel__scroll" tabindex="0" aria-label="Tráfico orgánico diario"><table class="report-ui-table report-ui-table--sticky-header"><thead><tr><th scope="col">Fecha</th><th scope="col" class="report-ui-table__numeric">Clicks España</th><th scope="col" class="report-ui-table__numeric">Impresiones España</th><th scope="col" class="report-ui-table__numeric">CTR</th><th scope="col" class="report-ui-table__numeric">Posición</th><th scope="col" class="report-ui-table__numeric">Interés orgánico Salesforce</th><th scope="col" class="report-ui-table__numeric">Conversiones web orgánicas GA4</th></tr></thead><tbody>
+                        @foreach ($daily as $row)<tr><td>{{ $row['date'] }}</td><td class="report-ui-table__numeric">{{ $row['clicks'] ?? '—' }}</td><td class="report-ui-table__numeric">{{ $row['impressions'] ?? '—' }}</td><td class="report-ui-table__numeric">{{ $row['ctr'] === null ? '—' : number_format($row['ctr'] * 100, 2, ',', '.').'%' }}</td><td class="report-ui-table__numeric">{{ $row['position'] === null ? '—' : number_format($row['position'], 2, ',', '.') }}</td><td class="report-ui-table__numeric">{{ $row['interests'] ?? '—' }}</td><td class="report-ui-table__numeric">{{ $row['ga4_key_events'] === null ? '—' : number_format($row['ga4_key_events'], 2, ',', '.') }}</td></tr>@endforeach
                     </tbody></table></div>@endif
                 </div>
                 <div class="report-ui-data-panel" style="margin-top: var(--report-ui-space-4)">
-                    <div class="report-ui-data-panel__header"><x-reports.ui.section-header title="Conversiones web orgánicas (GA4)" description="Key Events atribuidos a Organic Search en plataforma web. No se suman a Lead orgánico Salesforce." /></div>
+                    <div class="report-ui-data-panel__header"><x-reports.ui.section-header title="Conversiones web orgánicas (GA4)" description="Key Events atribuidos a Organic Search en plataforma web. No se suman a Interés orgánico Salesforce." /></div>
                     <div class="report-ui-data-panel__body">
                         <p class="report-ui-help">
                             España: {{ $ga4['spain']['key_events'] === null ? '—' : number_format($ga4['spain']['key_events'], 2, ',', '.') }} ·

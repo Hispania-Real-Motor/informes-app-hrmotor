@@ -1,5 +1,62 @@
 # Handoff para agentes
 
+## ROT-5 — SEO Salesforce → Interests (2026-10-09)
+
+- Rama `feat/rot-5-seo-to-interests`, creada desde `main`
+  `0d0bcb6577a687023de3e07e8447386eb694f58e` (merge ROT-4, PR #74). El lote
+  rota exclusivamente la fuente Salesforce del informe SEO; no cambia Search
+  Console, GA4, salud técnica ni consumidores ajenos.
+- `seo:sync-salesforce-organic` conserva nombre, opción `--days=1..480`, lock y
+  horario 05:30 por compatibilidad, pero ya no llama Salesforce. Proyecta desde
+  `salesforce_interests` únicamente registros activos con
+  `medium = 'Orgánico'`, usando `functional_created_at` y límites
+  Europe/Madrid→UTC. UTM, source, channel y Lead no son fallbacks.
+- La nueva tabla `seo_salesforce_organic_interest_daily_metrics` conserva un
+  conteo por día, timezone, ID/cutoff F2 y fecha de extracción. El run propio es
+  `seo_salesforce_organic_interests/local_database`; el último F2 por ID debe
+  estar completed y con cutoff, y se revalida tras leer, antes de persistir y
+  antes de completar. La publicación es transaccional e incluye ceros dentro
+  de la cobertura efectiva.
+- La métrica vigente es `salesforce_organic_interests`, con identidad
+  `salesforce-organic-interests`, label «Interés orgánico (Salesforce)» y campo
+  `interest_count`. Dashboard, snapshot, evaluación, señales y correo ejecutivo
+  filtran el registry activo. Los aliases `salesforce_leads`/`leads` se mantienen
+  solo en el payload descriptivo para compatibilidad.
+- La tabla `seo_salesforce_organic_daily_metrics`, la identidad
+  `salesforce_organic_leads`, sus snapshots/evaluaciones y `seo_rules_v1`
+  permanecen intactos como histórico. La migración crea vN+1 copiando las seis
+  reglas y todos sus umbrales, y cambia únicamente la regla Salesforce a la
+  identidad Interest. El rollback solo reactiva el predecesor si no existe una
+  versión posterior.
+- Diagnóstico y readiness de esta fuente pasan a comprobar exclusivamente F2 y
+  la proyección locales. No requieren credenciales Salesforce, no ejecutan
+  describe y no realizan red. Los errores son sanitizados y no incluyen IDs,
+  payloads, PII ni secretos.
+- Rendimiento: cursor por PK en chunks de 1.000, agregación acotada de hasta 480
+  días y un upsert transaccional; no se carga F2 completo, no hay N+1 ni una
+  consulta por día. Los índices existentes de `salesforce_interests` soportan
+  lifecycle/medium y fecha funcional.
+- Archivos principales: nuevo modelo y servicio de proyección, dos migraciones
+  ROT-5, command/registry/dataset/snapshot/evaluación/readiness/diagnóstico SEO,
+  vista, scheduler, pruebas focales y documentación contractual/operativa. Se
+  eliminan el sync Lead SEO y su resolver describe, ya sin consumidores.
+- Seguridad: ejecución 100 % local y read-only sobre F2; sin acceso Salesforce,
+  shadow o producción, sin backfill real y sin migraciones persistentes durante
+  la implementación. Search Console/GA4 conservan sus integraciones existentes.
+- Validación: focal ROT-5/analítica/dashboard/diagnóstico/scheduler 64 tests y
+  679 aserciones; suite SEO completa 142/1.261; Foundation Interest 128/730;
+  Campañas 89/737; Reservas/Ventas 104/1.252; Llamadas 11/73; dashboard Leads
+  24/78; Monthly Commercial 15/61; Executive 100/509; suite completa
+  1.302/9.363. Composer validate y audit correctos sin advisories; Pint sobre
+  todos los PHP modificados, Vite, `migrate --pretend` y
+  `git diff --check` correctos. El Pint global conserva deuda de estilo previa
+  en archivos no modificados, que no se corrigió fuera del alcance.
+- Acciones manuales: aplicar las migraciones en el entorno autorizado, verificar
+  un F2 completed con cutoff y ejecutar primero la proyección (ampliando
+  `--days` si se requiere histórico) antes de construir snapshots/evaluaciones.
+  Certificar en shadow antes de cualquier despliegue productivo. ROT-5 permanece
+  `en_revision` hasta ese proceso.
+
 ## ROT-4 — Campañas → Interests (2026-10-09)
 
 ### Hardening de revisión sénior
@@ -2755,7 +2812,11 @@ System, Application Shell o CSS propio del informe.
   por ello no se eliminó el contrato anterior. No se desplegó, sincronizó ni
   modificó información real.
 
-## SEO/Analytics Lote 5 - Comparativa diaria (2026-08-19)
+## SEO/Analytics Lote 5 - Comparativa diaria (2026-08-19, histórico)
+
+La identidad Salesforce Lead descrita aquí corresponde al contrato previo a
+ROT-5. Los snapshots históricos permanecen válidos; los nuevos usan la identidad
+Interest documentada al inicio.
 
 - Se añadió el core transversal `SameWeekdayComparisonEngine`, sin queries ni
   conceptos SEO. `same_weekday_v1` usa D-7/D-14/D-21/D-28 exactos, mínimo 3/4,
@@ -2925,7 +2986,11 @@ Actualizado: 2026-08-19.
   `composer audit --locked --no-dev` y `git diff --check`, correctos. El build no
   cambió `public/build` porque no existen cambios CSS/JS.
 
-## SEO/Analytics Lote 2 - Search Console y Lead orgánico (2026-08-17)
+## SEO/Analytics Lote 2 - Search Console y Lead orgánico (2026-08-17, histórico)
+
+Esta sección documenta el contrato anterior a ROT-5. La fuente Salesforce SEO
+vigente es la proyección Interest local descrita al inicio de este HANDOFF; no
+debe usarse esta sección para operar el pipeline actual.
 
 - Tres tablas nuevas separan agregados diarios exactos Search Console,
   rankings top reemplazables y proyección diaria Salesforce. Las sync son

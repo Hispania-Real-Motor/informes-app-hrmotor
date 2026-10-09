@@ -565,11 +565,23 @@ Actualizado: 2026-10-09.
 - `App\Services\SeoAnalytics` separa clientes HTTP, sincronización/persistencia
   y dataset de render. `GET /informes/seo-analytics` solo lee BD local y config.
 - Search Console conserva agregados diarios exactos finales separados de
-  rankings top 7/28/90 reemplazables. Salesforce SEO usa una proyección propia
-  de `Medio_origen__c = 'Orgánico'`, sin alterar `salesforce_leads.medio_origen`.
+  rankings top 7/28/90 reemplazables. Desde ROT-5, Salesforce SEO proyecta
+  exclusivamente el último F2 local estable: `salesforce_interests` activos con
+  `medium = 'Orgánico'`, agrupados por `functional_created_at` en días
+  `Europe/Madrid` y consultados mediante límites UTC. No consulta Salesforce ni
+  altera las réplicas Lead/Interest.
+- La proyección `seo_salesforce_organic_interest_daily_metrics` conserva en
+  cada día el ID y cutoff F2 utilizado; el día máximo es el menor entre ayer
+  Madrid y el día local del cutoff menos uno. El F2 se revalida antes de
+  publicar y cualquier run posterior invalida el build de forma fail-safe.
+- La serie vigente tiene identidad `salesforce_organic_interests` /
+  `salesforce-organic-interests`. Tabla, snapshots, evaluaciones y reglas
+  `salesforce_organic_leads` previas permanecen como histórico aislado. La
+  rotación crea una nueva versión activa de reglas copiando umbrales sin
+  reinterpretar el histórico.
 - GA4 persiste `keyEvents` Organic Search/web como decimal, con totales ALL/ESP
   separados del detalle España por evento. Usa timezone de property, lag
-  operativo y rolling refresh; nunca se suma con Leads Salesforce. Cada página
+  operativo y rolling refresh; nunca se suma con Interests Salesforce. Cada página
   Data API supera una quality gate de thresholding, data loss y sampling antes
   de que una ausencia pueda convertirse en cero. Sus strings `TYPE_FLOAT` se
   normalizan a escala 6 mediante aritmética decimal textual, sin redondeo ni

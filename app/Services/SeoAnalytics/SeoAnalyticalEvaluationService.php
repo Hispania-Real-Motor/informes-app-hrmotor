@@ -39,7 +39,8 @@ final class SeoAnalyticalEvaluationService
             throw new RuntimeException('El backfill historico solo esta permitido mientras seo_rules_v1 es la unica version activa.');
         }
 
-        $snapshots = $this->snapshots($days);
+        $metricKeys = $ruleSet->rules->pluck('metric_key')->all();
+        $snapshots = $this->snapshots($days, $metricKeys);
         $rules = $ruleSet->rules->keyBy('metric_key');
         $now = now();
         $rows = [];
@@ -105,11 +106,13 @@ final class SeoAnalyticalEvaluationService
     }
 
     /** @return Collection<int, AnalyticalMetricSnapshot> */
-    private function snapshots(int $days): Collection
+    /** @param array<int, string> $metricKeys */
+    private function snapshots(int $days, array $metricKeys): Collection
     {
         $latestDates = AnalyticalMetricSnapshot::query()
             ->selectRaw('metric_key, MAX(data_date) as max_data_date')
             ->where('module_key', SeoAnalyticalMetricRegistry::MODULE)
+            ->whereIn('metric_key', $metricKeys)
             ->where(fn (Builder $query) => $this->scope->apply($query))
             ->groupBy('metric_key')
             ->pluck('max_data_date', 'metric_key');
@@ -122,6 +125,7 @@ final class SeoAnalyticalEvaluationService
         );
         $snapshots = AnalyticalMetricSnapshot::query()
             ->where('module_key', SeoAnalyticalMetricRegistry::MODULE)
+            ->whereIn('metric_key', $metricKeys)
             ->where(fn (Builder $query) => $this->scope->apply($query))
             ->whereDate('data_date', '>=', $starts->min())
             ->whereDate('data_date', '<=', $latestDates->max())

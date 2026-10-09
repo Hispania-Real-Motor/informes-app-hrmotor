@@ -3,7 +3,7 @@
 ## Alcance operativo
 
 Los Lotes 2 a 7 incorporan datos persistidos de Google Search Console, una
-proyección diaria aislada de Leads orgánicos Salesforce y Conversiones web
+proyección diaria aislada de Interests orgánicos desde FOUNDATION-2 y Conversiones web
 orgánicas GA4. `GET
 /informes/seo-analytics` consulta exclusivamente la base local y configuración:
 no llama Google, Salesforce, GA4 ni SISTRIX.
@@ -59,10 +59,14 @@ automático. Cada comando registra
   días de query ESP, page ESP y country global. El conjunto se obtiene completo
   antes de sustituirse atómicamente. No es un dataset exhaustivo ni fuente de
   verdad para KPI, ceros o alertas.
-- `seo_salesforce_organic_daily_metrics`: conteo diario de registros Lead cuya
-  condición es exactamente `Medio_origen__c = 'Orgánico'`. Timezone:
-  `Europe/Madrid`; ayer es el último día cerrado y los días cubiertos sin Leads
-  son ceros reales.
+- `seo_salesforce_organic_interest_daily_metrics`: proyección vigente del conteo
+  diario de `salesforce_interests` activos cuya condición es exactamente
+  `medium = 'Orgánico'`. Usa `functional_created_at` persistido en UTC y
+  calendario `Europe/Madrid`; ayer es el último día local cerrado y los días
+  cubiertos sin Interests son ceros reales. Cada fila conserva el ID y cutoff
+  del F2 exacto utilizado.
+- `seo_salesforce_organic_daily_metrics`: histórico Lead previo a ROT-5. Se
+  conserva para auditoría y rollback, pero no alimenta la métrica vigente.
 - `seo_ga4_organic_daily_metrics`: total diario GA4 por property, fecha y
   ámbito (`ALL`/`ESP`), con `key_events DECIMAL(18,6)`.
 - `seo_ga4_organic_key_event_daily_metrics`: detalle España por fecha y
@@ -88,7 +92,7 @@ GA4 conserva crédito decimal/fraccional y solo redondea a dos decimales en la
 vista. Los valores `TYPE_FLOAT` recibidos como strings, incluida notación
 científica, se normalizan exactamente a `DECIMAL(18,6)` sin punto flotante PHP;
 si requieren más de seis decimales reales o exceden 12 enteros, la sync falla
-antes de persistir y conserva los datos anteriores. `Lead orgánico Salesforce`
+antes de persistir y conserva los datos anteriores. `Interés orgánico Salesforce`
 y `Conversiones web orgánicas (GA4)` son
 cardinalidades distintas: no se suman, deduplican ni sustituyen. La sync verifica
 property, timezone, al menos un web stream y al menos un Key Event configurado.
@@ -199,14 +203,25 @@ pages.
 
 ## Salesforce y compatibilidad legacy
 
-La consulta SEO selecciona únicamente `Id, CreatedDate` de `Lead`, filtra
-`IsDeleted = false` y `Medio_origen__c = 'Orgánico'`, y pagina una única ventana.
-Cada registro cuenta; no se deduplican personas ni se filtra conversión, status
-o record type. `CreatedDate` se convierte a Madrid antes de agrupar.
+ROT-5 no consulta Salesforce. El comando `seo:sync-salesforce-organic` conserva
+su nombre por compatibilidad operativa, pero proyecta exclusivamente el último
+snapshot F2 canónico (`salesforce_interests`/`salesforce`) si el último run por
+ID está `completed` y tiene cutoff. Cuenta exactamente Interests con
+`is_deleted = false` y `medium = 'Orgánico'`; no usa UTM, fuente, canal ni
+fallback Lead. La fecha es `functional_created_at` y los límites de día Madrid
+se convierten explícitamente a UTC.
 
-La columna legacy `salesforce_leads.medio_origen` conserva su contrato:
-`LEA_SEL_Medio_Origen__c -> medio_origen`. El Lote 2 no modifica esa columna,
-su sincronizador ni consumidores de Leads/Campañas. Lead orgánico Salesforce y
+El día efectivo máximo es el menor entre ayer en Madrid y el día local del
+cutoff F2 menos uno. El run F2 se revalida tras leer, antes de persistir y antes
+de publicar; cualquier nuevo run `running`, `failed` o `completed` invalida la
+proyección. La ventana cubierta se publica atómicamente, incluidos sus ceros.
+
+La tabla `seo_salesforce_organic_daily_metrics`, la identidad
+`salesforce_organic_leads`, sus snapshots, evaluaciones y reglas históricas se
+conservan sin reinterpretación. La serie vigente usa
+`salesforce_organic_interests` y `salesforce-organic-interests`. Una migración
+crea una nueva versión activa de reglas copiando exactamente los umbrales de la
+versión anterior y sustituyendo solo esa identidad. Interests orgánicos y
 conversiones web GA4 son métricas independientes y no se suman.
 
 ## Dashboard
@@ -227,7 +242,7 @@ una fuente, sus métricas disponibles no quedan bloqueadas por la ausente. Las
 secciones son Resumen, Tráfico y conversión, Búsquedas y páginas, Salud técnica
 y GEO/IA.
 
-- KPI España: clicks, impressions, CTR, posición ponderada, Lead orgánico
+- KPI España: clicks, impressions, CTR, posición ponderada, Interés orgánico
   Salesforce y Conversiones web orgánicas GA4 como métricas separadas.
 - `CTR = SUM(clicks) / SUM(impressions)`; posición = suma de
   `daily_position * daily_impressions` dividida por impressions.
@@ -258,12 +273,12 @@ SEO, Eloquent ni Blade y no asigna scoring, severidad ni estado analítico.
 scope, identidad SHA-256 de fuente y fecha. Guarda valores actual/D-7/D-14/D-21/
 D-28/D-364, cobertura, baseline, diferencias, versión y cutoff real. Search
 Console y GA4 se aíslan por la property actualmente configurada; Salesforce usa
-la identidad interna no secreta `salesforce-organic-leads`. Los seis KPI son:
+la identidad interna no secreta `salesforce-organic-interests`. Los seis KPI son:
 
 - `search_console_clicks`, `search_console_impressions`,
   `search_console_ctr` y `search_console_position`: property actual, ESP/all,
   fila final.
-- `salesforce_organic_leads`: scope neutral `all`, sin inventar geografía.
+- `salesforce_organic_interests`: scope neutral `all`, sin inventar geografía.
 - `ga4_organic_key_events`: property actual y ESP.
 
 Cada fuente usa su propio último cutoff completado; no se degrada al cutoff
@@ -306,6 +321,12 @@ absoluto mínimos). Un baseline bajo limita el estado a Observación y baseline
 cero nunca genera porcentajes infinitos. CTR usa diferencias absolutas de
 0,5/1/2 puntos porcentuales; Posición usa 0,5/1/2 posiciones y considera
 favorable una disminución. D-364 es solo contexto y no interviene en v1.
+
+ROT-5 crea una versión activa posterior que conserva exactamente esos umbrales
+y sustituye únicamente la regla `salesforce_organic_leads` por
+`salesforce_organic_interests`. Las versiones, reglas, snapshots y evaluaciones
+Lead anteriores siguen siendo historia inmutable y no se mezclan con la nueva
+identidad.
 
 Los estados persistidos son `ok`, `observation`, `deviation`, `critical` y
 `not-evaluable`; las direcciones son `stable`, `favorable`, `unfavorable` y
@@ -350,6 +371,8 @@ Europe/Madrid. `seo:build-analytical-snapshots` acepta 1–90 y, cuando se omite
 la opción, consume `analytical_comparison.snapshot_refresh_days` (30); el
 scheduler de las 06:15 invoca ese default sin duplicar el literal. Todos usan `withoutOverlapping(120)` y
 alertas técnicas administrativas.
-Una fuente sin configurar devuelve `SKIPPED` exitoso y no inventa datos.
-Fallos configurados devuelven error, quedan en `ReportSyncRun` sanitizado y no
-vacían rankings anteriores. No se persisten tokens, secretos ni payloads raw.
+Search Console y GA4 sin configurar devuelven `SKIPPED` exitoso y no inventan
+datos. La proyección Salesforce SEO es local: exige F2 completed y estable, y
+falla de forma sanitizada si esa precondición no se cumple. Los fallos quedan en
+`ReportSyncRun` y no sustituyen datos completed anteriores. No se persisten
+tokens, secretos ni payloads raw.

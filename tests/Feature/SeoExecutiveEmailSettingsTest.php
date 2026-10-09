@@ -59,7 +59,7 @@ class SeoExecutiveEmailSettingsTest extends TestCase
             $setting = SeoExecutiveEmailSetting::query()->where('module_key', 'seo')->sole();
             $this->assertSame(['direction@example.test', 'seo@example.test'], $setting->recipients);
             $this->assertSame($user->id, $setting->updated_by_report_user_id);
-            $this->assertSame(1, AnalyticalRuleSet::query()->count());
+            $this->assertSame(2, AnalyticalRuleSet::query()->count());
         }
 
         Http::assertNothingSent();

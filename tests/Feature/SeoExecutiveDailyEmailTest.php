@@ -14,7 +14,7 @@ use App\Models\SeoExecutiveEmailSetting;
 use App\Services\Analytics\AnalyticalSnapshotFingerprint;
 use App\Services\Analytics\SameWeekdayComparisonEngine;
 use App\Services\SeoAnalytics\Ga4OrganicConversionSyncService;
-use App\Services\SeoAnalytics\SalesforceOrganicLeadSyncService;
+use App\Services\SeoAnalytics\SalesforceOrganicInterestProjectionService;
 use App\Services\SeoAnalytics\SearchConsoleSyncService;
 use App\Services\SeoAnalytics\SeoAnalyticalMetricRegistry;
 use App\Services\SeoAnalytics\SeoExecutiveDailyEmailService;
@@ -116,13 +116,13 @@ class SeoExecutiveDailyEmailTest extends TestCase
         $this->assertSame('observation', $metrics['search_console_impressions']['status']);
         $this->assertSame('deviation', $metrics['search_console_ctr']['status']);
         $this->assertSame('critical', $metrics['search_console_position']['status']);
-        $this->assertSame('not-evaluable', $metrics['salesforce_organic_leads']['status']);
+        $this->assertSame('not-evaluable', $metrics['salesforce_organic_interests']['status']);
         $this->assertSame('observation', $metrics['ga4_organic_key_events']['status']);
         $this->assertSame('favorable', $metrics['ga4_organic_key_events']['direction']);
         $this->assertSame('Oportunidad / posible anomalía.', $metrics['ga4_organic_key_events']['reading']);
         $this->assertSame('Error último sync', collect($payload['sources'])->firstWhere('key', 'search-console')['badge']);
         $this->assertStringContainsString('2026-08-18', collect($payload['sources'])->firstWhere('key', 'search-console')['detail']);
-        $this->assertSame('2026-08-19', $metrics['salesforce_organic_leads']['data_date']);
+        $this->assertSame('2026-08-19', $metrics['salesforce_organic_interests']['data_date']);
         $this->assertSame('2026-08-17', $metrics['ga4_organic_key_events']['data_date']);
         $this->assertSame('Error ultimo sync', $payload['health']['source']['badge']);
         $this->assertSame('Comprobación de sitemap parcial', $payload['health']['sitemap_label']);
@@ -411,11 +411,11 @@ class SeoExecutiveDailyEmailTest extends TestCase
             'search_console_impressions' => ['observation', 'unfavorable', 'observation', 'relative_threshold', true],
             'search_console_ctr' => ['deviation', 'unfavorable', 'deviation', 'absolute_threshold', true],
             'search_console_position' => ['critical', 'unfavorable', 'critical', 'absolute_threshold', true],
-            'salesforce_organic_leads' => ['not-evaluable', 'not_evaluable', 'not-evaluable', 'missing_current', false],
+            'salesforce_organic_interests' => ['not-evaluable', 'not_evaluable', 'not-evaluable', 'missing_current', false],
             'ga4_organic_key_events' => ['observation', 'favorable', 'critical', 'relative_threshold', true],
         ];
-        $dates = ['salesforce_organic_leads' => '2026-08-19', 'ga4_organic_key_events' => '2026-08-17'];
-        $ruleSet = AnalyticalRuleSet::query()->where('version_number', 1)->sole();
+        $dates = ['salesforce_organic_interests' => '2026-08-19', 'ga4_organic_key_events' => '2026-08-17'];
+        $ruleSet = AnalyticalRuleSet::query()->where('status', 'active')->sole();
 
         foreach (app(SeoAnalyticalMetricRegistry::class)->metrics() as $definition) {
             $sourceIdentifier = match ($definition['source']) {
@@ -473,7 +473,7 @@ class SeoExecutiveDailyEmailTest extends TestCase
     {
         $this->completedRun(SearchConsoleSyncService::DATASET, 'google-search-console', '2026-08-18', ['property' => self::SEARCH_PROPERTY]);
         $this->failedRun(SearchConsoleSyncService::DATASET, ['property' => self::SEARCH_PROPERTY]);
-        $this->completedRun(SalesforceOrganicLeadSyncService::DATASET, 'salesforce', '2026-08-19');
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, 'local_database', '2026-08-19');
         $this->completedRun(Ga4OrganicConversionSyncService::DATASET, 'google-analytics', '2026-08-17', ['property_id' => self::GA4_PROPERTY]);
     }
 
