@@ -1,5 +1,49 @@
 # Handoff para agentes
 
+## ROT-4 — Campañas → Interests (2026-10-09)
+
+- Rama `feat/rot-4-campaigns-to-interests`, creada desde `main`
+  `bbb435ae3536e3d4f0d139b6b57caa48a370d07e` (merge ROT-3, PR #73).
+  `/informes/campanas`, su builder y auditorías rotan a Interests activos del
+  último F2 estable; no leen Lead, Account/Contact para completar el Interest ni
+  usan PII.
+- Nueva migración aditiva para `campaign_attributions` y
+  `campaign_lead_attributions`: `lead_id` pasa a nullable y se añaden columnas
+  explícitas de identidad, fecha funcional, status, tipo, adquisición, owner,
+  lifecycle, F2 y relación Opportunity. Las filas ROT-4 dejan las columnas Lead
+  a `NULL`; los nombres de tabla y aliases `leads_*` permanecen por
+  compatibilidad.
+- El builder procesa `salesforce_interests` por cursor PK y límites
+  Europe/Madrid→UTC. Fija/revalida run y cutoff F2 y el contexto directo/inverso
+  Opportunity↔Interest antes de publicar; un cambio concurrente revierte la
+  transacción. La caché incorpora IDs, status, cutoffs, disponibilidad y razón,
+  incluido el cambio sobre una misma fila `running → completed`.
+- Solo `both_match` autoriza relación CRM exacta. El first touch por Account
+  sigue separado, compara IDs Account, conserva precedencia/ambigüedad y tiene
+  menor confianza; no emplea PII ni afirma relación bidireccional. Status, tipo,
+  fuente/UTM, procedencia, owner y lifecycle proceden únicamente del Interest.
+- Se mantienen Google Ads, Meta Ads y resultados Opportunity. La antigua
+  inferencia Meta desde campos Lead no se replica sin evidencia Interest; las
+  procedencias sin UTM quedan auditables como `salesforce_origin`, sin coste
+  ficticio. UI y CSV usan terminología Interest; las auditorías no exponen PII.
+- `salesforce:sync-campaign-leads`, `CampaignLeadSyncService` y
+  `campaign_salesforce_leads` quedan aislados como infraestructura legacy y se
+  retira únicamente su entrada programada. El orden diario queda Opportunity
+  07:10, snapshot directo 07:35, atribución Campañas 08:00 y refresh 08:15,
+  conservando Google/Meta y el pipeline F2/F5 existentes.
+- Seguridad: no hay consultas/escrituras Salesforce nuevas, payloads, secretos,
+  Lead fallback ni cambios de autorización. Rendimiento: cursor/chunks, lookups
+  bulk, sin N+1 y sin funciones sobre IDs Salesforce indexados.
+- Validación local: focal ROT-4/Campañas 82 tests y 685 aserciones; regresiones
+  Interest/F4/ROT-3/Executive 291/2.329; suite completa 1.283/9.285. Composer
+  validate correcto; Composer audit conserva dos advisories previos de
+  `league/commonmark` (uno medium y uno high), ajenos al lote. Pint focal, Vite,
+  `migrate --pretend` y `git diff --check` correctos.
+- Acción manual futura: aplicar la migración, disponer de F2 completo/estable y
+  snapshot directo coherente, reconstruir el período y certificar en shadow
+  antes de habilitar ROT-4. No se ejecutó backfill, migración persistente,
+  despliegue, Salesforce, shadow ni producción durante esta implementación.
+
 ## Correctivo final ROT-3 — caché y lookup indexable (2026-10-09)
 
 - La identidad de caché del dashboard incorpora el contexto completo y estable

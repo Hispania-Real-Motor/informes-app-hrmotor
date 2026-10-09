@@ -31,7 +31,7 @@
         </div>
         <div class="filter-group">
             <label for="campaignType">Tipo de campaña</label>
-            <div class="small">Clasifica la campaña; no filtra el RecordType del lead.</div>
+            <div class="small">Clasifica la campaña; no filtra el tipo del interés.</div>
             <select id="campaignType">
                 <option value="all" selected>Todos</option>
                 <option value="venta">Venta</option>
@@ -39,8 +39,8 @@
             </select>
         </div>
         <div class="filter-group">
-            <label for="leadType">Tipo del lead</label>
-            <div class="small">Filtra por Lead.RecordType.Name.</div>
+            <label for="leadType">Tipo de interés</label>
+            <div class="small">Filtra por el tipo normalizado del interés.</div>
             <select id="leadType"><option value="">Todos</option></select>
         </div>
         <div class="filter-group" id="saleSubcategoryGroup">

@@ -1,5 +1,26 @@
 # Decisiones técnicas
 
+## 2026-10-09 — ROT-4 mantiene Campañas sobre evidencia Interest explícita
+
+- El hecho de adquisición funcional pasa a ser el Interest activo del último
+  F2 estable. Las tablas y claves con nombres Lead sobreviven únicamente como
+  compatibilidad; las filas nuevas persisten identidad/dimensiones Interest en
+  columnas propias y dejan la identidad Lead a `NULL`.
+- Una asociación Opportunity exacta solo existe con evidencia bidireccional
+  `both_match`. El first touch histórico por Account se conserva como método
+  distinto, de menor confianza, usando exclusivamente IDs Account y nunca PII;
+  no se presenta como relación CRM demostrada.
+- El matching de campañas conserva reglas UTM/campaña auditables. No se recrea
+  la inferencia Meta basada en `Portal_Text__c`/Facebook porque no existe una
+  evidencia Interest equivalente; una procedencia sin campaña puede conservarse
+  como `salesforce_origin` sin inventar inversión.
+- F2 y el contexto Opportunity↔Interest se capturan y revalidan antes de
+  publicar. La caché versiona estados y cutoffs además de IDs para impedir que
+  una transición `running → completed` reutilice una respuesta degradada.
+- El sync Lead específico de Campañas deja de estar programado. Su comando,
+  servicio y tabla se mantienen aislados para rollback/consumidores legacy;
+  ROT-4 no consulta Salesforce durante HTTP ni introduce fallback Lead.
+
 ## 2026-10-09 — ROT-3 exige evidencia Opportunity↔Interest bidireccional
 
 - Opportunity continúa siendo el hecho completo de Reservas/Ventas. Interest

@@ -1,248 +1,155 @@
 # Informe de Campañas
 
-Actualizado: 2026-08-06. URL: `/informes/campanas`.
+Actualizado: 2026-10-09. URL: `/informes/campanas`.
 
-## Fuentes y períodos
+## Contrato funcional ROT-4
 
-- Google Ads y Meta Ads: inversión, impresiones, clics y métricas diarias.
-- Salesforce: Leads, Opportunities y campaña original.
-- Tablas principales: `campaign_platform_daily_metrics`,
-  `campaign_platform_identifiers`, `campaign_salesforce_leads`,
-  `campaign_lead_attributions`, `campaign_unresolved_attributions` y
-  `campaign_operational_classifications`.
+La entidad CRM de adquisición es `Interes__c`, replicada localmente en
+`salesforce_interests`. El informe solo incluye Interests activos del período
+solicitado; usa `functional_created_at` persistido en UTC y convierte los
+límites de negocio `Europe/Madrid` a UTC antes de consultar.
 
-Se muestran por separado:
+Google Ads y Meta Ads siguen aportando inversión, impresiones, clics y métricas
+diarias. Opportunity continúa aportando reservas, ventas, compras e importes.
+No se consulta Salesforce durante una petición HTTP ni durante el builder.
 
-- período de gasto publicitario;
-- fecha de creación del Lead;
-- fecha del resultado posterior;
-- sincronización de cada fuente;
-- construcción de la atribución;
-- generación y corte del dataset.
+Los campos de adquisición proceden exclusivamente del Interest:
 
-No se aplica una ventana de conversión de 30, 60 o 90 días. `--window` se
-mantiene únicamente como opción legacy sin efecto.
+- `utm_campaign`, `utm_id`, `utm_source`, `utm_medium`, `utm_content` y
+  `utm_term`;
+- `source`, `original_source`, `medium` y `channel`;
+- `status`, `type`, `origin_delegation` y owner actual;
+- `sale_vehicle_salesforce_id` para Venta y
+  `appraisal_vehicle_salesforce_id` para Tasación.
 
-## Universos
+No existe fallback a Lead, Account o Contact para completar dimensiones del
+Interest. Tampoco existe matching por nombre, email, teléfono o cualquier otra
+PII.
 
-El dataset distingue:
+## Persistencia y compatibilidad
 
-- Google Ads / Meta Ads;
-- Salesforce-only;
-- campañas de prueba;
-- pendientes de revisar;
-- atribuciones ambiguas;
-- registros sin atribuir.
+Las tablas `campaign_attributions` y `campaign_lead_attributions` mantienen sus
+nombres históricos, pero las nuevas filas ROT-4 usan columnas Interest
+explícitas: identidad, fecha funcional, status, tipo, procedencia, owner,
+lifecycle, run/cutoff F2 y estado de relación Opportunity. Las columnas Lead
+legacy permanecen `NULL`; nunca almacenan un Interest ID disfrazado de Lead.
 
-Salesforce-only suma en la actividad de Salesforce, pero no en el rendimiento
-de pago cuando no existe inversión asociada. La conciliación interna por origen
-se muestra únicamente a Administrador/IT.
+`leads_salesforce`, `lead_type`, `lead_status` y otras claves técnicas heredadas
+se conservan temporalmente como aliases de compatibilidad. Su semántica ROT-4
+es Interest. Las superficies visibles y los CSV muestran Interés/Intereses.
 
-`Tipo/objetivo de campaña` y `RecordType real del Lead` son filtros diferentes.
-Una campaña clasificada como Venta puede contener Leads cuyo RecordType sea
-Tasación; el filtro de campaña no reescribe el tipo real del Lead.
+`campaign_salesforce_leads`, `CampaignLeadSyncService` y el comando
+`salesforce:sync-campaign-leads` se conservan únicamente como infraestructura
+legacy/de rollback. Ya no participan en el pipeline funcional ni están
+programados.
 
-## Normalización y clasificación operativa
+## Matching de campañas
 
-La comparación de nombres normaliza mayúsculas, tildes, espacios y guiones
-bajos. Por tanto, `VENTAS 1`, `VENTAS_1` y `ventas` pueden ser comparables, pero
-se conserva el nombre bruto y el motivo exacto del match.
-
-Cada campaña se clasifica por plataforma, cuenta e ID como:
-
-- `real`;
-- `test`;
-- `pending_review`.
-
-Que el nombre contenga `prueba` o `test` solo genera una sugerencia. La campaña
-queda fuera de KPIs ejecutivos, rankings y recomendaciones únicamente cuando
-Dirección o Administrador/IT guarda una clasificación explícita `test`, con
-motivo, usuario y fecha. Las campañas pendientes deben revisarse por ID.
-
-## First touch y atribución
-
-Precedencia vigente:
-
-1. relación explícita del Lead convertido con Opportunity;
-2. coincidencia inequívoca por identificadores publicitarios;
-3. campaña original inequívoca del Lead;
-4. primera campaña inequívoca conocida de la cuenta;
-5. Salesforce-only;
-6. ambiguo o sin atribuir.
-
-Los métodos de match auditables incluyen:
+Se preservan los métodos auditables:
 
 - `ad_id_match`;
 - `adset_or_adgroup_id_match`;
 - `campaign_id_match`;
 - `campaign_name_exact_match`;
 - `campaign_name_flexible_match`;
-- `salesforce_only`.
+- `salesforce_only`;
+- exclusión y ambigüedad.
 
-No se sustituye el first touch por remarketing posterior. Cada Lead, cuenta,
-Opportunity o resultado se reclama una sola vez. Si varias campañas tienen la
-misma precedencia sin una señal inequívoca, el registro queda ambiguo, no se
-duplica y no se atribuye al rendimiento de una campaña concreta.
+La traza registra el campo Interest real ganador, su valor, candidatos, método,
+confianza y versión de reglas. Las procedencias Interest sin UTM pueden quedar
+como `salesforce_origin`: son evidencia diagnóstica, no una campaña de pago ni
+un coste ficticio.
 
-La traza conserva campaña elegida, candidatos, motivo, confianza, primer
-contacto, IDs utilizados, campos/valores del match, ambigüedad y versión de
-reglas. El builder excluye Leads eliminados y sustituye el período dentro de una
-transacción.
+Meta Instant Forms solo se identifica cuando el nombre de campaña aporta la
+evidencia explícita `instantforms`/Formulario Directo Meta. La antigua
+inferencia Lead `Portal_Text__c = Meta` + Facebook no tiene equivalente
+Interest demostrado y no se reproduce mediante una heurística nueva.
 
-## Métricas y alertas
+## Interest ↔ Opportunity y first touch
 
-- Leads, Opportunities y resultados se cuentan como entidades distintas.
-- Inversión no se duplica por almacenar inventario de anuncio, adset/ad group y
-  campaña.
-- Importe vendido usa `Opportunity.OPO_FOR_Importe_total__c`, almacenado como
-  `opo_for_importe_total`; `Amount` solo es fallback positivo.
-- CTR, CPC, CPL, costes por etapa, ROAS y ROI usan denominadores visibles y
-  devuelven nulo cuando no existe denominador válido.
+La relación CRM exacta reutiliza `OpportunityInterestAttributionService`. Solo
+`both_match` autoriza la asociación exacta. `direct_only`, `inverse_only`,
+`contradiction`, `inverse_shared`, `unresolved` y `no_reference` nunca eligen
+un Interest por sí solos.
 
-Prioridad de `Campañas a revisar`:
+Cuando no existe relación exacta, el first touch histórico por Account se
+mantiene separado:
 
-1. inversión con posible fallo de medición o cero Leads;
-2. mayor inversión con cero resultados;
-3. coste por resultado fuera del benchmark y muestra suficiente;
-4. caída relevante del funnel.
+1. compara únicamente `Interest.account_salesforce_id` con
+   `Opportunity.account_id`;
+2. aplica la precedencia de calidad de campaña existente;
+3. ordena por `functional_created_at`;
+4. deja ambiguos los candidatos incompatibles de igual precedencia;
+5. persiste un método `account_first_touch`/equivalente y confianza inferior a
+   la relación exacta.
 
-Dentro de cada nivel se ordena por impacto económico, principalmente inversión.
-Los umbrales se muestran y cualquier cambio futuro deberá versionarse.
+Esta heurística no se presenta como relación CRM bidireccional y no utiliza PII.
 
-## Auditoría
+## Estado, tipo, owner y lifecycle
 
-- JSON KPI: `/informes/campanas/data/kpi-audit`.
-- CSV KPI: `/informes/campanas/export/kpi-audit.csv`.
-- CSV campañas: `/informes/campanas/export/campaigns.csv`.
+- Estado visible: `SalesforceInterest.status`.
+- Tipo visible: `SalesforceInterest.type`, normalizado mediante el contrato
+  compartido de informes Interest.
+- Comercial: owner actual del Interest en el último F2
+  (`current_interest_owner_at_last_sync`), no owner histórico.
+- Procedencia: `origin_delegation`, sin fallback Lead.
+- Lifecycle: Interests eliminados quedan fuera del KPI activo.
+
+`Tipo de campaña` y `Tipo del Interest` son filtros distintos. La clasificación
+de campaña no reescribe el tipo CRM.
+
+## Snapshot, caché y fallo seguro
+
+El builder captura el último run F2 de `salesforce_interests/salesforce`, exige
+`completed` y cutoff, y lo revalida antes de publicar. También captura y valida
+el contexto Opportunity↔Interest directo/inverso. Si cualquiera cambia durante
+la construcción, la transacción se revierte y no se mezcla evidencia.
+
+La caché incluye IDs, estados, cutoffs, disponibilidad y razón del contexto de
+atribución. Una misma fila que pasa `running → completed` produce una identidad
+de caché distinta.
+
+El procesamiento usa cursor PK y lotes; los lookups Opportunity e Interest son
+bulk, sin N+1 ni funciones SQL sobre IDs Salesforce indexados.
+
+## Métricas y auditoría
+
+Interests, Opportunities y resultados se deduplican como entidades distintas.
+Salesforce-only conserva trazabilidad sin presentar costes inexistentes como
+cero. Las auditorías JSON/CSV publican identidad Interest, fecha funcional,
+status, tipo, source/medium/UTM, campaña, método, confianza, candidatos,
+Opportunity, relación, owner actual, lifecycle y F2; no incluyen PII.
+
+Endpoints:
+
+- JSON KPI: `/informes/campanas/data/kpi-audit`;
+- CSV KPI: `/informes/campanas/export/kpi-audit.csv`;
+- CSV campañas: `/informes/campanas/export/campaigns.csv`;
 - CSV atribuciones: `/informes/campanas/export/attributions.csv`.
-
-La exportación de atribuciones incluye Lead ID, Opportunity ID, campaña final y
-bruta, plataforma, IDs publicitarios, método, confianza, candidatos,
-ambigüedad, RecordType, fechas, versión, construcción y sincronización.
 
 ## Operación
 
-El scheduler ejecuta en `Europe/Madrid`:
+El scheduler usa `Europe/Madrid`:
 
-- Leads Salesforce de Campañas: 01:15;
 - Meta: 01:30;
 - Google: 01:45;
-- atribución: 02:15;
-- snapshot del informe: 03:15.
+- Opportunity legacy: 07:10;
+- snapshot directo Opportunity→Interest: 07:35;
+- atribución Campañas: 08:00;
+- snapshot del informe: 08:15;
+- F2/F5 canónicos continúan en su pipeline horario existente.
+
+Comandos locales del pipeline ROT-4:
 
 ```bash
-php artisan salesforce:sync-campaign-leads --days=120
 php artisan campaigns:sync-meta --days=120
 php artisan campaigns:sync-google --days=120
 php -d memory_limit=512M artisan campaigns:build-attribution --days=120
 php artisan reports:refresh-campaigns --days=120 --store
 ```
 
-La sincronización diaria de Leads Salesforce usa upsert incremental, sin
-`--fresh`, se ejecuta antes de reconstruir la atribución y está monitorizada por
-la infraestructura común de alertas operativas. Un fallo abre una alerta y el
-primer éxito posterior la resuelve. No cambia el WHERE legacy ni amplía el
-universo de Campañas.
-
-Para un backfill debe usarse un rango explícito, probar primero sobre copia y
-conciliar por Lead/Opportunity ID. Reconstruir first touch puede cambiar
-históricos; no afecta cierres económicos ya congelados.
-
-Credenciales de Meta y Google se configuran exclusivamente mediante variables
-de entorno. No deben aparecer en documentación, logs ni respuestas del
-dashboard.
-
-Archivos principales:
-
-- `app/Services/Campaigns/CampaignAttributionBuilderService.php`;
-- `app/Services/Campaigns/CampaignDashboardDatasetService.php`;
-- `app/Models/CampaignOperationalClassification.php`;
-- `app/Console/Commands/BuildCampaignAttributionCommand.php`.
-
-## Cierre de inversión y auditoría de atribución
-
-- Una coincidencia múltiple en un nivel de primer toque queda ambigua y no entra
-  en KPI, pero permanece auditable.
-- `tasador`, `ren2click` y `hrrenting` se excluyen solo por coincidencia exacta;
-  se conservan en auditoría con su motivo.
-- Salesforce-only conserva volumen y trazabilidad sin presentar costes como cero.
-- Administrador/IT puede cerrar inversión mensual mediante snapshot versionado.
-  Los resultados comerciales siguen abiertos; reabrir exige motivo y no borra
-  snapshots.
-## Correctivo Salesforce-only (2026-08-07)
-
-Salesforce-only solo aporta Leads, Oportunidades y `lead_to_opportunity`.
-Reservas, ventas, compras, importes y métricas de inversión son no aplicables
-(`null`) por fila y no contaminan los totales de Campañas.
-
-`platform_leads` procede de acciones nativas de Meta y `platform_conversions`
-de métricas nativas de Google Ads; no contienen resultados comerciales
-Salesforce y pueden conservarse en snapshots económicos.
-
-No se verificaron identificadores persistentes de Tasador, ren2click ni
-hrrenting en el repositorio. Se conserva el fallback exacto por nombre y queda
-auditado como `exact_name` con motivo estable.
-## Simulación histórica de Campaign Leads y atribución
-
-La secuencia de simulación no escribe tablas ni invalida cachés:
-
-```bash
-php artisan reports:reprocess-lead-record-types --dry-run --from=YYYY-MM-DD --to=YYYY-MM-DD
-php artisan salesforce:sync-campaign-leads --dry-run --from=YYYY-MM-DD --to=YYYY-MM-DD
-php artisan campaigns:build-attribution --dry-run --from=YYYY-MM-DD --to=YYYY-MM-DD
-```
-
-El último comando reutiliza el builder real, compara IDs actuales y simulados,
-informa cambios, ambigüedades, exclusiones y Salesforce-only, y aborta si la
-partición del universo no concilia. Para escritura histórica con `--from` se
-requiere `--reason`; no ejecutar sin aprobación tras la conciliación.
-
-En esas métricas, `became_unattributed` significa que el Lead permanece en la
-simulación, tenía antes una identidad de campaña y ahora queda sin ella. Una
-fila ya no atribuida que continúa igual no suma. `removed_attribution` identifica
-una atribución actual cuyo Lead ya no aparece entre las filas simuladas; es un
-caso distinto y no modifica el universo ni las reglas del builder.
-
-## Diagnóstico de tipos nulos en simulación
-
-El resumen de dry-run representa un tipo no normalizable como `null` solo para
-conteo técnico; no cambia la clasificación funcional ni excluye el Lead del
-universo. El reproceso de tipos detalla transiciones raw/actual/calculada y una
-muestra acotada de Salesforce Lead IDs, sin PII.
-## Precedencia de IDs frente a Meta Instant Forms
-
-Los IDs originales `Id_Adquirido__c` y `Contenido_Adquirido__c` se resuelven
-antes de inferir Meta Direct Form por portal/origen. Meta se usa solo cuando no
-existe match publicitario; IDs que resuelven campañas distintas en el mismo
-nivel quedan ambiguos y fuera de KPI.
-## Regresión Meta Direct Form: candidatos sin campaña materializada
-
-Un Lead con `portal_text = Meta` y `fuente_origen = Facebook` es candidato a Formulario Directo Meta aunque `campaign_acquired` sea nulo, vacío o no utilizable. Ese caso no se contabiliza como valor de adquisición inválido y llega al resolver, donde los IDs originales se contrastan primero. La inferencia Meta se aplica solo si esos IDs no resuelven una campaña; los Leads no Meta sin una campaña válida siguen descartándose como hasta ahora.
-
-## Conflictos entre identificadores publicitarios
-
-La atribución recopila los matches de `Id_Adquirido__c` y
-`Contenido_Adquirido__c` contra ad, adset, ad group y campaign ID antes de
-elegir. Se agrupan por identidad `platform + campaign_id` (o nombre normalizado
-sin ID); identidades distintas quedan ambiguas. Para una misma campaña se usa
-como traza el match más específico: ad, adset, ad group y campaign ID.
-
-## Procedencia Salesforce efectiva (Fase 6)
-
-El universo de Campañas no cambia: la sincronización y el builder conservan sus
-señales legacy de admisión, incluida la excepción Meta Direct Form. Los campos
-UTM nuevos nunca crean candidatos por sí solos.
-
-Para cada Lead ya admitido, la atribución usa estas parejas independientes:
-
-- `utm_campaign__c` → `Campa_a_Adquirida__c`;
-- `utm_id__c` → `Id_Adquirido__c`;
-- `utm_source__c` → `Fuente_Adquirida__c`;
-- `utm_medium__c` → `Medio_Adquirido__c`;
-- `utm_content__c` → `Contenido_Adquirido__c`.
-
-Solo null, vacío o whitespace permiten fallback. El matching, first touch,
-deduplicación y ambigüedad conservan su precedencia; trabajan con el valor
-efectivo y trazan el API Name ganador. La versión de atribución es
-`2026-09-03.1`. El dry-run sigue sin escribir ni invalidar caché y expone un
-recuento agregado de fuentes ganadoras por dimensión.
+`campaigns:build-attribution --dry-run` reutiliza el builder real, compara por
+`interest_id` y no escribe ni invalida caché. Antes de habilitar ROT-4 en un
+entorno debe aplicarse la migración aditiva, disponer de un F2 completo/estable,
+un snapshot directo coherente y reconstruir el período bajo procedimiento
+operacional revisado. Esta implementación no ejecuta backfill ni despliegue.

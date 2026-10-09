@@ -1,6 +1,6 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-10-08.
+Actualizado: 2026-10-09.
 
 ## Trabajo transversal autorizado
 
@@ -126,13 +126,27 @@ Actualizado: 2026-10-08.
   `dc8e7d59d7e5bdc6ce065a4ce873fb2364493eb1`.
 - `ROT-2 — Llamadas → Interests` — **cerrada** tras PR #72 y merge
   `dd6d3e1a68d3cfbf9118f178e8781adda67221fb`.
-- `ROT-3 — Reservas/Ventas → Interests` — **en_revision** en
-  `feat/rot-3-reservations-sales-to-interests`, base
-  `dd6d3e1a68d3cfbf9118f178e8781adda67221fb`. Opportunity continúa siendo el
+- `ROT-3 — Reservas/Ventas → Interests` — **cerrada** tras PR #73 y merge en
+  `bbb435ae3536e3d4f0d139b6b57caa48a370d07e`. Opportunity continúa siendo el
   hecho; solo `both_match` entre el snapshot directo 4B y el inverso F2 permite
   usar `Interest.source`. Rendimiento comercial usa Interests activos por
   `functional_created_at` y owner actual; las claves técnicas `leads*` quedan
-  como aliases temporales. Sin migraciones ni cambios funcionales en Campañas.
+  como aliases temporales.
+- `ROT-4 — Campañas → Interests` — **en_revision** en
+  `feat/rot-4-campaigns-to-interests`, base exacta
+  `bbb435ae3536e3d4f0d139b6b57caa48a370d07e`. El informe funcional, su builder
+  y sus auditorías consumen exclusivamente Interests activos de un F2 estable;
+  solo `both_match` autoriza la relación exacta Opportunity↔Interest y el first
+  touch por Account permanece como heurística separada, auditable y sin PII.
+  Las tablas conservan nombres legacy por compatibilidad, pero las nuevas filas
+  usan identidad y dimensiones Interest explícitas y dejan columnas Lead a
+  `NULL`. El sync Salesforce Lead de Campañas queda aislado y fuera del
+  scheduler. No se ha desplegado ni certificado en shadow, no se ha ejecutado
+  backfill y la migración aditiva continúa pendiente de revisión/aplicación.
+- **Secuencia acordada tras ROT-4:** ROT-5 SEO; despliegue a shadow;
+  certificación conjunta de los informes rotados en shadow; Comisiones; Stock;
+  Executive; APIs. ROT-5 no se inicia desde esta rama y ninguna etapa posterior
+  queda autorizada por esta ficha.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
@@ -239,9 +253,9 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 - AUTH-PASSWORD-RESET está cerrado operacionalmente.
 - EXE-1 está cerrado tras el PR #65, EXE-2 tras el PR #66 y EXE-3 tras el PR
   #67, fusionado en `1813c9bd43a1d46ab8c086fd517aafdb96364217`.
-  SF-INTEREST-FOUNDATION-5 también está cerrado tras el PR #69. El lote funcional
-  activo es `ROT-3` en `feat/rot-3-reservations-sales-to-interests`, actualmente
-  en revisión.
+  SF-INTEREST-FOUNDATION-5 también está cerrado tras el PR #69 y ROT-3 tras el
+  PR #73. El lote funcional activo es `ROT-4` en
+  `feat/rot-4-campaigns-to-interests`, actualmente en revisión.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 

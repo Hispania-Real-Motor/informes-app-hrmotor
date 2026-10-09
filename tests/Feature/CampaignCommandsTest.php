@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\CampaignAttribution;
 use App\Models\CampaignSalesforceLead;
+use App\Models\SalesforceInterest;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
@@ -18,36 +19,42 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Mockery\MockInterface;
+use Tests\Concerns\ProvidesRot4CampaignContext;
 use Tests\TestCase;
 
 class CampaignCommandsTest extends TestCase
 {
+    use ProvidesRot4CampaignContext;
     use RefreshDatabase;
 
-    public function test_campaign_salesforce_leads_sync_is_scheduled_before_attribution(): void
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->setUpRot4CampaignContext();
+    }
+
+    public function test_rot4_scheduler_no_longer_runs_campaign_lead_sync_and_builds_after_direct_snapshot(): void
     {
         $scheduler = file_get_contents(base_path('routes/console.php'));
         $command = "Schedule::command('salesforce:sync-campaign-leads --days=120')";
-        $this->assertSame(1, substr_count($scheduler, $command));
-        $this->assertStringNotContainsString('salesforce:sync-campaign-leads --days=120 --fresh', $scheduler);
+        $this->assertSame(0, substr_count($scheduler, $command));
 
         $builder = "Schedule::command('campaigns:build-attribution --days=120')";
-        $syncPosition = strpos($scheduler, $command);
-        $this->assertNotFalse($syncPosition);
-        $syncIdentifierPosition = strpos($scheduler, "'salesforce-sync-campaign-leads'", $syncPosition);
-        $this->assertNotFalse($syncIdentifierPosition);
+        $direct = "Schedule::command('salesforce:sync-opportunity-interest-direct";
+        $directPosition = strpos($scheduler, $direct);
+        $this->assertNotFalse($directPosition);
         $builderPosition = strpos($scheduler, $builder);
         $this->assertNotFalse($builderPosition);
         $builderIdentifierPosition = strpos($scheduler, "'campaigns-build-attribution'", $builderPosition);
         $this->assertNotFalse($builderIdentifierPosition);
 
-        $syncConfiguration = substr($scheduler, $syncPosition, $syncIdentifierPosition - $syncPosition);
         $builderConfiguration = substr($scheduler, $builderPosition, $builderIdentifierPosition - $builderPosition);
-        $this->assertStringContainsString("dailyAt('01:15')", $syncConfiguration);
-        $this->assertStringContainsString("timezone('Europe/Madrid')", $syncConfiguration);
-        $this->assertStringContainsString('withoutOverlapping(180)', $syncConfiguration);
-        $this->assertStringContainsString("dailyAt('02:15')", $builderConfiguration);
-        $this->assertLessThan($builderPosition, $syncPosition);
+        $this->assertStringContainsString("dailyAt('08:00')", $builderConfiguration);
+        $directIdentifierPosition = strpos($scheduler, "'salesforce-sync-opportunity-interest-direct'", $directPosition);
+        $this->assertNotFalse($directIdentifierPosition);
+        $directConfiguration = substr($scheduler, $directPosition, $directIdentifierPosition - $directPosition);
+        $this->assertStringContainsString("dailyAt('07:35')", $directConfiguration);
     }
 
     public function test_campaign_lead_sync_mapper_guarda_campos_de_adquisicion(): void
@@ -118,7 +125,7 @@ class CampaignCommandsTest extends TestCase
         $this->assertDatabaseMissing('campaign_salesforce_leads', ['salesforce_id' => '00Q-campaign-old']);
     }
 
-    public function test_build_attribution_usa_salesforce_leads_y_persiste_source_campaign_name(): void
+    public function test_build_attribution_usa_salesforce_interests_y_persiste_source_campaign_name(): void
     {
         SalesforceLead::query()->create([
             'salesforce_id' => '00Q-campaign-sale',
@@ -136,10 +143,10 @@ class CampaignCommandsTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->assertSame('salesforce_leads', $result['lead_source_table']);
+        $this->assertSame('salesforce_interests', $result['interest_source_table']);
         $this->assertSame(1, $result['saved_attributions']);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-campaign-sale',
+            'interest_id' => '00Q-campaign-sale',
             'platform' => 'salesforce',
             'campaign_name' => 'Campana Salesforce',
             'source_campaign_name' => 'Campana Salesforce',
@@ -182,11 +189,11 @@ class CampaignCommandsTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->assertDatabaseMissing('campaign_lead_attributions', ['lead_id' => '00Q-deleted-campaign']);
+        $this->assertDatabaseMissing('campaign_lead_attributions', ['interest_id' => '00Q-deleted-campaign']);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-active-campaign',
+            'interest_id' => '00Q-active-campaign',
             'attribution_method' => 'campaign_name_exact_match',
-            'matched_source_field' => 'Campa_a_Adquirida__c',
+            'matched_source_field' => 'salesforce_interests.utm_campaign',
             'matched_source_value' => 'VENTAS_1',
             'matched_platform_field' => 'campaign_name',
             'matched_platform_value' => 'VENTAS 1',
@@ -216,13 +223,17 @@ class CampaignCommandsTest extends TestCase
             ]);
         }
         app(CampaignAttributionBuilderService::class)->build(CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01'));
-        $this->assertDatabaseHas('campaign_attributions', ['lead_id' => '00Q-meta-google', 'platform' => 'google_ads', 'campaign_id' => '21455768559', 'attribution_method' => 'campaign_id_match']);
-        $this->assertDatabaseHas('campaign_attributions', ['lead_id' => '00Q-content-google', 'platform' => 'google_ads', 'campaign_id' => 'google-a', 'attribution_method' => 'ad_id_match', 'matched_source_field' => 'Contenido_Adquirido__c']);
-        $this->assertDatabaseHas('campaign_attributions', ['lead_id' => '00Q-meta-fallback', 'campaign_id' => 'meta_instantforms_direct_form']);
-        $this->assertDatabaseHas('campaign_attributions', ['lead_id' => '00Q-conflict', 'campaign_source_type' => 'ambiguous_attribution']);
+        $this->assertDatabaseHas('campaign_attributions', ['interest_id' => '00Q-meta-google', 'platform' => 'google_ads', 'campaign_id' => '21455768559', 'attribution_method' => 'campaign_id_match']);
+        $this->assertDatabaseHas('campaign_attributions', ['interest_id' => '00Q-content-google', 'platform' => 'google_ads', 'campaign_id' => 'google-a', 'attribution_method' => 'ad_id_match', 'matched_source_field' => 'salesforce_interests.utm_content']);
+        $this->assertDatabaseHas('campaign_attributions', [
+            'interest_id' => '00Q-meta-fallback',
+            'campaign_id' => 'no-match',
+            'campaign_source_type' => 'salesforce_campaign_without_spend',
+        ]);
+        $this->assertDatabaseHas('campaign_attributions', ['interest_id' => '00Q-conflict', 'campaign_source_type' => 'ambiguous_attribution']);
     }
 
-    public function test_meta_direct_form_candidates_without_a_valid_campaign_name_reach_the_meta_fallback(): void
+    public function test_meta_direct_form_requires_an_explicit_interest_campaign_name(): void
     {
         foreach ([
             ['id' => '00Q-meta-null', 'campaign' => null, 'acquired' => null, 'content' => null, 'portal' => 'Meta', 'source' => 'Facebook'],
@@ -254,22 +265,29 @@ class CampaignCommandsTest extends TestCase
             CarbonImmutable::parse('2026-06-01'),
         );
 
-        foreach (['00Q-meta-null', '00Q-meta-empty', '00Q-meta-explicit'] as $leadId) {
+        foreach (['00Q-meta-null', '00Q-meta-empty'] as $leadId) {
             $this->assertDatabaseHas('campaign_attributions', [
-                'lead_id' => $leadId,
-                'platform' => 'meta',
-                'campaign_id' => 'meta_instantforms_direct_form',
+                'interest_id' => $leadId,
+                'platform' => 'salesforce',
+                'campaign_id' => null,
             ]);
         }
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-meta-google-id',
+            'interest_id' => '00Q-meta-explicit',
+            'platform' => 'meta',
+            'campaign_id' => 'meta_instantforms_direct_form',
+        ]);
+        $this->assertDatabaseHas('campaign_attributions', [
+            'interest_id' => '00Q-meta-google-id',
             'platform' => 'google_ads',
             'campaign_id' => 'google-campaign-id',
             'attribution_method' => 'campaign_id_match',
         ]);
-        $this->assertDatabaseMissing('campaign_attributions', ['lead_id' => '00Q-not-meta-empty']);
-        $this->assertSame(4, $result['candidate_leads']);
-        $this->assertSame(1, $result['discarded_invalid_values']);
+        $this->assertDatabaseHas('campaign_attributions', [
+            'interest_id' => '00Q-not-meta-empty',
+            'campaign_source_type' => 'salesforce_origin',
+        ]);
+        $this->assertSame(5, $result['candidate_interests']);
         $this->assertSame(0, $result['excluded_campaigns']);
     }
 
@@ -311,11 +329,11 @@ class CampaignCommandsTest extends TestCase
         );
 
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-rebuild-opportunity',
+            'interest_id' => '00Q-rebuild-opportunity',
             'opportunity_id' => '006-rebuild-opportunity',
         ]);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-rebuild-opportunity',
+            'interest_id' => '00Q-rebuild-opportunity',
             'opportunity_id' => '006-rebuild-opportunity',
             'has_purchase' => true,
         ]);
@@ -495,7 +513,7 @@ class CampaignCommandsTest extends TestCase
 
         foreach ([
             ['00Q-none', 'none'],
-            ['00Q-literal', 'Campa_a_Adquirida__c'],
+            ['00Q-literal', 'salesforce_interests.utm_campaign'],
             ['00Q-tasador', 'tasador'],
             ['00Q-ren2click', 'ren2click'],
             ['00Q-hrrenting', 'hrrenting'],
@@ -515,19 +533,19 @@ class CampaignCommandsTest extends TestCase
         $this->artisan('campaigns:build-attribution', ['--days' => 3])
             ->assertExitCode(0);
 
-        $this->assertSame(4, CampaignAttribution::query()->count());
+        $this->assertSame(6, CampaignAttribution::query()->count());
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-clear',
+            'interest_id' => '00Q-clear',
             'campaign_name' => 'Campana real',
         ]);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-clear',
+            'interest_id' => '00Q-clear',
             'campaign_name' => 'Campana real',
             'source_campaign_name' => 'Campana real',
         ]);
-        $this->assertDatabaseHas('campaign_lead_attributions', ['lead_id' => '00Q-tasador', 'match_status' => 'excluded_campaign_tasador']);
-        $this->assertDatabaseHas('campaign_lead_attributions', ['lead_id' => '00Q-ren2click', 'match_status' => 'excluded_campaign_ren2click']);
-        $this->assertDatabaseHas('campaign_lead_attributions', ['lead_id' => '00Q-hrrenting', 'match_status' => 'excluded_campaign_hrrenting']);
+        $this->assertDatabaseHas('campaign_lead_attributions', ['interest_id' => '00Q-tasador', 'match_status' => 'excluded_campaign_tasador']);
+        $this->assertDatabaseHas('campaign_lead_attributions', ['interest_id' => '00Q-ren2click', 'match_status' => 'excluded_campaign_ren2click']);
+        $this->assertDatabaseHas('campaign_lead_attributions', ['interest_id' => '00Q-hrrenting', 'match_status' => 'excluded_campaign_hrrenting']);
     }
 
     public function test_campaign_report_commands_accept_legacy_window_option(): void
@@ -563,30 +581,30 @@ class CampaignCommandsTest extends TestCase
         $simulated = $builder->build(CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01'), true);
 
         $this->assertTrue($simulated['dry_run']);
-        $this->assertSame(2, $simulated['simulation']['campaign_leads_examined']);
+        $this->assertSame(2, $simulated['simulation']['campaign_interests_examined']);
         $this->assertSame($before, DB::table('campaign_attributions')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
         $this->assertDatabaseCount('campaign_lead_attributions', 0);
 
         $builder->build(CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01'));
 
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-dry-run',
+            'interest_id' => '00Q-dry-run',
             'campaign_name' => 'Campaign simulada',
             'campaign_source_type' => 'salesforce_campaign_without_spend',
         ]);
         $this->assertSame(2, $simulated['simulation']['sets']['attributed']['count']);
-        $this->assertSame(1, $simulated['simulation']['lead_types']['venta']);
-        $this->assertSame(1, $simulated['simulation']['lead_types']['null']);
+        $this->assertSame(1, $simulated['simulation']['interest_types']['venta']);
+        $this->assertSame(1, $simulated['simulation']['interest_types']['null']);
     }
 
     public function test_build_attribution_respeta_oportunidades_ya_atribuidas_fuera_de_rango(): void
     {
         CampaignAttribution::query()->create([
-            'lead_id' => '00Q-old',
+            'interest_id' => '00Q-old',
             'opportunity_id' => '006-shared',
             'platform' => 'salesforce',
             'campaign_name' => 'Campana antigua',
-            'lead_created_at' => '2026-03-10 10:00:00',
+            'interest_functional_created_at' => '2026-03-10 10:00:00',
             'has_opportunity' => true,
             'attribution_method' => 'salesforce_only',
             'attribution_confidence' => 'low',
@@ -621,16 +639,16 @@ class CampaignCommandsTest extends TestCase
 
         $this->assertSame(1, $result['saved_attributions']);
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-old',
+            'interest_id' => '00Q-old',
             'opportunity_id' => '006-shared',
         ]);
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-new',
+            'interest_id' => '00Q-new',
             'opportunity_id' => null,
             'campaign_name' => 'Campana nueva',
         ]);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-new',
+            'interest_id' => '00Q-new',
             'opportunity_id' => null,
             'campaign_name' => 'Campana nueva',
             'source_campaign_name' => 'Campana nueva',
@@ -662,7 +680,7 @@ class CampaignCommandsTest extends TestCase
         );
 
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-tasacion-0',
+            'interest_id' => '00Q-tasacion-0',
             'campaign_type' => 'tasacion',
             'source_campaign_name' => 'TASADOR_LANDING_SEARCH_1',
             'opportunity_id' => null,
@@ -671,12 +689,12 @@ class CampaignCommandsTest extends TestCase
             'has_reservation' => false,
         ]);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-tasacion-1',
+            'interest_id' => '00Q-tasacion-1',
             'campaign_type' => 'tasacion',
             'source_campaign_name' => 'Expiey_Leads_Geo_Tasación',
         ]);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-tasacion-2',
+            'interest_id' => '00Q-tasacion-2',
             'campaign_type' => 'tasacion',
             'source_campaign_name' => 'Expiey_Leads_Geo_Tasación_Nuevas Ubicaciones',
         ]);
@@ -701,12 +719,12 @@ class CampaignCommandsTest extends TestCase
         );
 
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-rebuild',
+            'interest_id' => '00Q-rebuild',
             'source_campaign_name' => 'Campana vigente',
         ]);
 
-        SalesforceLead::query()->where('salesforce_id', '00Q-rebuild')->update([
-            'campaign_acquired' => 'tasador',
+        SalesforceInterest::query()->where('salesforce_id', '00Q-rebuild')->update([
+            'utm_campaign' => 'tasador',
         ]);
 
         app(CampaignAttributionBuilderService::class)->build(
@@ -715,7 +733,7 @@ class CampaignCommandsTest extends TestCase
         );
 
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-rebuild',
+            'interest_id' => '00Q-rebuild',
             'match_status' => 'excluded_campaign_tasador',
         ]);
     }

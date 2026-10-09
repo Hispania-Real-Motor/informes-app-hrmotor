@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CampaignAttribution;
 use App\Models\CampaignPlatformDailyMetric;
 use App\Models\ReportUser;
+use App\Models\SalesforceInterest;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
@@ -16,10 +17,12 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\ProvidesRot4CampaignContext;
 use Tests\TestCase;
 
 class CampaignDashboardTest extends TestCase
 {
+    use ProvidesRot4CampaignContext;
     use RefreshDatabase;
 
     private int $reportUserSequence = 0;
@@ -29,6 +32,7 @@ class CampaignDashboardTest extends TestCase
         parent::setUp();
 
         Cache::flush();
+        $this->setUpRot4CampaignContext();
         $this->withSession($this->authenticatedSession(ReportUser::ROLE_ADMIN));
     }
 
@@ -70,8 +74,9 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringContainsString('id="platformComparison"', $html);
         $this->assertStringContainsString('id="campaignType"', $html);
         $this->assertStringContainsString('id="leadType"', $html);
-        $this->assertStringContainsString('Clasifica la campaña; no filtra el RecordType del lead.', $html);
-        $this->assertStringContainsString('Filtra por Lead.RecordType.Name.', $html);
+        $this->assertStringContainsString('Tipo de interés', $html);
+        $this->assertStringContainsString('Clasifica la campaña; no filtra el tipo del interés.', $html);
+        $this->assertStringContainsString('Filtra por el tipo normalizado del interés.', $html);
         $this->assertStringContainsString('id="saleSubcategory"', $html);
         $this->assertStringContainsString('data-context="venta"', $html);
         $this->assertStringContainsString('data-context="tasacion"', $html);
@@ -118,6 +123,84 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('data-column="campaign_source_type_label"', $html);
         $this->assertStringNotContainsString('data-column="match_status"', $html);
         $this->assertStringNotContainsString('data-column="platform_leads"', $html);
+    }
+
+    public function test_cache_identity_changes_when_same_direct_run_moves_from_running_to_completed(): void
+    {
+        DB::table('salesforce_opportunity_interest_direct_runs')
+            ->where('id', $this->rot4DirectRunId)
+            ->update(['status' => 'running', 'completed_at' => null]);
+        SalesforceOpportunity::query()->create([
+            'salesforce_id' => '006-cache-direct',
+            'name' => 'Opportunity cache direct',
+            'created_date' => '2026-05-11 10:00:00',
+            'stage_name' => 'Abierta',
+            'record_type_name' => 'Venta',
+            'is_deleted' => false,
+        ]);
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'interest_id' => '00Q-cache-direct',
+            'campaign_id' => 'cache-direct',
+            'campaign_name' => 'Cache direct',
+            'opportunity_id' => '006-cache-direct',
+            'has_opportunity' => false,
+        ]));
+
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
+            ->assertOk()
+            ->assertJsonPath('kpis.opportunities', 0);
+
+        DB::table('campaign_lead_attributions')->where('interest_id', '00Q-cache-direct')->update(['has_opportunity' => true]);
+        DB::table('salesforce_opportunity_interest_direct_runs')
+            ->where('id', $this->rot4DirectRunId)
+            ->update([
+                'status' => 'completed',
+                'source_cutoff_at' => '2026-12-31 23:59:59',
+                'completed_at' => '2026-12-31 23:59:59',
+            ]);
+
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
+            ->assertOk()
+            ->assertJsonPath('kpis.opportunities', 1);
+    }
+
+    public function test_cache_identity_changes_when_same_f2_run_moves_from_running_to_completed(): void
+    {
+        DB::table('report_sync_runs')
+            ->where('id', $this->rot4InterestRunId)
+            ->update(['status' => 'running', 'source_cutoff_at' => null, 'completed_at' => null]);
+        SalesforceOpportunity::query()->create([
+            'salesforce_id' => '006-cache-interest',
+            'name' => 'Opportunity cache Interest',
+            'created_date' => '2026-05-11 10:00:00',
+            'stage_name' => 'Abierta',
+            'record_type_name' => 'Venta',
+            'is_deleted' => false,
+        ]);
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'interest_id' => '00Q-cache-interest',
+            'campaign_id' => 'cache-interest',
+            'campaign_name' => 'Cache Interest',
+            'opportunity_id' => '006-cache-interest',
+            'has_opportunity' => false,
+        ]));
+
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
+            ->assertOk()
+            ->assertJsonPath('kpis.opportunities', 0);
+
+        DB::table('campaign_lead_attributions')->where('interest_id', '00Q-cache-interest')->update(['has_opportunity' => true]);
+        DB::table('report_sync_runs')
+            ->where('id', $this->rot4InterestRunId)
+            ->update([
+                'status' => 'completed',
+                'source_cutoff_at' => '2026-12-31 23:59:59',
+                'completed_at' => '2026-12-31 23:59:59',
+            ]);
+
+        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
+            ->assertOk()
+            ->assertJsonPath('kpis.opportunities', 1);
     }
 
     public function test_admin_ve_diagnostico_y_puede_exportar_pero_viewer_no(): void
@@ -455,28 +538,28 @@ class CampaignDashboardTest extends TestCase
 
         DB::table('campaign_lead_attributions')->insert([
             $this->attributionRow([
-                'lead_id' => '00Q-venta-real',
+                'interest_id' => '00Q-venta-real',
                 'campaign_id' => 'venta-real',
                 'campaign_name' => 'Venta real',
                 'source_campaign_name' => 'Venta real',
                 'campaign_type' => 'venta',
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-expo-real',
+                'interest_id' => '00Q-expo-real',
                 'campaign_id' => 'expo-real',
                 'campaign_name' => 'Exposicion real',
                 'source_campaign_name' => 'Exposicion real',
                 'campaign_type' => 'exposicion',
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-branding-real',
+                'interest_id' => '00Q-branding-real',
                 'campaign_id' => 'branding-real',
                 'campaign_name' => 'Branding real',
                 'source_campaign_name' => 'Branding real',
                 'campaign_type' => 'branding',
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-otros-real',
+                'interest_id' => '00Q-otros-real',
                 'campaign_id' => 'otros-real',
                 'campaign_name' => 'Otros real',
                 'source_campaign_name' => 'Otros real',
@@ -590,9 +673,9 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->assertSame(1, CampaignAttribution::query()->count());
+        $this->assertSame(2, CampaignAttribution::query()->count());
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-1',
+            'interest_id' => '00Q-1',
             'opportunity_id' => '006-1',
             'campaign_id' => 'camp-1',
             'campaign_name' => 'Spring Sale',
@@ -606,7 +689,7 @@ class CampaignDashboardTest extends TestCase
             'sale_amount' => 12000,
         ]);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-1',
+            'interest_id' => '00Q-1',
             'campaign_id' => 'camp-1',
             'attribution_method' => 'ad_id_match',
             'attribution_confidence' => 'high',
@@ -666,7 +749,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('Lead Privado', $csv);
     }
 
-    public function test_tasacion_solo_cruza_oportunidades_por_converted_opportunity_id_y_converted_account_id(): void
+    public function test_tasacion_usa_both_match_y_first_touch_account_sin_pii(): void
     {
         CampaignPlatformDailyMetric::query()->create($this->metricRow([
             'platform' => 'google_ads',
@@ -776,21 +859,21 @@ class CampaignDashboardTest extends TestCase
         $this->assertSame(2, DB::table('campaign_lead_attributions')->where('has_purchase', true)->count());
 
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-tasacion-direct',
+            'interest_id' => '00Q-tasacion-direct',
             'opportunity_id' => '006-tasacion-direct',
-            'opportunity_attribution_method' => 'converted_opportunity_id',
+            'opportunity_attribution_method' => 'both_match',
         ]);
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-tasacion-account',
+            'interest_id' => '00Q-tasacion-account',
             'opportunity_id' => '006-tasacion-account',
-            'opportunity_attribution_method' => 'converted_account_id',
+            'opportunity_attribution_method' => 'account_first_touch',
         ]);
         $this->assertDatabaseMissing('campaign_attributions', [
-            'lead_id' => '00Q-tasacion-contact',
+            'interest_id' => '00Q-tasacion-contact',
             'opportunity_id' => '006-tasacion-contact',
         ]);
         $this->assertDatabaseMissing('campaign_attributions', [
-            'lead_id' => '00Q-tasacion-name',
+            'interest_id' => '00Q-tasacion-name',
             'opportunity_id' => '006-tasacion-name',
         ]);
 
@@ -851,8 +934,8 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->assertSame(2, DB::table('campaign_lead_attributions')->where('lead_id', '00Q-tasacion-multi')->count());
-        $this->assertSame(2, DB::table('campaign_lead_attributions')->where('lead_id', '00Q-tasacion-multi')->where('has_purchase', true)->count());
+        $this->assertSame(2, DB::table('campaign_lead_attributions')->where('interest_id', '00Q-tasacion-multi')->count());
+        $this->assertSame(2, DB::table('campaign_lead_attributions')->where('interest_id', '00Q-tasacion-multi')->where('has_purchase', true)->count());
 
         $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=tasacion')
             ->assertOk()
@@ -915,13 +998,14 @@ class CampaignDashboardTest extends TestCase
         );
 
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-meta-direct-1',
-            'campaign_name' => 'Formulario Directo Meta',
+            'interest_id' => '00Q-meta-direct-1',
+            'campaign_name' => 'Facebook',
             'campaign_type' => 'venta',
-            'campaign_acquired' => 'Formulario Directo Meta',
+            'campaign_acquired' => null,
+            'campaign_source_type' => 'salesforce_origin',
         ]);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-meta-direct-2',
+            'interest_id' => '00Q-meta-direct-2',
             'campaign_name' => 'Formulario Directo Meta',
             'campaign_type' => 'venta',
             'campaign_acquired' => 'Formulario Directo Meta',
@@ -936,7 +1020,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame('meta', $row['platform']);
         $this->assertEquals(500.0, $row['spend']);
-        $this->assertSame(2, $row['leads_salesforce']);
+        $this->assertSame(1, $row['leads_salesforce']);
     }
 
     public function test_campana_tasacion_no_contabiliza_ventas_aunque_la_oportunidad_sea_de_venta(): void
@@ -984,7 +1068,7 @@ class CampaignDashboardTest extends TestCase
         );
 
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-tasacion-no-sale',
+            'interest_id' => '00Q-tasacion-no-sale',
             'campaign_type' => 'tasacion',
             'has_sale' => false,
             'has_purchase' => false,
@@ -1022,7 +1106,7 @@ class CampaignDashboardTest extends TestCase
         );
 
         $this->assertDatabaseHas('campaign_attributions', [
-            'lead_id' => '00Q-sf-only',
+            'interest_id' => '00Q-sf-only',
             'platform' => 'salesforce',
             'campaign_name' => 'Campana solo Salesforce',
             'attribution_method' => 'salesforce_only',
@@ -1030,7 +1114,7 @@ class CampaignDashboardTest extends TestCase
             'campaign_source_type' => 'salesforce_campaign_without_spend',
         ]);
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-sf-only',
+            'interest_id' => '00Q-sf-only',
             'campaign_name' => 'Campana solo Salesforce',
             'source_campaign_name' => 'Campana solo Salesforce',
             'campaign_type' => 'venta',
@@ -1056,7 +1140,7 @@ class CampaignDashboardTest extends TestCase
         foreach (range(1, 10) as $index) {
             $opportunity = $index <= 4 ? '006-sf-only-'.$index : null;
             DB::table('campaign_lead_attributions')->insert($this->attributionRow([
-                'lead_id' => '00Q-sf-only-'.$index,
+                'interest_id' => '00Q-sf-only-'.$index,
                 'platform' => 'salesforce',
                 'campaign_id' => 'sf-only-campaign',
                 'campaign_name' => 'Campaign Salesforce only',
@@ -1116,7 +1200,7 @@ class CampaignDashboardTest extends TestCase
         );
 
         $this->assertDatabaseHas('campaign_lead_attributions', [
-            'lead_id' => '00Q-tasador-manual',
+            'interest_id' => '00Q-tasador-manual',
             'match_status' => 'excluded_campaign_tasador',
         ]);
 
@@ -1148,7 +1232,7 @@ class CampaignDashboardTest extends TestCase
             ->assertOk()
             ->assertJsonPath('total', 1)
             ->assertJsonPath('items.0.classification', 'Revisar tracking')
-            ->assertJsonPath('items.0.match_status', 'Sin leads Salesforce')
+            ->assertJsonPath('items.0.match_status', 'Sin Interests Salesforce')
             ->assertJsonPath('items.0.campaign_source_type', 'platform_campaign')
             ->assertJsonPath('items.0.leads_salesforce', 0);
 
@@ -1265,14 +1349,14 @@ class CampaignDashboardTest extends TestCase
         ]);
 
         CampaignAttribution::query()->create([
-            'lead_id' => '00Q-lead-pivot',
+            'interest_id' => '00Q-lead-pivot',
             'opportunity_id' => '006-lead-pivot',
             'platform' => 'meta',
             'account_id' => 'act_1',
             'campaign_id' => 'camp-lead-pivot',
             'campaign_name' => 'Lead Pivot',
             'campaign_name_key' => 'leadpivot',
-            'lead_created_at' => '2026-05-20 10:00:00',
+            'interest_functional_created_at' => '2026-05-20 10:00:00',
             'opportunity_created_at' => '2026-06-01 10:00:00',
             'reservation_date' => '2026-06-02',
             'sale_date' => '2026-06-05',
@@ -1286,8 +1370,9 @@ class CampaignDashboardTest extends TestCase
             'campaign_source_type' => 'platform_campaign',
         ]);
         DB::table('campaign_lead_attributions')->insert([
-            'lead_id' => '00Q-lead-pivot',
-            'lead_created_date' => '2026-05-20 10:00:00',
+            'interest_id' => '00Q-lead-pivot',
+            'interest_functional_created_at' => '2026-05-20 10:00:00',
+            'interest_is_deleted' => false,
             'campaign_name' => 'Lead Pivot',
             'campaign_id' => 'camp-lead-pivot',
             'platform' => 'meta',
@@ -1304,7 +1389,7 @@ class CampaignDashboardTest extends TestCase
 
         $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
-            ->assertJsonPath('period_mode', 'lead_pivot')
+            ->assertJsonPath('period_mode', 'interest_pivot')
             ->assertJsonPath('kpis.leads_salesforce', 1)
             ->assertJsonPath('kpis.opportunities', 1)
             ->assertJsonPath('kpis.reservations', 1)
@@ -1325,13 +1410,13 @@ class CampaignDashboardTest extends TestCase
         ]));
 
         CampaignAttribution::query()->create([
-            'lead_id' => '00Q-old-lead',
+            'interest_id' => '00Q-old-lead',
             'opportunity_id' => '006-old-lead',
             'platform' => 'meta',
             'campaign_id' => 'camp-old-lead',
             'campaign_name' => 'Old Lead',
             'campaign_name_key' => 'oldlead',
-            'lead_created_at' => '2026-04-20 10:00:00',
+            'interest_functional_created_at' => '2026-04-20 10:00:00',
             'opportunity_created_at' => '2026-05-01 10:00:00',
             'reservation_date' => '2026-05-02',
             'sale_date' => '2026-05-05',
@@ -1345,8 +1430,9 @@ class CampaignDashboardTest extends TestCase
             'campaign_source_type' => 'platform_campaign',
         ]);
         DB::table('campaign_lead_attributions')->insert([
-            'lead_id' => '00Q-old-lead',
-            'lead_created_date' => '2026-04-20 10:00:00',
+            'interest_id' => '00Q-old-lead',
+            'interest_functional_created_at' => '2026-04-20 10:00:00',
+            'interest_is_deleted' => false,
             'campaign_name' => 'Old Lead',
             'campaign_id' => 'camp-old-lead',
             'platform' => 'meta',
@@ -1370,21 +1456,21 @@ class CampaignDashboardTest extends TestCase
             ->assertJsonPath('kpis.sale_amount', null);
     }
 
-    public function test_salesforce_source_medium_only_no_genera_atribucion_de_campana(): void
+    public function test_salesforce_source_medium_only_genera_procedencia_auditable_sin_inversion(): void
     {
-        SalesforceLead::query()->create([
+        SalesforceInterest::query()->create([
             'salesforce_id' => '00Q-origin',
-            'name' => 'Lead Origen',
-            'created_date' => '2026-05-10 10:00:00',
+            'functional_created_at' => '2026-05-10 10:00:00',
+            'salesforce_created_at' => '2026-05-10 10:00:00',
+            'salesforce_last_modified_at' => '2026-05-10 10:00:00',
             'status' => 'Potencial',
-            'record_type_name' => 'Venta',
-            'owner_id' => '005-real',
+            'type' => 'Venta',
+            'owner_salesforce_id' => '005-real',
             'owner_name' => 'Comercial Real',
-            'fuente_origen' => 'Google Maps',
-            'medio_origen' => 'Llamada',
-            'portal_text' => 'Google Maps',
-            'medio_nuevo' => 'Llamada',
-            'delegacion_encargada_text' => 'Alcobendas',
+            'source' => 'Google Maps',
+            'medium' => 'Llamada',
+            'origin_delegation' => 'Alcobendas',
+            'is_deleted' => false,
         ]);
 
         app(CampaignAttributionBuilderService::class)->build(
@@ -1392,20 +1478,22 @@ class CampaignDashboardTest extends TestCase
             CarbonImmutable::parse('2026-06-01')
         );
 
-        $this->assertDatabaseMissing('campaign_lead_attributions', [
-            'lead_id' => '00Q-origin',
+        $this->assertDatabaseHas('campaign_lead_attributions', [
+            'interest_id' => '00Q-origin',
+            'campaign_source_type' => 'salesforce_origin',
         ]);
 
         $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
             ->assertOk()
-            ->assertJsonPath('total', 0)
-            ->assertJsonPath('items', []);
+            ->assertJsonPath('total', 1)
+            ->assertJsonPath('items.0.campaign_source_type', 'salesforce_origin');
 
-        $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
-            ->assertJsonPath('kpis.leads_salesforce', 0)
-            ->assertJsonPath('diagnostics.salesforce_origins', 0)
-            ->assertJsonPath('diagnostics.salesforce_only_by_origin', 0);
+            ->json();
+        $this->assertSame(0, $summary['kpis']['leads_salesforce']);
+        $this->assertSame(1, $summary['diagnostics']['salesforce_origins'], json_encode($summary['diagnostics']));
+        $this->assertSame(1, $summary['diagnostics']['salesforce_only_by_origin'], json_encode($summary['diagnostics']));
     }
 
     public function test_rankings_and_charts_no_recuperan_procedencias_sin_campaign_acquired(): void
@@ -1446,7 +1534,7 @@ class CampaignDashboardTest extends TestCase
         $rankingJson = json_encode($rankings);
 
         $this->assertStringContainsString('Meta Real', $rankingJson);
-        $this->assertStringNotContainsString('Chatbot', $rankingJson);
+        $this->assertStringContainsString('Chatbot', $rankingJson);
         $this->assertArrayNotHasKey('salesforce_origin', $rankings);
         $this->assertArrayNotHasKey('review_investment_tracking', $rankings);
 
@@ -1457,22 +1545,23 @@ class CampaignDashboardTest extends TestCase
         $this->assertArrayHasKey('rankings', $summary);
         $this->assertSame(900, $summary['charts']['funnel'][0]['value']);
         $this->assertSame(90, $summary['charts']['funnel'][1]['value']);
-        $this->assertSame(0, $summary['diagnostics']['salesforce_origins']);
+        $this->assertSame(1, $summary['diagnostics']['salesforce_origins']);
     }
 
     public function test_periodo_local_madrid_incluye_y_excluye_bordes_utc_en_leads_salesforce(): void
     {
         $rows = [
-            ['lead_id' => '00Q-local-start-1', 'lead_created_date' => '2026-04-30 23:03:10'],
-            ['lead_id' => '00Q-local-start-2', 'lead_created_date' => '2026-04-30 23:20:51'],
-            ['lead_id' => '00Q-local-mid', 'lead_created_date' => '2026-05-15 12:00:00'],
-            ['lead_id' => '00Q-local-end-out', 'lead_created_date' => '2026-05-31 22:15:41'],
+            ['interest_id' => '00Q-local-start-1', 'interest_functional_created_at' => '2026-04-30 23:03:10'],
+            ['interest_id' => '00Q-local-start-2', 'interest_functional_created_at' => '2026-04-30 23:20:51'],
+            ['interest_id' => '00Q-local-mid', 'interest_functional_created_at' => '2026-05-15 12:00:00'],
+            ['interest_id' => '00Q-local-end-out', 'interest_functional_created_at' => '2026-05-31 22:15:41'],
         ];
 
         foreach ($rows as $row) {
             DB::table('campaign_lead_attributions')->insert([
-                'lead_id' => $row['lead_id'],
-                'lead_created_date' => $row['lead_created_date'],
+                'interest_id' => $row['interest_id'],
+                'interest_functional_created_at' => $row['interest_functional_created_at'],
+                'interest_is_deleted' => false,
                 'campaign_name' => 'Expiey_Leads_Geo_Tasación_Nuevas Ubicaciones',
                 'campaign_id' => null,
                 'platform' => 'salesforce',
@@ -1489,9 +1578,9 @@ class CampaignDashboardTest extends TestCase
                 'campaign_acquired' => 'Expiey_Leads_Geo_Tasación_Nuevas Ubicaciones',
                 'acquired_id' => null,
                 'content_acquired' => null,
-                'lead_status' => 'Potencial',
-                'lead_delegation' => 'Alcobendas',
-                'lead_zone' => 'Madrid',
+                'interest_status' => 'Potencial',
+                'interest_origin_delegation' => 'Alcobendas',
+                'interest_origin_zone' => 'Madrid',
                 'commercial_user_id' => null,
                 'commercial_user_name' => null,
                 'vehicle_interest' => null,
@@ -1547,8 +1636,11 @@ class CampaignDashboardTest extends TestCase
             ->assertOk()
             ->json();
 
-        $this->assertSame(0, $payload['total']);
-        $this->assertSame([], $payload['items']);
+        $this->assertSame(3, $payload['total']);
+        $this->assertEqualsCanonicalizing(
+            ['Google Maps · Llamada', 'Chatbot · CPC', 'Exposicion'],
+            array_column($payload['items'], 'campaign_name'),
+        );
     }
 
     public function test_sale_amount_column_when_available_calculates_roas_and_roi(): void
@@ -1810,7 +1902,7 @@ class CampaignDashboardTest extends TestCase
     {
         DB::table('campaign_lead_attributions')->insert([
             $this->attributionRow([
-                'lead_id' => '00Q-sale-1',
+                'interest_id' => '00Q-sale-1',
                 'campaign_id' => 'sale-campaign',
                 'campaign_name' => 'Venta real',
                 'campaign_type' => 'venta',
@@ -1819,7 +1911,7 @@ class CampaignDashboardTest extends TestCase
                 'has_sale' => true,
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-sale-2',
+                'interest_id' => '00Q-sale-2',
                 'campaign_id' => 'sale-campaign',
                 'campaign_name' => 'Venta real',
                 'campaign_type' => 'venta',
@@ -1828,7 +1920,7 @@ class CampaignDashboardTest extends TestCase
                 'has_sale' => true,
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-purchase-1',
+                'interest_id' => '00Q-purchase-1',
                 'campaign_id' => 'tasacion-campaign',
                 'campaign_name' => 'Tasacion real',
                 'campaign_type' => 'tasacion',
@@ -1836,7 +1928,7 @@ class CampaignDashboardTest extends TestCase
                 'has_purchase' => true,
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-purchase-2',
+                'interest_id' => '00Q-purchase-2',
                 'campaign_id' => 'tasacion-campaign',
                 'campaign_name' => 'Tasacion real',
                 'campaign_type' => 'tasacion',
@@ -1865,7 +1957,7 @@ class CampaignDashboardTest extends TestCase
     {
         DB::table('campaign_lead_attributions')->insert([
             $this->attributionRow([
-                'lead_id' => '00Q-shared-lead',
+                'interest_id' => '00Q-shared-lead',
                 'campaign_id' => 'tasacion-shared-lead',
                 'campaign_name' => 'Tasacion lead compartido',
                 'source_campaign_name' => 'Tasacion lead compartido',
@@ -1874,7 +1966,7 @@ class CampaignDashboardTest extends TestCase
                 'has_opportunity' => true,
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-shared-lead',
+                'interest_id' => '00Q-shared-lead',
                 'campaign_id' => 'tasacion-shared-lead',
                 'campaign_name' => 'Tasacion lead compartido',
                 'source_campaign_name' => 'Tasacion lead compartido',
@@ -1901,7 +1993,7 @@ class CampaignDashboardTest extends TestCase
     {
         DB::table('campaign_lead_attributions')->insert([
             $this->attributionRow([
-                'lead_id' => '00Q-purchase-cross-1',
+                'interest_id' => '00Q-purchase-cross-1',
                 'campaign_id' => 'tasacion-cross-1',
                 'campaign_name' => 'Tasacion cruzada 1',
                 'source_campaign_name' => 'Tasacion cruzada 1',
@@ -1911,7 +2003,7 @@ class CampaignDashboardTest extends TestCase
                 'has_purchase' => true,
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-purchase-cross-2',
+                'interest_id' => '00Q-purchase-cross-2',
                 'campaign_id' => 'tasacion-cross-2',
                 'campaign_name' => 'Tasacion cruzada 2',
                 'source_campaign_name' => 'Tasacion cruzada 2',
@@ -1938,7 +2030,7 @@ class CampaignDashboardTest extends TestCase
 
         DB::table('campaign_lead_attributions')->insert([
             $this->attributionRow([
-                'lead_id' => '00Q-audit-purchase-1',
+                'interest_id' => '00Q-audit-purchase-1',
                 'campaign_id' => 'tasacion-audit-1',
                 'campaign_name' => 'Tasacion audit 1',
                 'source_campaign_name' => 'Tasacion audit 1',
@@ -1953,7 +2045,7 @@ class CampaignDashboardTest extends TestCase
                 'commercial_user_name' => 'Comercial Tasacion',
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-audit-purchase-2',
+                'interest_id' => '00Q-audit-purchase-2',
                 'campaign_id' => 'tasacion-audit-2',
                 'campaign_name' => 'Tasacion audit 2',
                 'source_campaign_name' => 'Tasacion audit 2',
@@ -2032,9 +2124,9 @@ class CampaignDashboardTest extends TestCase
         $this->assertSame('purchases', $audit['metric']);
         $this->assertSame(1, $audit['total']);
         $this->assertSame('006-audit-purchase', $auditItem['entity_id']);
-        $this->assertSame(['00Q-audit-purchase-1', '00Q-audit-purchase-2'], $auditItem['lead_ids']);
+        $this->assertSame(['00Q-audit-purchase-1', '00Q-audit-purchase-2'], $auditItem['interest_ids']);
         $this->assertSame(['Tasacion audit 1', 'Tasacion audit 2'], $auditItem['campaign_names']);
-        $this->assertSame(['Google', 'Meta'], $auditItem['lead_source_origins']);
+        $this->assertSame(['Google', 'Meta'], $auditItem['source_acquired_values']);
         $this->assertSame('Comercial Tasacion', $auditItem['managed_by']);
         $this->assertEquals(14500.0, $auditItem['purchase_amount']);
 
@@ -2053,7 +2145,7 @@ class CampaignDashboardTest extends TestCase
     {
         DB::table('campaign_lead_attributions')->insert([
             $this->attributionRow([
-                'lead_id' => '00Q-review-quality-1',
+                'interest_id' => '00Q-review-quality-1',
                 'campaign_id' => 'review-quality-campaign',
                 'campaign_name' => 'Expiey_Catálogo_Campaign',
                 'source_campaign_name' => 'Expiey_Catálogo_Campaign',
@@ -2062,7 +2154,7 @@ class CampaignDashboardTest extends TestCase
                 'has_opportunity' => false,
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-review-quality-2',
+                'interest_id' => '00Q-review-quality-2',
                 'campaign_id' => 'review-quality-campaign',
                 'campaign_name' => 'Expiey_Catálogo_Campaign',
                 'source_campaign_name' => 'Expiey_Catálogo_Campaign',
@@ -2089,7 +2181,7 @@ class CampaignDashboardTest extends TestCase
             ->firstWhere('campaign_name', 'Expiey_Catálogo_Campaign');
 
         $this->assertNotNull($review);
-        $this->assertSame('Leads / oportunidades', $review['metric']);
+        $this->assertSame('Intereses / oportunidades', $review['metric']);
         $this->assertSame('2 / 0', $review['value']);
     }
 
@@ -2097,18 +2189,20 @@ class CampaignDashboardTest extends TestCase
     {
         DB::table('campaign_lead_attributions')->insert([
             $this->attributionRow([
-                'lead_id' => '00Q-campaign-sale-lead-appraisal',
+                'interest_id' => '00Q-campaign-sale-lead-appraisal',
                 'campaign_id' => 'campaign-sale-classification',
                 'campaign_name' => 'Expiey_Espana_Marca',
                 'source_campaign_name' => 'Expiey_Espana_Marca',
                 'campaign_type' => 'venta',
+                'interest_type' => 'tasacion',
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-campaign-sale-lead-sale',
+                'interest_id' => '00Q-campaign-sale-lead-sale',
                 'campaign_id' => 'campaign-sale-classification',
                 'campaign_name' => 'Expiey_Espana_Marca',
                 'source_campaign_name' => 'Expiey_Espana_Marca',
                 'campaign_type' => 'venta',
+                'interest_type' => 'venta',
             ]),
         ]);
 
@@ -2141,16 +2235,17 @@ class CampaignDashboardTest extends TestCase
     {
         DB::table('campaign_lead_attributions')->insert([
             $this->attributionRow([
-                'lead_id' => '00Q-overlap-campaigns',
+                'interest_id' => '00Q-overlap-campaigns',
                 'campaign_id' => 'campaign-appraisal-a',
                 'campaign_name' => 'Tasador Landing Search',
                 'source_campaign_name' => 'TASADOR_LANDING_SEARCH_1',
                 'campaign_acquired' => 'TASADOR_LANDING_SEARCH_1',
                 'acquired_id' => 'ad-123',
                 'campaign_type' => 'tasacion',
+                'interest_type' => 'tasacion',
             ]),
             $this->attributionRow([
-                'lead_id' => '00Q-overlap-campaigns',
+                'interest_id' => '00Q-overlap-campaigns',
                 'platform' => 'google_ads',
                 'campaign_id' => 'campaign-appraisal-b',
                 'campaign_name' => 'Geo Tasacion',
@@ -2158,11 +2253,12 @@ class CampaignDashboardTest extends TestCase
                 'campaign_acquired' => 'Expiey_Leads_Geo_Tasacion',
                 'acquired_id' => 'ad-123',
                 'campaign_type' => 'tasacion',
+                'interest_type' => 'tasacion',
             ]),
         ]);
 
         CampaignAttribution::query()->create([
-            'lead_id' => '00Q-overlap-campaigns',
+            'interest_id' => '00Q-overlap-campaigns',
             'platform' => 'meta',
             'campaign_id' => 'campaign-appraisal-a',
             'campaign_name' => 'Tasador Landing Search',
@@ -2172,7 +2268,7 @@ class CampaignDashboardTest extends TestCase
             'attribution_confidence' => 'high',
             'match_status' => 'matched',
             'campaign_source_type' => 'salesforce',
-            'lead_created_at' => '2026-05-10 10:00:00',
+            'interest_functional_created_at' => '2026-05-10 10:00:00',
         ]);
         SalesforceLead::query()->create([
             'salesforce_id' => '00Q-overlap-campaigns',
@@ -2197,10 +2293,10 @@ class CampaignDashboardTest extends TestCase
             ->assertJsonPath('total', 2)
             ->json('items');
 
-        $this->assertSame(['00Q-overlap-campaigns'], collect($audit)->pluck('lead_id')->unique()->values()->all());
-        $this->assertSame([2], collect($audit)->pluck('campaigns_for_lead')->unique()->values()->all());
+        $this->assertSame(['00Q-overlap-campaigns'], collect($audit)->pluck('interest_id')->unique()->values()->all());
+        $this->assertSame([2], collect($audit)->pluck('campaigns_for_interest')->unique()->values()->all());
         $this->assertTrue(collect($audit)->every(fn (array $row): bool => $row['overlaps_another_campaign']));
-        $this->assertSame(['tasacion'], collect($audit)->pluck('lead_record_type_normalized')->unique()->values()->all());
+        $this->assertSame(['tasacion'], collect($audit)->pluck('interest_type')->unique()->values()->all());
 
         $csv = $this->get('/informes/campanas/export/attributions.csv?'.$this->campaignQuery().'&context=tasacion&campaign_status=')
             ->assertOk()
@@ -2237,7 +2333,7 @@ class CampaignDashboardTest extends TestCase
             'deletion_detection_source' => SalesforceOpportunity::DELETION_SOURCE_QUERY_ALL,
         ]);
         DB::table('campaign_lead_attributions')->insert($this->attributionRow([
-            'lead_id' => '00Q-campaign-deleted-opportunity',
+            'interest_id' => '00Q-campaign-deleted-opportunity',
             'campaign_id' => 'campaign-lifecycle',
             'campaign_name' => 'Venta lifecycle',
             'campaign_type' => 'branding',
@@ -2298,7 +2394,7 @@ class CampaignDashboardTest extends TestCase
             'deletion_detection_source' => SalesforceOpportunity::DELETION_SOURCE_QUERY_ALL,
         ]);
         DB::table('campaign_lead_attributions')->insert($this->attributionRow([
-            'lead_id' => '00Q-campaign-deleted-purchase',
+            'interest_id' => '00Q-campaign-deleted-purchase',
             'campaign_id' => 'campaign-lifecycle-appraisal',
             'campaign_name' => 'Tasacion lifecycle',
             'campaign_type' => 'tasacion',
@@ -2369,9 +2465,12 @@ class CampaignDashboardTest extends TestCase
 
     private function attributionRow(array $overrides = []): array
     {
-        return array_merge([
-            'lead_id' => '00Q-default',
-            'lead_created_date' => '2026-05-10 10:00:00',
+        $row = array_merge([
+            'interest_id' => '00Q-default',
+            'interest_functional_created_at' => '2026-05-10 10:00:00',
+            'interest_status' => 'Nuevo',
+            'interest_type' => 'venta',
+            'interest_is_deleted' => false,
             'platform' => 'meta',
             'campaign_id' => 'campaign-default',
             'campaign_name' => 'Campaign default',
@@ -2384,5 +2483,13 @@ class CampaignDashboardTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ], $overrides);
+
+        if (! array_key_exists('campaign_source_type', $overrides)) {
+            $row['campaign_source_type'] = ($row['platform'] ?? null) === 'salesforce'
+                ? 'salesforce_campaign_without_spend'
+                : 'platform_campaign';
+        }
+
+        return $row;
     }
 }

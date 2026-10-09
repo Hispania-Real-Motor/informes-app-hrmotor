@@ -92,16 +92,7 @@ $monitor(
     'sincronización de tasaciones',
 );
 
-$monitor(
-    Schedule::command('salesforce:sync-campaign-leads --days=120')
-        ->dailyAt('01:15')
-        ->timezone('Europe/Madrid')
-        ->withoutOverlapping(180),
-    'salesforce-sync-campaign-leads',
-    'sincronización de Leads Salesforce de Campañas',
-);
-
-// La atribucion se reconstruye despues de actualizar Salesforce y ambas plataformas.
+// La inversión se sincroniza antes de la atribución Interest-centric.
 $monitor(
     Schedule::command('campaigns:sync-meta --days=120')
         ->dailyAt('01:30')
@@ -122,7 +113,7 @@ $monitor(
 
 $monitor(
     Schedule::command('campaigns:build-attribution --days=120')
-        ->dailyAt('02:15')
+        ->dailyAt('08:00')
         ->timezone('Europe/Madrid')
         ->withoutOverlapping(240),
     'campaigns-build-attribution',
@@ -131,15 +122,15 @@ $monitor(
 
 $monitor(
     Schedule::command('reports:refresh-campaigns --days=120 --store')
-        ->dailyAt('03:15')
+        ->dailyAt('08:15')
         ->timezone('Europe/Madrid')
         ->withoutOverlapping(120),
     'reports-refresh-campaigns',
     'refresco del informe de campañas',
 );
 
-// Se programa a las 07:10, fuera del bloque de atribución de campañas (02:15),
-// del refresco (03:15), de Stock que también escribe Opportunities (03:30) y
+// Se programa a las 07:10, después de Stock, antes del snapshot directo y
+// del bloque de atribución de campañas (08:00). También queda fuera
 // del bloque SEO (05:15-06:30). El sync mensual de Leads no escribe Opportunities.
 // LastModifiedDate solo descubre registros antiguos modificados; las fechas
 // funcionales proceden de los hitos y de OpportunityHistory.

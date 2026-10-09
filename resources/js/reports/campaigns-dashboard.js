@@ -1,4 +1,4 @@
-﻿const numberFormatter = new Intl.NumberFormat('es-ES');
+const numberFormatter = new Intl.NumberFormat('es-ES');
 const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 const columnsStorageKey = 'hrmotor_campaign_columns_v5';
 const rankingsStorageKey = 'campaigns.visibleRankings.v7';
@@ -50,7 +50,7 @@ const ventaContexts = ['venta', ...ventaSubcontexts];
 
 const dailySeriesDefinitions = [
     { key: 'spend', label: 'Inversión', formatter: formatMoney, className: 'spend' },
-    { key: 'leads_salesforce', label: 'Leads SF', formatter: formatNumber, className: 'leads' },
+    { key: 'leads_salesforce', label: 'Intereses SF', formatter: formatNumber, className: 'leads' },
 ];
 
 const conversionSeriesDefinitions = [
@@ -62,7 +62,7 @@ const monthlySeriesDefinitions = [
     { key: 'spend', label: 'Inversión', formatter: formatMoney, className: 'spend' },
     { key: 'impressions', label: 'Impresiones', formatter: formatNumber, className: 'impressions' },
     { key: 'clicks', label: 'Clicks', formatter: formatNumber, className: 'clicks' },
-    { key: 'leads_salesforce', label: 'Leads', formatter: formatNumber, className: 'leads' },
+    { key: 'leads_salesforce', label: 'Intereses', formatter: formatNumber, className: 'leads' },
     { key: 'opportunities', label: 'Oportunidades', formatter: formatNumber, className: 'opportunities' },
     { key: 'reservations', label: 'Reservas', formatter: formatNumber, className: 'reservations' },
     { key: 'sales', label: 'Ventas', formatter: formatNumber, className: 'sales' },
@@ -72,7 +72,7 @@ const monthlySeriesDefinitions = [
 
 const monthlyTasacionSeriesDefinitions = [
     { key: 'spend', label: 'Inversión', formatter: formatMoney, className: 'spend' },
-    { key: 'leads_salesforce', label: 'Leads', formatter: formatNumber, className: 'leads' },
+    { key: 'leads_salesforce', label: 'Intereses', formatter: formatNumber, className: 'leads' },
     { key: 'opportunities', label: 'Oportunidades', formatter: formatNumber, className: 'opportunities' },
     { key: 'purchases', label: 'Compras', formatter: formatNumber, className: 'purchases' },
 ];
@@ -80,7 +80,7 @@ const monthlyTasacionSeriesDefinitions = [
 const rankingDefinitions = [
     { key: 'top_spend', title: 'Campañas con más inversión', metric: 'spend', formatter: formatMoney, visible: true },
     { key: 'top_impressions', title: 'Campañas con más impresiones', metric: 'impressions', formatter: formatNumber, visible: false },
-    { key: 'top_leads_salesforce', title: 'Mas leads Salesforce', metric: 'leads_salesforce', formatter: formatNumber, visible: true },
+    { key: 'top_leads_salesforce', title: 'Más intereses Salesforce', metric: 'leads_salesforce', formatter: formatNumber, visible: true },
     { key: 'top_opportunities', title: 'Mas oportunidades', metric: 'opportunities', formatter: formatNumber, visible: false },
     { key: 'top_reservations', title: 'Mas reservas', metric: 'reservations', formatter: formatNumber, visible: false },
     { key: 'top_sales', title: 'Mas ventas', metric: 'sales', formatter: formatNumber, visible: true },
@@ -91,14 +91,14 @@ const rankingDefinitions = [
     { key: 'best_cpc', title: 'Mejor CPC', metric: 'cpc', formatter: formatMoney, visible: false },
     { key: 'best_cost_per_sale', title: 'Mejor coste por venta', metric: 'cost_per_sale', formatter: formatMoney, visible: true },
     { key: 'best_cost_per_purchase', title: 'Mejor coste por compra', metric: 'cost_per_purchase', formatter: formatMoney, visible: false },
-    { key: 'best_cost_per_lead', title: 'Mejor coste por lead', metric: 'cost_per_lead', formatter: formatMoney, visible: false },
+    { key: 'best_cost_per_lead', title: 'Mejor coste por interés', metric: 'cost_per_lead', formatter: formatMoney, visible: false },
     { key: 'best_cost_per_opportunity', title: 'Mejor coste por oportunidad', metric: 'cost_per_opportunity', formatter: formatMoney, visible: false },
     { key: 'best_cost_per_result', title: 'Mejor coste por resultado', metric: 'cost_per_result', formatter: formatMoney, visible: false },
-    { key: 'best_lead_to_purchase', title: 'Mejor conversion lead -> compra', metric: 'lead_to_purchase', formatter: formatPercentRatio, visible: false },
+    { key: 'best_lead_to_purchase', title: 'Mejor conversión interés → compra', metric: 'lead_to_purchase', formatter: formatPercentRatio, visible: false },
     { key: 'worst_cost_per_sale', title: 'Peor coste por venta', metric: 'cost_per_sale', formatter: formatMoney, visible: false },
     { key: 'high_spend_low_conversion', title: 'Mucho gasto y poca conversión', metric: 'spend', formatter: formatMoney, visible: false },
-    { key: 'many_leads_few_sales', title: 'Muchos leads y pocas ventas', metric: 'leads_salesforce', formatter: formatNumber, visible: false },
-    { key: 'many_leads_few_purchases', title: 'Muchos leads y pocas compras', metric: 'leads_salesforce', formatter: formatNumber, visible: false },
+    { key: 'many_leads_few_sales', title: 'Muchos intereses y pocas ventas', metric: 'leads_salesforce', formatter: formatNumber, visible: false },
+    { key: 'many_leads_few_purchases', title: 'Muchos intereses y pocas compras', metric: 'leads_salesforce', formatter: formatNumber, visible: false },
     { key: 'review_campaigns', title: 'Campañas a revisar', metric: 'value', formatter: formatNumber, visible: true },
     { key: 'review_tracking', title: 'Revisar tracking', metric: 'spend', formatter: formatMoney, visible: true },
     { key: 'boost', title: 'Potenciar', metric: 'spend', formatter: formatMoney, visible: true },
@@ -115,13 +115,13 @@ const columnDefinitions = [
     { key: 'clicks', label: 'Clicks', visible: true, numeric: true, formatter: formatNumber },
     { key: 'ctr', label: 'CTR', visible: true, numeric: true, formatter: formatPercentRatio },
     { key: 'cpc', label: 'CPC', visible: true, numeric: true, formatter: formatMoney },
-    { key: 'leads_salesforce', label: 'Leads Salesforce', visible: true, numeric: true, formatter: formatNumber },
+    { key: 'leads_salesforce', label: 'Intereses Salesforce', visible: true, numeric: true, formatter: formatNumber },
     { key: 'opportunities', label: 'Oportunidades', visible: true, numeric: true, formatter: formatNumber },
     { key: 'reservations', label: 'Reservas', visible: true, numeric: true, formatter: formatNumber },
     { key: 'sales', label: 'Ventas', visible: true, numeric: true, formatter: formatNumber },
     { key: 'sale_amount', label: 'Importe vendido', visible: true, numeric: true, formatter: formatMoney },
     { key: 'purchases', label: 'Compras', visible: true, numeric: true, formatter: formatNumber },
-    { key: 'cost_per_lead', label: 'Coste por lead', visible: true, numeric: true, formatter: formatMoney },
+    { key: 'cost_per_lead', label: 'Coste por interés', visible: true, numeric: true, formatter: formatMoney },
     { key: 'cost_per_opportunity', label: 'Coste por oportunidad', visible: true, numeric: true, formatter: formatMoney },
     { key: 'cost_per_reservation', label: 'Coste por reserva', visible: true, numeric: true, formatter: formatMoney },
     { key: 'cost_per_sale', label: 'Coste por venta', visible: true, numeric: true, formatter: formatMoney },
@@ -142,11 +142,11 @@ const columnDefinitions = [
     { key: 'last_spend_date', label: 'Última fecha con inversión', visible: false, formatter: formatDate },
     { key: 'appraisals_generated', label: 'Tasaciones generadas', visible: false, numeric: true, formatter: formatNumber },
     { key: 'cost_per_appraisal', label: 'Coste por tasación', visible: false, numeric: true, formatter: formatMoney },
-    { key: 'lead_to_opportunity', label: 'Lead -> oportunidad', visible: false, numeric: true, formatter: formatPercentRatio },
+    { key: 'lead_to_opportunity', label: 'Interés → oportunidad', visible: false, numeric: true, formatter: formatPercentRatio },
     { key: 'opportunity_to_reservation', label: 'Oportunidad -> reserva', visible: false, numeric: true, formatter: formatPercentRatio },
     { key: 'reservation_to_sale', label: 'Reserva -> venta', visible: false, numeric: true, formatter: formatPercentRatio },
-    { key: 'lead_to_sale', label: 'Lead -> venta', visible: false, numeric: true, formatter: formatPercentRatio },
-    { key: 'lead_to_purchase', label: 'Lead -> compra', visible: false, numeric: true, formatter: formatPercentRatio },
+    { key: 'lead_to_sale', label: 'Interés → venta', visible: false, numeric: true, formatter: formatPercentRatio },
+    { key: 'lead_to_purchase', label: 'Interés → compra', visible: false, numeric: true, formatter: formatPercentRatio },
     { key: 'opportunity_to_purchase', label: 'Oportunidad -> compra', visible: false, numeric: true, formatter: formatPercentRatio },
 ];
 
@@ -818,7 +818,7 @@ function renderSourceReconciliation(reconciliation) {
     }
 
     const definitions = [
-        ['Leads', reconciliation.leads],
+        ['Intereses', reconciliation.leads],
         ['Oportunidades', reconciliation.opportunities],
         ['Resultados', reconciliation.results],
     ].filter(([, row]) => row);
@@ -898,7 +898,7 @@ function dailyEvolutionHtml(rows) {
             <div class="panel-title compact">
                 <div>
                     <h2>Evolución diaria</h2>
-                    <div class="small">Inversión diaria y leads creados</div>
+                    <div class="small">Inversión diaria e intereses creados</div>
                 </div>
             </div>
             <div class="daily-chart-toolbar">
@@ -954,8 +954,8 @@ function reservationsSalesHtml(rows) {
         : '<div class="empty-state">Sin datos</div>';
     const title = currentContext === 'tasacion' ? 'Evolución de tasaciones y compras' : 'Evolución de reservas y ventas';
     const subtitle = currentContext === 'tasacion'
-        ? 'Tasaciones/citas y compras de leads del periodo'
-        : 'Reservas y ventas de leads del periodo';
+        ? 'Tasaciones/citas y compras de intereses del periodo'
+        : 'Reservas y ventas de intereses del periodo';
 
     return `
         <article class="card panel campaign-chart-card campaign-chart-wide">
@@ -1050,7 +1050,7 @@ function platformBarsHtml(rows) {
             <div class="platform-chart-group" title="${escapeHtml(platformTooltip(row))}" data-tooltip="${escapeHtml(platformTooltip(row))}">
                 <strong>${escapeHtml(formatPlatform(row.platform))}</strong>
                 ${metricBarHtml('Inversión', row.spend, maxSpend, formatMoney)}
-                ${metricBarHtml('Leads SF', row.leads_salesforce, maxLeads, formatNumber)}
+                ${metricBarHtml('Intereses SF', row.leads_salesforce, maxLeads, formatNumber)}
                 ${metricBarHtml('Ventas', row.sales, maxSales, formatNumber)}
             </div>
         `).join('')
@@ -1061,7 +1061,7 @@ function platformBarsHtml(rows) {
             <div class="panel-title compact">
                 <div>
                     <h2>Por plataforma</h2>
-                    <div class="small">Inversión, leads y ventas</div>
+                    <div class="small">Inversión, intereses y ventas</div>
                 </div>
             </div>
             <div class="campaign-bar-list">${content}</div>
@@ -1254,7 +1254,7 @@ function metricChartDefinitions(context = currentContext) {
         venta: 'Ventas',
         tasacion: 'Compras',
         exposicion: 'Oportunidades',
-        branding: 'Leads',
+        branding: 'Intereses',
         otros: 'Resultados',
         all: 'Ventas / Compras',
     })[normalized] || 'Resultados';
@@ -1263,7 +1263,7 @@ function metricChartDefinitions(context = currentContext) {
         { key: 'spend', label: 'Inversión', formatter: formatMoney, className: 'spend' },
         { key: 'result_count', label: resultLabel, formatter: formatNumber, className: 'sales' },
         { key: 'cost_per_result', label: 'Coste por resultado', formatter: formatMoney, className: 'results' },
-        { key: 'leads_salesforce', label: 'Leads Salesforce', formatter: formatNumber, className: 'leads' },
+        { key: 'leads_salesforce', label: 'Intereses Salesforce', formatter: formatNumber, className: 'leads' },
     ];
 }
 
@@ -1554,12 +1554,12 @@ function funnelHtml(rows) {
 function funnelStepsForContext(context, rows) {
     if ((rows || []).every((row) => row && typeof row === 'object' && Object.hasOwn(row, 'label') && Object.hasOwn(row, 'value'))) {
         const labelsByContext = {
-            venta: ['Clicks', 'Leads Salesforce', 'Oportunidades', 'Reservas', 'Ventas'],
-            tasacion: ['Clicks', 'Leads Salesforce', 'Oportunidades', 'Compras'],
-            exposicion: ['Clicks', 'Leads Salesforce', 'Oportunidades'],
-            branding: ['Clicks', 'Leads Salesforce', 'Oportunidades'],
-            otros: ['Clicks', 'Leads Salesforce', 'Oportunidades', 'Resultados'],
-            all: ['Clicks', 'Leads Salesforce', 'Oportunidades', 'Resultados'],
+            venta: ['Clicks', 'Intereses Salesforce', 'Oportunidades', 'Reservas', 'Ventas'],
+            tasacion: ['Clicks', 'Intereses Salesforce', 'Oportunidades', 'Compras'],
+            exposicion: ['Clicks', 'Intereses Salesforce', 'Oportunidades'],
+            branding: ['Clicks', 'Intereses Salesforce', 'Oportunidades'],
+            otros: ['Clicks', 'Intereses Salesforce', 'Oportunidades', 'Resultados'],
+            all: ['Clicks', 'Intereses Salesforce', 'Oportunidades', 'Resultados'],
         };
 
         const allowedLabels = labelsByContext[context] || labelsByContext.all;
@@ -1581,20 +1581,20 @@ function funnelStepsForContext(context, rows) {
         case 'tasacion':
             return [
                 { label: 'Clicks', value: totals.clicks },
-                { label: 'Leads Salesforce', value: totals.leads_salesforce },
+                { label: 'Intereses Salesforce', value: totals.leads_salesforce },
                 { label: 'Oportunidades', value: totals.opportunities },
                 { label: 'Compras', value: totals.purchases },
             ];
         case 'exposicion':
             return [
                 { label: 'Clicks', value: totals.clicks },
-                { label: 'Leads Salesforce', value: totals.leads_salesforce },
+                { label: 'Intereses Salesforce', value: totals.leads_salesforce },
                 { label: 'Oportunidades', value: totals.opportunities },
             ];
         case 'branding':
             return [
                 { label: 'Clicks', value: totals.clicks },
-                { label: 'Leads Salesforce', value: totals.leads_salesforce },
+                { label: 'Intereses Salesforce', value: totals.leads_salesforce },
                 { label: 'Oportunidades', value: totals.opportunities },
             ];
         case 'otros':
@@ -1602,7 +1602,7 @@ function funnelStepsForContext(context, rows) {
         default:
             return [
                 { label: 'Clicks', value: totals.clicks },
-                { label: 'Leads Salesforce', value: totals.leads_salesforce },
+                { label: 'Intereses Salesforce', value: totals.leads_salesforce },
                 { label: 'Oportunidades', value: totals.opportunities },
                 { label: 'Resultados', value: totals.sales + totals.purchases + totals.opportunities + totals.leads_salesforce },
             ];
@@ -1612,15 +1612,15 @@ function funnelStepsForContext(context, rows) {
 function funnelSubtitleForContext(context) {
     switch (context) {
         case 'tasacion':
-            return 'Clicks, leads Salesforce, oportunidades y compras';
+            return 'Clicks, intereses Salesforce, oportunidades y compras';
         case 'exposicion':
-            return 'Clicks, leads Salesforce y oportunidades';
+            return 'Clicks, intereses Salesforce y oportunidades';
         case 'branding':
-            return 'Clicks, leads Salesforce y oportunidades';
+            return 'Clicks, intereses Salesforce y oportunidades';
         case 'otros':
         case 'all':
         default:
-            return 'Clicks, leads Salesforce, oportunidades y resultado agregado';
+            return 'Clicks, intereses Salesforce, oportunidades y resultado agregado';
     }
 }
 
@@ -1679,7 +1679,7 @@ function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, m
         venta: 'Coste por venta',
         tasacion: 'Coste por compra',
         exposicion: 'Coste por oportunidad',
-        branding: 'Coste por lead',
+        branding: 'Coste por interés',
         otros: 'Coste por resultado',
         all: 'Coste por venta / compra',
     }[context] || 'Coste por resultado';
@@ -1692,7 +1692,7 @@ function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, m
             </div>
             <div class="platform-comparison-metrics">
                 ${platformMetricItemHtml('Inversión', row.spend, formatMoney)}
-                ${platformMetricItemHtml('Leads Salesforce', row.leads_salesforce, formatNumber)}
+                ${platformMetricItemHtml('Intereses Salesforce', row.leads_salesforce, formatNumber)}
                 ${platformMetricItemHtml('Oportunidades', row.opportunities, formatNumber)}
                 ${platformMetricItemHtml(resultLabel, resultValue, formatNumber)}
                 ${platformMetricItemHtml(costLabel, resultCost, formatMoney)}
@@ -1717,7 +1717,7 @@ function platformComparisonSubtitleForContext(context) {
         case 'exposicion':
             return 'Google Ads y Meta Ads con foco en oportunidades';
         case 'branding':
-            return 'Google Ads y Meta Ads con foco en leads';
+            return 'Google Ads y Meta Ads con foco en intereses';
         case 'all':
             return 'Google Ads y Meta Ads con ventas y compras agregadas';
         case 'otros':
@@ -1735,7 +1735,7 @@ function platformResultLabelForContext(context) {
         case 'exposicion':
             return 'Oportunidades';
         case 'branding':
-            return 'Leads Salesforce';
+            return 'Intereses Salesforce';
         case 'all':
             return 'Ventas / Compras';
         case 'otros':
@@ -1864,7 +1864,7 @@ function kpiCardsForContext(context, kpis) {
         case 'venta':
             return [
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
-                { label: 'Leads Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${formatMoney(kpis.cost_per_opportunity)}`, metric: 'opportunities' },
                 { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${formatMoney(kpis.cost_per_reservation)}`, metric: 'reservations' },
                 { label: 'Ventas', value: formatNumber(kpis.sales), hint: `CPV ${formatMoney(kpis.cost_per_sale)}`, metric: 'sales' },
@@ -1875,22 +1875,22 @@ function kpiCardsForContext(context, kpis) {
         case 'tasacion':
             return [
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
-                { label: 'Leads Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${formatMoney(kpis.cost_per_opportunity)}`, metric: 'opportunities' },
                 { label: 'Compras', value: formatNumber(kpis.purchases), hint: `CP compra ${formatMoney(kpis.cost_per_purchase)}`, metric: 'purchases' },
-                { label: 'Coste por lead', value: formatMoney(kpis.cost_per_lead), hint: `Leads ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
+                { label: 'Coste por interés', value: formatMoney(kpis.cost_per_lead), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
                 { label: 'Coste por oportunidad', value: formatMoney(kpis.cost_per_opportunity), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
                 { label: 'Coste por compra', value: formatMoney(kpis.cost_per_purchase), hint: `Compras ${formatNumber(kpis.purchases)}`, metric: 'purchases' },
-                { label: 'Conversion lead -> compra', value: formatPercentRatio(kpis.lead_to_purchase), hint: `Oportunidad -> compra ${formatPercentRatio(kpis.opportunity_to_purchase)}`, metric: 'purchases' },
+                { label: 'Conversión interés → compra', value: formatPercentRatio(kpis.lead_to_purchase), hint: `Oportunidad → compra ${formatPercentRatio(kpis.opportunity_to_purchase)}`, metric: 'purchases' },
             ];
         case 'exposicion':
             return [
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
                 { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
-                { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Leads SF ${formatNumber(kpis.leads_salesforce)}` },
-                { label: 'Leads Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
+                { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${formatMoney(kpis.cost_per_opportunity)}`, metric: 'opportunities' },
-                { label: 'Coste por lead', value: formatMoney(kpis.cost_per_lead), hint: `Leads ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
+                { label: 'Coste por interés', value: formatMoney(kpis.cost_per_lead), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
                 { label: 'Coste por oportunidad', value: formatMoney(kpis.cost_per_opportunity), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
                 { label: 'CTR / CPC', value: formatPercentRatio(kpis.ctr), hint: `CPC ${formatMoney(kpis.cpc)}` },
             ];
@@ -1898,11 +1898,11 @@ function kpiCardsForContext(context, kpis) {
             return [
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
                 { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
-                { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Leads SF ${formatNumber(kpis.leads_salesforce)}` },
+                { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
                 { label: 'CTR', value: formatPercentRatio(kpis.ctr), hint: `CPC ${formatMoney(kpis.cpc)}` },
                 { label: 'CPC', value: formatMoney(kpis.cpc), hint: `Clicks ${formatNumber(kpis.clicks)}` },
-                { label: 'Leads Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
-                { label: 'Coste por lead', value: formatMoney(kpis.cost_per_lead), hint: `Leads ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
+                { label: 'Coste por interés', value: formatMoney(kpis.cost_per_lead), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `Total ${totalResults}`, metric: 'opportunities' },
             ];
         case 'otros':
@@ -1911,8 +1911,8 @@ function kpiCardsForContext(context, kpis) {
             return [
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
                 { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
-                { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Leads SF ${formatNumber(kpis.leads_salesforce)}` },
-                { label: 'Leads Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
+                { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${formatMoney(kpis.cost_per_opportunity)}`, metric: 'opportunities' },
                 { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${formatMoney(kpis.cost_per_reservation)}`, metric: 'reservations' },
                 { label: 'Ventas / Compras', value: totalResults, hint: `Ventas ${formatNumber(kpis.sales)} · Compras ${formatNumber(kpis.purchases)}`, metric: 'result_count' },
@@ -2348,7 +2348,7 @@ function dailyTooltip(row) {
     return [
         formatDate(row.date),
         `Inversión: ${formatMoney(row.spend)}`,
-        `Leads Salesforce: ${formatNumber(row.leads_salesforce)}`,
+        `Intereses Salesforce: ${formatNumber(row.leads_salesforce)}`,
     ].join('\n');
 }
 
@@ -2374,7 +2374,7 @@ function platformTooltip(row) {
     return [
         formatPlatform(row.platform),
         `Inversión: ${formatMoney(row.spend)}`,
-        `Leads Salesforce: ${formatNumber(row.leads_salesforce)}`,
+        `Intereses Salesforce: ${formatNumber(row.leads_salesforce)}`,
         `Oportunidades: ${formatNumber(row.opportunities)}`,
         `Resultados: ${formatNumber(platformResultValueForContext(row, presentationCampaignContext(currentContext)))}`,
     ].join('\n');
@@ -2682,7 +2682,7 @@ function setUpdatedBadge(updatedAt = null, isLoading = false, metadata = {}) {
 
     badge.textContent = `Datos actualizados: ${label}`;
     badge.title = [
-        metadata.salesforce_leads_synced_at ? `Salesforce Leads: ${metadata.salesforce_leads_synced_at}` : null,
+        metadata.salesforce_interests_synced_at ? `Salesforce Interests: ${metadata.salesforce_interests_synced_at}` : null,
         metadata.meta_synced_at ? `Meta Ads: ${metadata.meta_synced_at}` : null,
         metadata.google_synced_at ? `Google Ads: ${metadata.google_synced_at}` : null,
         metadata.attribution_built_at ? `Atribuciones: ${metadata.attribution_built_at}` : null,

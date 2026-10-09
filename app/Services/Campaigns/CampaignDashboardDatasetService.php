@@ -5,8 +5,11 @@ namespace App\Services\Campaigns;
 use App\Models\CampaignAttribution;
 use App\Models\CampaignOperationalClassification;
 use App\Models\CampaignPlatformDailyMetric;
+use App\Models\ReportSyncRun;
 use App\Models\SalesforceOpportunity;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
+use App\Services\Reports\ReservationsSales\OpportunityInterestAttributionService;
+use App\Services\Salesforce\SalesforceInterestSyncService;
 use App\Support\ReportUserAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -28,6 +31,7 @@ class CampaignDashboardDatasetService
         private readonly CampaignTypeResolver $campaignTypeResolver,
         private readonly LeadRecordTypeNormalizer $leadRecordTypeNormalizer,
         private readonly CampaignInvestmentClosureService $investmentClosures,
+        private readonly OpportunityInterestAttributionService $opportunityInterestAttribution,
     ) {}
 
     public function summary(Request $request): array
@@ -77,10 +81,9 @@ class CampaignDashboardDatasetService
         $filters = $this->filters($request);
         $period = $this->period($filters);
         $query = DB::table('campaign_lead_attributions as cla')
-            ->leftJoin('campaign_attributions as ca', 'ca.lead_id', '=', 'cla.lead_id')
-            ->leftJoin('salesforce_leads as sl', 'sl.salesforce_id', '=', 'cla.lead_id')
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at']);
+            ->leftJoin('campaign_attributions as ca', 'ca.interest_id', '=', 'cla.interest_id')
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at']);
 
         $this->applyLeadAttributionFilters($query, $filters, 'cla');
         $this->applyCampaignContextFilter($query, $filters, 'cla');
@@ -88,8 +91,8 @@ class CampaignDashboardDatasetService
         $rows = $query
             ->select([
                 'cla.id as attribution_id',
-                'cla.lead_id',
-                'cla.lead_created_date',
+                'cla.interest_id',
+                'cla.interest_functional_created_at',
                 'cla.campaign_name as resolved_campaign_name',
                 'cla.campaign_id as resolved_campaign_id',
                 'cla.source_campaign_name as raw_campaign_name',
@@ -118,13 +121,23 @@ class CampaignDashboardDatasetService
                 'ca.attribution_confidence as lead_attribution_confidence',
                 'ca.match_status as lead_match_status',
                 'ca.campaign_source_type as lead_campaign_source_type',
-                'sl.record_type_name as lead_record_type_raw',
-                'sl.record_type_normalized as lead_record_type_normalized',
-                'sl.salesforce_last_modified_at as lead_last_modified_at',
-                'sl.synced_at as lead_synced_at',
-                'sl.is_deleted as lead_is_deleted',
+                'cla.interest_type',
+                'cla.interest_source',
+                'cla.interest_original_source',
+                'cla.interest_medium',
+                'cla.interest_channel',
+                'cla.interest_utm_term',
+                'cla.interest_status',
+                'cla.interest_origin_delegation',
+                'cla.interest_origin_zone',
+                'cla.interest_owner_id',
+                'cla.interest_owner_name',
+                'cla.interest_is_deleted',
+                'cla.interest_sync_run_id',
+                'cla.interest_sync_cutoff_at',
+                'cla.opportunity_relationship_status',
             ])
-            ->orderBy('cla.lead_id')
+            ->orderBy('cla.interest_id')
             ->orderBy('cla.id')
             ->get()
             ->map(function (object $row): array {
@@ -133,7 +146,7 @@ class CampaignDashboardDatasetService
 
                 return [
                     'attribution_id' => (int) $row->attribution_id,
-                    'lead_id' => $row->lead_id,
+                    'interest_id' => $row->interest_id,
                     'resolved_campaign_name' => $row->resolved_campaign_name,
                     'raw_campaign_name' => $row->raw_campaign_name ?: $row->campaign_acquired,
                     'platform' => $row->platform,
@@ -165,23 +178,32 @@ class CampaignDashboardDatasetService
                         ? ($row->matched_source_value ?: $row->raw_campaign_name ?: $row->campaign_acquired)
                         : null,
                     'campaign_type' => $row->campaign_type,
-                    'lead_record_type_raw' => $row->lead_record_type_raw,
-                    'lead_record_type_normalized' => $row->lead_record_type_normalized
-                        ?: $this->leadRecordTypeNormalizer->normalize($row->lead_record_type_raw),
-                    'lead_created_date' => $row->lead_created_date,
+                    'interest_type' => $row->interest_type,
+                    'interest_source' => $row->interest_source,
+                    'interest_original_source' => $row->interest_original_source,
+                    'interest_medium' => $row->interest_medium,
+                    'interest_channel' => $row->interest_channel,
+                    'interest_utm_term' => $row->interest_utm_term,
+                    'interest_status' => $row->interest_status,
+                    'interest_origin_delegation' => $row->interest_origin_delegation,
+                    'interest_origin_zone' => $row->interest_origin_zone,
+                    'interest_owner_id' => $row->interest_owner_id,
+                    'interest_owner_name' => $row->interest_owner_name,
+                    'interest_functional_created_at' => $row->interest_functional_created_at,
                     'opportunity_id' => $row->opportunity_id,
                     'attribution_built_at' => $row->attribution_built_at,
                     'attribution_updated_at' => $row->attribution_updated_at,
-                    'lead_last_modified_at' => $row->lead_last_modified_at,
-                    'lead_synced_at' => $row->lead_synced_at,
-                    'lead_is_deleted' => (bool) $row->lead_is_deleted,
+                    'interest_is_deleted' => (bool) $row->interest_is_deleted,
+                    'interest_sync_run_id' => $row->interest_sync_run_id,
+                    'interest_sync_cutoff_at' => $row->interest_sync_cutoff_at,
+                    'opportunity_relationship_status' => $row->opportunity_relationship_status,
                 ];
             })
             ->values()
             ->all();
 
         $campaignCounts = collect($rows)
-            ->groupBy('lead_id')
+            ->groupBy('interest_id')
             ->map(fn (Collection $leadRows): int => $leadRows
                 ->map(fn (array $row): string => implode('|', [
                     $row['platform'],
@@ -192,8 +214,8 @@ class CampaignDashboardDatasetService
                 ->count());
 
         return array_map(function (array $row) use ($campaignCounts): array {
-            $row['campaigns_for_lead'] = (int) $campaignCounts->get($row['lead_id'], 1);
-            $row['overlaps_another_campaign'] = $row['campaigns_for_lead'] > 1;
+            $row['campaigns_for_interest'] = (int) $campaignCounts->get($row['interest_id'], 1);
+            $row['overlaps_another_campaign'] = $row['campaigns_for_interest'] > 1;
 
             return $row;
         }, $rows);
@@ -286,7 +308,8 @@ class CampaignDashboardDatasetService
             'campaign_type' => $requestedType === 'all' ? '' : $requestedType,
             'delegation' => $request->string('delegation')->toString(),
             'zone' => $request->string('zone')->toString(),
-            'lead_status' => $request->string('lead_status')->toString(),
+            'interest_status' => $request->string('interest_status')->toString()
+                ?: $request->string('lead_status')->toString(),
             'lead_type' => $this->normalizeLeadTypeFilter($request->string('lead_type')->toString()),
             'has_opportunity' => $request->string('has_opportunity')->toString(),
             'has_reservation' => $request->string('has_reservation')->toString(),
@@ -397,9 +420,8 @@ class CampaignDashboardDatasetService
 
         $query = DB::table('campaign_lead_attributions as cla')
             ->leftJoin('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
-            ->leftJoin('salesforce_leads as sl', 'sl.salesforce_id', '=', 'cla.lead_id')
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at']);
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at']);
 
         $this->applyLeadAttributionFilters($query, $filters, 'cla');
 
@@ -418,8 +440,8 @@ class CampaignDashboardDatasetService
         $query
             ->select([
                 'cla.id',
-                'cla.lead_id',
-                'cla.lead_created_date',
+                'cla.interest_id',
+                'cla.interest_functional_created_at',
                 'cla.platform',
                 'cla.campaign_id',
                 'cla.campaign_name',
@@ -436,22 +458,24 @@ class CampaignDashboardDatasetService
                 'cla.campaign_acquired',
                 'cla.acquired_id',
                 'cla.content_acquired',
-                'cla.lead_status',
-                'cla.lead_delegation',
-                'cla.lead_zone',
+                'cla.interest_status',
+                'cla.interest_type',
+                'cla.interest_source',
+                'cla.interest_original_source',
+                'cla.interest_medium',
+                'cla.interest_channel',
+                'cla.interest_utm_term',
+                'cla.interest_origin_delegation',
+                'cla.interest_origin_zone',
+                'cla.interest_owner_id',
+                'cla.interest_owner_name',
+                'cla.interest_is_deleted',
+                'cla.interest_sync_run_id',
+                'cla.interest_sync_cutoff_at',
+                'cla.opportunity_relationship_status',
                 'cla.commercial_user_id',
                 'cla.commercial_user_name',
                 'cla.vehicle_interest',
-                'sl.name as lead_name',
-                'sl.created_date as salesforce_lead_created_date',
-                'sl.status as salesforce_lead_status',
-                'sl.portal_text as lead_portal_text',
-                'sl.fuente_origen as lead_fuente_origen',
-                'sl.medio_origen as lead_medio_origen',
-                'sl.owner_name as lead_owner_name',
-                'sl.converted_account_id',
-                'sl.converted_opportunity_id',
-                'so.name as opportunity_name',
                 'so.created_date as opportunity_created_date',
                 'so.close_date as opportunity_close_date',
                 'so.cv_signed_date',
@@ -460,7 +484,6 @@ class CampaignDashboardDatasetService
                 'so.owner_id as opportunity_owner_id',
                 'so.owner_name as opportunity_owner_name',
                 'so.account_id',
-                'so.account_name',
                 'so.portal_original as opportunity_portal_original',
                 'so.portal_resolved as opportunity_portal_resolved',
                 'so.opportunity_source_raw',
@@ -622,8 +645,8 @@ class CampaignDashboardDatasetService
     {
         $query = DB::table('campaign_lead_attributions as cla')
             ->leftJoin('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at']);
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at']);
         $query->where('cla.is_ambiguous', false)
             ->where(function ($query): void {
                 $query->whereNull('cla.campaign_source_type')
@@ -640,7 +663,7 @@ class CampaignDashboardDatasetService
                 DB::raw('NULL as account_id'),
                 'cla.campaign_id',
                 'cla.campaign_name',
-                DB::raw("CASE WHEN cla.platform = 'salesforce' THEN 'salesforce_campaign_without_spend' ELSE 'platform_campaign' END as campaign_source_type"),
+                DB::raw('MIN(cla.campaign_source_type) as campaign_source_type'),
                 DB::raw('MIN(cla.source_acquired) as source_acquired'),
                 DB::raw('MIN(cla.medium_acquired) as medium_acquired'),
                 DB::raw('MIN(cla.campaign_acquired) as campaign_acquired'),
@@ -648,8 +671,8 @@ class CampaignDashboardDatasetService
                 DB::raw('MIN(cla.campaign_type) as campaign_type'),
                 DB::raw('MIN(cla.acquired_id) as acquired_id'),
                 DB::raw('MIN(cla.content_acquired) as content_acquired'),
-                DB::raw("MIN(CASE WHEN cla.has_opportunity = 1 AND {$reportableOpportunity} THEN 'Cruzada por ID' ELSE 'Sin leads Salesforce' END) as match_status"),
-                DB::raw('COUNT(DISTINCT cla.lead_id) as leads_salesforce'),
+                DB::raw("MIN(CASE WHEN cla.has_opportunity = 1 AND {$reportableOpportunity} THEN 'Cruzada por ID' ELSE 'Sin Interests Salesforce' END) as match_status"),
+                DB::raw('COUNT(DISTINCT cla.interest_id) as leads_salesforce'),
                 DB::raw("COUNT(DISTINCT CASE WHEN cla.has_opportunity = 1 AND {$reportableOpportunity} THEN cla.opportunity_id END) as opportunities"),
                 DB::raw("COUNT(DISTINCT CASE WHEN cla.has_reservation = 1 AND {$reportableOpportunity} THEN cla.opportunity_id END) as reservations"),
                 DB::raw("COUNT(DISTINCT CASE WHEN cla.has_reservation = 1 AND {$reportableOpportunity} AND (COALESCE(cla.campaign_type, '') = 'tasacion' OR cla.has_sale = 0) THEN cla.opportunity_id END) as live_reservations"),
@@ -661,9 +684,9 @@ class CampaignDashboardDatasetService
                 DB::raw("COUNT(DISTINCT CASE WHEN cla.has_purchase = 1 AND {$reportableOpportunity} AND cla.campaign_type = 'tasacion' THEN cla.opportunity_id END) as purchases"),
                 DB::raw("SUM(CASE WHEN cla.has_purchase = 1 AND {$reportableOpportunity} AND cla.campaign_type = 'tasacion' THEN ABS(COALESCE(so.opo_for_importe_total, 0)) ELSE 0 END) as appraisal_amount"),
                 DB::raw("COUNT(DISTINCT CASE WHEN cla.has_purchase = 1 AND {$reportableOpportunity} AND cla.campaign_type = 'tasacion' AND so.opo_for_importe_total IS NOT NULL THEN cla.opportunity_id END) as appraisal_amount_rows"),
-                DB::raw('MIN(cla.lead_status) as lead_status'),
-                DB::raw('MIN(cla.lead_delegation) as lead_delegation'),
-                DB::raw('MIN(cla.lead_zone) as lead_zone'),
+                DB::raw('MIN(cla.interest_status) as interest_status'),
+                DB::raw('MIN(cla.interest_origin_delegation) as interest_origin_delegation'),
+                DB::raw('MIN(cla.interest_origin_zone) as interest_origin_zone'),
                 DB::raw('MIN(cla.commercial_user_id) as commercial_user_id'),
                 DB::raw('MIN(cla.commercial_user_name) as commercial_user_name'),
                 DB::raw('MIN(cla.vehicle_interest) as vehicle_interest'),
@@ -707,7 +730,7 @@ class CampaignDashboardDatasetService
             }
 
             $rows[$key]['platform_conversions'] = (float) ($rows[$key]['platform_conversions'] ?? 0) + (float) $row['platform_conversions'];
-            $rows[$key]['match_status'] = 'Sin leads Salesforce';
+            $rows[$key]['match_status'] = 'Sin Interests Salesforce';
             $rows[$key]['campaign_source_type'] = 'platform_campaign';
         }
 
@@ -790,6 +813,10 @@ class CampaignDashboardDatasetService
 
     private function withRatios(array $row): array
     {
+        // Compatibility: leads_salesforce remains part of the public payload,
+        // but from ROT-4 onward its value is the number of Interests.
+        $row['interests_salesforce'] = (int) ($row['leads_salesforce'] ?? 0);
+
         if ($this->deriveSourceType($row) === 'salesforce_campaign_without_spend') {
             return array_merge($row, $this->salesforceOnlyNotApplicableMetrics(), [
                 'lead_to_opportunity' => $this->divide($row['opportunities'], $row['leads_salesforce']),
@@ -845,7 +872,7 @@ class CampaignDashboardDatasetService
         $sourceType = $this->deriveSourceType($row);
 
         if ($spend > 0 && $leads === 0) {
-            $status = 'Sin leads Salesforce';
+            $status = 'Sin Interests Salesforce';
         } elseif ($sourceType === 'salesforce_origin') {
             $status = 'Procedencia Salesforce';
         } elseif ($leads > 0 && $spend <= 0.0) {
@@ -1026,7 +1053,7 @@ class CampaignDashboardDatasetService
     private function auditMetricLabel(string $metric): string
     {
         return match ($metric) {
-            'leads_salesforce' => 'Leads Salesforce',
+            'leads_salesforce' => 'Intereses Salesforce',
             'opportunities' => 'Oportunidades',
             'reservations' => 'Reservas',
             'live_reservations' => 'Reservas vivas',
@@ -1045,7 +1072,7 @@ class CampaignDashboardDatasetService
         }
 
         return match ($metric) {
-            'leads_salesforce' => filled($row->lead_id),
+            'leads_salesforce' => filled($row->interest_id),
             'opportunities' => filled($row->opportunity_id) && (bool) $row->has_opportunity,
             'reservations' => filled($row->opportunity_id) && (bool) $row->has_reservation,
             'live_reservations' => filled($row->opportunity_id)
@@ -1069,7 +1096,7 @@ class CampaignDashboardDatasetService
     private function auditEntityKey(object $row, string $metric): ?string
     {
         if ($metric === 'leads_salesforce') {
-            return filled($row->lead_id) ? (string) $row->lead_id : null;
+            return filled($row->interest_id) ? (string) $row->interest_id : null;
         }
 
         return filled($row->opportunity_id) ? (string) $row->opportunity_id : null;
@@ -1080,19 +1107,25 @@ class CampaignDashboardDatasetService
         return [
             'metric' => $metric,
             'metric_label' => $this->auditMetricLabel($metric),
-            'entity_type' => $metric === 'leads_salesforce' ? 'lead' : 'opportunity',
+            'entity_type' => $metric === 'leads_salesforce' ? 'interest' : 'opportunity',
             'entity_id' => $entityId,
             'first_attribution_id' => $firstAttributionId,
-            'lead_ids' => [],
-            'lead_names' => [],
-            'lead_created_dates' => [],
-            'lead_statuses' => [],
-            'lead_portals' => [],
-            'lead_source_origins' => [],
-            'lead_medium_origins' => [],
-            'lead_owner_names' => [],
+            'interest_ids' => [],
+            'interest_functional_created_ats' => [],
+            'interest_statuses' => [],
+            'interest_types' => [],
+            'interest_sources' => [],
+            'interest_original_sources' => [],
+            'interest_mediums' => [],
+            'interest_channels' => [],
+            'interest_utm_terms' => [],
+            'interest_owner_ids' => [],
+            'interest_owner_names' => [],
+            'interest_lifecycle' => [],
+            'interest_sync_run_ids' => [],
+            'interest_sync_cutoffs' => [],
+            'opportunity_relationship_statuses' => [],
             'opportunity_ids' => [],
-            'opportunity_names' => [],
             'opportunity_created_dates' => [],
             'opportunity_close_dates' => [],
             'cv_signed_dates' => [],
@@ -1101,7 +1134,6 @@ class CampaignDashboardDatasetService
             'opportunity_owner_ids' => [],
             'opportunity_owner_names' => [],
             'account_ids' => [],
-            'account_names' => [],
             'opportunity_portals' => [],
             'opportunity_sources' => [],
             'platforms' => [],
@@ -1115,8 +1147,8 @@ class CampaignDashboardDatasetService
             'content_acquired_values' => [],
             'commercial_user_ids' => [],
             'commercial_user_names' => [],
-            'lead_delegations' => [],
-            'lead_zones' => [],
+            'interest_origin_delegations' => [],
+            'interest_origin_zones' => [],
             'vehicle_interests' => [],
             'sale_amounts' => [],
             'purchase_amounts' => [],
@@ -1126,17 +1158,23 @@ class CampaignDashboardDatasetService
 
     private function accumulateAuditRow(array &$item, object $row): void
     {
-        $this->pushAuditValue($item['lead_ids'], $row->lead_id);
-        $this->pushAuditValue($item['lead_names'], $row->lead_name);
-        $this->pushAuditValue($item['lead_created_dates'], $this->auditDate($row->salesforce_lead_created_date ?: $row->lead_created_date));
-        $this->pushAuditValue($item['lead_statuses'], $row->salesforce_lead_status ?: $row->lead_status);
-        $this->pushAuditValue($item['lead_portals'], $row->lead_portal_text);
-        $this->pushAuditValue($item['lead_source_origins'], $row->lead_fuente_origen);
-        $this->pushAuditValue($item['lead_medium_origins'], $row->lead_medio_origen);
-        $this->pushAuditValue($item['lead_owner_names'], $row->lead_owner_name);
+        $this->pushAuditValue($item['interest_ids'], $row->interest_id);
+        $this->pushAuditValue($item['interest_functional_created_ats'], $this->auditDate($row->interest_functional_created_at));
+        $this->pushAuditValue($item['interest_statuses'], $row->interest_status);
+        $this->pushAuditValue($item['interest_types'], $row->interest_type);
+        $this->pushAuditValue($item['interest_sources'], $row->interest_source);
+        $this->pushAuditValue($item['interest_original_sources'], $row->interest_original_source);
+        $this->pushAuditValue($item['interest_mediums'], $row->interest_medium);
+        $this->pushAuditValue($item['interest_channels'], $row->interest_channel);
+        $this->pushAuditValue($item['interest_utm_terms'], $row->interest_utm_term);
+        $this->pushAuditValue($item['interest_owner_ids'], $row->interest_owner_id);
+        $this->pushAuditValue($item['interest_owner_names'], $row->interest_owner_name);
+        $this->pushAuditValue($item['interest_lifecycle'], (bool) $row->interest_is_deleted ? 'deleted' : 'active');
+        $this->pushAuditValue($item['interest_sync_run_ids'], $row->interest_sync_run_id);
+        $this->pushAuditValue($item['interest_sync_cutoffs'], $row->interest_sync_cutoff_at);
+        $this->pushAuditValue($item['opportunity_relationship_statuses'], $row->opportunity_relationship_status);
 
         $this->pushAuditValue($item['opportunity_ids'], $row->opportunity_id);
-        $this->pushAuditValue($item['opportunity_names'], $row->opportunity_name);
         $this->pushAuditValue($item['opportunity_created_dates'], $this->auditDate($row->opportunity_created_date));
         $this->pushAuditValue($item['opportunity_close_dates'], $this->auditDate($row->opportunity_close_date));
         $this->pushAuditValue($item['cv_signed_dates'], $this->auditDate($row->cv_signed_date));
@@ -1145,7 +1183,6 @@ class CampaignDashboardDatasetService
         $this->pushAuditValue($item['opportunity_owner_ids'], $row->opportunity_owner_id);
         $this->pushAuditValue($item['opportunity_owner_names'], $row->opportunity_owner_name);
         $this->pushAuditValue($item['account_ids'], $row->account_id);
-        $this->pushAuditValue($item['account_names'], $row->account_name);
         $this->pushAuditValue($item['opportunity_portals'], $row->opportunity_portal_resolved ?: $row->opportunity_portal_original);
         $this->pushAuditValue($item['opportunity_sources'], $row->opportunity_source_normalized ?: $row->opportunity_source_raw);
 
@@ -1160,8 +1197,8 @@ class CampaignDashboardDatasetService
         $this->pushAuditValue($item['content_acquired_values'], $row->content_acquired);
         $this->pushAuditValue($item['commercial_user_ids'], $row->commercial_user_id);
         $this->pushAuditValue($item['commercial_user_names'], $row->commercial_user_name);
-        $this->pushAuditValue($item['lead_delegations'], $row->lead_delegation);
-        $this->pushAuditValue($item['lead_zones'], $row->lead_zone);
+        $this->pushAuditValue($item['interest_origin_delegations'], $row->interest_origin_delegation);
+        $this->pushAuditValue($item['interest_origin_zones'], $row->interest_origin_zone);
         $this->pushAuditValue($item['vehicle_interests'], $row->vehicle_interest);
 
         if ($this->isSaleAttributionRow($row)) {
@@ -1191,25 +1228,23 @@ class CampaignDashboardDatasetService
 
     private function finalizeAuditRow(array $item): array
     {
-        sort($item['lead_ids']);
+        sort($item['interest_ids']);
         sort($item['campaign_ids']);
         sort($item['campaign_names']);
         sort($item['source_campaign_names']);
         sort($item['metric_dates']);
 
         return array_merge($item, [
-            'metric_date' => $item['metric_dates'][0] ?? ($item['lead_created_dates'][0] ?? null),
-            'lead_id' => $this->singleAuditValue($item['lead_ids']),
-            'lead_name' => $this->singleAuditValue($item['lead_names']),
+            'metric_date' => $item['metric_dates'][0] ?? ($item['interest_functional_created_ats'][0] ?? null),
+            'interest_id' => $this->singleAuditValue($item['interest_ids']),
             'opportunity_id' => $this->singleAuditValue($item['opportunity_ids']),
-            'opportunity_name' => $this->singleAuditValue($item['opportunity_names']),
             'campaign_id' => $this->singleAuditValue($item['campaign_ids']),
             'campaign_name' => $this->singleAuditValue($item['campaign_names']),
             'source_campaign_name' => $this->singleAuditValue($item['source_campaign_names']),
             'source_acquired' => $this->singleAuditValue($item['source_acquired_values']),
             'medium_acquired' => $this->singleAuditValue($item['medium_acquired_values']),
             'campaign_acquired' => $this->singleAuditValue($item['campaign_acquired_values']),
-            'portal' => $this->singleAuditValue($item['lead_portals']) ?? $this->singleAuditValue($item['opportunity_portals']),
+            'portal' => $this->singleAuditValue($item['opportunity_portals']),
             'managed_by' => $this->singleAuditValue($item['commercial_user_names']) ?? $this->singleAuditValue($item['opportunity_owner_names']),
             'sale_amount' => $item['sale_amounts'] !== [] ? round(array_sum($item['sale_amounts']), 2) : null,
             'purchase_amount' => $item['purchase_amounts'] !== [] ? round(array_sum($item['purchase_amounts']), 2) : null,
@@ -1255,7 +1290,7 @@ class CampaignDashboardDatasetService
     {
         return $this->auditDate($row->cv_signed_date)
             ?? $this->auditDate($row->opportunity_created_date)
-            ?? $this->auditDate($row->salesforce_lead_created_date ?: $row->lead_created_date);
+            ?? $this->auditDate($row->interest_functional_created_at);
     }
 
     private function closedLostSql(): string
@@ -1372,6 +1407,7 @@ class CampaignDashboardDatasetService
         ]);
         $totals['result_count'] = $this->resultCountForTotals($totals, $filters['context'] ?? 'all');
         $totals['cost_per_result'] = $this->divide((float) $totals['spend'], (int) $totals['result_count']);
+        $totals['interests_salesforce'] = (int) $totals['leads_salesforce'];
         $totals['lead_attribution_appearances'] = array_sum(array_map(
             static fn (array $row): int => (int) ($row['leads_salesforce'] ?? 0),
             $rows
@@ -1388,12 +1424,13 @@ class CampaignDashboardDatasetService
             'ok' => count($rows) > 0,
             'selected_context' => $filters['context'],
             'selected_context_label' => $this->contextLabel($filters['context']),
-            'period_mode' => 'lead_pivot',
+            'period_mode' => 'interest_pivot',
             'periodo_actual' => [
                 'inicio' => $period['start'],
                 'fin' => $period['end'],
             ],
             'datos_actualizados' => $datasetMetadata['dataset_cutoff_at'],
+            'salesforce_interests_synced_at' => $datasetMetadata['salesforce_interests_synced_at'],
             'salesforce_leads_synced_at' => $datasetMetadata['salesforce_leads_synced_at'],
             'meta_synced_at' => $datasetMetadata['meta_synced_at'],
             'google_synced_at' => $datasetMetadata['google_synced_at'],
@@ -1497,8 +1534,8 @@ class CampaignDashboardDatasetService
 
             $query = DB::table('campaign_lead_attributions as cla')
                 ->leftJoin('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
-                ->where('cla.lead_created_date', '>=', $monthlyStart->utc())
-                ->where('cla.lead_created_date', '<', $period['end_at']);
+                ->where('cla.interest_functional_created_at', '>=', $monthlyStart->utc())
+                ->where('cla.interest_functional_created_at', '<', $period['end_at']);
 
             $this->applyLeadAttributionFilters($query, $filters, 'cla');
 
@@ -1515,14 +1552,14 @@ class CampaignDashboardDatasetService
             $query
                 ->select([
                     'cla.id',
-                    'cla.lead_created_date',
+                    'cla.interest_functional_created_at',
                     'cla.platform',
                     'cla.campaign_id',
                     'cla.campaign_name',
                     'cla.source_campaign_name',
                     'cla.campaign_acquired',
                     'cla.campaign_type',
-                    'cla.lead_id',
+                    'cla.interest_id',
                     'cla.opportunity_id',
                     'cla.has_opportunity',
                     'cla.has_reservation',
@@ -1562,7 +1599,7 @@ class CampaignDashboardDatasetService
                             continue;
                         }
 
-                        $leadCreatedAt = $this->reportDateTime($row->lead_created_date);
+                        $leadCreatedAt = $this->reportDateTime($row->interest_functional_created_at);
 
                         if ($leadCreatedAt === null) {
                             continue;
@@ -1655,8 +1692,8 @@ class CampaignDashboardDatasetService
         array &$appraisalKeys,
         array &$purchaseKeys,
     ): void {
-        if (filled($row->lead_id)) {
-            $leadKey = $monthKey.'|'.$row->lead_id;
+        if (filled($row->interest_id)) {
+            $leadKey = $monthKey.'|'.$row->interest_id;
 
             if (! isset($leadKeys[$leadKey])) {
                 $month['leads_salesforce']++;
@@ -1738,8 +1775,8 @@ class CampaignDashboardDatasetService
         array &$dailyPurchaseCounts,
         array &$dailyPurchaseKeys,
     ): void {
-        if (filled($row->lead_id)) {
-            $leadId = (string) $row->lead_id;
+        if (filled($row->interest_id)) {
+            $leadId = (string) $row->interest_id;
             $leadIds[$leadId] = true;
             $dailyLeadKey = $metricDate.'|'.$leadId;
 
@@ -2031,8 +2068,8 @@ class CampaignDashboardDatasetService
 
         $attributionQuery = DB::table('campaign_lead_attributions as cla')
             ->leftJoin('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
-            ->where('cla.lead_created_date', '>=', $startUtc)
-            ->where('cla.lead_created_date', '<', $endUtcExclusive);
+            ->where('cla.interest_functional_created_at', '>=', $startUtc)
+            ->where('cla.interest_functional_created_at', '<', $endUtcExclusive);
 
         $this->applyLeadAttributionFilters($attributionQuery, $filters, 'cla');
 
@@ -2048,8 +2085,8 @@ class CampaignDashboardDatasetService
 
         $attributionQuery
             ->select([
-                'cla.lead_id',
-                'cla.lead_created_date',
+                'cla.interest_id',
+                'cla.interest_functional_created_at',
                 'cla.platform',
                 'cla.campaign_id',
                 'cla.campaign_name',
@@ -2074,13 +2111,13 @@ class CampaignDashboardDatasetService
                     return;
                 }
 
-                $month = $this->reportDateTime($row->lead_created_date)?->format('Y-m');
+                $month = $this->reportDateTime($row->interest_functional_created_at)?->format('Y-m');
 
                 if ($month === null || ! isset($months[$month])) {
                     return;
                 }
 
-                $leadKey = $month.'|'.$row->lead_id;
+                $leadKey = $month.'|'.$row->interest_id;
 
                 if (! isset($leadKeysByMonth[$leadKey])) {
                     $months[$month]['leads_salesforce']++;
@@ -2161,8 +2198,8 @@ class CampaignDashboardDatasetService
             ->pluck('spend', 'metric_date');
 
         $attributionQuery = DB::table('campaign_lead_attributions as cla')
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at']);
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at']);
 
         $this->applyLeadAttributionFilters($attributionQuery, $filters, 'cla');
 
@@ -2178,19 +2215,19 @@ class CampaignDashboardDatasetService
 
         $attributionByDate = $attributionQuery
             ->select([
-                'cla.lead_id',
-                'cla.lead_created_date',
+                'cla.interest_id',
+                'cla.interest_functional_created_at',
             ])
             ->get()
             ->reduce(function (array $carry, object $row): array {
-                $metricDate = $this->reportDateTime($row->lead_created_date)?->toDateString();
+                $metricDate = $this->reportDateTime($row->interest_functional_created_at)?->toDateString();
 
                 if ($metricDate === null) {
                     return $carry;
                 }
 
                 $carry[$metricDate] ??= [];
-                $carry[$metricDate][(string) $row->lead_id] = true;
+                $carry[$metricDate][(string) $row->interest_id] = true;
 
                 return $carry;
             }, []);
@@ -2216,8 +2253,8 @@ class CampaignDashboardDatasetService
     {
         $query = DB::table('campaign_lead_attributions as cla')
             ->leftJoin('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at']);
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at']);
 
         $this->applyLeadAttributionFilters($query, $filters, 'cla');
 
@@ -2233,7 +2270,7 @@ class CampaignDashboardDatasetService
 
         $rowsByDate = (clone $query)
             ->select([
-                'cla.lead_created_date',
+                'cla.interest_functional_created_at',
                 'cla.opportunity_id',
                 'cla.has_reservation',
                 'cla.has_sale',
@@ -2244,7 +2281,7 @@ class CampaignDashboardDatasetService
             ])
             ->get()
             ->reduce(function (array $carry, object $row): array {
-                $metricDate = $this->reportDateTime($row->lead_created_date)?->toDateString();
+                $metricDate = $this->reportDateTime($row->interest_functional_created_at)?->toDateString();
 
                 if ($metricDate === null) {
                     return $carry;
@@ -2299,7 +2336,7 @@ class CampaignDashboardDatasetService
         $base = [
             ['label' => 'Impresiones', 'value' => (int) ($totals['impressions'] ?? 0)],
             ['label' => 'Clicks', 'value' => (int) ($totals['clicks'] ?? 0)],
-            ['label' => 'Leads Salesforce', 'value' => (int) ($totals['leads_salesforce'] ?? 0)],
+            ['label' => 'Intereses Salesforce', 'value' => (int) ($totals['leads_salesforce'] ?? 0)],
         ];
 
         $steps = match ($context) {
@@ -2351,8 +2388,8 @@ class CampaignDashboardDatasetService
 
         $query = DB::table('campaign_lead_attributions as cla')
             ->leftJoin('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at']);
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at']);
 
         $this->applyLeadAttributionFilters($query, $filters, 'cla');
 
@@ -2378,7 +2415,8 @@ class CampaignDashboardDatasetService
                 'cla.source_campaign_name',
                 'cla.campaign_acquired',
                 'cla.campaign_type',
-                'cla.lead_id',
+                'cla.campaign_source_type',
+                'cla.interest_id',
                 'cla.opportunity_id',
                 'cla.has_opportunity',
                 'cla.has_reservation',
@@ -2398,8 +2436,8 @@ class CampaignDashboardDatasetService
                         continue;
                     }
 
-                    if (filled($row->lead_id)) {
-                        $leadIds[(string) $row->lead_id] = true;
+                    if (filled($row->interest_id)) {
+                        $leadIds[(string) $row->interest_id] = true;
                     }
 
                     if ($this->isConfirmedDeletedOpportunityRow($row)) {
@@ -2492,9 +2530,8 @@ class CampaignDashboardDatasetService
             'campaign_acquired' => $row->campaign_acquired,
             'source_campaign_name' => $row->source_campaign_name ?: $row->campaign_acquired,
             'campaign_type' => $row->campaign_type,
-            'campaign_source_type' => $row->platform === 'salesforce'
-                ? 'salesforce_campaign_without_spend'
-                : 'platform_campaign',
+            'campaign_source_type' => $row->campaign_source_type
+                ?? ($row->platform === 'salesforce' ? 'salesforce_campaign_without_spend' : 'platform_campaign'),
         ]);
 
         $identity['campaign_source_type'] = $this->deriveSourceType($identity);
@@ -2571,15 +2608,15 @@ class CampaignDashboardDatasetService
                 $avgCost = $avgCostByType[$type] ?? null;
 
                 if ($spend > 100 && $leads === 0) {
-                    return $this->reviewRow($row, 'Revisar tracking', 'inversion superior a 100 € y cero leads', 'Leads Salesforce', $leads, $costPerResult, $resultCount);
+                    return $this->reviewRow($row, 'Revisar tracking', 'inversión superior a 100 € y cero Interests', 'Intereses Salesforce', $leads, $costPerResult, $resultCount);
                 }
 
                 if ($clicks > 300 && $leads <= 1) {
-                    return $this->reviewRow($row, 'Revisar conversion', 'mas de 300 clicks y leads bajos o nulos', 'Leads Salesforce', $leads, $costPerResult, $resultCount);
+                    return $this->reviewRow($row, 'Revisar conversión', 'más de 300 clicks e Interests bajos o nulos', 'Intereses Salesforce', $leads, $costPerResult, $resultCount);
                 }
 
                 if ($leads > 0 && $opportunities === 0) {
-                    return $this->reviewRow($row, 'Revisar calidad', 'hay leads Salesforce pero no oportunidades', 'Leads / oportunidades', sprintf('%d / %d', $leads, $opportunities), $costPerResult, $resultCount);
+                    return $this->reviewRow($row, 'Revisar calidad', 'hay Interests Salesforce pero no oportunidades', 'Intereses / oportunidades', sprintf('%d / %d', $leads, $opportunities), $costPerResult, $resultCount);
                 }
 
                 if ($opportunities > 0 && $resultCount === 0) {
@@ -2626,8 +2663,8 @@ class CampaignDashboardDatasetService
     {
         $query = DB::table('campaign_lead_attributions as cla')
             ->leftJoin('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at']);
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at']);
         $filtersWithoutSource = array_merge($filters, ['campaign_source_type' => '']);
         $this->applyLeadAttributionFilters($query, $filtersWithoutSource, 'cla');
         $this->applyCampaignContextFilter($query, $filtersWithoutSource, 'cla');
@@ -2637,14 +2674,14 @@ class CampaignDashboardDatasetService
             'salesforce_only' => ['leads' => [], 'opportunities' => [], 'results' => []],
         ];
         foreach ($query->get([
-            'cla.lead_id', 'cla.opportunity_id', 'cla.platform', 'cla.campaign_type',
+            'cla.interest_id', 'cla.opportunity_id', 'cla.platform', 'cla.campaign_type',
             'cla.has_opportunity', 'cla.has_sale', 'cla.has_purchase',
             'so.is_deleted as opportunity_is_deleted',
             'so.deletion_detection_source as opportunity_deletion_source',
         ]) as $row) {
             $source = $row->platform === 'salesforce' ? 'salesforce_only' : 'platform';
-            if (filled($row->lead_id)) {
-                $sets[$source]['leads'][(string) $row->lead_id] = true;
+            if (filled($row->interest_id)) {
+                $sets[$source]['leads'][(string) $row->interest_id] = true;
             }
             if ($this->isConfirmedDeletedOpportunityRow($row)) {
                 continue;
@@ -2714,7 +2751,7 @@ class CampaignDashboardDatasetService
         }
 
         return [sprintf(
-            'Las filas contienen %d apariciones adicionales de leads atribuidos a más de una campaña. El KPI Leads Salesforce usa Lead.Id únicos; la auditoría identifica los IDs solapados.',
+            'Las filas contienen %d apariciones adicionales de intereses atribuidos a más de una campaña. El KPI Intereses Salesforce usa IDs de interés únicos; la auditoría identifica los IDs solapados.',
             $overlap
         )];
     }
@@ -2736,7 +2773,7 @@ class CampaignDashboardDatasetService
         }
 
         if ((float) ($totals['spend'] ?? 0) > 0.0 && (int) ($totals['leads_salesforce'] ?? 0) === 0) {
-            $warnings[] = 'Hay inversion de plataforma sin leads Salesforce asociados.';
+            $warnings[] = 'Hay inversión de plataforma sin intereses Salesforce asociados.';
         }
 
         if (CampaignAttribution::query()->count() === 0) {
@@ -2763,9 +2800,14 @@ class CampaignDashboardDatasetService
             $warnings[] = 'Las metricas publicitarias son posteriores a la atribucion. Ejecuta campaigns:build-attribution antes de validar el panel.';
         }
 
-        $lastLeadSync = DB::table('salesforce_leads')->max('synced_at');
-        if ($lastAttributionBuild && $lastLeadSync && CarbonImmutable::parse($lastAttributionBuild)->lessThan(CarbonImmutable::parse($lastLeadSync))) {
-            $warnings[] = 'Salesforce Leads se sincronizo despues de la atribucion. Reconstruye atribuciones para propagar cambios y eliminaciones.';
+        $lastInterestSync = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->where('status', 'completed')
+            ->orderByDesc('id')
+            ->value('completed_at');
+        if ($lastAttributionBuild && $lastInterestSync && CarbonImmutable::parse($lastAttributionBuild)->lessThan(CarbonImmutable::parse($lastInterestSync))) {
+            $warnings[] = 'Salesforce Interests se sincronizó después de la atribución. Reconstruye atribuciones para propagar cambios y lifecycle.';
         }
 
         return array_values(array_unique($warnings));
@@ -2828,8 +2870,8 @@ class CampaignDashboardDatasetService
     private function attributionBase(array $period, array $filters)
     {
         $query = DB::table('campaign_lead_attributions')
-            ->where('lead_created_date', '>=', $period['start_at'])
-            ->where('lead_created_date', '<', $period['end_at']);
+            ->where('interest_functional_created_at', '>=', $period['start_at'])
+            ->where('interest_functional_created_at', '<', $period['end_at']);
 
         $this->applyLeadAttributionFilters($query, $filters);
         $this->applyCampaignContextFilter($query, $filters);
@@ -2840,11 +2882,11 @@ class CampaignDashboardDatasetService
     private function diagnostics(array $rows, array $period, array $filters): array
     {
         $attributionBase = DB::table('campaign_lead_attributions')
-            ->where('lead_created_date', '>=', $period['start_at'])
-            ->where('lead_created_date', '<', $period['end_at']);
+            ->where('interest_functional_created_at', '>=', $period['start_at'])
+            ->where('interest_functional_created_at', '<', $period['end_at']);
         $legacyAttributionBase = DB::table('campaign_attributions')
-            ->where('lead_created_at', '>=', $period['start_at'])
-            ->where('lead_created_at', '<', $period['end_at']);
+            ->where('interest_functional_created_at', '>=', $period['start_at'])
+            ->where('interest_functional_created_at', '<', $period['end_at']);
         $rowCollection = collect($rows);
 
         return [
@@ -2932,8 +2974,8 @@ class CampaignDashboardDatasetService
         $query = DB::table('campaign_lead_attributions as cla')
             ->join('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
             ->whereRaw($this->reportableOpportunitySql('so'))
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at'])
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at'])
             ->where('cla.has_sale', true)
             ->where(function ($subQuery): void {
                 $subQuery->whereNull('cla.campaign_type')->orWhere('cla.campaign_type', '<>', 'tasacion');
@@ -2953,8 +2995,8 @@ class CampaignDashboardDatasetService
         $query = DB::table('campaign_lead_attributions as cla')
             ->leftJoin('salesforce_opportunities as so', 'so.salesforce_id', '=', 'cla.opportunity_id')
             ->whereRaw($this->reportableOpportunitySql('so'))
-            ->where('cla.lead_created_date', '>=', $period['start_at'])
-            ->where('cla.lead_created_date', '<', $period['end_at'])
+            ->where('cla.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('cla.interest_functional_created_at', '<', $period['end_at'])
             ->where('cla.has_sale', true)
             ->where(function ($subQuery): void {
                 $subQuery->whereNull('cla.campaign_type')->orWhere('cla.campaign_type', '<>', 'tasacion');
@@ -2999,16 +3041,17 @@ class CampaignDashboardDatasetService
 
     private function leadsWithAcquisitionNotNull(array $period): int
     {
-        return DB::table('salesforce_leads')
-            ->where('created_date', '>=', $period['start_at'])
-            ->where('created_date', '<', $period['end_at'])
+        return DB::table('salesforce_interests')
+            ->where('is_deleted', false)
+            ->where('functional_created_at', '>=', $period['start_at'])
+            ->where('functional_created_at', '<', $period['end_at'])
             ->where(function ($query): void {
                 foreach ([
-                    'campaign_acquired',
-                    'acquired_id',
-                    'content_acquired',
-                    'fuente_origen',
-                    'medio_origen',
+                    'utm_campaign',
+                    'utm_id',
+                    'utm_content',
+                    'source',
+                    'medium',
                 ] as $field) {
                     $query->orWhere(function ($subQuery) use ($field): void {
                         $subQuery->whereNotNull($field)->where($field, '<>', '');
@@ -3088,7 +3131,7 @@ class CampaignDashboardDatasetService
             'medium_acquired',
             'campaign_acquired',
             'campaign_id',
-            'lead_status',
+            'interest_status',
             'vehicle_interest',
         ] as $field) {
             if (filled($filters[$field] ?? null)) {
@@ -3105,11 +3148,11 @@ class CampaignDashboardDatasetService
         }
 
         if (filled($filters['delegation'] ?? null)) {
-            $query->where($column('lead_delegation'), $filters['delegation']);
+            $query->where($column('interest_origin_delegation'), $filters['delegation']);
         }
 
         if (filled($filters['zone'] ?? null)) {
-            $query->where($column('lead_zone'), $filters['zone']);
+            $query->where($column('interest_origin_zone'), $filters['zone']);
         }
 
         if (filled($filters['commercial_user'] ?? null)) {
@@ -3121,9 +3164,7 @@ class CampaignDashboardDatasetService
         }
 
         if (filled($filters['lead_type'] ?? null)) {
-            $query->whereIn($column('lead_id'), DB::table('salesforce_leads')
-                ->select('salesforce_id')
-                ->where('record_type_normalized', $filters['lead_type']));
+            $query->where($column('interest_type'), $filters['lead_type']);
         }
 
         if (filled($filters['search'] ?? null)) {
@@ -3155,14 +3196,7 @@ class CampaignDashboardDatasetService
     {
         $column = fn (string $field): string => $alias ? "{$alias}.{$field}" : $field;
 
-        if (Schema::hasTable('salesforce_leads') && Schema::hasColumn('salesforce_leads', 'is_deleted')) {
-            $query->whereNotExists(function ($subQuery) use ($column): void {
-                $subQuery->selectRaw('1')
-                    ->from('salesforce_leads as active_lead_guard')
-                    ->whereColumn('active_lead_guard.salesforce_id', $column('lead_id'))
-                    ->where('active_lead_guard.is_deleted', true);
-            });
-        }
+        $query->where($column('interest_is_deleted'), false);
 
         foreach ([
             'platform',
@@ -3171,7 +3205,7 @@ class CampaignDashboardDatasetService
             'source_acquired',
             'medium_acquired',
             'campaign_acquired',
-            'lead_status',
+            'interest_status',
             'vehicle_interest',
         ] as $field) {
             if (filled($filters[$field] ?? null)) {
@@ -3180,11 +3214,11 @@ class CampaignDashboardDatasetService
         }
 
         if (filled($filters['delegation'] ?? null)) {
-            $query->where($column('lead_delegation'), $filters['delegation']);
+            $query->where($column('interest_origin_delegation'), $filters['delegation']);
         }
 
         if (filled($filters['zone'] ?? null)) {
-            $query->where($column('lead_zone'), $filters['zone']);
+            $query->where($column('interest_origin_zone'), $filters['zone']);
         }
 
         if (filled($filters['commercial_user'] ?? null)) {
@@ -3196,10 +3230,7 @@ class CampaignDashboardDatasetService
         }
 
         if (filled($filters['lead_type'] ?? null)) {
-            $query->whereIn($column('lead_id'), DB::table('salesforce_leads')
-                ->select('salesforce_id')
-                ->where('is_deleted', false)
-                ->where('record_type_normalized', $filters['lead_type']));
+            $query->where($column('interest_type'), $filters['lead_type']);
         }
 
         if (filled($filters['search'] ?? null)) {
@@ -3237,6 +3268,14 @@ class CampaignDashboardDatasetService
                 ['value' => 'branding', 'label' => 'Branding'],
                 ['value' => 'otros', 'label' => 'Otros'],
             ],
+            'interest_types' => [
+                ['value' => 'venta', 'label' => 'Venta'],
+                ['value' => 'venta_con_cambio', 'label' => 'Venta con cambio'],
+                ['value' => 'lead', 'label' => 'Lead'],
+                ['value' => 'ayvens', 'label' => 'Ayvens'],
+                ['value' => 'tasacion', 'label' => 'Tasación'],
+            ],
+            // Compatibility alias consumed by the current dashboard JavaScript.
             'lead_types' => [
                 ['value' => 'venta', 'label' => 'Venta'],
                 ['value' => 'venta_con_cambio', 'label' => 'Venta con cambio'],
@@ -3270,9 +3309,10 @@ class CampaignDashboardDatasetService
             'campaigns_acquired' => $this->distinct('campaign_lead_attributions', 'campaign_acquired'),
             'campaign_ids' => $this->distinctFromBoth('campaign_id'),
             'campaign_names' => $this->distinctFromBoth('campaign_name'),
-            'delegations' => $this->distinct('campaign_lead_attributions', 'lead_delegation'),
-            'zones' => $this->distinct('campaign_lead_attributions', 'lead_zone'),
-            'lead_statuses' => $this->distinct('campaign_lead_attributions', 'lead_status'),
+            'delegations' => $this->distinct('campaign_lead_attributions', 'interest_origin_delegation'),
+            'zones' => $this->distinct('campaign_lead_attributions', 'interest_origin_zone'),
+            'interest_statuses' => $this->distinct('campaign_lead_attributions', 'interest_status'),
+            'lead_statuses' => $this->distinct('campaign_lead_attributions', 'interest_status'),
             'commercials' => DB::table('campaign_lead_attributions')
                 ->select('commercial_user_id', 'commercial_user_name')
                 ->whereNotNull('commercial_user_name')
@@ -3362,7 +3402,7 @@ class CampaignDashboardDatasetService
             'ventas' => 'Ventas',
             'tasacion' => 'Compras',
             'exposicion' => 'Oportunidades',
-            'branding' => 'Leads',
+            'branding' => 'Intereses',
             'otros' => 'Resultados',
             default => 'Resultados',
         };
@@ -3537,7 +3577,7 @@ class CampaignDashboardDatasetService
             'campaign_source_type',
             'delegation',
             'zone',
-            'lead_status',
+            'interest_status',
             'has_opportunity',
             'has_reservation',
             'has_sale',
@@ -3618,21 +3658,24 @@ class CampaignDashboardDatasetService
 
     private function campaignDatasetMetadata(array $period): array
     {
-        $leadSync = DB::table('salesforce_leads')
-            ->where('created_date', '>=', $period['start_at'])
-            ->where('created_date', '<', $period['end_at'])
-            ->max('synced_at');
+        $interestRun = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->orderByDesc('id')
+            ->first();
+        $interestSync = $interestRun?->source_cutoff_at;
         $metaSync = CampaignPlatformDailyMetric::query()->where('platform', 'meta')->max('synced_at');
         $googleSync = CampaignPlatformDailyMetric::query()->where('platform', 'google_ads')->max('synced_at');
         $attributionBuild = DB::table('campaign_lead_attributions')->max('updated_at');
-        $cutoff = collect([$leadSync, $metaSync, $googleSync, $attributionBuild])
+        $cutoff = collect([$interestSync, $metaSync, $googleSync, $attributionBuild])
             ->filter()
             ->map(fn ($value) => CarbonImmutable::parse($value))
             ->sortBy(fn (CarbonImmutable $value) => $value->getTimestamp())
             ->first();
 
         return [
-            'salesforce_leads_synced_at' => $this->reportDateTime($leadSync)?->toDateTimeString(),
+            'salesforce_interests_synced_at' => $this->reportDateTime($interestSync)?->toIso8601String(),
+            'salesforce_leads_synced_at' => $this->reportDateTime($interestSync)?->toIso8601String(),
             'meta_synced_at' => $this->reportDateTime($metaSync)?->toDateTimeString(),
             'google_synced_at' => $this->reportDateTime($googleSync)?->toDateTimeString(),
             'attribution_built_at' => $this->reportDateTime($attributionBuild)?->toDateTimeString(),
@@ -3646,6 +3689,7 @@ class CampaignDashboardDatasetService
         return [
             'attributions_updated_at' => DB::table('campaign_lead_attributions')->max('updated_at'),
             'metrics_updated_at' => CampaignPlatformDailyMetric::query()->max('updated_at'),
+            'opportunity_interest_context' => $this->opportunityInterestAttribution->capture(),
             'dashboard_cache_version' => Cache::get('campaign_dashboard_cache_version', 1),
         ];
     }

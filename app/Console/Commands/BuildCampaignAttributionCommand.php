@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 class BuildCampaignAttributionCommand extends Command
 {
     protected $signature = 'campaigns:build-attribution
-        {--days=60 : Dias hacia atras de leads a procesar}
+        {--days=60 : Días hacia atrás de Interests a procesar}
         {--months= : Meses hacia atras que se procesan; tiene prioridad sobre --days}
         {--from= : Fecha inicial explicita en formato Y-m-d}
         {--to= : Fecha final exclusiva en formato Y-m-d; por defecto ahora}
@@ -17,7 +17,7 @@ class BuildCampaignAttributionCommand extends Command
         {--reason= : Motivo auditable para una reconstruccion historica en modo escritura}
         {--window= : Opcion legacy sin efecto; mantener solo por compatibilidad}';
 
-    protected $description = 'Construye la atribucion lead -> oportunidad -> reserva -> venta por campana.';
+    protected $description = 'Construye la atribución Interest -> oportunidad -> reserva -> venta por campaña.';
 
     public function handle(CampaignAttributionBuilderService $builder): int
     {
@@ -38,14 +38,15 @@ class BuildCampaignAttributionCommand extends Command
         }
 
         $this->line('Rango: '.$result['range_start'].' a '.$result['range_end']);
-        $this->line('Tabla origen leads: '.$result['lead_source_table']);
-        $this->line('Leads en rango: '.$result['total_leads_in_range']);
-        $this->line('Leads con adquisicion no null: '.$result['leads_with_acquisition_not_null']);
-        $this->line('Leads candidatos validos: '.$result['candidate_leads']);
+        $this->line('Tabla origen Interests: '.$result['interest_source_table']);
+        $this->line('Interests en rango: '.$result['total_interests_in_range']);
+        $this->line('Interests con adquisición no null: '.$result['interests_with_acquisition_not_null']);
+        $this->line('Interests candidatos válidos: '.$result['candidate_interests']);
         $this->line('Descartados por valores invalidos: '.$result['discarded_invalid_values']);
+        $this->line('Interests sin evidencia de adquisición: '.$result['interests_without_acquisition_evidence']);
         $this->line('Campanas excluidas: '.$result['excluded_campaigns']);
         $this->line('Descartados por fecha: '.$result['discarded_by_date']);
-        $this->line('Leads procesados: '.$result['processed_leads']);
+        $this->line('Interests procesados: '.$result['processed_interests']);
         $this->line('Atribuciones guardadas: '.$result['saved_attributions']);
         $this->line('Cruces con plataforma: '.$result['matched_to_platform']);
         $this->line('Candidatos con campaign_acquired: '.$result['candidates_with_campaign_acquired']);
@@ -79,7 +80,7 @@ class BuildCampaignAttributionCommand extends Command
             $simulation = $result['simulation'];
             $this->newLine();
             $this->line('SIMULACION SIN ESCRITURA');
-            $this->line('Campaign Leads examinados: '.$simulation['campaign_leads_examined']);
+            $this->line('Campaign Interests examinados: '.$simulation['campaign_interests_examined']);
             $this->line('Atribuciones actuales: '.$simulation['current_attributions']);
             $this->line('Atribuciones simuladas: '.$simulation['simulated_attributions']);
             foreach ($simulation['sets'] as $label => $data) {
@@ -92,13 +93,13 @@ class BuildCampaignAttributionCommand extends Command
                 $this->line('FROM/TO '.$transition['transition'].': '.$transition['count']);
             }
             foreach ($simulation['campaign_identity_change_details'] as $detail) {
-                $this->line('LEAD '.$detail['lead_id'].' | '.$detail['transition']);
+                $this->line('INTEREST '.$detail['interest_id'].' | '.$detail['transition']);
                 $this->line('CURRENT '.json_encode($detail['current'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 $this->line('SIMULATED '.json_encode($detail['simulated'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 $this->line('INPUT '.json_encode($detail['input'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
             }
-            foreach ($simulation['lead_types'] as $label => $count) {
-                $this->line('Lead tipo '.$label.': '.$count);
+            foreach ($simulation['interest_types'] as $label => $count) {
+                $this->line('Interest tipo '.$label.': '.$count);
             }
             foreach ($simulation['null_record_type_raw'] as $raw => $count) {
                 $this->line('RecordType bruto no normalizable '.$raw.': '.$count);
