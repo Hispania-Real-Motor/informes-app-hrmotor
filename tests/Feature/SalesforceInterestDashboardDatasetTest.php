@@ -379,11 +379,15 @@ class SalesforceInterestDashboardDatasetTest extends TestCase
         app(SalesforceInterestDashboardDatasetService::class)->summary($this->request());
     }
 
-    public function test_campaign_attribution_remains_wired_to_legacy_lead_dataset(): void
+    public function test_campaign_attribution_is_rotated_to_interest_without_reusing_the_rot1_dataset(): void
     {
         $source = file_get_contents(app_path('Services/Campaigns/CampaignAttributionBuilderService.php'));
-        $this->assertStringContainsString('SalesforceLeadDashboardDatasetService', $source);
+        $this->assertStringContainsString('SalesforceInterestSyncService', $source);
+        $this->assertStringContainsString("DB::table('salesforce_interests')", $source);
+        $this->assertStringNotContainsString('SalesforceLeadDashboardDatasetService', $source);
         $this->assertStringNotContainsString('SalesforceInterestDashboardDatasetService', $source);
+        $this->assertStringNotContainsString("DB::table('salesforce_leads')", $source);
+        $this->assertStringNotContainsString("DB::table('campaign_salesforce_leads')", $source);
     }
 
     public function test_pipeline_serializes_f2_then_f5_and_rejects_overlap(): void

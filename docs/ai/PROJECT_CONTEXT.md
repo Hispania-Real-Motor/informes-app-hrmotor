@@ -2,6 +2,40 @@
 
 Actualizado: 2026-10-09.
 
+## ROT-4 — Campañas con Interest como entidad de adquisición
+
+- `/informes/campanas`, el builder y las auditorías consumen exclusivamente
+  `salesforce_interests` activos. El período se basa en
+  `functional_created_at`: persistencia UTC y límites de negocio
+  `Europe/Madrid` convertidos explícitamente a UTC.
+- La persistencia mantiene los nombres históricos `campaign_attributions` y
+  `campaign_lead_attributions` por compatibilidad. Las filas ROT-4 usan
+  columnas Interest explícitas y dejan `lead_id` y demás identidad Lead a
+  `NULL`; las claves técnicas `leads_*` de payload son aliases temporales. Las
+  filas Lead previas se conservan para rollback y no bloquean el claim ROT-4;
+  ambas identidades pueden coexistir para una misma Opportunity.
+- La relación exacta Opportunity↔Interest usa el servicio compartido y solo
+  `both_match` autoriza atribución. El first touch por Account es una heurística
+  distinta: compara exclusivamente IDs Account, aplica la precedencia de
+  calidad existente y queda identificado con menor confianza. No utiliza PII.
+- Status, tipo, fuente, UTM, procedencia, lifecycle y owner proceden del último
+  F2. No existe fallback a Lead, Account o Contact para completar dimensiones
+  Interest. La inferencia histórica Meta basada en campos Lead no se reproduce
+  sin evidencia Interest equivalente. Solo `utm_campaign`, `utm_id` o
+  `utm_content` admiten un Interest al universo Campañas; las procedencias
+  genéricas se mantienen como contexto pero no crean campañas.
+- `opportunity_relationship_status` conserva la evidencia CRM original y
+  `opportunity_attribution_method` conserva por separado el método Campañas.
+  First touch puede complementar estados no conflictivos sin reescribirlos;
+  `contradiction` e `inverse_shared` no eligen ganador automáticamente.
+- El builder fija y revalida el F2 y el contexto Opportunity↔Interest antes de
+  publicar. La caché versiona IDs, status, cutoffs, disponibilidad y razón; una
+  transición `running → completed` no puede reutilizar un payload degradado.
+- `CampaignLeadSyncService`, su comando y `campaign_salesforce_leads` quedan
+  aislados como infraestructura legacy/rollback y ya no forman parte del
+  scheduler funcional. Google/Meta mantienen sus fuentes y Opportunity sigue
+  aportando resultados. No existe consulta Salesforce en HTTP.
+
 ## ROT-3 — Reservas/Ventas con Opportunity como hecho e Interest como dimensión
 
 - `/informes/reservas-ventas` mantiene Opportunity como hecho y resuelve portal
@@ -10,9 +44,8 @@ Actualizado: 2026-10-09.
   vigente. Solo la coincidencia exacta bidireccional `both_match` habilita
   `Interest.source`.
 - La fotografía legacy `salesforce_opportunities.portal_resolved` no es
-  autoridad ROT-3. Permanece sin cambios junto con el matching Lead del
-  productor compartido porque Campañas aún lo consume; su retirada corresponde
-  a ROT-4.
+  autoridad ROT-3. Permanece disponible para compatibilidad histórica, pero
+  ROT-4 ya no usa matching Lead como autoridad de Campañas.
 - Direct/F2 se fijan y revalidan por ID, status y cutoff. Evidencia directa
   ausente o obsoleta degrada a reglas propias de Opportunity y queda explícita
   en data quality, sin fallback Lead ni error de negocio ficticio.
@@ -50,8 +83,9 @@ Actualizado: 2026-10-09.
 ## ROT-1 — dataset funcional Interest
 
 - `SalesforceInterestDashboardDatasetService` mantiene separado el cutover de
-  `SalesforceLeadDashboardDatasetService`: Campañas continúa en Lead, mientras
-  `/informes/leads`, Monthly Commercial y Executive consumen Interest.
+  `SalesforceLeadDashboardDatasetService`. `/informes/leads`, Monthly
+  Commercial y Executive consumen Interest; Campañas también ha rotado en
+  ROT-4 mediante su propio contrato Interest, sin reutilizar el dataset Lead.
 - Se conservan ruta, permiso `leads` y claves KPI legacy. Un render Interest
   exige F2 `completed` y F5 `completed` ligado al mismo run/cutoff; su caché se
   versiona con F2, F5 y usuarios comerciales. Salesforce solo se invoca en el
@@ -366,8 +400,9 @@ Actualizado: 2026-10-09.
 ## Foundation local de Salesforce Interest
 
 - `salesforce_interests` representa de forma aditiva `Interes__c` mediante PK
-  local y Salesforce ID externo. Ningún informe consume todavía esta tabla y
-  las estructuras legacy conservan íntegramente su semántica.
+  local y Salesforce ID externo. Es la fuente CRM de los informes rotados en
+  ROT-1/2/3/4; las estructuras legacy se conservan únicamente para consumidores
+  aún no rotados, compatibilidad o rollback explícito.
 - La identidad analítica de persona se materializa en el propio Interest:
   Account prevalece sobre Lead y la ausencia se representa con `NULL`. No se ha
   creado una tabla Persona ni se utiliza teléfono, email o nombre como identidad.
@@ -387,12 +422,12 @@ Actualizado: 2026-10-09.
   fuente, canal, medio y delegación de forma independiente: el campo nuevo gana
   cuando no es null, vacío o whitespace; cualquier placeholder no vacío es
   autoritativo y el fallback conserva la prioridad legacy de cada informe.
-- Campañas mantiene su gate legacy y, una vez admitido el Lead, resuelve las
-  cinco parejas UTM nuevo → legacy. Llamadas separa clasificación visible de
-  reglas operativas. Opportunities mantiene la precedencia Opportunity
-  conclusiva → Lead relacionado → fuente de Opportunity → fallbacks existentes.
-  El índice local de teléfonos solo descubre Lead IDs; Salesforce vivo sigue
-  siendo la fuente funcional final.
+- Campañas ROT-4 resuelve adquisición exclusivamente desde columnas canónicas
+  del Interest y no aplica el antiguo gate Lead ni fallback UTM legacy.
+  Llamadas ROT-2 usa `Task.WhatId → Interest` exacto. Reservas/Ventas ROT-3
+  mantiene Opportunity como hecho y solo `both_match` habilita
+  `Interest.source`. Los índices y resolvers Lead/PII legacy no participan en
+  estas superficies rotadas.
 - El lifecycle de Opportunities está reconciliado en producción.
   `query_all_deleted` representa borrado confirmado y se excluye de los
   consumidores dependientes de Opportunity; `presence_reconciliation_missing`

@@ -31,7 +31,7 @@ class CampaignAttributionSimulationSummaryTest extends TestCase
             $this->row('ambiguity-resolved', 'campaign-a'),
         ];
         $leads = collect($simulatedRows)->map(fn (array $row): object => (object) [
-            'salesforce_id' => $row['lead_id'],
+            'salesforce_id' => $row['interest_id'],
             'record_type_name' => 'Venta',
         ]);
 
@@ -65,7 +65,7 @@ class CampaignAttributionSimulationSummaryTest extends TestCase
         bool $ambiguous = false,
     ): array {
         return [
-            'lead_id' => $leadId,
+            'interest_id' => $leadId,
             'platform' => 'meta',
             'campaign_id' => $campaignId,
             'campaign_name' => null,
