@@ -124,15 +124,15 @@ Actualizado: 2026-10-08.
   No existe scheduler ni consumidor funcional y producción permanece intacta.
   `ROT-1` está cerrado tras el PR #71, fusionado en
   `dc8e7d59d7e5bdc6ce065a4ce873fb2364493eb1`.
-- `ROT-2 — Llamadas → Interests` — **en_revision** en
-  `feat/rot-2-calls-to-interests`, base
-  `dc8e7d59d7e5bdc6ce065a4ce873fb2364493eb1`. Mantiene Task como hecho y toda
-  la semántica operativa; sustituye exclusivamente el fallback Lead por la
-  coincidencia local exacta `Task.WhatId → Interest`. Sync y reproceso dejan de
-  consultar Lead, la auditoría expone lifecycle/provenance Interest y el
-  histórico detecta cambios funcionales de la dependencia. No hay migración,
-  dependencia runtime F5, cambio de scheduler ni despliegue; implementación en
-  revisión técnica previa al PR.
+- `ROT-2 — Llamadas → Interests` — **cerrada** tras PR #72 y merge
+  `dd6d3e1a68d3cfbf9118f178e8781adda67221fb`.
+- `ROT-3 — Reservas/Ventas → Interests` — **en_revision** en
+  `feat/rot-3-reservations-sales-to-interests`, base
+  `dd6d3e1a68d3cfbf9118f178e8781adda67221fb`. Opportunity continúa siendo el
+  hecho; solo `both_match` entre el snapshot directo 4B y el inverso F2 permite
+  usar `Interest.source`. Rendimiento comercial usa Interests activos por
+  `functional_created_at` y owner actual; las claves técnicas `leads*` quedan
+  como aliases temporales. Sin migraciones ni cambios funcionales en Campañas.
 - Antes de automatizar el pipeline manual FOUNDATION-2→FOUNDATION-3A→FOUNDATION-3
   queda pendiente evaluar un lock compartido o serialización equivalente; no se
   implementa scheduler ni hardening de concurrencia en FOUNDATION-3A.
@@ -240,7 +240,8 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 - EXE-1 está cerrado tras el PR #65, EXE-2 tras el PR #66 y EXE-3 tras el PR
   #67, fusionado en `1813c9bd43a1d46ab8c086fd517aafdb96364217`.
   SF-INTEREST-FOUNDATION-5 también está cerrado tras el PR #69. El lote funcional
-  activo es `ROT-2` en `feat/rot-2-calls-to-interests`, actualmente en revisión.
+  activo es `ROT-3` en `feat/rot-3-reservations-sales-to-interests`, actualmente
+  en revisión.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 

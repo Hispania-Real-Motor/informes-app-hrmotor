@@ -3,12 +3,13 @@
 namespace App\Services\Reports\ReservationsSales;
 
 use App\Models\CommercialPerformanceMonthlyTarget;
-use App\Models\SalesforceLead;
+use App\Models\ReportSyncRun;
+use App\Models\SalesforceInterest;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceOpportunityHistorySyncInterval;
 use App\Models\SalesforceOpportunityStageTransition;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
-use App\Services\Reports\MonthlyCommercial\MonthlyCommercialLeadEnricher;
+use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -21,7 +22,6 @@ class CommercialPerformanceDatasetService
     private const DATASET_TIMEZONE = 'Europe/Madrid';
 
     public function __construct(
-        private readonly MonthlyCommercialLeadEnricher $leadEnricher,
         private readonly LeadRecordTypeNormalizer $recordTypeNormalizer,
         private readonly CommercialPerformanceMonthlyRosterService $monthlyRoster,
     ) {}
@@ -53,31 +53,41 @@ class CommercialPerformanceDatasetService
 
     private function basePayload(string $month): array
     {
+        $interestContext = $this->interestSourceContext();
         $version = $this->cacheVersion();
-        $key = 'reservas-ventas-commercial-performance-base-v4:'.hash('sha256', json_encode([
+        $key = 'reservas-ventas-commercial-performance-base-v5:'.hash('sha256', json_encode([
             'month' => $month,
             'version' => $version,
+            'interest_source' => $interestContext,
         ]));
         $cached = Cache::get($key);
         if (is_array($cached)) {
+            $this->validateInterestSourceContext($interestContext);
+
             return $cached;
         }
 
-        return Cache::lock($key.':lock', 30)->block(10, function () use ($key, $month): array {
+        $base = Cache::lock($key.':lock', 30)->block(10, function () use ($key, $month, $interestContext): array {
             $cached = Cache::get($key);
 
             if (is_array($cached)) {
                 return $cached;
             }
 
-            $base = $this->buildBase($month);
+            $base = $this->buildBase($month, $interestContext);
+            $this->validateInterestSourceContext($interestContext);
             Cache::put($key, $base, now()->addMinutes(self::CACHE_TTL_MINUTES));
 
             return $base;
         });
+
+        $this->validateInterestSourceContext($interestContext);
+
+        return $base;
     }
 
-    private function buildBase(string $month): array
+    /** @param array<string,mixed> $interestContext */
+    private function buildBase(string $month, array $interestContext): array
     {
         $selected = CarbonImmutable::createFromFormat('!Y-m', $month, self::DATASET_TIMEZONE)->startOfMonth();
         $months = collect(range(3, 0))->map(fn (int $offset): CarbonImmutable => $selected->subMonthsNoOverflow($offset));
@@ -111,7 +121,7 @@ class CommercialPerformanceDatasetService
         }
 
         $this->seedCertifiedRoster($buckets, $monthKeys, $rosterContext);
-        $this->aggregateLeads($buckets, $qualityByMonth, $start, $end, $rosterContext);
+        $this->aggregateInterests($buckets, $qualityByMonth, $start, $end, $rosterContext);
         $this->aggregateOpportunities($buckets, $qualityByMonth, $start, $end, $rosterContext);
         $this->aggregateCancellations($buckets, $qualityByMonth, $start, $end, $rosterContext);
 
@@ -143,7 +153,7 @@ class CommercialPerformanceDatasetService
         ];
         $generatedAt = now()->toIso8601String();
 
-        return compact('monthKeys', 'targets', 'historyCoverage', 'qualityByMonth', 'rowsByMonth', 'delegationHistory', 'generatedAt');
+        return compact('monthKeys', 'targets', 'historyCoverage', 'qualityByMonth', 'rowsByMonth', 'delegationHistory', 'generatedAt', 'interestContext');
     }
 
     private function present(array $base, array $filters): array
@@ -153,6 +163,7 @@ class CommercialPerformanceDatasetService
         $historyCoverage = $base['historyCoverage'];
         $rowsByMonth = $base['rowsByMonth'];
         $delegationHistory = $base['delegationHistory'];
+        $interestContext = $base['interestContext'];
         $generatedAt = $base['generatedAt'];
         $currentRows = $this->applyAccessScope(collect($rowsByMonth[$filters['month']] ?? []), $filters);
         $quality = $this->scopeDataQuality(
@@ -224,11 +235,16 @@ class CommercialPerformanceDatasetService
                 'cancellation_source' => 'OpportunityHistory',
                 ...$delegationHistory,
                 'delegation_history_limitation' => 'Desde 2026-04-01 se admite el bootstrap aprobado por negocio cuando la primera asignación fiable no tiene evidencias contradictorias; se distingue de la observación Salesforce.',
+                'interest_sync_run_id' => $interestContext['id'],
+                'interest_sync_cutoff_at' => $interestContext['cutoff'],
+                'interest_owner_semantics' => 'current_interest_owner_at_last_sync',
             ],
             'semantics' => [
                 'activity_monthly' => true,
                 'cohort' => false,
                 'ratios_may_exceed_100' => true,
+                'leads_alias' => 'interests',
+                'lead_to_reservation_pct_alias' => 'interest_to_reservation_pct',
                 'cancellation_date_field' => 'salesforce_opportunity_stage_transitions.transitioned_at',
             ],
             'dataset_source' => 'local_snapshot',
@@ -237,68 +253,37 @@ class CommercialPerformanceDatasetService
         ];
     }
 
-    private function aggregateLeads(
+    private function aggregateInterests(
         array &$buckets,
         array &$quality,
         CarbonImmutable $start,
         CarbonImmutable $end,
         array $rosterContext,
     ): void {
-        foreach (collect(range(3, 0))->map(fn (int $offset): CarbonImmutable => $end->subMonth()->subMonthsNoOverflow($offset)->startOfMonth()) as $month) {
-            $monthEnd = $month->addMonth();
-            $responsibleId = "CASE WHEN LOWER(TRIM(status)) = 'convertido' THEN COALESCE(NULLIF(TRIM(persona_que_trabajo_id), ''), NULLIF(TRIM(owner_id), '')) WHEN LOWER(TRIM(status)) = 'descartado' THEN COALESCE(NULLIF(TRIM(propietario_descarte_id), ''), NULLIF(TRIM(persona_que_trabajo_id), ''), NULLIF(TRIM(owner_id), '')) ELSE NULLIF(TRIM(owner_id), '') END";
-            $responsibleName = "CASE WHEN LOWER(TRIM(status)) = 'convertido' THEN CASE WHEN NULLIF(TRIM(persona_que_trabajo_id), '') IS NOT NULL THEN NULLIF(TRIM(persona_que_trabajo_name), '') ELSE NULLIF(TRIM(owner_name), '') END WHEN LOWER(TRIM(status)) = 'descartado' THEN CASE WHEN NULLIF(TRIM(propietario_descarte_id), '') IS NOT NULL THEN NULLIF(TRIM(propietario_descarte_name), '') WHEN NULLIF(TRIM(persona_que_trabajo_id), '') IS NOT NULL THEN NULLIF(TRIM(persona_que_trabajo_name), '') ELSE NULLIF(TRIM(owner_name), '') END ELSE NULLIF(TRIM(owner_name), '') END";
-
-            SalesforceLead::query()
-                ->where('is_deleted', false)
-                ->where('fecha_asignacion', '>=', $month->utc())
-                ->where('fecha_asignacion', '<', $monthEnd->utc())
-                ->whereIn('record_type_normalized', $this->recordTypeNormalizer->ventaFilterTypes())
-                ->selectRaw("{$responsibleId} as responsible_id, {$responsibleName} as responsible_name, COUNT(*) as leads")
-                ->groupByRaw("{$responsibleId}, {$responsibleName}")
-                ->get()
-                ->each(function (object $group) use (&$buckets, &$quality, $rosterContext, $month): void {
-                    $userId = $group->responsible_id;
-                    $attribution = $this->attribution(
-                        $userId,
-                        $group->responsible_name ?? data_get($rosterContext['users']->get($userId), 'name'),
-                        $month,
-                        $rosterContext,
-                        $quality,
-                        (int) $group->leads,
-                    );
-                    $this->increment($buckets, $month->format('Y-m'), $attribution, 'leads', (int) $group->leads);
-                });
-        }
-
-        SalesforceLead::query()
+        SalesforceInterest::query()
             ->where('is_deleted', false)
-            ->where('fecha_asignacion', '>=', $start->utc())
-            ->where('fecha_asignacion', '<', $end->utc())
-            ->whereNull('record_type_normalized')
+            ->where('functional_created_at', '>=', $start->utc())
+            ->where('functional_created_at', '<', $end->utc())
             ->select([
-                'id', 'salesforce_id', 'status', 'record_type_name', 'record_type_normalized',
-                'owner_id', 'owner_name', 'persona_que_trabajo_id', 'persona_que_trabajo_name',
-                'propietario_descarte_id', 'propietario_descarte_name', 'fecha_asignacion',
+                'id', 'salesforce_id', 'type', 'owner_salesforce_id', 'owner_name', 'functional_created_at',
             ])
             ->orderBy('id')
-            ->chunkById(1000, function ($leads) use (&$buckets, &$quality, $rosterContext): void {
-                foreach ($leads as $lead) {
-                    $type = $lead->record_type_normalized ?: $this->recordTypeNormalizer->normalize($lead->record_type_name);
+            ->chunkById(1000, function ($interests) use (&$buckets, &$quality, $rosterContext): void {
+                foreach ($interests as $interest) {
+                    $type = $this->recordTypeNormalizer->normalize($interest->type);
                     if (! in_array($type, $this->recordTypeNormalizer->ventaFilterTypes(), true)) {
                         continue;
                     }
 
-                    $responsible = $this->leadEnricher->effectiveResponsible($lead);
-                    $userId = $responsible['id'] ?? null;
+                    $userId = filled($interest->owner_salesforce_id) ? trim((string) $interest->owner_salesforce_id) : null;
                     $attribution = $this->attribution(
                         $userId,
-                        $responsible['name'] ?? data_get($rosterContext['users']->get($userId), 'name'),
-                        $lead->fecha_asignacion,
+                        $interest->owner_name ?? data_get($rosterContext['users']->get($userId), 'name'),
+                        $interest->functional_created_at,
                         $rosterContext,
                         $quality,
                     );
-                    $this->increment($buckets, $this->monthKey($lead->fecha_asignacion), $attribution, 'leads');
+                    $this->increment($buckets, $this->monthKey($interest->functional_created_at), $attribution, 'leads');
                 }
             });
     }
@@ -1200,10 +1185,33 @@ class CommercialPerformanceDatasetService
     private function cacheVersion(): array
     {
         return [
-            'lead_dashboard' => (int) Cache::get('lead_dashboard_cache_version', 1),
             'reservas_ventas_dashboard' => (int) Cache::get('reservas_ventas_dashboard_cache_version', 1),
             'commercial_performance' => (int) Cache::get('commercial_performance_cache_version', 1),
         ];
+    }
+
+    /** @return array{id:int,cutoff:string} */
+    public function interestSourceContext(): array
+    {
+        $run = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
+            throw new \RuntimeException('El snapshot F2 de Interests no está disponible para Rendimiento comercial.');
+        }
+
+        return ['id' => (int) $run->id, 'cutoff' => $run->source_cutoff_at->toIso8601String()];
+    }
+
+    /** @param array{id:int,cutoff:string} $context */
+    public function validateInterestSourceContext(array $context): void
+    {
+        if ($this->interestSourceContext() !== $context) {
+            throw new \RuntimeException('El snapshot F2 cambió durante la construcción de Rendimiento comercial.');
+        }
     }
 
     private function incrementCacheVersion(): void

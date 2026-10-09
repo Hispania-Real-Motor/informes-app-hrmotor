@@ -3,11 +3,10 @@
 namespace App\Services\Reports\ReservationsSales;
 
 use App\Models\CommercialPerformanceMonthlyTarget;
-use App\Models\SalesforceLead;
+use App\Models\SalesforceInterest;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceOpportunityStageTransition;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
-use App\Services\Reports\MonthlyCommercial\MonthlyCommercialLeadEnricher;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -18,12 +17,12 @@ class CommercialPerformanceAuditService
     public function __construct(
         private readonly CommercialPerformanceMonthlyRosterService $monthlyRoster,
         private readonly CommercialPerformanceDatasetService $dataset,
-        private readonly MonthlyCommercialLeadEnricher $leadEnricher,
         private readonly LeadRecordTypeNormalizer $recordTypeNormalizer,
     ) {}
 
     public function payload(array $filters): array
     {
+        $interestContext = $this->dataset->interestSourceContext();
         $month = CarbonImmutable::createFromFormat('!Y-m', $filters['month'], self::DATASET_TIMEZONE)->startOfMonth();
         $end = $month->addMonth();
         $months = collect([$month]);
@@ -32,7 +31,7 @@ class CommercialPerformanceAuditService
         $rows = collect();
         $saleClassificationStates = [];
 
-        $this->appendLeads($rows, $month, $end, $context);
+        $this->appendInterests($rows, $month, $end, $context);
         $this->appendOpportunities($rows, $month, $end, $context, $saleClassificationStates);
         $this->appendTransitions($rows, $month, $end, $context, $coverage['status']);
         $this->applyDeduplication($rows, $saleClassificationStates);
@@ -44,6 +43,7 @@ class CommercialPerformanceAuditService
             ->when(filled($filters['commercial'] ?? null), fn (Collection $items) => $items->where('commercial_id', $filters['commercial']));
 
         $rows = $rows->sortBy([['event_at', 'desc'], ['event_type', 'asc'], ['source_id', 'asc']])->values();
+        $this->dataset->validateInterestSourceContext($interestContext);
         $page = max((int) ($filters['page'] ?? 1), 1);
         $perPage = min(max((int) ($filters['per_page'] ?? 100), 1), 200);
 
@@ -62,6 +62,9 @@ class CommercialPerformanceAuditService
                 'last_page' => max((int) ceil($rows->count() / $perPage), 1),
             ],
             'pii_excluded' => true,
+            'interest_sync_run_id' => $interestContext['id'],
+            'interest_sync_cutoff_at' => $interestContext['cutoff'],
+            'interest_owner_semantics' => 'current_interest_owner_at_last_sync',
         ];
     }
 
@@ -89,7 +92,7 @@ class CommercialPerformanceAuditService
             ->filter(fn (array $row): bool => $row['counted_in_metric']
                 && $row['metric_attribution'] !== 'data_quality_incident'
                 && filled($row['commercial_id'])
-                && in_array($row['event_type'], ['lead', 'opportunity', 'reservation', 'sale', 'sale_dropped'], true))
+                && in_array($row['event_type'], ['interest', 'opportunity', 'reservation', 'sale', 'sale_dropped'], true))
             ->groupBy('commercial_id');
 
         foreach ($rows as $key => $row) {
@@ -119,37 +122,34 @@ class CommercialPerformanceAuditService
         }
     }
 
-    private function appendLeads(Collection $rows, CarbonImmutable $start, CarbonImmutable $end, array $context): void
+    private function appendInterests(Collection $rows, CarbonImmutable $start, CarbonImmutable $end, array $context): void
     {
-        SalesforceLead::query()
-            ->where('fecha_asignacion', '>=', $start->utc())
-            ->where('fecha_asignacion', '<', $end->utc())
+        SalesforceInterest::query()
+            ->where('functional_created_at', '>=', $start->utc())
+            ->where('functional_created_at', '<', $end->utc())
             ->select([
-                'id', 'salesforce_id', 'status', 'record_type_name', 'record_type_normalized', 'is_deleted',
-                'owner_id', 'owner_name', 'persona_que_trabajo_id', 'persona_que_trabajo_name',
-                'propietario_descarte_id', 'propietario_descarte_name', 'fecha_asignacion',
+                'id', 'salesforce_id', 'type', 'is_deleted', 'owner_salesforce_id', 'owner_name', 'functional_created_at',
             ])
             ->orderBy('id')
-            ->chunkById(1000, function ($leads) use ($rows, $context): void {
-                foreach ($leads as $lead) {
-                    $responsible = $this->leadEnricher->effectiveResponsible($lead);
+            ->chunkById(1000, function ($interests) use ($rows, $context): void {
+                foreach ($interests as $interest) {
                     $attribution = $this->monthlyRoster->attribution(
                         $context,
-                        $responsible['id'] ?? null,
-                        $responsible['name'] ?? null,
-                        $lead->fecha_asignacion,
+                        $interest->owner_salesforce_id,
+                        $interest->owner_name,
+                        $interest->functional_created_at,
                     );
-                    $type = $lead->record_type_normalized ?: $this->recordTypeNormalizer->normalize($lead->record_type_name);
+                    $type = $this->recordTypeNormalizer->normalize($interest->type);
                     $eligibleType = in_array($type, $this->recordTypeNormalizer->ventaFilterTypes(), true);
-                    $counted = ! $lead->is_deleted && $eligibleType && $context['users']->has($attribution['commercial_id']);
+                    $counted = ! $interest->is_deleted && $eligibleType && $context['users']->has($attribution['commercial_id']);
                     $rows->push($this->row(
-                        eventType: 'lead',
-                        sourceId: (string) $lead->salesforce_id,
-                        eventAt: $lead->fecha_asignacion,
+                        eventType: 'interest',
+                        sourceId: (string) $interest->salesforce_id,
+                        eventAt: $interest->functional_created_at,
                         attribution: $attribution,
-                        leadId: (string) $lead->salesforce_id,
+                        interestId: (string) $interest->salesforce_id,
                         counted: $counted,
-                        exclusion: $counted ? null : ($lead->is_deleted ? 'deleted' : ($eligibleType ? 'non_commercial_responsible' : 'record_type_excluded')),
+                        exclusion: $counted ? null : ($interest->is_deleted ? 'deleted' : ($eligibleType ? 'non_commercial_responsible' : 'record_type_excluded')),
                     ));
                 }
             });
@@ -301,7 +301,7 @@ class CommercialPerformanceAuditService
         string $sourceId,
         mixed $eventAt,
         array $attribution,
-        ?string $leadId = null,
+        ?string $interestId = null,
         ?string $opportunityId = null,
         bool $counted = true,
         ?string $exclusion = null,
@@ -314,7 +314,7 @@ class CommercialPerformanceAuditService
         return [
             'event_type' => $eventType,
             'source_id' => $sourceId,
-            'lead_id' => $leadId,
+            'interest_id' => $interestId,
             'opportunity_id' => $opportunityId,
             'event_at' => CarbonImmutable::parse($eventAt)->setTimezone(self::DATASET_TIMEZONE)->toIso8601String(),
             'commercial_id' => $attribution['commercial_id'],

@@ -22,6 +22,7 @@ class OpportunityDateCriterionTest extends TestCase
             'owner_name' => 'Uno',
             'owner_delegation' => 'Alcobendas',
             'portal_resolved' => 'Web',
+            'portal_original' => 'Web',
             'reservation' => true,
             'cv_signed' => false,
         ]);
@@ -35,6 +36,7 @@ class OpportunityDateCriterionTest extends TestCase
             'owner_name' => 'Dos',
             'owner_delegation' => 'Alcobendas',
             'portal_resolved' => 'Web',
+            'portal_original' => 'Web',
             'reservation' => true,
             'cv_signed' => false,
         ]);
@@ -48,6 +50,7 @@ class OpportunityDateCriterionTest extends TestCase
             'owner_name' => 'Tres',
             'owner_delegation' => 'Alcobendas',
             'portal_resolved' => 'Web',
+            'portal_original' => 'Web',
             'reservation' => true,
             'cv_signed' => true,
         ]);
@@ -61,6 +64,7 @@ class OpportunityDateCriterionTest extends TestCase
             'owner_name' => 'Eliminada',
             'owner_delegation' => 'Alcobendas',
             'portal_resolved' => 'Web',
+            'portal_original' => 'Web',
             'reservation' => true,
             'cv_signed' => false,
             'is_deleted' => true,
@@ -76,6 +80,7 @@ class OpportunityDateCriterionTest extends TestCase
             'owner_name' => 'No localizada',
             'owner_delegation' => 'Alcobendas',
             'portal_resolved' => 'Web',
+            'portal_original' => 'Web',
             'reservation' => true,
             'cv_signed' => false,
             'is_deleted' => true,

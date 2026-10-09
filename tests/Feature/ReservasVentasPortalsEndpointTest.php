@@ -27,6 +27,7 @@ class ReservasVentasPortalsEndpointTest extends TestCase
                 'owner_name' => 'Comercial',
                 'owner_delegation' => 'Alcobendas',
                 'portal_resolved' => $portal,
+                'portal_original' => $portal,
                 'reservation' => true,
                 'cv_signed' => false,
             ]);

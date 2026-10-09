@@ -1,6 +1,26 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-08.
+Actualizado: 2026-10-09.
+
+## ROT-3 — Reservas/Ventas con Opportunity como hecho e Interest como dimensión
+
+- `/informes/reservas-ventas` mantiene Opportunity como hecho y resuelve portal
+  en memoria por lotes. El lado directo procede del último run completed de
+  `salesforce_opportunity_interest_directs`; el inverso procede del F2 local
+  vigente. Solo la coincidencia exacta bidireccional `both_match` habilita
+  `Interest.source`.
+- La fotografía legacy `salesforce_opportunities.portal_resolved` no es
+  autoridad ROT-3. Permanece sin cambios junto con el matching Lead del
+  productor compartido porque Campañas aún lo consume; su retirada corresponde
+  a ROT-4.
+- Direct/F2 se fijan y revalidan por ID, status y cutoff. Evidencia directa
+  ausente o obsoleta degrada a reglas propias de Opportunity y queda explícita
+  en data quality, sin fallback Lead ni error de negocio ficticio.
+- Rendimiento comercial cuenta Interests activos de Venta mediante
+  `functional_created_at` (persistencia UTC, mes Europe/Madrid) y atribuye al
+  owner actual del último F2. No existe evidencia histórica del owner Interest.
+  Las claves `leads` y `lead_to_reservation_*` son aliases internos de
+  compatibilidad, no contrato para APIs futuras.
 
 ## ROT-2 — atribución CRM de Llamadas mediante Interest
 

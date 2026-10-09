@@ -152,6 +152,18 @@ $monitor(
     'sincronización incremental de Opportunities e historial de Stage',
 );
 
+// ROT-3 consume esta evidencia read-only. Se ejecuta después del sync ordinario
+// de Opportunities; si este termina excepcionalmente tarde, el contrato de
+// cutoff del informe impide usar un snapshot directo obsoleto.
+$monitor(
+    Schedule::command('salesforce:sync-opportunity-interest-direct --reason="Snapshot diario ROT-3 posterior al sync de Opportunities"')
+        ->dailyAt('07:35')
+        ->timezone('Europe/Madrid')
+        ->withoutOverlapping(180),
+    'salesforce-sync-opportunity-interest-direct',
+    'snapshot directo Opportunity–Interest para ROT-3',
+);
+
 $monitor(
     Schedule::command('salesforce:sync-calls --days=7')
         ->dailyAt('04:45')

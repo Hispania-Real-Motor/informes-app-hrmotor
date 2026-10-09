@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ReportSyncRun;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionDashboardService;
 use App\Services\Reports\ReservationsSales\CommercialPerformanceDatasetService;
 use App\Services\Reports\ReservationsSales\ReservationsSalesDashboardDatasetService;
@@ -16,6 +17,20 @@ class ReservationsSalesCohortAndDuplicateQualityTest extends TestCase
 {
     use CreatesOpportunityDashboardRows;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        ReportSyncRun::query()->create([
+            'dataset' => 'salesforce_interests',
+            'source' => 'salesforce',
+            'status' => 'completed',
+            'source_cutoff_at' => '2026-10-09 09:00:00',
+            'started_at' => '2026-10-09 09:00:00',
+            'completed_at' => '2026-10-09 09:01:00',
+        ]);
+    }
 
     public function test_reservas_ventas_no_devuelve_conclusiones_evaluativas_ni_recomendaciones(): void
     {

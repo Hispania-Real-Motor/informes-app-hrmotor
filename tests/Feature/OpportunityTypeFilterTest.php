@@ -22,6 +22,7 @@ class OpportunityTypeFilterTest extends TestCase
                 'owner_name' => 'Comercial',
                 'owner_delegation' => 'Alcobendas',
                 'portal_resolved' => 'Web',
+                'portal_original' => 'Web',
                 'reservation' => true,
                 'cv_signed' => false,
             ]);
@@ -59,6 +60,7 @@ class OpportunityTypeFilterTest extends TestCase
                 'owner_name' => 'Comercial',
                 'owner_delegation' => 'Alcobendas',
                 'portal_resolved' => 'Web',
+                'portal_original' => 'Web',
                 'reservation' => false,
                 'cv_signed' => true,
                 'cv_signed_date' => '2026-05-15',
