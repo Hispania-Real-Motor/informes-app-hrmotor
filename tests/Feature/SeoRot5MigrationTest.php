@@ -15,6 +15,8 @@ class SeoRot5MigrationTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const ROT5_SOURCE_INDEX = 'sf_interests_rot5_medium_date_id_idx';
+
     public function test_interest_projection_schema_is_explicit_unique_and_keeps_the_legacy_table(): void
     {
         $this->assertTrue(Schema::hasColumns('seo_salesforce_organic_interest_daily_metrics', [
@@ -49,6 +51,34 @@ class SeoRot5MigrationTest extends TestCase
 
         $migration->up();
         $this->assertTrue(Schema::hasTable('seo_salesforce_organic_interest_daily_metrics'));
+    }
+
+    public function test_rot5_source_index_has_the_expected_order_and_rolls_back_without_touching_foundation_indexes(): void
+    {
+        $indexes = collect(DB::select("PRAGMA index_list('salesforce_interests')"))->pluck('name');
+        $this->assertContains(self::ROT5_SOURCE_INDEX, $indexes);
+        $this->assertContains('sf_interests_functional_date_idx', $indexes);
+        $this->assertContains('sf_interests_salesforce_id_uq', $indexes);
+
+        $columns = collect(DB::select("PRAGMA index_info('".self::ROT5_SOURCE_INDEX."')"))
+            ->sortBy('seqno')
+            ->pluck('name')
+            ->all();
+        $this->assertSame(['is_deleted', 'medium', 'functional_created_at', 'id'], $columns);
+
+        $migration = require database_path('migrations/2026_10_13_090000_add_rot5_projection_index_to_salesforce_interests.php');
+        $migration->down();
+
+        $indexesAfterDown = collect(DB::select("PRAGMA index_list('salesforce_interests')"))->pluck('name');
+        $this->assertNotContains(self::ROT5_SOURCE_INDEX, $indexesAfterDown);
+        $this->assertContains('sf_interests_functional_date_idx', $indexesAfterDown);
+        $this->assertContains('sf_interests_salesforce_id_uq', $indexesAfterDown);
+
+        $migration->up();
+        $this->assertContains(
+            self::ROT5_SOURCE_INDEX,
+            collect(DB::select("PRAGMA index_list('salesforce_interests')"))->pluck('name'),
+        );
     }
 
     public function test_rule_rotation_creates_vn_plus_one_and_preserves_every_threshold(): void

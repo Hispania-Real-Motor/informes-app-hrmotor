@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionMethod;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -43,6 +44,55 @@ class SeoSalesforceOrganicSyncTest extends TestCase
         $this->assertDatabaseHas('seo_salesforce_organic_interest_daily_metrics', ['data_date' => '2026-08-18', 'interest_count' => 0]);
         $this->assertDatabaseHas('seo_salesforce_organic_daily_metrics', ['data_date' => '2026-08-18', 'lead_count' => 999]);
         Http::assertNothingSent();
+    }
+
+    public function test_only_the_exact_organic_medium_enters_the_projection_universe(): void
+    {
+        $this->completedF2('2026-08-19 10:00:00');
+        foreach ([
+            ['literal', 'Orgánico', null, null],
+            ['without-accent', 'Organico', 'organic', 'Orgánico'],
+            ['lowercase', 'orgánico', null, null],
+            ['uppercase', 'ORGÁNICO', null, null],
+            ['leading-space', ' Orgánico', null, null],
+            ['trailing-space', 'Orgánico ', null, null],
+            ['feminine', 'Orgánica', null, null],
+            ['null-medium', null, 'organic', 'Orgánico'],
+        ] as [$suffix, $medium, $utmMedium, $source]) {
+            $this->interest($suffix, '2026-08-18 10:00:00', $medium, false, $utmMedium, $source);
+        }
+
+        $result = $this->service()->sync(1, CarbonImmutable::parse('2026-08-19 12:00:00 Europe/Madrid'));
+
+        $this->assertSame(1, $result['stats']['organic_interests']);
+        $this->assertDatabaseHas('seo_salesforce_organic_interest_daily_metrics', [
+            'data_date' => '2026-08-18',
+            'interest_count' => 1,
+        ]);
+    }
+
+    #[DataProvider('exactOrganicMediumVariants')]
+    public function test_php_guard_enforces_literal_organic_medium_independently_of_database_collation(
+        ?string $medium,
+        bool $expected,
+    ): void {
+        $method = new ReflectionMethod(SalesforceOrganicInterestProjectionService::class, 'isExactOrganicMedium');
+
+        $this->assertSame($expected, $method->invoke($this->service(), $medium));
+    }
+
+    public static function exactOrganicMediumVariants(): array
+    {
+        return [
+            'literal' => ['Orgánico', true],
+            'without accent' => ['Organico', false],
+            'lowercase' => ['orgánico', false],
+            'uppercase' => ['ORGÁNICO', false],
+            'leading space' => [' Orgánico', false],
+            'trailing space' => ['Orgánico ', false],
+            'feminine' => ['Orgánica', false],
+            'null' => [null, false],
+        ];
     }
 
     public function test_cutoff_uses_the_earlier_closed_day_and_does_not_certify_f2_cutoff_day(): void

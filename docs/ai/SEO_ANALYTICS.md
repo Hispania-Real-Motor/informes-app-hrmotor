@@ -61,10 +61,12 @@ automático. Cada comando registra
   verdad para KPI, ceros o alertas.
 - `seo_salesforce_organic_interest_daily_metrics`: proyección vigente del conteo
   diario de `salesforce_interests` activos cuya condición es exactamente
-  `medium = 'Orgánico'`. Usa `functional_created_at` persistido en UTC y
-  calendario `Europe/Madrid`; ayer es el último día local cerrado y los días
-  cubiertos sin Interests son ceros reales. Cada fila conserva el ID y cutoff
-  del F2 exacto utilizado.
+  `medium = 'Orgánico'`. El predicado SQL limita los candidatos y una segunda
+  comparación PHP estricta (`===`) garantiza el literal, sin normalización,
+  aliases, cambios de mayúsculas, `trim` ni dependencia de la collation. Usa
+  `functional_created_at` persistido en UTC y calendario `Europe/Madrid`; ayer
+  es el último día local cerrado y los días cubiertos sin Interests son ceros
+  reales. Cada fila conserva el ID y cutoff del F2 exacto utilizado.
 - `seo_salesforce_organic_daily_metrics`: histórico Lead previo a ROT-5. Se
   conserva para auditoría y rollback, pero no alimenta la métrica vigente.
 - `seo_ga4_organic_daily_metrics`: total diario GA4 por property, fecha y
@@ -207,9 +209,15 @@ ROT-5 no consulta Salesforce. El comando `seo:sync-salesforce-organic` conserva
 su nombre por compatibilidad operativa, pero proyecta exclusivamente el último
 snapshot F2 canónico (`salesforce_interests`/`salesforce`) si el último run por
 ID está `completed` y tiene cutoff. Cuenta exactamente Interests con
-`is_deleted = false` y `medium = 'Orgánico'`; no usa UTM, fuente, canal ni
-fallback Lead. La fecha es `functional_created_at` y los límites de día Madrid
-se convierten explícitamente a UTC.
+`is_deleted = false` y el literal exacto `medium === 'Orgánico'`; mantiene el
+filtro SQL de candidatos y valida de nuevo en PHP para no depender de una
+collation permisiva. No aplica `trim`, case folding, aliases ni usa UTM, fuente,
+canal o fallback Lead. La fecha es `functional_created_at` y los límites de día
+Madrid se convierten explícitamente a UTC. El índice
+`sf_interests_rot5_medium_date_id_idx` cubre, en ese orden, `is_deleted`,
+`medium`, `functional_created_at` e `id`; su selección por el optimizador debe
+certificarse mediante `EXPLAIN` en MySQL/MariaDB shadow tras aplicar la
+migración, sin anticipar el resultado desde SQLite.
 
 El día efectivo máximo es el menor entre ayer en Madrid y el día local del
 cutoff F2 menos uno. El run F2 se revalida tras leer, antes de persistir y antes

@@ -19,6 +19,8 @@ class SalesforceOrganicInterestProjectionService
 
     private const CHUNK_SIZE = 1000;
 
+    private const ORGANIC_MEDIUM = 'Orgánico';
+
     public function __construct(private readonly ReportSyncRunService $syncRuns) {}
 
     /** @return array{run: ReportSyncRun, period_start: CarbonImmutable, period_end: CarbonImmutable, cutoff: CarbonImmutable, stats: array<string, mixed>} */
@@ -126,24 +128,33 @@ class SalesforceOrganicInterestProjectionService
         $counts = [];
 
         DB::table('salesforce_interests')
-            ->select(['id', 'functional_created_at'])
+            ->select(['id', 'functional_created_at', 'medium'])
             ->where('is_deleted', false)
-            ->where('medium', 'Orgánico')
+            ->where('medium', self::ORGANIC_MEDIUM)
             ->where('functional_created_at', '>=', $startUtc)
             ->where('functional_created_at', '<', $endExclusiveUtc)
             ->orderBy('id')
             ->chunkById(self::CHUNK_SIZE, function ($interests) use (&$counts, &$stats, $timezone): void {
                 foreach ($interests as $interest) {
+                    $stats['queried_interests']++;
+                    if (! $this->isExactOrganicMedium($interest->medium)) {
+                        continue;
+                    }
+
                     $date = CarbonImmutable::parse((string) $interest->functional_created_at, 'UTC')
                         ->setTimezone($timezone)
                         ->toDateString();
                     $counts[$date] = ($counts[$date] ?? 0) + 1;
-                    $stats['queried_interests']++;
                     $stats['organic_interests']++;
                 }
             }, 'id');
 
         return $counts;
+    }
+
+    private function isExactOrganicMedium(mixed $medium): bool
+    {
+        return is_string($medium) && $medium === self::ORGANIC_MEDIUM;
     }
 
     /** @param array<string, int> $counts @return list<array<string, mixed>> */

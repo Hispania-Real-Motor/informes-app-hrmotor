@@ -2,6 +2,38 @@
 
 ## ROT-5 — SEO Salesforce → Interests (2026-10-09)
 
+### Hardening de igualdad literal e índice (2026-10-13)
+
+- El predicado SQL `medium = 'Orgánico'` se conserva para reducir candidatos,
+  pero el conteo exige además una comparación PHP estricta con el literal
+  `Orgánico`. No se normaliza, recorta, cambia case ni elimina tildes; UTM,
+  source y channel siguen fuera de la decisión. Así la igualdad funcional no
+  depende de la collation `utf8mb4_unicode_ci` de MySQL.
+- La migración correctiva
+  `2026_10_13_090000_add_rot5_projection_index_to_salesforce_interests` añade
+  únicamente `sf_interests_rot5_medium_date_id_idx` sobre `is_deleted`,
+  `medium`, `functional_created_at`, `id`, en ese orden. Igualdades preceden al
+  rango temporal y `id` mantiene la cobertura de la paginación estable. El
+  rollback retira solo este índice y conserva los índices FOUNDATION.
+- Seguridad y rendimiento: el cambio continúa siendo local, sin Salesforce,
+  HTTP, PII, payloads ni concatenación SQL; procesa por cursor/chunks y no
+  altera datos. La validación SQLite certifica esquema, orden y reversibilidad,
+  pero no sustituye el plan del optimizador MySQL/MariaDB.
+- Archivos del correctivo: servicio de proyección, nueva migración de índice,
+  pruebas de sync/esquema y documentación `HANDOFF`/`SEO_ANALYTICS`; no cambian
+  configuración, credenciales, scheduler, reglas, tablas de métricas ni datos.
+- Validación: tests estrictos y de migración 26/71; focal ROT-5 74/697; SEO
+  152/1.279; Foundation Interest 128/730; Campañas 89/737; Reservas/Ventas
+  104/1.252; Llamadas 11/73; dashboard Leads 24/78; Monthly Commercial 15/61;
+  Executive 100/509; suite completa 1.312/9.381. Composer validate/audit, Pint
+  sobre PHP modificado, Vite, `migrate --pretend` y `git diff --check` pasan.
+  El test de esquema ejecuta `down()`/`up()` reales exclusivamente sobre SQLite
+  de tests y comprueba que los índices FOUNDATION permanecen.
+- Acción manual posterior al merge: aplicar la migración en el entorno
+  autorizado y ejecutar en shadow un `EXPLAIN` de la consulta ROT-5 equivalente
+  para comprobar el uso efectivo del índice. Ese resultado no se presume ni se
+  ha ejecutado durante este correctivo.
+
 - Rama `feat/rot-5-seo-to-interests`, creada desde `main`
   `0d0bcb6577a687023de3e07e8447386eb694f58e` (merge ROT-4, PR #74). El lote
   rota exclusivamente la fuente Salesforce del informe SEO; no cambia Search
@@ -34,8 +66,8 @@
   payloads, PII ni secretos.
 - Rendimiento: cursor por PK en chunks de 1.000, agregación acotada de hasta 480
   días y un upsert transaccional; no se carga F2 completo, no hay N+1 ni una
-  consulta por día. Los índices existentes de `salesforce_interests` soportan
-  lifecycle/medium y fecha funcional.
+  consulta por día. El índice ROT-5 específico acompaña lifecycle, literal de
+  medium, rango de fecha funcional y cursor PK.
 - Archivos principales: nuevo modelo y servicio de proyección, dos migraciones
   ROT-5, command/registry/dataset/snapshot/evaluación/readiness/diagnóstico SEO,
   vista, scheduler, pruebas focales y documentación contractual/operativa. Se
