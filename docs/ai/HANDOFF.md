@@ -91,6 +91,35 @@
 
 ## ROT-4 — Campañas → Interests (2026-10-09)
 
+### Correctivo del diagnóstico de exclusiones en dry-run (2026-10-13)
+
+- Causa raíz: el builder incrementaba únicamente
+  `excluded_by_reason[reason].count`, mientras el comando asumía que cada motivo
+  incluía también `sample_ids`; una exclusión válida completaba la simulación,
+  pero el render CLI terminaba con `Undefined array key "sample_ids"`.
+- El productor expone ahora un contrato estable `{count, sample_ids}` por motivo
+  y recoge durante el recorrido existente un máximo de 20 Salesforce Interest
+  IDs. El conteo no se trunca y se mantienen sin cambios
+  `excluded_campaign_tasador`, `excluded_campaign_ren2click` y
+  `excluded_campaign_hrrenting`; `null_empty_none` continúa fuera del universo
+  funcional.
+- La CLI conserva una defensa ante diagnósticos incompletos: una clave o muestra
+  ausente se representa vacía y no derriba un dry-run ya completado. No cambia
+  ninguna regla de campaña, matching u Opportunity.
+- Seguridad y rendimiento: no hay consultas adicionales ni PII; la muestra se
+  construye en memoria con coste O(1) por candidato y tamaño máximo constante.
+  El dry-run sigue sin inserts, updates, upserts, deletes o invalidación de
+  caché sobre las tablas funcionales.
+- Archivos modificados: builder, comando CLI, `CampaignCommandsTest`, contrato
+  operativo de Campañas y este handoff. No hay cambios de esquema,
+  configuración, dependencias, scheduler ni consumers.
+- Validación: `CampaignCommandsTest` 21/115; batería ROT-4 completa 88/731;
+  suite PHP completa 1.314/9.398. Pint sobre los tres PHP modificados y
+  `git diff --check` correctos. La regresión ejecuta el comando Artisan real con
+  una exclusión y confirma exit 0, motivo/muestra,
+  `source_type_salesforce_origin=0`, tablas sin cambios y versión de caché
+  intacta.
+
 ### Hardening de revisión sénior
 
 - El universo funcional vuelve a exigir evidencia explícita de campaña en

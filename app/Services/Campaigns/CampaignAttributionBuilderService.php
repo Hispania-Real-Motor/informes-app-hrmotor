@@ -28,6 +28,8 @@ class CampaignAttributionBuilderService
 
     private const UNRESOLVED_WRITE_CHUNK_SIZE = 500;
 
+    private const DIAGNOSTIC_SAMPLE_LIMIT = 20;
+
     public function __construct(
         private readonly CampaignValueNormalizer $normalizer,
         private readonly CampaignSaleAmountResolver $saleAmountResolver,
@@ -233,7 +235,17 @@ class CampaignAttributionBuilderService
                 $excludedReason = $this->campaignTypeResolver->excludedReason($interest->campaign_acquired);
                 if ($excludedReason !== null && $this->normalizer->isValidAttributionValue($interest->campaign_acquired)) {
                     $stats['excluded_campaigns']++;
-                    $stats['excluded_by_reason'][$excludedReason]['count'] = ($stats['excluded_by_reason'][$excludedReason]['count'] ?? 0) + 1;
+                    $detail = $stats['excluded_by_reason'][$excludedReason] ?? [
+                        'count' => 0,
+                        'sample_ids' => [],
+                    ];
+                    $detail['count']++;
+
+                    if (count($detail['sample_ids']) < self::DIAGNOSTIC_SAMPLE_LIMIT) {
+                        $detail['sample_ids'][] = (string) $interest->salesforce_id;
+                    }
+
+                    $stats['excluded_by_reason'][$excludedReason] = $detail;
                 }
                 $this->countLeadAcquisitionShape($stats, $interest);
                 $interests->push($interest);
