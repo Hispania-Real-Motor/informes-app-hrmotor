@@ -2,13 +2,14 @@
 
 namespace App\Services\SeoAnalytics;
 
+use App\Models\ReportSyncRun;
+use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 
 final class SeoSourceStatusDatasetService
 {
     public function __construct(
         private readonly SearchConsoleClient $searchConsole,
-        private readonly SalesforceOrganicLeadSyncService $salesforceOrganic,
         private readonly GoogleAnalyticsClient $analytics,
         private readonly SeoSourceStateResolver $sourceStates,
     ) {}
@@ -30,7 +31,13 @@ final class SeoSourceStatusDatasetService
         );
         $property = $configuredProperty ?? data_get($searchCompletedRun?->stats, 'property');
         $property = is_string($property) && $property !== '' ? $property : null;
-        $salesforceCompletedRun = $this->sourceStates->latestCompletedRun(SalesforceOrganicLeadSyncService::DATASET);
+        $salesforceCompletedRun = $this->sourceStates->latestCompletedRun(SalesforceOrganicInterestProjectionService::DATASET);
+        $salesforceLatestRun = $this->sourceStates->latestRun(SalesforceOrganicInterestProjectionService::DATASET);
+        $interestLatestRun = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->orderByDesc('id')
+            ->first();
         $ga4PropertyId = $this->analytics->configuredPropertyId();
         $ga4CompletedRun = $ga4PropertyId
             ? $this->sourceStates->latestCompletedRun(
@@ -60,13 +67,7 @@ final class SeoSourceStatusDatasetService
                     SearchConsoleSyncService::DATASET,
                     $property,
                 ),
-                $this->source(
-                    'salesforce',
-                    'Salesforce',
-                    $this->salesforceOrganic->configured(),
-                    $salesforceCutoff,
-                    SalesforceOrganicLeadSyncService::DATASET,
-                ),
+                $this->salesforceSource($salesforceLatestRun, $interestLatestRun, $salesforceCutoff),
                 $ga4PropertyId
                     ? $this->source(
                         'ga4',
@@ -84,6 +85,54 @@ final class SeoSourceStatusDatasetService
                         'badge' => 'No configurada',
                     ],
             ],
+        ];
+    }
+
+    /** @return array{key: string, title: string, detail: string, badge: string} */
+    private function salesforceSource(
+        ?ReportSyncRun $projectionRun,
+        ?ReportSyncRun $interestRun,
+        ?CarbonImmutable $cutoff,
+    ): array {
+        $key = 'salesforce';
+        $title = 'Salesforce';
+        if ($projectionRun?->status === 'failed') {
+            return compact('key', 'title') + [
+                'detail' => $cutoff
+                    ? 'Datos anteriores cerrados hasta: '.$cutoff->toDateString().'. La última proyección falló.'
+                    : 'La última proyección local finalizó con error técnico.',
+                'badge' => 'Error último sync',
+            ];
+        }
+        if ($projectionRun?->status === 'running') {
+            return compact('key', 'title') + [
+                'detail' => $cutoff
+                    ? 'Datos anteriores cerrados hasta: '.$cutoff->toDateString().'. Proyección en curso.'
+                    : 'Proyección local en curso; todavía no existe un cutoff completado.',
+                'badge' => 'Sincronizando',
+            ];
+        }
+
+        $stableInterestSource = $interestRun?->status === 'completed'
+            && $interestRun->source_cutoff_at !== null;
+        if (! $stableInterestSource) {
+            return compact('key', 'title') + [
+                'detail' => $cutoff
+                    ? 'Datos anteriores cerrados hasta: '.$cutoff->toDateString().'. F2 Interests no está disponible actualmente.'
+                    : 'F2 Interests no dispone de un último run completed con cutoff.',
+                'badge' => 'F2 no disponible',
+            ];
+        }
+        if ($cutoff !== null) {
+            return compact('key', 'title') + [
+                'detail' => 'Intereses orgánicos proyectados desde F2 hasta: '.$cutoff->toDateString(),
+                'badge' => 'Sincronizada',
+            ];
+        }
+
+        return compact('key', 'title') + [
+            'detail' => 'F2 Interests disponible; proyección SEO todavía no ejecutada.',
+            'badge' => 'Sin datos',
         ];
     }
 

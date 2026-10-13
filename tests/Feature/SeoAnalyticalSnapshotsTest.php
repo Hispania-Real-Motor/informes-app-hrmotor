@@ -5,11 +5,11 @@ namespace Tests\Feature;
 use App\Models\AnalyticalMetricSnapshot;
 use App\Models\ReportSyncRun;
 use App\Models\SeoGa4OrganicDailyMetric;
-use App\Models\SeoSalesforceOrganicDailyMetric;
+use App\Models\SeoSalesforceOrganicInterestDailyMetric;
 use App\Models\SeoSearchConsoleDailyMetric;
 use App\Services\Analytics\SameWeekdayComparisonEngine;
 use App\Services\SeoAnalytics\Ga4OrganicConversionSyncService;
-use App\Services\SeoAnalytics\SalesforceOrganicLeadSyncService;
+use App\Services\SeoAnalytics\SalesforceOrganicInterestProjectionService;
 use App\Services\SeoAnalytics\SearchConsoleSyncService;
 use App\Services\SeoAnalytics\SeoAnalyticalComparisonDatasetService;
 use App\Services\SeoAnalytics\SeoAnalyticalMetricRegistry;
@@ -56,7 +56,7 @@ class SeoAnalyticalSnapshotsTest extends TestCase
     public function test_builder_creates_exactly_six_metrics_with_source_specific_cutoffs_and_one_series_query_per_source(): void
     {
         $this->completedRun(SearchConsoleSyncService::DATASET, '2026-08-16', ['property' => self::SEARCH_PROPERTY]);
-        $this->completedRun(SalesforceOrganicLeadSyncService::DATASET, '2026-08-18');
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, '2026-08-18');
         $this->completedRun(Ga4OrganicConversionSyncService::DATASET, '2026-08-16', ['property_id' => self::GA4_PROPERTY]);
         $this->seedSearchSeries('2026-08-16');
         $this->seedSalesforceSeries('2026-08-18');
@@ -64,7 +64,7 @@ class SeoAnalyticalSnapshotsTest extends TestCase
 
         $sourceQueries = [];
         DB::listen(function (QueryExecuted $query) use (&$sourceQueries): void {
-            foreach (['seo_search_console_daily_metrics', 'seo_salesforce_organic_daily_metrics', 'seo_ga4_organic_daily_metrics'] as $table) {
+            foreach (['seo_search_console_daily_metrics', 'seo_salesforce_organic_interest_daily_metrics', 'seo_ga4_organic_daily_metrics'] as $table) {
                 if (str_contains($query->sql, $table)) {
                     $sourceQueries[] = $table;
                 }
@@ -76,15 +76,15 @@ class SeoAnalyticalSnapshotsTest extends TestCase
         $this->assertSame(6, $result['rows']);
         $this->assertSame(6, AnalyticalMetricSnapshot::query()->count());
         $this->assertSame(1, count(array_filter($sourceQueries, fn (string $table): bool => $table === 'seo_search_console_daily_metrics')));
-        $this->assertSame(1, count(array_filter($sourceQueries, fn (string $table): bool => $table === 'seo_salesforce_organic_daily_metrics')));
+        $this->assertSame(1, count(array_filter($sourceQueries, fn (string $table): bool => $table === 'seo_salesforce_organic_interest_daily_metrics')));
         $this->assertSame(1, count(array_filter($sourceQueries, fn (string $table): bool => $table === 'seo_ga4_organic_daily_metrics')));
         $this->assertDatabaseHas('analytical_metric_snapshots', [
             'metric_key' => 'search_console_clicks', 'scope_key' => 'ESP', 'data_date' => '2026-08-16',
             'source_identifier_hash' => hash('sha256', self::SEARCH_PROPERTY), 'reference_count' => 4, 'is_evaluable' => true,
         ]);
         $this->assertDatabaseHas('analytical_metric_snapshots', [
-            'metric_key' => 'salesforce_organic_leads', 'scope_key' => 'all', 'data_date' => '2026-08-18',
-            'source_identifier' => 'salesforce-organic-leads',
+            'metric_key' => 'salesforce_organic_interests', 'scope_key' => 'all', 'data_date' => '2026-08-18',
+            'source_identifier' => 'salesforce-organic-interests',
         ]);
         $ga4 = AnalyticalMetricSnapshot::query()->where('metric_key', 'ga4_organic_key_events')->firstOrFail();
         $this->assertSame('2026-08-16', $ga4->data_date->toDateString());
@@ -95,7 +95,7 @@ class SeoAnalyticalSnapshotsTest extends TestCase
             'search_console_impressions',
             'search_console_ctr',
             'search_console_position',
-            'salesforce_organic_leads',
+            'salesforce_organic_interests',
             'ga4_organic_key_events',
         ], collect(app(SeoAnalyticalComparisonDatasetService::class)->build())->pluck('metric_key')->all());
     }
@@ -128,10 +128,10 @@ class SeoAnalyticalSnapshotsTest extends TestCase
 
     public function test_missing_sources_do_not_block_available_sources_and_missing_history_is_persisted_without_invented_baseline(): void
     {
-        $this->completedRun(SalesforceOrganicLeadSyncService::DATASET, '2026-08-18');
-        SeoSalesforceOrganicDailyMetric::query()->create($this->salesforceRow('2026-08-18', 0));
-        SeoSalesforceOrganicDailyMetric::query()->create($this->salesforceRow('2026-08-11', 0));
-        SeoSalesforceOrganicDailyMetric::query()->create($this->salesforceRow('2026-08-04', 5));
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, '2026-08-18');
+        SeoSalesforceOrganicInterestDailyMetric::query()->create($this->salesforceRow('2026-08-18', 0));
+        SeoSalesforceOrganicInterestDailyMetric::query()->create($this->salesforceRow('2026-08-11', 0));
+        SeoSalesforceOrganicInterestDailyMetric::query()->create($this->salesforceRow('2026-08-04', 5));
 
         $result = app(SeoAnalyticalSnapshotService::class)->build(1);
         $snapshot = AnalyticalMetricSnapshot::query()->sole();
@@ -217,7 +217,7 @@ class SeoAnalyticalSnapshotsTest extends TestCase
         ]);
         $leads = AnalyticalMetricSnapshot::query()->create(
             $this->snapshotRow(
-                'salesforce_organic_leads',
+                'salesforce_organic_interests',
                 '2026-08-18',
                 SeoAnalyticalMetricRegistry::SALESFORCE_SOURCE_IDENTIFIER,
                 '9.00000000',
@@ -238,10 +238,10 @@ class SeoAnalyticalSnapshotsTest extends TestCase
         $this->assertSame('9,50', $rows['search_console_clicks']['baseline']);
         $this->assertSame('+0,50', $rows['search_console_clicks']['absolute_change']);
         $this->assertSame('5', $rows['search_console_clicks']['d364']);
-        $this->assertSame('9', $rows['salesforce_organic_leads']['current']);
-        $this->assertSame('9,33', $rows['salesforce_organic_leads']['baseline']);
-        $this->assertSame('-0,33', $rows['salesforce_organic_leads']['absolute_change']);
-        $this->assertSame('4', $rows['salesforce_organic_leads']['d364']);
+        $this->assertSame('9', $rows['salesforce_organic_interests']['current']);
+        $this->assertSame('9,33', $rows['salesforce_organic_interests']['baseline']);
+        $this->assertSame('-0,33', $rows['salesforce_organic_interests']['absolute_change']);
+        $this->assertSame('4', $rows['salesforce_organic_interests']['d364']);
     }
 
     public function test_command_validates_days_records_run_and_succeeds_without_sources(): void
@@ -305,7 +305,7 @@ class SeoAnalyticalSnapshotsTest extends TestCase
 
     public function test_command_failure_is_sanitized_and_recorded_without_partial_snapshots(): void
     {
-        $this->completedRun(SalesforceOrganicLeadSyncService::DATASET, '2026-08-18');
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, '2026-08-18');
         $this->seedSalesforceSeries('2026-08-18');
         $migration = require database_path('migrations/2026_08_19_090000_create_analytical_metric_snapshots_table.php');
         $migration->down();
@@ -356,7 +356,7 @@ class SeoAnalyticalSnapshotsTest extends TestCase
     private function seedSalesforceSeries(string $target): void
     {
         foreach ([0 => 10, 7 => 8, 14 => 9, 21 => 10, 28 => 11, 364 => 5] as $offset => $leads) {
-            SeoSalesforceOrganicDailyMetric::query()->create($this->salesforceRow(
+            SeoSalesforceOrganicInterestDailyMetric::query()->create($this->salesforceRow(
                 CarbonImmutable::parse($target)->subDays($offset)->toDateString(),
                 $leads,
             ));
@@ -388,7 +388,14 @@ class SeoAnalyticalSnapshotsTest extends TestCase
     /** @return array<string, mixed> */
     private function salesforceRow(string $date, int $leads): array
     {
-        return ['data_date' => $date, 'lead_count' => $leads, 'source_timezone' => 'Europe/Madrid', 'extracted_at' => now()];
+        return [
+            'data_date' => $date,
+            'interest_count' => $leads,
+            'source_timezone' => 'Europe/Madrid',
+            'source_interest_sync_run_id' => 1,
+            'source_interest_cutoff_at' => $date.' 23:59:59',
+            'extracted_at' => now(),
+        ];
     }
 
     /** @return array<string, mixed> */

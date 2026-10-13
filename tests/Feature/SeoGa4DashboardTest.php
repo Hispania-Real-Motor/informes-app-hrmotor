@@ -6,7 +6,7 @@ use App\Models\ReportSyncRun;
 use App\Models\SeoGa4OrganicDailyMetric;
 use App\Models\SeoGa4OrganicKeyEventDailyMetric;
 use App\Services\SeoAnalytics\Ga4OrganicConversionSyncService;
-use App\Services\SeoAnalytics\SalesforceOrganicLeadSyncService;
+use App\Services\SeoAnalytics\SalesforceOrganicInterestProjectionService;
 use App\Services\SeoAnalytics\SearchConsoleSyncService;
 use App\Services\SeoAnalytics\SeoAnalyticsDatasetService;
 use Carbon\CarbonImmutable;
@@ -42,12 +42,12 @@ class SeoGa4DashboardTest extends TestCase
         $this->assertSame(['start' => '2026-08-10', 'end' => '2026-08-16'], $dataset['common_period']);
         $this->assertTrue($dataset['has_ga4']);
         $this->assertSame(1.75, $dataset['kpis']['ga4_key_events']);
-        $this->assertNull($dataset['kpis']['salesforce_leads']);
+        $this->assertNull($dataset['kpis']['salesforce_interests']);
         $this->assertSame(.25, $dataset['daily'][0]['ga4_key_events']);
 
         $this->get('/informes/seo-analytics?range=7&section=summary')
             ->assertOk()
-            ->assertSee('Lead orgánico (Salesforce)')
+            ->assertSee('Interés orgánico (Salesforce)')
             ->assertSee('Conversiones web orgánicas (GA4)')
             ->assertDontSee('Total Leads')
             ->assertDontSee('Leads totales Salesforce + GA4');
@@ -84,7 +84,7 @@ class SeoGa4DashboardTest extends TestCase
             'services.google_analytics.property_id' => '123',
         ]);
         $this->completedRun(SearchConsoleSyncService::DATASET, '2026-08-14', ['property' => 'sc-domain:example.test']);
-        $this->completedRun(SalesforceOrganicLeadSyncService::DATASET, '2026-08-16');
+        $this->completedRun(SalesforceOrganicInterestProjectionService::DATASET, '2026-08-16');
         $this->completedRun(Ga4OrganicConversionSyncService::DATASET, '2026-08-13', ['property_id' => '123']);
 
         $withGa4 = app(SeoAnalyticsDatasetService::class)->build('7', 'summary');
@@ -150,7 +150,7 @@ class SeoGa4DashboardTest extends TestCase
     {
         ReportSyncRun::query()->create([
             'dataset' => $dataset,
-            'source' => $dataset === SalesforceOrganicLeadSyncService::DATASET ? 'salesforce' : 'google',
+            'source' => $dataset === SalesforceOrganicInterestProjectionService::DATASET ? 'local_database' : 'google',
             'status' => $status,
             'period_start_at' => $startedAt,
             'period_end_at' => $startedAt,

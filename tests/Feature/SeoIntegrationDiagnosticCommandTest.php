@@ -2,17 +2,23 @@
 
 namespace Tests\Feature;
 
+use App\Models\ReportSyncRun;
 use App\Services\Salesforce\SalesforceClient;
+use App\Services\Salesforce\SalesforceInterestSyncService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Mockery\MockInterface;
 use Tests\TestCase;
 
 class SeoIntegrationDiagnosticCommandTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_default_diagnostic_performs_no_http_and_prints_no_secrets(): void
     {
         $secret = 'must-never-be-printed';
         $this->configureIntegrations($secret);
+        $this->completedF2();
         Http::fake();
 
         $this->artisan('seo:diagnose-integrations')
@@ -27,13 +33,9 @@ class SeoIntegrationDiagnosticCommandTest extends TestCase
     {
         $secret = 'must-never-be-printed';
         $this->configureIntegrations($secret);
+        $this->completedF2();
         $this->mock(SalesforceClient::class, function (MockInterface $mock): void {
-            $mock->shouldReceive('describe')->once()->with('Lead')->andReturn(['fields' => [[
-                'name' => 'LEA_SEL_Medio_Origen__c',
-                'label' => 'Medio de origen',
-                'type' => 'picklist',
-                'picklistValues' => [['active' => true, 'value' => 'Orgánico']],
-            ]]]);
+            $mock->shouldNotReceive('describe');
         });
         Http::fake([
             'https://oauth2.googleapis.com/token' => Http::response(['access_token' => 'synthetic-access']),
@@ -65,8 +67,8 @@ class SeoIntegrationDiagnosticCommandTest extends TestCase
         ]);
 
         $this->artisan('seo:diagnose-integrations', ['--live' => true])
-            ->expectsOutputToContain('LEA_SEL_Medio_Origen__c')
-            ->expectsOutputToContain('Orgánico')
+            ->expectsOutputToContain('F2 Interests: completed')
+            ->expectsOutputToContain('Proyección SEO Interest: missing')
             ->expectsOutputToContain('Property accesible: sí')
             ->expectsOutputToContain('synthetic_event')
             ->expectsOutputToContain('Web streams: 1')
@@ -104,6 +106,21 @@ class SeoIntegrationDiagnosticCommandTest extends TestCase
             'services.google_analytics.refresh_token' => $secret,
             'services.google_analytics.property_id' => '123',
             'services.sistrix.api_key' => $secret,
+        ]);
+    }
+
+    private function completedF2(): void
+    {
+        ReportSyncRun::query()->create([
+            'dataset' => SalesforceInterestSyncService::DATASET,
+            'source' => SalesforceInterestSyncService::SOURCE,
+            'status' => 'completed',
+            'period_start_at' => '2026-10-09 00:00:00',
+            'period_end_at' => '2026-10-09 10:00:00',
+            'source_cutoff_at' => '2026-10-09 10:00:00',
+            'started_at' => '2026-10-09 09:59:00',
+            'completed_at' => '2026-10-09 10:01:00',
+            'timezone' => 'UTC',
         ]);
     }
 }

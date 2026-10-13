@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
+use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\SeoAnalytics\SalesforceOrganicInterestProjectionService;
 use App\Services\SeoAnalytics\SearchConsoleSyncService;
 use App\Services\SeoAnalytics\SeoAnalyticsDatasetService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,9 +30,20 @@ class SeoSyncCommandsTest extends TestCase
             'salesforce.client_secret' => null,
         ]);
         Http::fake();
+        ReportSyncRun::query()->create([
+            'dataset' => SalesforceInterestSyncService::DATASET,
+            'source' => SalesforceInterestSyncService::SOURCE,
+            'status' => 'completed',
+            'period_start_at' => now()->subDay(),
+            'period_end_at' => now(),
+            'source_cutoff_at' => now(),
+            'started_at' => now()->subMinute(),
+            'completed_at' => now(),
+            'timezone' => 'UTC',
+        ]);
 
         $this->artisan('seo:sync-search-console')->expectsOutputToContain('SKIPPED')->assertSuccessful();
-        $this->artisan('seo:sync-salesforce-organic')->expectsOutputToContain('SKIPPED')->assertSuccessful();
+        $this->artisan('seo:sync-salesforce-organic')->expectsOutputToContain('Intereses organicos')->assertSuccessful();
         $this->artisan('seo:sync-ga4-organic')->expectsOutputToContain('SKIPPED')->assertSuccessful();
         $this->artisan('seo:sync-search-console', ['--days' => 0])->assertFailed();
         $this->artisan('seo:sync-salesforce-organic', ['--days' => 481])->assertFailed();
@@ -38,6 +51,11 @@ class SeoSyncCommandsTest extends TestCase
         $this->artisan('seo:sync-ga4-organic', ['--days' => 481])->assertFailed();
         $this->artisan('seo:sync-ga4-organic', ['--days' => 'invalid'])->assertFailed();
         Http::assertNothingSent();
+        $this->assertDatabaseHas('report_sync_runs', [
+            'dataset' => SalesforceOrganicInterestProjectionService::DATASET,
+            'source' => SalesforceOrganicInterestProjectionService::SOURCE,
+            'status' => 'completed',
+        ]);
     }
 
     public function test_scheduler_declares_independent_windows_and_locks(): void
@@ -50,6 +68,14 @@ class SeoSyncCommandsTest extends TestCase
         $this->assertStringContainsString("dailyAt('05:30')", $scheduler);
         $this->assertStringContainsString('seo:sync-ga4-organic --days=120', $scheduler);
         $this->assertStringContainsString("dailyAt('05:45')", $scheduler);
+        $this->assertLessThan(strpos($scheduler, "dailyAt('05:45')"), strpos($scheduler, "dailyAt('05:30')"));
+        $this->assertLessThan(strpos($scheduler, "dailyAt('06:30')"), strpos($scheduler, "dailyAt('06:15')"));
+        $this->assertSame(1, substr_count($scheduler, "Schedule::command('salesforce:sync-interest-reporting')"));
+        $this->assertStringContainsString('->hourlyAt(5)', $scheduler);
+        $this->assertLessThan(
+            strpos($scheduler, "Schedule::command('seo:sync-salesforce-organic --days=120')"),
+            strpos($scheduler, "Schedule::command('salesforce:sync-interest-reporting')"),
+        );
         $this->assertGreaterThanOrEqual(3, substr_count($scheduler, 'withoutOverlapping(120)'));
     }
 

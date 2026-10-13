@@ -2,9 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Salesforce\SalesforceClient;
+use App\Models\ReportSyncRun;
+use App\Services\Salesforce\SalesforceInterestSyncService;
 use App\Services\SeoAnalytics\GoogleAnalyticsClient;
-use App\Services\SeoAnalytics\SalesforceLeadMediumFieldResolver;
+use App\Services\SeoAnalytics\SalesforceOrganicInterestProjectionService;
 use App\Services\SeoAnalytics\SearchConsoleClient;
 use App\Services\SeoAnalytics\SistrixClient;
 use App\Support\IntegrationErrorSanitizer;
@@ -18,8 +19,6 @@ class DiagnoseSeoIntegrationsCommand extends Command
     protected $description = 'Diagnostica de forma segura la configuracion y el acceso read-only de las fuentes SEO.';
 
     public function handle(
-        SalesforceClient $salesforce,
-        SalesforceLeadMediumFieldResolver $mediumFields,
         SearchConsoleClient $searchConsole,
         GoogleAnalyticsClient $analytics,
         SistrixClient $sistrix,
@@ -28,15 +27,15 @@ class DiagnoseSeoIntegrationsCommand extends Command
             ? 'Diagnóstico SEO/Analytics live (solo lectura)'
             : 'Diagnóstico SEO/Analytics de configuración (sin red)');
 
-        $salesforceConfigured = $this->salesforceConfigured();
-        $this->configurationSummary($salesforceConfigured, $searchConsole, $analytics, $sistrix);
+        $salesforceState = $this->salesforceState();
+        $this->configurationSummary($salesforceState, $searchConsole, $analytics, $sistrix);
 
         if (! $this->option('live')) {
             return self::SUCCESS;
         }
 
         $failed = false;
-        $failed = ! $this->diagnoseSalesforce($salesforceConfigured, $salesforce, $mediumFields) || $failed;
+        $failed = ! $this->diagnoseSalesforce($salesforceState) || $failed;
         $failed = ! $this->diagnoseSearchConsole($searchConsole) || $failed;
         $failed = ! $this->diagnoseAnalytics($analytics) || $failed;
         $failed = ! $this->diagnoseSistrix($sistrix) || $failed;
@@ -45,52 +44,30 @@ class DiagnoseSeoIntegrationsCommand extends Command
     }
 
     private function configurationSummary(
-        bool $salesforceConfigured,
+        array $salesforceState,
         SearchConsoleClient $searchConsole,
         GoogleAnalyticsClient $analytics,
         SistrixClient $sistrix,
     ): void {
         $this->table(['Fuente', 'Configuración', 'Identificador no secreto'], [
-            ['Salesforce', $this->state($salesforceConfigured), 'Lead describe'],
+            ['Salesforce', $this->state($salesforceState['available']), 'F2 Interests / proyección local'],
             ['Search Console', $this->state($searchConsole->configured()), $searchConsole->configuredProperty() ?? '-'],
             ['Google Analytics 4', $this->state($analytics->configured()), $analytics->configuredPropertyId() ?? '-'],
             ['SISTRIX', $this->state($sistrix->configured()), '-'],
         ]);
     }
 
-    private function diagnoseSalesforce(
-        bool $configured,
-        SalesforceClient $client,
-        SalesforceLeadMediumFieldResolver $resolver,
-    ): bool {
+    /** @param array{available: bool, f2_status: string, f2_cutoff: ?string, projection_status: string, projection_cutoff: ?string} $state */
+    private function diagnoseSalesforce(array $state): bool
+    {
         $this->newLine();
-        $this->components->twoColumnDetail('Salesforce', $configured ? 'configurada' : 'pendiente');
+        $this->components->twoColumnDetail('Salesforce (local)', $state['available'] ? 'disponible' : 'pendiente');
+        $this->line('F2 Interests: '.$state['f2_status']);
+        $this->line('Cutoff F2: '.($state['f2_cutoff'] ?? '-'));
+        $this->line('Proyección SEO Interest: '.$state['projection_status']);
+        $this->line('Cutoff proyección: '.($state['projection_cutoff'] ?? '-'));
 
-        if (! $configured) {
-            return true;
-        }
-
-        try {
-            $result = $resolver->resolve($client->describe('Lead'));
-
-            $this->line('Resultado campo Medio: '.$result['status']);
-            $this->line('Campo verificado: '.($result['verified_field'] ?? '-'));
-            $this->table(
-                ['API name', 'Label', 'Type', 'Picklist', 'Orgánico', 'Valores'],
-                collect($result['candidates'])->map(fn (array $field): array => [
-                    $field['api_name'],
-                    $field['label'],
-                    $field['type'],
-                    $field['is_picklist'] ? 'sí' : 'no',
-                    $field['has_organic'] ? 'encontrado' : 'no encontrado',
-                    implode(', ', $field['picklist_values']),
-                ])->all()
-            );
-
-            return true;
-        } catch (Throwable $exception) {
-            return $this->reportFailure('Salesforce', $exception);
-        }
+        return $state['available'];
     }
 
     private function diagnoseSearchConsole(SearchConsoleClient $client): bool
@@ -182,16 +159,34 @@ class DiagnoseSeoIntegrationsCommand extends Command
         return false;
     }
 
-    private function salesforceConfigured(): bool
+    /** @return array{available: bool, f2_status: string, f2_cutoff: ?string, projection_status: string, projection_cutoff: ?string} */
+    private function salesforceState(): array
     {
-        $mode = config('salesforce.auth_mode');
-        $base = filled(config('salesforce.token_url'))
-            && filled(config('salesforce.client_id'))
-            && filled(config('salesforce.client_secret'));
+        $f2 = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->orderByDesc('id')
+            ->first();
+        $projection = ReportSyncRun::query()
+            ->where('dataset', SalesforceOrganicInterestProjectionService::DATASET)
+            ->where('source', SalesforceOrganicInterestProjectionService::SOURCE)
+            ->orderByDesc('id')
+            ->first();
+        $completedProjection = ReportSyncRun::query()
+            ->where('dataset', SalesforceOrganicInterestProjectionService::DATASET)
+            ->where('source', SalesforceOrganicInterestProjectionService::SOURCE)
+            ->where('status', 'completed')
+            ->whereNotNull('source_cutoff_at')
+            ->orderByDesc('id')
+            ->first();
 
-        return $base
-            && in_array($mode, ['client_credentials', 'refresh_token'], true)
-            && ($mode !== 'refresh_token' || filled(config('salesforce.refresh_token')));
+        return [
+            'available' => $f2?->status === 'completed' && $f2->source_cutoff_at !== null,
+            'f2_status' => $f2?->status ?? 'missing',
+            'f2_cutoff' => $f2?->source_cutoff_at?->utc()->toIso8601String(),
+            'projection_status' => $projection?->status ?? 'missing',
+            'projection_cutoff' => $completedProjection?->source_cutoff_at?->utc()->toIso8601String(),
+        ];
     }
 
     private function state(bool $configured): string

@@ -5,7 +5,7 @@ namespace App\Services\SeoAnalytics;
 use App\Models\AnalyticalMetricSnapshot;
 use App\Models\ReportSyncRun;
 use App\Models\SeoGa4OrganicDailyMetric;
-use App\Models\SeoSalesforceOrganicDailyMetric;
+use App\Models\SeoSalesforceOrganicInterestDailyMetric;
 use App\Models\SeoSearchConsoleDailyMetric;
 use App\Services\Analytics\SameWeekdayComparisonEngine;
 use Carbon\CarbonImmutable;
@@ -23,7 +23,6 @@ final class SeoAnalyticalSnapshotService
         private readonly SeoAnalyticalMetricRegistry $registry,
         private readonly SeoSourceStateResolver $sourceStates,
         private readonly SearchConsoleClient $searchConsole,
-        private readonly SalesforceOrganicLeadSyncService $salesforceOrganic,
         private readonly GoogleAnalyticsClient $analytics,
     ) {}
 
@@ -44,12 +43,10 @@ final class SeoAnalyticalSnapshotService
             }
         }
 
-        if ($this->salesforceOrganic->configured()) {
-            $salesforceRun = $this->sourceStates->latestCompletedRun(SalesforceOrganicLeadSyncService::DATASET);
-            if ($salesforceRun !== null) {
-                $cutoffs['salesforce'] = $this->sourceStates->cutoff($salesforceRun)?->toDateString();
-                $rows = array_merge($rows, $this->salesforceRows($salesforceRun, $days));
-            }
+        $salesforceRun = $this->sourceStates->latestCompletedRun(SalesforceOrganicInterestProjectionService::DATASET);
+        if ($salesforceRun !== null) {
+            $cutoffs['salesforce'] = $this->sourceStates->cutoff($salesforceRun)?->toDateString();
+            $rows = array_merge($rows, $this->salesforceRows($salesforceRun, $days));
         }
 
         $ga4Property = $this->analytics->configuredPropertyId();
@@ -133,10 +130,10 @@ final class SeoAnalyticalSnapshotService
             return [];
         }
 
-        $series = SeoSalesforceOrganicDailyMetric::query()
+        $series = SeoSalesforceOrganicInterestDailyMetric::query()
             ->where('data_date', '>=', $cutoff->subDays($days - 1 + SameWeekdayComparisonEngine::YEAR_REFERENCE_OFFSET)->toDateString())
             ->where('data_date', '<', $cutoff->addDay()->toDateString())
-            ->get(['data_date', 'lead_count']);
+            ->get(['data_date', 'interest_count']);
         $definitions = array_values(array_filter(
             $this->registry->metrics(),
             static fn (array $metric): bool => $metric['source'] === 'salesforce',
