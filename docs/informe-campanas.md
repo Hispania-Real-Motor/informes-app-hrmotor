@@ -153,7 +153,11 @@ php artisan reports:refresh-campaigns --days=120 --store
 
 `campaigns:build-attribution --dry-run` reutiliza el builder real, compara por
 `interest_id` y no escribe ninguna de las tres tablas de atribución/ambigüedad
-ni invalida caché. Antes de habilitar ROT-4 en un
+ni invalida caché. El diagnóstico `excluded_by_reason` conserva por cada motivo
+el conteo completo y hasta 20 Salesforce Interest IDs como muestra; esas
+muestras son acotadas y no contienen PII. La CLI tolera además la ausencia de
+una muestra diagnóstica sin derribar una simulación funcional completada. Antes
+de habilitar ROT-4 en un
 entorno debe aplicarse la migración aditiva, disponer de un F2 completo/estable,
 un snapshot directo coherente y reconstruir el período bajo procedimiento
 operacional revisado. Esta implementación no ejecuta backfill ni despliegue.

@@ -104,8 +104,9 @@ class BuildCampaignAttributionCommand extends Command
             foreach ($simulation['null_record_type_raw'] as $raw => $count) {
                 $this->line('RecordType bruto no normalizable '.$raw.': '.$count);
             }
-            foreach ($result['excluded_by_reason'] as $reason => $detail) {
-                $this->line($reason.': '.$detail['count'].' | IDs: '.implode(', ', $detail['sample_ids']));
+            foreach (($result['excluded_by_reason'] ?? []) as $reason => $detail) {
+                $sampleIds = is_array($detail['sample_ids'] ?? null) ? $detail['sample_ids'] : [];
+                $this->line($reason.': '.($detail['count'] ?? 0).' | IDs: '.implode(', ', $sampleIds));
             }
         }
 

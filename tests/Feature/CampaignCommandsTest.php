@@ -659,6 +659,59 @@ class CampaignCommandsTest extends TestCase
         $this->assertDatabaseHas('campaign_unresolved_attributions', ['entity_salesforce_id' => '006-dry-ambiguous']);
     }
 
+    public function test_attribution_dry_run_command_reports_excluded_campaigns_without_writing(): void
+    {
+        $interestId = 'a0X000000000000001';
+        $this->campaignInterest($interestId, 'tasador');
+        Cache::forever('campaign_dashboard_cache_version', 73);
+
+        $this->artisan('campaigns:build-attribution', [
+            '--days' => 3,
+            '--dry-run' => true,
+        ])
+            ->expectsOutputToContain('Campanas excluidas: 1')
+            ->expectsOutputToContain('excluded_campaign_tasador: 1 | IDs: '.$interestId)
+            ->expectsOutputToContain('Salesforce-only por procedencia: 0')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseCount('campaign_attributions', 0);
+        $this->assertDatabaseCount('campaign_lead_attributions', 0);
+        $this->assertDatabaseCount('campaign_unresolved_attributions', 0);
+        $this->assertSame(73, Cache::get('campaign_dashboard_cache_version'));
+    }
+
+    public function test_excluded_campaign_diagnostics_count_every_interest_and_limit_samples_per_reason(): void
+    {
+        for ($index = 1; $index <= 25; $index++) {
+            $this->campaignInterest(sprintf('a0X%015d', $index), 'tasador');
+        }
+        $this->campaignInterest('a0X000000000000026', 'ren2click');
+        $this->campaignInterest('a0X000000000000027', 'hrrenting');
+        $this->campaignInterest('a0X000000000000028', 'none');
+
+        $result = app(CampaignAttributionBuilderService::class)->build(
+            now()->subDays(3),
+            now(),
+            true,
+        );
+
+        $this->assertSame(27, $result['excluded_campaigns']);
+        $this->assertSame(25, $result['excluded_by_reason']['excluded_campaign_tasador']['count']);
+        $this->assertCount(20, $result['excluded_by_reason']['excluded_campaign_tasador']['sample_ids']);
+        $this->assertSame('a0X000000000000001', $result['excluded_by_reason']['excluded_campaign_tasador']['sample_ids'][0]);
+        $this->assertSame('a0X000000000000020', $result['excluded_by_reason']['excluded_campaign_tasador']['sample_ids'][19]);
+        $this->assertSame([
+            'count' => 1,
+            'sample_ids' => ['a0X000000000000026'],
+        ], $result['excluded_by_reason']['excluded_campaign_ren2click']);
+        $this->assertSame([
+            'count' => 1,
+            'sample_ids' => ['a0X000000000000027'],
+        ], $result['excluded_by_reason']['excluded_campaign_hrrenting']);
+        $this->assertArrayNotHasKey('null_empty_none', $result['excluded_by_reason']);
+        $this->assertSame(1, $result['interests_without_acquisition_evidence']);
+    }
+
     public function test_build_attribution_respeta_oportunidades_ya_atribuidas_fuera_de_rango(): void
     {
         CampaignAttribution::query()->create([
@@ -846,5 +899,17 @@ class CampaignCommandsTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertDatabaseCount('campaign_report_snapshots', 1);
+    }
+
+    private function campaignInterest(string $salesforceId, ?string $campaign): SalesforceInterest
+    {
+        return SalesforceInterest::query()->create([
+            'salesforce_id' => $salesforceId,
+            'salesforce_created_at' => now()->subDay(),
+            'salesforce_last_modified_at' => now()->subDay(),
+            'type' => 'Venta',
+            'utm_campaign' => $campaign,
+            'is_deleted' => false,
+        ]);
     }
 }
