@@ -1,6 +1,6 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-09.
+Actualizado: 2026-10-14.
 
 ## ROT-4 — Campañas con Interest como entidad de adquisición
 
@@ -156,10 +156,13 @@ Actualizado: 2026-10-09.
   local de EXE-2 para la visión global V1 de Leads, Reservas y Ventas. Resuelve
   el último día cerrado en `Europe/Madrid`, referencias D-7/D-14/D-21/D-28,
   D-364 complementario y MTD hasta el mismo corte.
-- EXE-2 reutiliza los servicios canónicos existentes:
-  `SalesforceLeadDashboardDatasetService` para Leads y
-  `ReservationsSalesDashboardDatasetService` para Reservas/Ventas. No duplica
-  thresholds de EXE-1 ni fórmulas de dashboards.
+- EXE-2 reutiliza los servicios canónicos vigentes:
+  `SalesforceInterestDashboardDatasetService` para la métrica técnica `leads` y
+  `ReservationsSalesDashboardDatasetService` para Reservas/Ventas. `leads`
+  cuenta únicamente `salesforce_interests` activos por `functional_created_at`,
+  exige el último F2 `salesforce_interests/salesforce` estable y no consulta ni
+  exige F5. No duplica thresholds de EXE-1 ni fórmulas de dashboards; la etiqueta
+  visible «Leads» permanece por compatibilidad hasta una fase UX específica.
 - La salida ejecutiva distingue `0` real de `null` por ausencia de cobertura,
   publica `data_health`, `day_complete`, `data_incident`, `coverage`,
   `source_cutoff` y un `engine_input` listo para EXE-1. No contiene PII ni IDs
