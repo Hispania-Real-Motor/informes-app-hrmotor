@@ -4,11 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
 use App\Models\ReportUser;
-use App\Models\SalesforceLead;
+use App\Models\SalesforceInterest;
 use App\Services\Analytics\Executive\ExecutiveDailyDatasetService;
+use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\Feature\Concerns\CreatesOpportunityDashboardRows;
 use Tests\TestCase;
@@ -75,11 +77,31 @@ class ExecutiveSummaryPageTest extends TestCase
         }
     }
 
+    public function test_leads_metric_counts_active_interests_and_ignores_legacy_leads(): void
+    {
+        $this->coverSources();
+        $this->interest('a0X000000000000001', '2026-09-30 10:00:00');
+
+        $withoutLegacyLead = app(ExecutiveDailyDatasetService::class)->build();
+        $this->assertSame('leads', $withoutLegacyLead['metrics']['leads']['metric_key']);
+        $this->assertSame(1, $withoutLegacyLead['metrics']['leads']['current']);
+
+        $this->legacyLead('00Q000000000000001', '2026-09-30 10:00:00');
+        $withLegacyLead = app(ExecutiveDailyDatasetService::class)->build();
+
+        $this->assertSame(1, $withLegacyLead['metrics']['leads']['current']);
+        $this->assertDatabaseMissing('report_sync_runs', ['dataset' => 'leads_dashboard']);
+        $this->assertDatabaseCount('salesforce_interest_activity_runs', 0);
+    }
+
     public function test_summary_html_does_not_expose_pii_salesforce_ids_or_sync_run_ids(): void
     {
         $this->coverSources();
-        $this->lead('00Q-sensitive-summary', '2026-09-30 10:00:00', [
-            'name' => 'Sensitive Lead Summary',
+        $this->interest('a0X-sensitive-summary', '2026-09-30 10:00:00', [
+            'owner_name' => 'Sensitive Interest Owner Summary',
+        ]);
+        $this->legacyLead('00Q-sensitive-summary', '2026-09-30 10:00:00', [
+            'name' => 'Sensitive Legacy Lead Summary',
             'email' => 'summary-sensitive@example.test',
             'phone' => '+34999111222',
         ]);
@@ -101,9 +123,11 @@ class ExecutiveSummaryPageTest extends TestCase
 
         foreach ([
             '00Q-sensitive-summary',
+            'a0X-sensitive-summary',
             '006-sensitive-summary',
             'summary-sensitive@example.test',
             '+34999111222',
+            'Sensitive Interest Owner Summary',
             'Sensitive Account Summary',
             'account-summary@example.test',
             'sync_run_id',
@@ -117,15 +141,15 @@ class ExecutiveSummaryPageTest extends TestCase
 
     private function coverSources(): void
     {
-        $this->coverLeadSource('2025-09-01', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-01', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-01', '2026-10-01 00:00:00', '2026-10-01 00:00:00', mode: 'all_history');
     }
 
-    private function coverLeadSource(string $start, string $cutoff): void
+    private function coverInterestSource(string $start, string $cutoff): void
     {
         ReportSyncRun::query()->create([
-            'dataset' => 'leads_dashboard',
-            'source' => 'salesforce',
+            'dataset' => SalesforceInterestSyncService::DATASET,
+            'source' => SalesforceInterestSyncService::SOURCE,
             'status' => 'completed',
             'period_start_at' => CarbonImmutable::parse($start, 'Europe/Madrid')->startOfDay(),
             'period_end_at' => CarbonImmutable::parse($cutoff, 'Europe/Madrid'),
@@ -160,20 +184,31 @@ class ExecutiveSummaryPageTest extends TestCase
         ]);
     }
 
-    private function lead(string $id, string $createdDate, array $overrides = []): SalesforceLead
+    private function interest(string $id, string $createdDate, array $overrides = []): SalesforceInterest
     {
-        return SalesforceLead::query()->create(array_merge([
+        return SalesforceInterest::query()->create(array_merge([
             'salesforce_id' => $id,
-            'name' => $id,
-            'created_date' => $createdDate,
+            'salesforce_created_at' => $createdDate,
             'synced_at' => '2026-10-01 00:00:00',
             'salesforce_last_modified_at' => '2026-10-01 00:00:00',
             'is_deleted' => false,
             'status' => 'Nuevo',
-            'owner_id' => '005-commercial-summary',
+            'owner_salesforce_id' => '005-commercial-summary',
             'owner_name' => 'Comercial Summary',
-            'portal_text' => 'Web',
-            'delegacion_encargada_text' => 'HR MOTOR TORREJON',
+            'source' => 'Web',
+            'origin_delegation' => 'HR MOTOR TORREJON',
+        ], $overrides));
+    }
+
+    private function legacyLead(string $id, string $createdDate, array $overrides = []): void
+    {
+        DB::table('salesforce_leads')->insert(array_merge([
+            'salesforce_id' => $id,
+            'name' => $id,
+            'created_date' => $createdDate,
+            'status' => 'Nuevo',
+            'created_at' => now(),
+            'updated_at' => now(),
         ], $overrides));
     }
 

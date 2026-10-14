@@ -44,9 +44,9 @@ class ExecutiveDailyDatasetTest extends TestCase
     {
         $this->coverSources('2025-09-30', '2026-10-01 00:00:00');
         foreach (['2026-09-30', '2026-09-23', '2026-09-16', '2026-09-02', '2025-10-01'] as $date) {
-            $this->lead('00Q-'.$date, $date.' 10:00:00');
+            $this->interest('00Q-'.$date, $date.' 10:00:00');
         }
-        $this->lead('00Q-mtd', '2026-09-10 10:00:00');
+        $this->interest('00Q-mtd', '2026-09-10 10:00:00');
         $this->opportunityRow('006-reservation-current', [
             'created_date' => '2026-08-01 10:00:00',
             'reservation' => true,
@@ -81,7 +81,7 @@ class ExecutiveDailyDatasetTest extends TestCase
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2027-01-01 08:00:00', ExecutiveDailyDatasetService::TIMEZONE));
         $this->coverSources('2026-01-01', '2027-01-01 00:00:00');
-        $this->lead('00Q-year-close', '2026-12-31 10:00:00');
+        $this->interest('00Q-year-close', '2026-12-31 10:00:00');
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
 
@@ -93,9 +93,11 @@ class ExecutiveDailyDatasetTest extends TestCase
     public function test_daily_metrics_reconcile_with_canonical_dashboard_services(): void
     {
         $this->coverSources('2025-09-30', '2026-10-01 00:00:00');
-        $this->lead('00Q-active', '2026-09-30 09:00:00');
-        $this->lead('00Q-deleted', '2026-09-30 10:00:00', ['is_deleted' => true]);
-        $this->lead('00Q-unclassified', '2026-09-30 11:00:00', ['portal_text' => null]);
+        $this->coverInterestActivitySource();
+        $this->interest('00Q-active', '2026-09-30 09:00:00');
+        $this->interest('00Q-deleted', '2026-09-30 10:00:00', ['is_deleted' => true]);
+        $unclassifiedInterest = $this->interest('00Q-unclassified', '2026-09-30 11:00:00', ['source' => null]);
+        $this->assertNull($unclassifiedInterest->source);
         $this->opportunityRow('006-reservation', [
             'created_date' => '2026-08-01 10:00:00',
             'reservation' => true,
@@ -110,10 +112,10 @@ class ExecutiveDailyDatasetTest extends TestCase
         ]);
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
-        $leadSummary = app(SalesforceInterestDashboardDatasetService::class)->summary($this->leadRequest('2026-09-30', '2026-09-30'));
+        $interestSummary = app(SalesforceInterestDashboardDatasetService::class)->summary($this->leadRequest('2026-09-30', '2026-09-30'));
         $rvSummary = app(ReservationsSalesDashboardDatasetService::class)->summary($this->reservationSalesRequest('2026-09-30', '2026-09-30'));
 
-        $this->assertSame(data_get($leadSummary, 'kpis.leads_totales'), $dataset['metrics']['leads']['current']);
+        $this->assertSame(data_get($interestSummary, 'kpis.leads_totales'), $dataset['metrics']['leads']['current']);
         $this->assertSame(data_get($rvSummary, 'produccion_periodo.periodo_actual.reservas'), $dataset['metrics']['reservas']['current']);
         $this->assertSame(data_get($rvSummary, 'produccion_periodo.periodo_actual.ventas'), $dataset['metrics']['ventas']['current']);
     }
@@ -149,7 +151,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_recent_local_opportunity_without_report_sync_run_does_not_prove_coverage(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->opportunityRow('006-local-only', [
             'created_date' => '2026-08-01 10:00:00',
             'reservation' => true,
@@ -168,7 +170,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_modified_run_completed_cannot_prove_historical_coverage(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00', mode: 'modified');
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
@@ -181,7 +183,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_all_history_run_can_prove_historical_coverage_when_it_covers_the_range(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00', mode: 'all_history');
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
@@ -194,7 +196,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_base_run_must_cover_the_functional_range(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2026-09-01', '2026-09-30', '2026-10-01 00:00:00');
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
@@ -206,7 +208,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_completed_modified_run_supplies_freshness_but_not_base_coverage(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2026-09-30', '2026-10-01 00:00:00', '2026-10-01 08:00:00', mode: 'modified');
 
@@ -220,7 +222,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_opportunity_sync_metadata_queries_are_bounded_with_many_irrelevant_runs(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         foreach (range(1, 150) as $day) {
             $date = CarbonImmutable::parse('2024-01-01', 'Europe/Madrid')->addDays($day);
             $this->coverOpportunitySource(
@@ -250,7 +252,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_failed_modified_run_after_base_coverage_is_a_data_incident(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2026-09-30', '2026-10-01 00:00:00', '2026-10-01 08:00:00', 'failed', 'modified');
 
@@ -265,7 +267,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_running_run_after_base_coverage_is_a_data_incident(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2026-09-30', '2026-10-01 00:00:00', null, 'running', 'modified');
 
@@ -278,7 +280,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_failed_or_running_opportunity_sync_run_is_a_data_incident(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00', 'failed');
 
         $failed = app(ExecutiveDailyDatasetService::class)->build();
@@ -296,7 +298,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_completed_opportunity_sync_run_with_insufficient_cutoff_is_stale(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-09-30 12:00:00');
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
@@ -308,7 +310,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_completed_opportunity_sync_run_with_sufficient_cutoff_publishes_zero(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2025-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
@@ -320,7 +322,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_required_reference_without_coverage_degrades_engine_input_to_partial(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         $this->coverOpportunitySource('2026-09-30', '2026-10-01 00:00:00', '2026-10-01 00:00:00');
 
         $dataset = app(ExecutiveDailyDatasetService::class)->build();
@@ -334,7 +336,7 @@ class ExecutiveDailyDatasetTest extends TestCase
     #[DataProvider('requiredReferenceDates')]
     public function test_each_required_weekly_reference_without_base_coverage_degrades_engine_input(string $referenceKey, string $missingDate): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         foreach (['2026-09-30', '2026-09-23', '2026-09-16', '2026-09-09', '2026-09-02'] as $date) {
             if ($date === $missingDate) {
                 continue;
@@ -362,7 +364,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_required_reference_with_stale_cutoff_degrades_engine_input_to_stale(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         foreach (['2026-09-30', '2026-09-16', '2026-09-09', '2026-09-02'] as $date) {
             $this->coverOpportunitySource($date, CarbonImmutable::parse($date)->addDay()->toDateString(), CarbonImmutable::parse($date)->addDay()->toDateString());
         }
@@ -378,7 +380,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
     public function test_missing_d364_does_not_degrade_daily_evaluation(): void
     {
-        $this->coverLeadSource('2025-09-30', '2026-10-01 00:00:00');
+        $this->coverInterestSource('2025-09-30', '2026-10-01 00:00:00');
         foreach (['2026-09-30', '2026-09-23', '2026-09-16', '2026-09-09', '2026-09-02'] as $date) {
             $this->coverOpportunitySource($date, CarbonImmutable::parse($date)->addDay()->toDateString(), CarbonImmutable::parse($date)->addDay()->toDateString());
         }
@@ -408,7 +410,7 @@ class ExecutiveDailyDatasetTest extends TestCase
     public function test_closed_day_with_stale_or_incident_source_is_not_complete(): void
     {
         $this->coverSources('2026-09-01', '2026-09-30 12:00:00');
-        $this->lead('00Q-stale', '2026-09-30 09:00:00', [
+        $this->interest('00Q-stale', '2026-09-30 09:00:00', [
             'synced_at' => '2026-09-30 12:00:00',
             'salesforce_last_modified_at' => '2026-09-30 12:00:00',
             'updated_at' => '2026-09-30 12:00:00',
@@ -473,11 +475,10 @@ class ExecutiveDailyDatasetTest extends TestCase
     public function test_dataset_does_not_expose_pii_or_salesforce_ids(): void
     {
         $this->coverSources('2025-09-30', '2026-10-01 00:00:00');
-        $this->lead('00Q-sensitive', '2026-09-30 10:00:00', [
-            'name' => 'Sensitive Lead',
-            'email' => 'sensitive@example.test',
-            'phone' => '+34999999999',
+        $sensitiveInterest = $this->interest('00Q-sensitive', '2026-09-30 10:00:00', [
+            'owner_name' => 'Sensitive Interest Owner',
         ]);
+        $this->assertSame('Sensitive Interest Owner', $sensitiveInterest->owner_name);
         $this->opportunityRow('006-sensitive', [
             'name' => 'Sensitive Opportunity',
             'created_date' => '2026-08-01 10:00:00',
@@ -490,18 +491,18 @@ class ExecutiveDailyDatasetTest extends TestCase
 
         $json = json_encode(app(ExecutiveDailyDatasetService::class)->build());
 
-        foreach (['00Q-sensitive', '006-sensitive', 'sensitive@example.test', '+34999999999', 'Sensitive Account', 'account@example.test'] as $forbidden) {
+        foreach (['00Q-sensitive', 'Sensitive Interest Owner', '006-sensitive', 'Sensitive Account', '+34888888888', 'account@example.test'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $json);
         }
     }
 
     private function coverSources(string $start, string $cutoff): void
     {
-        $this->coverLeadSource($start, $cutoff);
+        $this->coverInterestSource($start, $cutoff);
         $this->coverOpportunitySource($start, $cutoff, $cutoff);
     }
 
-    private function coverLeadSource(string $start, string $cutoff): void
+    private function coverInterestSource(string $start, string $cutoff): void
     {
         $run = ReportSyncRun::query()->create([
             'dataset' => SalesforceInterestSyncService::DATASET,
@@ -515,9 +516,19 @@ class ExecutiveDailyDatasetTest extends TestCase
             'timezone' => 'Europe/Madrid',
             'stats' => [],
         ]);
+    }
+
+    private function coverInterestActivitySource(): void
+    {
+        $run = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->latest('id')
+            ->sole();
+
         SalesforceInterestActivityRun::query()->create([
             'run_identifier' => (string) str()->uuid(),
-            'reason' => 'Aligned Executive Interest activity coverage',
+            'reason' => 'Dashboard comparison requires aligned Interest activities',
             'status' => 'completed',
             'source_interest_sync_run_id' => $run->id,
             'source_interest_cutoff_at' => $run->source_cutoff_at,
@@ -554,7 +565,7 @@ class ExecutiveDailyDatasetTest extends TestCase
         ]);
     }
 
-    private function lead(string $id, string $createdDate, array $overrides = []): SalesforceInterest
+    private function interest(string $id, string $createdDate, array $overrides = []): SalesforceInterest
     {
         $mapped = [
             'salesforce_id' => $id,
@@ -569,11 +580,11 @@ class ExecutiveDailyDatasetTest extends TestCase
             'source' => 'Web',
             'origin_delegation' => 'HR MOTOR TORREJON',
         ];
-        foreach (['is_deleted', 'status', 'synced_at', 'salesforce_last_modified_at'] as $key) {
-            if (array_key_exists($key, $overrides)) {
-                $mapped[$key] = $overrides[$key];
-            }
+        $unsupportedOverrides = array_diff(array_keys($overrides), [...array_keys($mapped), 'updated_at']);
+        if ($unsupportedOverrides !== []) {
+            throw new \InvalidArgumentException('Unsupported SalesforceInterest fixture overrides: '.implode(', ', $unsupportedOverrides));
         }
+        $mapped = array_replace($mapped, $overrides);
         $interest = new SalesforceInterest;
         $interest->forceFill($mapped);
         $interest->save();

@@ -1,5 +1,32 @@
 # Handoff para agentes
 
+## Alineación de pruebas Executive con Interest (2026-10-14)
+
+- No cambia runtime: `ExecutiveDailyDatasetService` ya inyectaba
+  `SalesforceInterestDashboardDatasetService`. La métrica técnica `leads`
+  continúa contando únicamente Interests activos por `functional_created_at`,
+  bajo el último F2 canónico `salesforce_interests/salesforce` completed y
+  estable; no consulta ni exige F5.
+- `ExecutiveSummaryPageTest` reemplaza el fixture funcional Lead y el run
+  `leads_dashboard` por `SalesforceInterest` y el F2 canónico. Una regresión
+  prueba que un Interest del día produce `leads.current=1` y que insertar
+  después un Lead legacy equivalente no altera el valor. Los fixtures base de
+  Executive diario dejan de crear snapshots F5 accesorios y se denominan según
+  la fuente Interest real; únicamente el test que invoca además el dashboard
+  operativo crea explícitamente el F5 que ese contrato sí exige.
+- Se mantienen sin cambios `metric_key=leads`, la etiqueta visible «Leads»,
+  reglas, thresholds, baseline, D-7/D-14/D-21/D-28/D-364, MTD, rutas, UI, API,
+  scheduler y autorización.
+- Seguridad y rendimiento: no se añaden queries runtime, Salesforce, PII ni IDs
+  al HTML. Las regresiones existentes siguen comprobando que la salida no expone
+  emails, teléfonos, nombres sensibles, Salesforce IDs o IDs de sync runs.
+- Cambios limitados a dos tests y documentación técnica; sin migraciones,
+  configuración, dependencias ni acciones manuales.
+- Validación: `ExecutiveSummaryPageTest` 4/50; `ExecutiveDailyDatasetTest`
+  26/116; `ExecutiveSummaryServiceTest` 7/34;
+  `SalesforceInterestDashboardDatasetTest` 16/80; suite Executive completa
+  101/516. Pint sobre ambos PHP modificados y `git diff --check` correctos.
+
 ## ROT-5 — SEO Salesforce → Interests (2026-10-09)
 
 ### Hardening de igualdad literal e índice (2026-10-13)
@@ -575,11 +602,11 @@
   de EXE-1.
 - MTD: contexto acumulado `[primer día del mes de D 00:00, D+1 00:00)` en
   `Europe/Madrid`. MTD no sustituye `current` ni las referencias semanales.
-- Leads reutiliza el universo canónico de
-  `SalesforceLeadDashboardDatasetService`: filtros internos, exclusiones,
-  eliminados/merged, no clasificados, delegación, procedencia y buckets
-  existentes. El adaptador ejecutivo llama a `executiveLeadTotal()` y no ejecuta
-  el pipeline de insights/IA del dashboard.
+- Desde ROT-1, la métrica técnica `leads` reutiliza el universo canónico de
+  `SalesforceInterestDashboardDatasetService`. `executiveLeadTotal()` cuenta
+  Interests activos por `functional_created_at`, exige el F2 exacto estable y no
+  consulta F5 ni ejecuta el pipeline de insights/IA del dashboard. El nombre de
+  la clave y su etiqueta visible siguen siendo compatibles con EXE-1/EXE-3.
 - Reservas y Ventas reutilizan `ReservationsSalesDashboardDatasetService` vía
   `executiveProduction()`, que usa el agregado canónico. Reservas procede de
   `reservas_totales` por `reservation_date`; Ventas procede de
