@@ -96,7 +96,8 @@ class ExecutiveDailyDatasetTest extends TestCase
         $this->coverInterestActivitySource();
         $this->interest('00Q-active', '2026-09-30 09:00:00');
         $this->interest('00Q-deleted', '2026-09-30 10:00:00', ['is_deleted' => true]);
-        $this->interest('00Q-unclassified', '2026-09-30 11:00:00', ['portal_text' => null]);
+        $unclassifiedInterest = $this->interest('00Q-unclassified', '2026-09-30 11:00:00', ['source' => null]);
+        $this->assertNull($unclassifiedInterest->source);
         $this->opportunityRow('006-reservation', [
             'created_date' => '2026-08-01 10:00:00',
             'reservation' => true,
@@ -474,11 +475,10 @@ class ExecutiveDailyDatasetTest extends TestCase
     public function test_dataset_does_not_expose_pii_or_salesforce_ids(): void
     {
         $this->coverSources('2025-09-30', '2026-10-01 00:00:00');
-        $this->interest('00Q-sensitive', '2026-09-30 10:00:00', [
-            'name' => 'Sensitive Lead',
-            'email' => 'sensitive@example.test',
-            'phone' => '+34999999999',
+        $sensitiveInterest = $this->interest('00Q-sensitive', '2026-09-30 10:00:00', [
+            'owner_name' => 'Sensitive Interest Owner',
         ]);
+        $this->assertSame('Sensitive Interest Owner', $sensitiveInterest->owner_name);
         $this->opportunityRow('006-sensitive', [
             'name' => 'Sensitive Opportunity',
             'created_date' => '2026-08-01 10:00:00',
@@ -491,7 +491,7 @@ class ExecutiveDailyDatasetTest extends TestCase
 
         $json = json_encode(app(ExecutiveDailyDatasetService::class)->build());
 
-        foreach (['00Q-sensitive', '006-sensitive', 'sensitive@example.test', '+34999999999', 'Sensitive Account', 'account@example.test'] as $forbidden) {
+        foreach (['00Q-sensitive', 'Sensitive Interest Owner', '006-sensitive', 'Sensitive Account', '+34888888888', 'account@example.test'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $json);
         }
     }
@@ -580,11 +580,11 @@ class ExecutiveDailyDatasetTest extends TestCase
             'source' => 'Web',
             'origin_delegation' => 'HR MOTOR TORREJON',
         ];
-        foreach (['is_deleted', 'status', 'synced_at', 'salesforce_last_modified_at'] as $key) {
-            if (array_key_exists($key, $overrides)) {
-                $mapped[$key] = $overrides[$key];
-            }
+        $unsupportedOverrides = array_diff(array_keys($overrides), [...array_keys($mapped), 'updated_at']);
+        if ($unsupportedOverrides !== []) {
+            throw new \InvalidArgumentException('Unsupported SalesforceInterest fixture overrides: '.implode(', ', $unsupportedOverrides));
         }
+        $mapped = array_replace($mapped, $overrides);
         $interest = new SalesforceInterest;
         $interest->forceFill($mapped);
         $interest->save();
