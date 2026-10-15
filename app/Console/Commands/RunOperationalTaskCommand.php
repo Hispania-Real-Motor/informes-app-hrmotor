@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Services\Operations\OperationalTaskCatalog;
+use App\Services\Operations\OperationalTaskExitCode;
 use App\Services\Operations\OperationalTaskService;
 use Illuminate\Console\Command;
+use Throwable;
 
 class RunOperationalTaskCommand extends Command
 {
@@ -18,13 +20,19 @@ class RunOperationalTaskCommand extends Command
         if (! array_key_exists($key, $catalog->all())) {
             $this->error('Tarea desconocida.');
 
-            return self::FAILURE;
+            return OperationalTaskExitCode::InvalidRequest->value;
         }
-        $run = $tasks->claim($key, 'scheduler');
-        if ($run->status !== 'skipped') {
-            $tasks->execute($run->id);
-        }
+        try {
+            $run = $tasks->claim($key, 'scheduler');
+            if ($run->status !== 'skipped') {
+                $tasks->execute($run->id);
+            }
 
-        return $run->refresh()->status === 'failed' ? self::FAILURE : self::SUCCESS;
+            return OperationalTaskExitCode::forRun($run->refresh())->value;
+        } catch (Throwable) {
+            $this->error('No se pudo completar el contrato operacional.');
+
+            return OperationalTaskExitCode::TechnicalFailure->value;
+        }
     }
 }

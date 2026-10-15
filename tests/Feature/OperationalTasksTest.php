@@ -137,6 +137,7 @@ class OperationalTasksTest extends TestCase
 
     public function test_non_zero_exit_creates_deduplicated_failure_then_real_recovery_resolves(): void
     {
+        DB::table('operational_task_states')->where('task_key', self::KEY)->update(['monitoring_started_at' => now()->subDays(2)]);
         Artisan::shouldReceive('call')->twice()->andReturn(7, 0);
         $run = $this->tasks()->claim(self::KEY, 'scheduler');
         $this->tasks()->execute($run->id);
@@ -226,7 +227,7 @@ class OperationalTasksTest extends TestCase
         $this->assertSame('unknown', $running->fresh()->status);
         $this->assertSame('skipped', $this->tasks()->claim(self::KEY, 'scheduler')->status);
         $this->artisan('operations:release', ['run' => $running->id])->assertFailed();
-        $this->artisan('operations:release', ['run' => $running->id, '--confirm-stopped' => true])->assertSuccessful();
+        $this->artisan('operations:release', ['run' => $running->id, '--confirm-stopped' => true, '--reason' => 'scheduler_stopped'])->assertSuccessful();
         $this->assertSame('failed', $running->fresh()->status);
     }
 
@@ -276,6 +277,7 @@ class OperationalTasksTest extends TestCase
 
     public function test_stock_internal_lock_does_not_certify_success(): void
     {
+        DB::table('operational_task_states')->where('task_key', 'stock-sync-daily')->update(['monitoring_started_at' => now()->subDays(2)]);
         $lock = Cache::lock('stock-analysis-daily-sync', 7200);
         $this->assertTrue($lock->get());
         $this->artisan('stock:sync-daily')->assertExitCode(2);

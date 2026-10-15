@@ -4,6 +4,8 @@ namespace App\Services\Operations;
 
 final class OperationalTaskCatalog
 {
+    public const HEALTH_TASK_KEY = 'operations-health';
+
     /** Fixed production contracts; HTTP selects only a key. */
     public function all(): array
     {

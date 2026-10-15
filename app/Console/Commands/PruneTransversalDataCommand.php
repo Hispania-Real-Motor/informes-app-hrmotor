@@ -44,11 +44,11 @@ class PruneTransversalDataCommand extends Command
 
         // Preserve active/unknown runs, evidence pointers and open incidents.
         $protectedIds = DB::table('operational_task_states')->get()
-            ->flatMap(fn ($state) => [$state->active_run_id, $state->last_run_id, $state->last_success_id, $state->last_failure_id])
+            ->flatMap(fn ($state) => [$state->active_run_id, $state->last_run_id, $state->last_success_id, $state->last_failure_id, $state->last_completed_id])
             ->filter()->unique()->values()->all();
         $metrics['operations.closed_runs'] = $this->deleteInChunks(
             DB::table('operational_task_runs')
-                ->whereIn('status', ['success', 'failed', 'skipped'])
+                ->whereIn('status', ['success', 'failed', 'skipped', 'unhealthy'])
                 ->where('finished_at', '<', $now->copy()->subDays(90))
                 ->whereNotIn('id', $protectedIds)
                 ->whereNotExists(fn (Builder $alerts) => $alerts->selectRaw('1')

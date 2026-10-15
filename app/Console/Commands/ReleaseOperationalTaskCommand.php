@@ -2,49 +2,46 @@
 
 namespace App\Console\Commands;
 
-use App\Models\OperationalTaskRun;
+use App\Services\Operations\OperationalTaskExitCode;
 use App\Services\Operations\OperationalTaskService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class ReleaseOperationalTaskCommand extends Command
 {
-    protected $signature = 'operations:release {run : ID de ejecución} {--confirm-stopped : Confirma que el operador verificó la terminación del proceso}';
+    protected $signature = 'operations:release
+        {run : ID de ejecución}
+        {--confirm-stopped : Confirma verificación externa de terminación del proceso}
+        {--reason= : worker_stopped, scheduler_stopped, queue_expired o process_terminated}
+        {--reference= : Referencia opcional OPS seguida de guion y hasta 12 dígitos}';
 
-    protected $description = 'Libera una reserva huérfana solo tras verificación humana de terminación.';
+    protected $description = 'Libera una reserva huérfana con confirmación externa y auditoría.';
 
     public function handle(OperationalTaskService $tasks): int
     {
-        if (! $this->option('confirm-stopped')) {
-            $this->error('Verifique primero que el proceso y sus workers han terminado.');
-
-            return self::FAILURE;
-        }
         $id = filter_var($this->argument('run'), FILTER_VALIDATE_INT);
-        if (! $id || ! ($run = OperationalTaskRun::query()->find($id))) {
-            return self::FAILURE;
+        $reason = (string) $this->option('reason');
+        $reference = $this->option('reference');
+        if (! $this->option('confirm-stopped') || ! $id || $id < 1
+            || ! in_array($reason, OperationalTaskService::RELEASE_REASONS, true)
+            || ($reference !== null && ! preg_match('/\AOPS-[0-9]{1,12}\z/D', $reference))) {
+            $this->error('Se requieren ID válido, motivo permitido y confirmación de proceso detenido. No incluya texto libre ni datos personales.');
+
+            return OperationalTaskExitCode::InvalidRequest->value;
         }
-        $released = DB::transaction(function () use ($run, $tasks): bool {
-            $state = DB::table('operational_task_states')->where('task_key', $run->task_key)->lockForUpdate()->first();
-            $run->refresh();
-            if (! $state || (int) $state->active_run_id !== $run->id || ! in_array($run->status, ['queued', 'running', 'unknown'], true)) {
-                return false;
-            }
-            if ($run->status === 'unknown') {
-                // Re-enter a terminal transition without ever claiming success.
-                $run->update(['status' => 'running']);
-            }
-            $tasks->finish($run, false, null, 'Reserva liberada por operador CLI tras confirmar proceso detenido.');
+        try {
+            if (! $tasks->release($id, $reason, $reference)) {
+                $this->error('La reserva no es huérfana o no cumple la política de liberación.');
 
-            return true;
-        }, 3);
-        if (! $released) {
-            $this->error('La ejecución no tiene una reserva activa liberable.');
+                return OperationalTaskExitCode::Blocked->value;
+            }
+        } catch (Throwable) {
+            $this->error('No se pudo registrar la liberación; compruebe el estado antes de reintentar.');
 
-            return self::FAILURE;
+            return OperationalTaskExitCode::TechnicalFailure->value;
         }
-        $this->info('Solicitud de liberación registrada; consulte el ledger.');
+        $this->info('Reserva liberada con registro auditable.');
 
-        return self::SUCCESS;
+        return OperationalTaskExitCode::Success->value;
     }
 }

@@ -13,6 +13,8 @@ config([
     'database.connections.sqlite.database' => $argv[1],
     'database.connections.sqlite.url' => null,
     'database.connections.sqlite.busy_timeout' => 10000,
+    // SQLite has no row locks: acquire its writer reservation before reading task state.
+    'database.connections.sqlite.transaction_mode' => 'IMMEDIATE',
     'queue.connections.operations.connection' => 'sqlite',
     'cache.default' => 'array',
     'session.driver' => 'array',

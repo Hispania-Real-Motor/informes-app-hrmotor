@@ -743,3 +743,14 @@ Los cierres económicos de Comisiones son independientes para `commercials`, `de
 - operations:check-health consulta evidencia cada cinco minutos. El panel solo lee punteros y 25 ejecuciones por página; no llama a integraciones. No existe prueba externa de vida del propio cron.
 - Stdout se descarta; solo se retienen flags para omisiones documentadas SEO/Ads y fallos parciales Ads. Errores operacionales usan mensajes constantes. Los ledgers de fuentes/readiness siguen independientes.
 - Retención transversal incorpora runs terminales de más de 90 días conservando reservas, evidencia apuntada e incidencias abiertas. El actor se conserva como identificador numérico histórico.
+
+### Semántica operacional tras revisión 41c1e7a
+
+El monitor finaliza como success (0), unhealthy (5: evaluación con incidencias)
+o failed (1: fallo técnico). unhealthy no acredita éxito de tareas ni actualiza
+last_success_id. operational_task_states añade last_completed_id y fecha persistente
+monitoring_started_at; la primera exigencia usa la primera ocurrencia futura más
+margen, sin reiniciar observación existente. Recuperaciones reconcilian solo una
+tarea. operational_task_releases registra de forma transaccional las intervenciones
+CLI confirmadas, con motivo cerrado, momento y principal OS cuando es verificable;
+la identidad humana no se infiere del entorno. No cambia el catálogo ni Queue.

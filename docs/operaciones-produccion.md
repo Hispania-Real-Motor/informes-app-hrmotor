@@ -668,7 +668,7 @@ externa del último éxito operations-health. /up solo acredita liveness HTTP.
    operaciones, liberar por CLI (no disponible por HTTP):
 
 ~~~bash
-php artisan operations:release ID_DEL_RUN --confirm-stopped
+php artisan operations:release ID_DEL_RUN --confirm-stopped --reason=process_terminated --reference=OPS-123
 ~~~
 
 La liberación deja fin fallido auditable y no resuelve stale como si hubiera
@@ -702,3 +702,52 @@ de instalar en producción (el CLI local verificado usa PHP 8.4.21). El lockfile
 npm corrige las versiones compatibles y los assets se han reconstruido con Vite
 8.3.4. No se modificaron las fuentes de los demás dashboards. No ejecutar
 composer update o npm audit fix en producción; desplegar los lockfiles revisados.
+
+## Correcciones OPS-1 tras revisión 41c1e7a
+
+Aplicar en despliegue la migración aditiva 2026_10_15_130000_extend_operational_observation_and_release_audit
+antes de reactivar código/worker nuevos. No se ha aplicado en producción desde
+Codex. Conservar sus columnas y auditoría durante un rollback; no ejecutar down.
+No cambian horarios, opciones de sincronización ni cola operations.
+
+La activación nueva empieza a exigir la primera ocurrencia cron futura más su
+margen. Nunca ejecutado durante ese arranque no equivale a Correcto. Los estados
+preexistentes conservan created_at como primera observación; no reciben un margen
+nuevo. No reiniciar el historial ni rellenarlo con éxitos ficticios.
+
+Para supervisión externa usar operations:check-health y capturar su código de
+salida: 0 sin incidencias exigibles, 5 incidencias detectadas, 1 fallo técnico de
+la evaluación. Para supervisar además la evidencia del propio monitor, consultar
+last_completed_id de operations-health, cuyo run puede ser success o unhealthy:
+ambos demuestran evaluación terminada; solo success demuestra evaluación sin
+incidencias. operations:run retorna 3 para omisión iniciada, 4 para bloqueo o
+terminación incierta y 2 para clave inválida. Nunca tratar esos retornos como
+sincronización correcta. Clasificar 3/4 como diferimiento y 5 como señal de salud;
+no crear alertas técnicas recursivas por esos resultados esperados. Si todo cron
+se detiene, el checker debe invocarse desde un supervisor independiente; un
+schedule:list correcto o un schedule:run con salida global 0 no acredita éxito.
+
+La liberación ahora requiere motivo cerrado y rechaza running aún dentro de
+ventana. La confirmación debe estar respaldada por comprobación externa de muerte
+del proceso y sus hijos en todos los hosts; el reloj por sí solo no basta. El
+principal registrado es el UID efectivo, si posix_geteuid está disponible; no es
+identidad humana. En Windows se registra unverified_cli/null. Usar auditoría OS
+autenticada y referencia OPS-NNN para atribuir una intervención humana. No pasar
+nombres, emails, secretos o --actor. No hay endpoint web de liberación.
+
+Consulta de auditoría, sin cuerpos ni datos personales:
+
+~~~sql
+SELECT run_id, task_key, actor_type, actor_identifier, reason, reference, released_at
+FROM operational_task_releases ORDER BY id DESC LIMIT 25;
+~~~
+
+El composer.lock definitivo no cambia en esta corrección. Requiere PHP >=8.4.1;
+composer check-platform-reqs --lock --no-dev pasa con el CLI local 8.4.21. El
+composer.json conserva su restricción general histórica ^8.3, que por sí sola no
+acredita compatibilidad con ese lock. Antes de desplegar verificar PHP y extensiones
+por separado en web, CLI y worker, usando sus binarios/entornos reales y el mismo
+check-platform-reqs. Un PHP 8.3 o 8.4.0 no es compatible con el lock. El operador
+ha confirmado PHP 8.4.21 para web, CLI y worker (2026-10-15), compatible con el
+mínimo del lock. No se han inspeccionado esos procesos ni sus extensiones desde
+este entorno; esa comprobación sigue siendo obligatoria.

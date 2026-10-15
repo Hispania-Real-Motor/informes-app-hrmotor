@@ -38,7 +38,8 @@ alterar su firma. El éxito de un comando no reemplaza la readiness del dataset.
 Las consultas del panel leen punteros por PK y paginan 25 runs. Los punteros
 al último éxito/fallo persisten aunque se depure historial. Retención: 90 días
 para terminales no referenciados, excluyendo tareas con alertas abiertas.
-Activos, queued, running y unknown nunca se depuran. Un actor eliminado conserva
+Activos, queued, running y unknown nunca se depuran. El puntero last_completed_id
+preserva también la última evaluación unhealthy del monitor. Un actor eliminado conserva
 su ID histórico; el worker no ejecuta si ese usuario ya no existe.
 
 Sin historia: Nunca ejecutado. En cola: reserva entregada sin inicio.
@@ -46,11 +47,13 @@ Ejecutándose: inicio acreditado. Correcto: fin correcto verificable y vigente.
 Fallido: salida no cero, excepción o fallo parcial conocido. Omitido: no acredita
 éxito. Retrasado: sin éxito que cubra la última ocurrencia exigible.
 Desconocido/retrasado: cola >15 min, running superior a ventana o worker interrumpido.
-No hay recuperación inventada: solo un éxito vigente resuelve stale.
+No hay recuperación inventada: solo un éxito vigente resuelve stale de una tarea.
+En el monitor se distinguen heartbeat técnico y salud de las tareas observadas.
 
 La cadencia usa CronExpression en Europe/Madrid, incluida transición DST.
 La última ocurrencia exigible es la anterior a ahora menos el margen explícito.
-El inicio del último éxito debe ser posterior o igual a esa ocurrencia.
+El inicio del último éxito debe ser posterior o igual a esa ocurrencia, siempre
+que ya sea exigible según la política de arranque definida más abajo.
 Los márgenes diarios derivan de los mutex operativos existentes; no son SLA
 certificados. Cada 15 min admite 10 min; horario, 30 min; monitor, 10 min.
 Un monitor dentro del scheduler no puede alertar por sí solo si todo cron se
@@ -123,3 +126,111 @@ Esto no cambia métricas ni atribución. El ledger no pretende reemplazar una
 auditoría exhaustiva de todos los logs legacy de integración; Stock conserva su
 manejo previo de excepciones fuera del nuevo ledger, cuyo canal operativo
 descarta stdout. Revisar ese logging legacy en un lote específico de hardening.
+
+## Correcciones de revisión 41c1e7a (2026-10-15)
+
+Base revisada: 41c1e7abf8b60d5e95f4af31287d5820a5b5f21a. Catálogo, horarios,
+argumentos, 18 acciones manuales y cola operations se mantienen.
+
+### Matriz de códigos de salida
+
+| Código | operations:check-health | operations:run | operations:release |
+|---:|---|---|---|
+| 0 | Evaluación completa sin incidencias actualmente exigibles | Solo run success con inicio, fin y salida 0 | Liberación auditada; el run queda failed, nunca success |
+| 1 | Fallo técnico al evaluar; mensaje constante | Run failed o fallo técnico del wrapper | Fallo técnico; transacción revierte si no se pudo auditar |
+| 2 | No utilizado | Clave inválida | ID, motivo, referencia o confirmación inválidos |
+| 3 | No utilizado | Comando realmente iniciado pero omitido por su contrato/lock/configuración | No utilizado |
+| 4 | No utilizado | Reserva incompatible, queued/running/unknown o evidencia incompleta | Reserva no liberable o no huérfana según política |
+| 5 | Evaluación completa con incidencias | Solo el monitor: run unhealthy con inicio, fin y salida 5 | No utilizado |
+
+El exit_code persistido sigue siendo el resultado del comando subyacente; el
+wrapper normaliza su propio retorno según el estado y la evidencia. Un comando
+ordinario que devuelva 5 sigue siendo failed/retorno 1; solo operations-health
+conoce el contrato de evaluación con incidencias. Un skipped por reserva conserva
+started_at y exit_code null: no se inventa ejecución del comando.
+
+Los retornos 3 y 4 son diferimientos esperados, no éxitos ni fallos técnicos.
+No abren por sí mismos operational_task_failure: la cadencia y el último éxito
+vigente determinan cuándo el diferimiento se convierte en retraso. Un skipped
+legítimo tampoco publica éxito nuevo; si aún existe éxito vigente, la salud puede
+seguir sin incidencias exigibles hasta vencer su ventana. El scheduler continúa
+con las demás tareas aunque el proceso hijo devuelva un código no cero. Si el
+mutex externo de Laravel impide incluso arrancar el wrapper, no se inventan run
+ni retorno; la falta de evidencia se evalúa por cadencia.
+
+### Monitor sin recursión
+
+Un run unhealthy acredita que el monitor terminó su evaluación, pero nunca se
+escribe en last_success_id ni last_failure_id. last_completed_id permite consultar
+por PK ese heartbeat técnico. Puede resolver un fallo técnico previo del monitor,
+porque evaluar con incidencias demuestra recuperación técnica, no recuperación
+de las tareas observadas. El panel lo representa como Incidencias de salud.
+
+Durante su propia ejecución running vigente, el monitor no se diagnostica como
+fallido. Al finalizar se reconcilia solo su propia frescura; no vuelve a evaluar
+las otras 21 tareas. Los éxitos ordinarios reconcilian solo su tarea. La evaluación
+completa queda en la cadencia de cinco minutos. Los fallos técnicos del monitor
+usan operational_task_failure; su falta de heartbeat usa operational_monitor_stale;
+las tareas retrasadas usan operational_task_stale. No se registran excepciones
+crudas. El checker externo puede detectar un scheduler totalmente detenido con
+código 5, pero debe ejecutarse desde supervisión independiente: cron no puede
+vigilar su propia ausencia sin un observador externo.
+
+### Arranque inicial explícito
+
+La migración 2026_10_15_130000 registra monitoring_started_at una sola vez y
+siembra las claves del catálogo sin crear runs. En estados existentes conserva
+la primera observación created_at; no reinicia su margen ni descarta fallos previos.
+El puntero last_completed_id se inicializa únicamente desde los punteros existentes,
+sin escanear histórico. No se alteran ni fabrican ejecuciones de sincronización.
+
+Para una tarea nueva sin historia, la primera ocurrencia exigible es la primera
+fecha cron estrictamente futura a monitoring_started_at, más grace_minutes. Antes
+sigue Nunca ejecutado, con due null: un retorno global 0 significa ausencia de
+incidencias exigibles, no prueba de ejecución de esa tarea. Después abre alerta si
+no hay éxito verificable que cubra la ocurrencia. Un fallo explícito o una cola
+caducada se detecta inmediatamente, incluso durante este arranque. Reiniciar
+workers/cron o consultar el panel no reinicia el inicio de observación. Si falta
+la metadata de observación no se concede margen implícito: se considera falta de
+evidencia. No borrar/resembrar estados para silenciar alertas. El calendario sigue
+Europe/Madrid y se prueba en los dos cambios DST.
+
+### Liberación de reservas y atribución
+
+La liberación sigue exclusivamente en CLI de operación, fuera de la allowlist
+HTTP. El acceso se controla por el sistema operativo y los permisos del despliegue;
+no es un login Laravel ni una ampliación de permisos de Dirección. Exige verificación
+externa previa de terminación, --confirm-stopped y --reason cerrado. Motivos:
+worker_stopped (origen manual), scheduler_stopped (origen scheduler), queue_expired
+(solo queued) o process_terminated. La referencia opcional tiene forma OPS-123,
+con 1–12 dígitos: sin nombres, email, mensajes libres, tokens o trazas.
+
+No se libera running dentro de su ventana. queued debe superar 15 minutos;
+running debe superar su ventana; unknown conserva la exigencia de confirmación
+externa. Superar el plazo no demuestra que el proceso murió: el operador debe
+verificar/parar los procesos en todos los hosts relevantes antes de confirmar.
+Sin ese conocimiento, mantener la reserva. No hay liberación automática por TTL.
+
+La misma transacción escribe operational_task_releases y finaliza el run como
+failed. Si falla la auditoría, no se libera. Se conserva ID/correlación del run,
+tarea, momento UTC, motivo y referencia. posix_geteuid aporta un principal OS
+verificable (UID efectivo), nunca identidad humana ni ReportUser. Si no existe
+esa API, como en este Windows local, actor_type es unverified_cli y actor_identifier
+null. No se aceptan --actor ni variables USER/SUDO_USER como prueba. La atribución
+humana requiere auditoría externa autenticada del host/ticket; no se inventa.
+Los eventos de liberación se conservan separados de la retención de runs y no se
+borran automáticamente en este lote. El solicitante original del run se preserva.
+
+Laravel emite ScheduledTaskFailed y registra su excepción genérica para cualquier
+código hijo no cero, incluidos 3/4/5; continúa con las demás tareas. El proyecto no
+tiene listeners ni callbacks que transformen ese evento en OperationalAlert.
+La matriz anterior se aplica también a observadores de esos eventos/logs:
+3/4 son diferimientos y 5 es una evaluación con incidencias, no fallo técnico.
+Se mantienen retornos no cero para no convertirlos en éxitos falsos del scheduler.
+
+Una alerta previa no se resuelve por el margen inicial ni por un reintento en
+cola. La evaluación consulta los tipos operacionales abiertos por las claves del
+catálogo usando el índice task/state; la recuperación exige evidencia real.
+El fixture de concurrencia SQLite usa transacciones IMMEDIATE, porque SQLite no
+tiene bloqueos por fila. No cambia la configuración MariaDB/InnoDB productiva;
+la concurrencia en ese motor sigue requiriendo certificación del despliegue.

@@ -12,6 +12,7 @@ class OperationalTaskRun extends Model
     {
         return [
             'arguments' => 'array',
+            'exit_code' => 'integer',
             'queued_at' => 'immutable_datetime',
             'started_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',

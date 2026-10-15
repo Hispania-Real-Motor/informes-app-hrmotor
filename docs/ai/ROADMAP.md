@@ -736,3 +736,16 @@ aproximen a ejecución, sin adelantar contratos ni inventar arquitectura.
 | Alertas / UX-OPERATIONS | Deuda abordada en OPS-1; implementada localmente, pendiente certificación |
 | Reservas/Ventas | Ya migrado |
 | SEO/Analytics y Summary | Consumidores del Design System; solo auditoría de residuos |
+
+### OPS-1 — Correcciones de revisión 41c1e7a (2026-10-15)
+
+Implementadas localmente; pendientes revisión, aprobación y certificación
+productiva. Base 41c1e7abf8b60d5e95f4af31287d5820a5b5f21a, misma rama.
+Retornos diferenciados, estado unhealthy, primera ocurrencia exigible persistente
+y auditoría transaccional de liberaciones CLI con motivo cerrado y principal OS
+cuando es verificable. Catálogo de 22 tareas, 18 acciones manuales, horarios
+(incluidas reseñas 02:20 Madrid) y cola independiente intactos. Una migración
+aditiva; sin nuevas sincronizaciones ni cambios de informes. No se actualizan
+dependencias. Lock compatible localmente con PHP 8.4.21; producción requiere
+>=8.4.1. Operador confirma 8.4.21 en web/CLI/worker; extensiones y ejecución
+real pendientes de certificación. Resultados reales en HANDOFF.

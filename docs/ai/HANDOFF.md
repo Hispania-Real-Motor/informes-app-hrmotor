@@ -4973,3 +4973,127 @@ M	tests/Feature/SeoTechnicalHealthSyncTest.php
 A	tests/Fixtures/operational_http_request.php
 A	tests/Fixtures/operational_schedule_baseline.php
 ~~~
+
+## 2026-10-15 — OPS-1, correcciones tras revisión 41c1e7a
+
+### Estado y base verificada
+
+Trabajo local revisable, sin commit ni push. Rama existente
+feat/ops-1-operational-control; HEAD inicial y final:
+41c1e7abf8b60d5e95f4af31287d5820a5b5f21a.
+Se comprobó worktree limpio antes de modificar y se ejecutó git fetch origin;
+origin/main: e7073d3affa43b7d6a5295292667993b7a164493.
+No se crearon ramas, PR ni despliegues. No se ejecutaron integraciones reales,
+backfills, correos, liberaciones reales ni migraciones productivas.
+
+### Cambios y decisiones
+
+- Matriz común de retorno: 0 éxito acreditado; 1 fallo técnico; 2 entrada
+  inválida; 3 omisión iniciada; 4 bloqueo/estado incierto; 5 evaluación de salud
+  con incidencias. check-health usa 0/1/5; release 0 significa liberación auditada,
+  nunca éxito de sincronización. La salida nativa del comando se conserva en el run.
+- El monitor usa unhealthy y last_completed_id para acreditar evaluación técnica
+  sin atribuir éxito global ni generar fallos recursivos. Un monitor técnicamente
+  recuperado puede resolver su fallo previo aunque aún encuentre tareas enfermas.
+- Inicio de observación persistente: nuevas tareas esperan su primera ocurrencia
+  futura más margen; estados previos conservan created_at. Sin runs fabricados,
+  sin resolver alertas por el margen inicial ni ocultarlas con un reintento queued.
+- Las recuperaciones reconcilian solo la tarea terminada, evitando multiplicar
+  incidencias de las otras tareas. El chequeo completo conserva cadencia cinco min.
+- Release exige confirmación externa, motivo cerrado y reserva candidata huérfana;
+  la auditoría y transición failed son atómicas. Registra momento/correlación y UID
+  efectivo cuando existe posix_geteuid; en Windows unverified_cli/null. No identifica
+  una persona a partir del entorno. Referencia opcional OPS-NNN, sin texto libre.
+- Catálogo único de 22 tareas y 18 manuales, firmas/argumentos ordinarios,
+  horarios (reseñas 02:20 Europe/Madrid), locks y cola operations intactos.
+
+### Archivos modificados y finalidad
+
+- app/Console/Commands/CheckOperationalTaskHealthCommand.php: 0/1/5 sanitizados.
+- app/Console/Commands/RunOperationalTaskCommand.php: retorno según evidencia real.
+- app/Console/Commands/ReleaseOperationalTaskCommand.php: validación y liberación auditada.
+- app/Console/Commands/PruneTransversalDataCommand.php: proteger último heartbeat y retener unhealthy.
+- app/Models/OperationalTaskRun.php: cast entero de exit_code.
+- app/Services/Operations/OperationalTaskCatalog.php: constante de clave del monitor, sin alterar contratos.
+- app/Services/Operations/OperationalTaskExitCode.php (nuevo): semántica común de resultados.
+- app/Services/Operations/OperationalTaskHealthService.php: bootstrap, heartbeat, incidencias y recuperación.
+- app/Services/Operations/OperationalTaskService.php: transiciones y auditoría transaccional de liberaciones.
+- database/migrations/2026_10_15_130000_extend_operational_observation_and_release_audit.php (nueva): esquema aditivo.
+- resources/views/reports/operations/alerts.blade.php: estado textual/Design System unhealthy.
+- tests/Feature/OperationalTaskReviewTest.php (nuevo): regresiones de revisión.
+- tests/Feature/OperationalTasksTest.php: fixtures acordes a margen inicial y motivo obligatorio.
+- tests/Fixtures/operational_http_request.php: transacción IMMEDIATE solo en fixture SQLite concurrente.
+- docs/ai/OPERATIONS.md: matriz, arranque, alertas, auditoría y límites.
+- docs/operaciones-produccion.md: despliegue, supervisión, runtime y rollback.
+- docs/ai/PROJECT_CONTEXT.md: arquitectura realmente implementada.
+- docs/ai/DECISIONS.md: decisiones operacionales.
+- docs/ai/ROADMAP.md: estado local pendiente de aprobación/certificación.
+- docs/ai/HANDOFF.md: evidencia de esta entrega.
+
+### Base de datos, seguridad y rendimiento
+
+Una migración aditiva: monitoring_started_at y last_completed_id en estados;
+siembra del catálogo sin runs y migración de punteros existentes; tabla separada
+operational_task_releases con índices run_id y task_key/released_at. No se borra
+historial. Retención conserva evidencia apuntada, reservas e incidencias abiertas;
+los eventos de liberación no se podan automáticamente.
+
+Se mantiene admin activo + allowlist + CSRF + Queue; no hay endpoint de release ni
+argumentos libres. Mensajes constantes, sin stdout, excepciones crudas o identidad
+humana inventada. No se modifican .env, credenciales ni dependencias.
+Snapshot usa dos consultas acotadas por catálogo/punteros; check añade consulta
+por claves/tipos operacionales abiertos usando índice task/state. Sin escanear
+report_sync_runs o historial completo ni llamar a Salesforce desde el panel.
+
+### Verificaciones realmente ejecutadas
+
+- php artisan test: 1387/1387 pruebas, 12484 aserciones, 312493 ms, exit 0.
+- php artisan test --filter=Operational: 78/78, 1095 aserciones, exit 0.
+- Prueba HTTP concurrente aislada: 1/1, 6 aserciones, exit 0.
+- Una ejecución completa anterior falló únicamente en el fixture HTTP concurrente
+  (302/500 frente a 302/429). Se ajustó SQLite a transacción IMMEDIATE para adquirir
+  reserva de escritura antes de leer; no tiene locks por fila. Después pasó aislada,
+  el conjunto operacional y la suite completa. No cambia la configuración productiva.
+- Pint --test sobre todos los PHP modificados/nuevos: pasa tras aplicar Pint al fixture.
+- php -l sobre los 14 archivos PHP/Blade modificados/nuevos: sin errores.
+- npm run build: pasa, Vite 8.3.4; assets sin diferencias respecto a HEAD.
+  Warnings existentes: login-bg.jpg resuelto en runtime y module.register de Node deprecado.
+- composer validate --strict: pasa.
+- composer check-platform-reqs --lock --no-dev: pasa con PHP local 8.4.21.
+- composer audit --locked --no-dev: sin advisories; npm audit: 0 vulnerabilidades.
+- git diff --check: pasa.
+- schedule:list --timezone=Europe/Madrid --no-ansi: 22 tareas; reseñas 20 2 * * *.
+  Regresión automatizada contrasta todos los horarios, argumentos y mutex previos.
+- Sin diferencias en composer.json/lock, package.json/lock, routes/console.php,
+  config/queue.php, ExecuteOperationalTask.php ni public/build.
+- No se ha modificado JavaScript específico. No se afirma resultado de CI remota.
+
+### Despliegue posterior autorizado, rollback y riesgos pendientes
+
+Aplicar la migración aditiva antes de reactivar el código y worker nuevos, con
+plan de mantenimiento y migrate:status previo. Conservar conexión/cola operations,
+timeout y retry_after. Reiniciar de forma controlada los workers tras el cambio;
+no lanzar sincronizaciones para comprobar instalación. Para rollback del código,
+conservar columnas y tabla de auditoría; no ejecutar migration down ni borrar runs.
+
+El operador confirma PHP 8.4.21 en web, CLI y worker, compatible con el mínimo
+8.4.1 del composer.lock definitivo. El repositorio conserva ^8.3 en composer.json;
+no basta esa restricción para acreditar compatibilidad del lock. Comprobar en
+cada entorno real sus extensiones y composer check-platform-reqs --lock --no-dev.
+No se han inspeccionado los procesos productivos ni certificado MariaDB/InnoDB,
+cron, señales/timeouts, supervisor o retención a escala.
+
+Verificar cron cada minuto, schedule:list en Madrid, servicio del worker dedicado
+y evidencia real de queued/started/completed en el panel/BD. Supervisión externa
+independiente debe ejecutar check-health y clasificar 0/1/5 para detectar incluso
+cron totalmente detenido. Ninguna lista de horarios acredita ejecución real.
+Laravel genera ScheduledTaskFailed/log genérico por cualquier retorno no cero,
+pero continúa otras tareas; no hay listeners propios que creen alertas recursivas.
+Los observadores externos deben clasificar 3/4 como diferimiento y 5 como incidencias,
+sin presentarlos como éxito ni como fallo técnico del monitor.
+
+Nunca liberar por timeout solamente: verificar terminación del proceso y sus hijos
+en todos los hosts. UID OS no identifica a una persona; atribución humana requiere
+auditoría externa autenticada/ticket. Sin confirmación fiable conservar la reserva.
+Sin cambios incompatibles de sincronización; operations:release sí exige ahora
+--reason además de --confirm-stopped. Adaptar procedimientos existentes.

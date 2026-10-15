@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Operations\OperationalTaskExitCode;
 use App\Services\Operations\OperationalTaskHealthService;
 use Illuminate\Console\Command;
+use Throwable;
 
 class CheckOperationalTaskHealthCommand extends Command
 {
@@ -13,8 +15,16 @@ class CheckOperationalTaskHealthCommand extends Command
 
     public function handle(OperationalTaskHealthService $health): int
     {
-        $this->info('Tareas sin evidencia suficiente: '.$health->check());
+        try {
+            $unhealthy = $health->check();
+            $this->info('Tareas con incidencias exigibles: '.$unhealthy);
 
-        return self::SUCCESS;
+            return ($unhealthy > 0 ? OperationalTaskExitCode::Unhealthy : OperationalTaskExitCode::Success)->value;
+        } catch (Throwable) {
+            // Do not recurse into the same potentially unavailable alert/DB stack.
+            $this->error('No se pudo completar la comprobación operacional.');
+
+            return OperationalTaskExitCode::TechnicalFailure->value;
+        }
     }
 }

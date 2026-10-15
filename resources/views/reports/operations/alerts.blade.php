@@ -34,8 +34,8 @@
                     @foreach ($processes as $key => $process)
                         @php
                             $task = $process['task'];
-                            $labels = ['never' => 'Nunca ejecutado', 'queued' => 'En cola', 'running' => 'Ejecutándose', 'success' => 'Correcto', 'failed' => 'Fallido', 'stale' => 'Retrasado', 'unknown' => 'Desconocido / retrasado', 'skipped' => 'Omitido / solapamiento evitado'];
-                            $visual = match ($process['status']) { 'success' => 'ok', 'failed' => 'critical', 'stale' => 'deviation', 'queued', 'running' => 'observation', default => 'not-evaluable' };
+                            $labels = ['never' => 'Nunca ejecutado', 'queued' => 'En cola', 'running' => 'Ejecutándose', 'success' => 'Correcto', 'failed' => 'Fallido', 'stale' => 'Retrasado', 'unhealthy' => 'Incidencias de salud', 'unknown' => 'Desconocido / retrasado', 'skipped' => 'Omitido / solapamiento evitado'];
+                            $visual = match ($process['status']) { 'success' => 'ok', 'failed' => 'critical', 'stale', 'unhealthy' => 'deviation', 'queued', 'running' => 'observation', default => 'not-evaluable' };
                             $date = fn ($value) => $value?->setTimezone('Europe/Madrid')->format('d/m H:i:s T') ?? 'Sin evidencia';
                         @endphp
                         <tr>
