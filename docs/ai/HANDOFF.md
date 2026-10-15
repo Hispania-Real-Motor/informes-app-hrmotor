@@ -5097,3 +5097,79 @@ en todos los hosts. UID OS no identifica a una persona; atribución humana requi
 auditoría externa autenticada/ticket. Sin confirmación fiable conservar la reserva.
 Sin cambios incompatibles de sincronización; operations:release sí exige ahora
 --reason además de --confirm-stopped. Adaptar procedimientos existentes.
+
+## 2026-10-15 — PR #78, aislamiento del HTTP concurrente y diagnóstico separado de CI
+
+Base verificada antes de editar: d5b37b8b27ff56d56f04961553cd0b768a58c4ea;
+rama feat/ops-1-operational-control, worktree inicialmente limpio. Sin rama nueva.
+
+### Cambios mínimos y causa
+
+Archivos: tests/Feature/OperationalTasksTest.php y este HANDOFF.
+Cada proceso recibe rutas exclusivas APP_PACKAGES_CACHE, APP_SERVICES_CACHE,
+APP_CONFIG_CACHE y APP_ROUTES_CACHE con prefijo process-0/process-1 dentro del
+mismo directorio UUID de prueba. Laravel reconstruye manifiestos mediante
+Filesystem::replace/rename antes de llegar a la barrera: compartir el destino
+expone la carrera de Windows Acceso denegado. El aislamiento evita esa escritura
+compartida sin reintentar rename, añadir sleeps ni reconstruir cachés globales.
+Las rutas relativas son resueltas por Laravel contra base_path en Windows/Linux.
+
+Ambos procesos siguen arrancando mediante Symfony Process, comparten SQLite y
+barrera, y envían POST real al controlador con un administrador activo sintético.
+Se preservan respuestas 302/429, un run queued y un Job operations. El fixture
+conserva transaction_mode IMMEDIATE y busy_timeout; no se toca la exclusión
+productiva. El finally detiene los procesos y purga la conexión antes de eliminar
+los archivos planos, incluidos los manifiestos privados y temporales de rename.
+Tras las diez repeticiones no quedan directorios ops-concurrency temporales.
+
+### CI: causa distinta, corrección separada en el test de rate limiting
+
+Se consultaron el PR y los jobs/logs del HEAD d5b37b8:
+https://github.com/Hispania-Real-Motor/informes-app-hrmotor/actions/runs/38726591742/job/116393856177
+Run CI 172: falla PHP tests en admin_rate_limit_is_per_actor_and_never_replaces_non_admin_403,
+esperaba 429 y recibió 302. No es el fallo rename de Windows. El test concurrente
+no figura como fallo. Pint/build/whitespace quedaron skipped después del fallo PHP;
+no se presentan como verdes. El resumen remoto muestra 1 failed, 1284 warnings,
+102 passed y 12472 aserciones; esas warnings no equivalen a fallos de aserciones.
+
+El test elegía first admin sin asegurar que fuera el actor de la sesión que crea
+Tests/TestCase. Se reprodujo localmente con dos administradores sintéticos:
+el contador de un actor y la petición de otro producen el mismo 302 inesperado.
+Ahora el test crea y autentica explícitamente al administrador cuyo contador llena.
+No cambia autorización ni rate limiting productivo. La reproducción controlada
+falló como se esperaba (1 prueba/1 aserción); la corrección aislada pasa con 13
+aserciones, incluidos los doce 403 de Dirección. Ambas correcciones son hunks
+independientes del mismo archivo de tests.
+
+### Evidencia local completada
+
+- Concurrente aislado: 1/1, 6 aserciones, 38126 ms, exit 0.
+- Diez ejecuciones consecutivas adicionales, sin cambiar código entre ellas:
+  10/10, 60 aserciones, 124962 ms acumulados, todas exit 0.
+- Clase OperationalTasksTest completa: 41/41, 623 aserciones, 28896 ms, exit 0.
+- Pint --test del archivo y de todos los PHP cambiados por el PR frente a
+  origin/main: pasa. php -l del archivo: sin errores. git diff --check: pasa.
+- composer validate --no-check-publish --strict: pasa; composer audit --locked
+  --no-dev: sin advisories. No cambian dependencias.
+- npm run build: pasa, assets sin diff. Warnings existentes de login-bg.jpg
+  resuelto en runtime y module.register de Node deprecado; no se modifica frontend.
+
+### Seguridad, rendimiento y acciones pendientes
+
+No cambian producción, scheduler, catálogo, permisos, argumentos, reservas,
+Queue, fixture HTTP ni phpunit.xml. Sin migraciones, ajustes de configuración,
+.env, secretos ni limpieza de caché global. No se ejecutan sincronizaciones,
+workers, liberaciones reales, despliegues o integraciones externas.
+
+Se mantiene concurrencia real y tiempos de espera existentes. No cambia arquitectura:
+PROJECT_CONTEXT y DECISIONS no requieren actualización por este arreglo de tests.
+El commit local correctivo está autorizado; no se hace push por la restricción
+previa de requerir autorización expresa. Los checks remotos del nuevo commit
+requieren publicación y una nueva ejecución de CI Linux antes de certificar el PR.
+No se afirma certificación productiva ni CI verde a partir de resultados locales.
+
+Verificación final de esta corrección: php artisan test completa pasa con
+1387/1387 pruebas, 12484 aserciones, 342171 ms y exit 0. Se ejecutó después de las
+diez repeticiones y la clase completa, sin cambios de código entre ellas. Solo
+resta la ejecución remota sobre el commit publicado; el run 172 sigue acreditando
+el fallo del HEAD anterior, no el resultado de esta corrección.

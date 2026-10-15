@@ -378,7 +378,8 @@ class OperationalTasksTest extends TestCase
 
     public function test_admin_rate_limit_is_per_actor_and_never_replaces_non_admin_403(): void
     {
-        $admin = ReportUser::query()->where('role', 'admin')->firstOrFail();
+        $admin = $this->actor();
+        $this->asReportUser($admin);
         RateLimiter::hit('operations:manual:'.$admin->id, 60);
         for ($i = 0; $i < 10; $i++) {
             RateLimiter::hit('operations:manual:'.$admin->id, 60);
@@ -471,16 +472,18 @@ class OperationalTasksTest extends TestCase
                 'password' => 'synthetic-password', 'role' => 'admin', 'is_active' => true,
             ]);
             for ($i = 0; $i < 2; $i++) {
+                // Bootstrap may atomically rebuild manifests before reaching the shared barrier.
+                $processCachePrefix = $relativeDirectory.'/process-'.$i;
                 $process = new Process([
                     PHP_BINARY, base_path('tests/Fixtures/operational_http_request.php'),
                     $database, $directory.'/ready-'.$i, $directory.'/start',
                 ], base_path(), [
                     'APP_ENV' => 'testing', 'APP_DEBUG' => 'false',
                     'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => $database, 'DB_URL' => '',
-                    'APP_CONFIG_CACHE' => $relativeDirectory.'/absent-config.php',
-                    'APP_SERVICES_CACHE' => $relativeDirectory.'/services.php',
-                    'APP_PACKAGES_CACHE' => $relativeDirectory.'/packages.php',
-                    'APP_ROUTES_CACHE' => $relativeDirectory.'/absent-routes.php',
+                    'APP_CONFIG_CACHE' => $processCachePrefix.'-config.php',
+                    'APP_SERVICES_CACHE' => $processCachePrefix.'-services.php',
+                    'APP_PACKAGES_CACHE' => $processCachePrefix.'-packages.php',
+                    'APP_ROUTES_CACHE' => $processCachePrefix.'-routes.php',
                     'MAIL_MAILER' => 'array', 'SESSION_DRIVER' => 'array', 'CACHE_STORE' => 'array',
                 ]);
                 $process->setTimeout(30);
