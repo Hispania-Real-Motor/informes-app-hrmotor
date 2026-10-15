@@ -1,6 +1,6 @@
 # Roadmap controlado de implementación
 
-Actualizado: 2026-10-09.
+Actualizado: 2026-10-15.
 
 ## Trabajo transversal autorizado
 
@@ -146,7 +146,8 @@ Actualizado: 2026-10-09.
   sync Salesforce Lead de Campañas queda aislado y fuera del
   scheduler. La certificación operacional y cualquier backfill continúan siendo
   acciones de despliegue separadas.
-- `ROT-5 — SEO Salesforce → Interests` — **en_revision** en
+- `ROT-5 — SEO Salesforce → Interests` — **cerrada e integrada** por PR #75,
+  merge 137995384260c5e29986556fca221b45a60815f4 (2026-10-13), desde
   `feat/rot-5-seo-to-interests`, nacida de `main`
   `0d0bcb6577a687023de3e07e8447386eb694f58e`. La serie Salesforce SEO se
   proyecta exclusivamente desde el F2 local estable: Interests activos con
@@ -267,8 +268,9 @@ persistir, en [`DECISIONS.md`](DECISIONS.md).
 - EXE-1 está cerrado tras el PR #65, EXE-2 tras el PR #66 y EXE-3 tras el PR
   #67, fusionado en `1813c9bd43a1d46ab8c086fd517aafdb96364217`.
   SF-INTEREST-FOUNDATION-5 también está cerrado tras el PR #69, ROT-3 tras el
-  PR #73 y ROT-4 tras el PR #74. El lote funcional activo es `ROT-5` en
-  `feat/rot-5-seo-to-interests`, actualmente en revisión.
+  PR #73, ROT-4 tras el PR #74 y ROT-5 tras el PR #75.
+  OPS-1 se implementa en feat/ops-1-operational-control; pendiente de revisión,
+  merge, despliegue y certificación real de cron/Queue.
 - Las fichas con rama o SHA `por asignar` no autorizan iniciar trabajo: deben
   completarse al activar formalmente la tarea.
 
@@ -427,8 +429,10 @@ trabajo pendiente, no como afirmación de funcionalidad ya implementada.
 - SISTRIX y GEO/IA quedan fuera y ocultos en V1.
 - El correo ejecutivo general se limita durante el piloto a
   `carlos.torres@hrmotor.es` y se programa a las 08:00 `Europe/Madrid`.
-- El correo SEO existente continúa independiente mientras SEO no forme parte del
-  correo ejecutivo general.
+- Decisión 2026-10-15: EXE-4 sustituirá el correo SEO por el Resumen Ejecutivo
+  global con alertas y medidas deterministas/auditables, sin inferencia causal.
+  No coexistirán silenciosamente dos correos diarios equivalentes a las 08:00.
+  El correo actual sigue operativo hasta la sustitución en ese lote.
 
 ### Umbrales aprobados
 
@@ -549,12 +553,15 @@ Reglas de evaluabilidad:
 - **Rama prevista o activa:** por asignar; ninguna rama activa.
 - **SHA base al activar:** por registrar.
 - **Bloqueos/decisiones de negocio:** único destinatario aprobado
-  `carlos.torres@hrmotor.es`; el correo SEO existente no se sustituye.
+  el destinatario único aprobado del piloto; el contrato histórico “el correo SEO no se sustituye” queda supersedido
+  el 2026-10-15: se sustituirá por el Resumen Ejecutivo global, con alertas
+  y medidas recomendadas deterministas/auditables y sin inferencia causal.
 - **Punto exacto de reanudación:** diseñar payload congelado, ledger idempotente
   y autorización de configuración reutilizando patrones aprobados donde encajen.
 - **Criterios de aceptación:** envío a las 08:00 `Europe/Madrid`; destinatario
   único del piloto; contenido idéntico al estado ejecutivo congelado; reintentos
-  sin duplicados; errores auditables sin secretos ni PII; correo SEO sin cambios.
+  sin duplicados; errores auditables sin secretos ni PII; sustitución coordinada
+  del correo SEO, sin dos envíos diarios equivalentes a las 08:00.
 
 ### EXE-5 — Piloto y calibración
 
@@ -652,12 +659,12 @@ aproximen a ejecución, sin adelantar contratos ni inventar arquitectura.
 - **Predecesor planificado:** EXE-5. **Dependencias técnicas reales:** alcance de
   simplificación aprobado y contratos SEO actuales. **Rama:** por asignar. **SHA
   base:** por registrar.
-- **Bloqueos/decisiones:** el correo SEO sigue independiente hasta decisión
-  expresa de integración.
+- **Bloqueos/decisiones:** sustitución aprobada el 2026-10-15;
+  EXE-4 coordinará el reemplazo del correo SEO por el ejecutivo global.
 - **Punto de reanudación:** inventariar información esencial, secundaria y
   técnica del dashboard actual.
 - **Aceptación:** simplificación aprobada sin perder trazabilidad, cobertura,
-  contratos o correo existente.
+  contratos; el correo se sustituye en EXE-4 según decisión 2026-10-15.
 
 ### ANALYTICS-EXT — Ampliación del motor analítico
 
@@ -708,3 +715,37 @@ aproximen a ejecución, sin adelantar contratos ni inventar arquitectura.
 - `null`, ausencia, cobertura parcial e incidencia no se convierten en cero.
 - El impacto económico solo se usa cuando un dato fiable lo acredita; nunca se
   estima ni extrapola para priorizar una alerta.
+
+## OPS-1 — Control operacional auditable (2026-10-15)
+
+- Estado: implementado en worktree local; pendiente revisión, merge, despliegue y certificación productiva. Evidencia de pruebas en HANDOFF, sin atribuir CI no ejecutada.
+- Base: e7073d3affa43b7d6a5295292667993b7a164493; rama: feat/ops-1-operational-control.
+- Catálogo único de 22 tareas, ledger común, reserva persistente por tarea, Queue asíncrona dedicada y control admin en servidor. Reseñas: 02:20 Madrid, dos meses móviles.
+- Alertas migra al Design System en este lote; no se migran otras páginas. Contratos: OPERATIONS.md y runbook de producción.
+- EXE-4 y COMM-CLOSE-SCHEDULE siguen pendientes; el día 15 prepara candidatos del mes anterior y la aprobación definitiva sigue siendo humana.
+
+## Estado UX reconciliado (2026-10-15)
+
+| Superficie | Estado real |
+|---|---|
+| Intereses / UX-LEADS | Pendiente; lote propio |
+| Llamadas / UX-CALLS | Pendiente; lote propio |
+| Campañas / UX-CAMPAIGNS | Pendiente; lote propio |
+| Comisiones / UX-COMMISSIONS | Deuda legacy pendiente; lote propio |
+| Stock / UX-STOCK | Deuda legacy pendiente; lote propio |
+| Alertas / UX-OPERATIONS | Deuda abordada en OPS-1; implementada localmente, pendiente certificación |
+| Reservas/Ventas | Ya migrado |
+| SEO/Analytics y Summary | Consumidores del Design System; solo auditoría de residuos |
+
+### OPS-1 — Correcciones de revisión 41c1e7a (2026-10-15)
+
+Implementadas localmente; pendientes revisión, aprobación y certificación
+productiva. Base 41c1e7abf8b60d5e95f4af31287d5820a5b5f21a, misma rama.
+Retornos diferenciados, estado unhealthy, primera ocurrencia exigible persistente
+y auditoría transaccional de liberaciones CLI con motivo cerrado y principal OS
+cuando es verificable. Catálogo de 22 tareas, 18 acciones manuales, horarios
+(incluidas reseñas 02:20 Madrid) y cola independiente intactos. Una migración
+aditiva; sin nuevas sincronizaciones ni cambios de informes. No se actualizan
+dependencias. Lock compatible localmente con PHP 8.4.21; producción requiere
+>=8.4.1. Operador confirma 8.4.21 en web/CLI/worker; extensiones y ejecución
+real pendientes de certificación. Resultados reales en HANDOFF.

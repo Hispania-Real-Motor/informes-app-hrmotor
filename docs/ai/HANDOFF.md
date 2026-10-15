@@ -4797,3 +4797,379 @@ vez por construcción del dataset, en lotes de 1.000 y sin consultas por fila.
   `git diff --check`: correctos.
 - No se ejecutaron sincronizaciones ni llamadas Salesforce, migraciones,
   dependencias, build frontend, escrituras productivas, push, merge o deploy.
+
+## OPS-1 — Control operacional auditable (2026-10-15)
+
+### Base y alcance real
+
+- Rama utilizada: feat/ops-1-operational-control, ya existente al iniciar.
+- Antes de modificar: git status limpio; HEAD y origin/main, tras git fetch origin,
+  ambos e7073d3affa43b7d6a5295292667993b7a164493. Ese es el SHA base real.
+- No se ha creado commit: el SHA final de HEAD sigue siendo el de base; los
+  cambios se entregan en el worktree. Sin push, merge, PR ni despliegue.
+- ROT-5 está integrado mediante PR #75, merge
+  137995384260c5e29986556fca221b45a60815f4, verificado en el historial.
+- Se implementaron catálogo canónico, ledger, reserva persistente compartida,
+  Job asíncrono, monitor de cadencias, panel Design System e historial paginado.
+- No se implementaron cierre mensual automático, aprobación de cierres ni correo
+  ejecutivo nuevo. No se migraron otros dashboards ni se alteraron fórmulas,
+  universos, métricas, atribución, thresholds o compatibilidad legacy/shadow.
+
+### Arquitectura, base de datos y seguridad
+
+- Migración aditiva:
+  database/migrations/2026_10_15_120000_create_operational_task_runs.php.
+  Crea operational_task_states y operational_task_runs e índice adicional
+  ops_alerts_task_state_idx sobre alertas. Solo aplicada por tests sintéticos;
+  no se ejecutó contra producción ni la BD funcional local.
+- Estado por tarea bloqueado con lockForUpdate dentro de transacciones:
+  queued reserva desde el POST; scheduler y manual comparten exclusión.
+  withoutOverlapping se conserva con los valores anteriores. Los locks internos
+  de Stock, pipeline Interest/F5 y snapshot directo mantienen sus claves.
+- 22 tareas; 18 permitidas manualmente con argumentos fijos. Catálogo exacto,
+  políticas y allowlist completa en OPERATIONS.md. Solo scheduler: retención,
+  Stock, correo SEO y monitor interno.
+- POST con CSRF y confirmación, autorización admin en servidor, rechazo de
+  campos adicionales, rate limit por actor de 10/min y cooldown persistente
+  por tarea de 60 s. Dirección y los demás roles devuelven 403 con CSRF válido.
+- Queue connection/queue operations usa database, un intento, timeout 14400 s y
+  retry_after 14700 s. No usa la conexión default sync. Actor activo/admin se
+  revalida al consumir; una solicitud manual >15 min no ejecuta.
+- Un acuse ambiguo de Queue no libera un run ya iniciado. Callbacks de fallo,
+  duplicados y liberación se coordinan con la misma reserva. Running/unknown no
+  se liberan por TTL; CLI exige confirmación humana de proceso detenido.
+- UUID por run, intento, tiempos UTC, exit code, duración, argumentos efectivos
+  y actor numérico histórico; scheduler tiene actor null. No se creó Sistema.
+- No se retienen stdout, excepciones externas, cuerpos HTTP ni credenciales
+  en el nuevo ledger. Se reconocen omisiones SEO/Ads y errores parciales Ads sin
+  publicar heartbeat de éxito. Warnings/logs Ads detectados se convierten en
+  mensajes constantes sin cuentas ni excepciones crudas.
+- Stock conserva firma y opciones, pero su omisión por lock ahora devuelve 2:
+  el wrapper la audita como skipped. Revisar cualquier consumidor CLI que
+  interpretara el antiguo 0 como ejecución real.
+- Comprobación cada cinco minutos, basada en cron Madrid y margen explícito,
+  sin ejecutar sincronizaciones. Un éxito antiguo que acaba tarde no encubre
+  ocurrencias perdidas. La ausencia de evidencia nunca se convierte en Correcto.
+- Retención transversal de terminales >90 días, preservando activos/unknown,
+  evidencia apuntada e incidencias abiertas. No se borró información real.
+
+### Reseñas y rendimiento
+
+- Nueva ventana: 02:20 Europe/Madrid, salesforce:sync-commercial-reviews
+  --months=2, withoutOverlapping(120). Entre Ads y Stock; sin fresh.
+  Los 20 horarios, argumentos y mutex previos se contrastan con baseline
+  independiente capturado del SHA base.
+- El dataset commercial_reviews y su readiness no cambian: completed,
+  completed_at, cobertura mensual y max_age 48 h por defecto.
+- Panel sin consultas a Salesforce: estados mediante punteros por PK,
+  máximo 22 tareas y 25 runs por página, alertas paginadas, sin N+1.
+  Refresh manual explícito; no polling ni comandos largos dentro de HTTP.
+- Fechas UTC en persistencia y Europe/Madrid en presentación/cadencia.
+
+### Dependencias y documentación
+
+- Audit inicial: un advisory de symfony/http-foundation y seis advisories npm
+  de desarrollo. Corrección mínima del paquete PHP a 8.1.9; requisito nuevo
+  PHP >=8.4.1 (CLI local 8.4.21). Lockfile npm actualizado dentro de rangos
+  existentes; Vite 8.3.4 y bundles reconstruidos. Manifiestos de dependencias
+  sin nuevas dependencias directas.
+- Se reconciliaron ROADMAP, PROJECT_CONTEXT y DECISIONS. EXE-4 sustituirá SEO
+  por correo ejecutivo global con alertas y medidas deterministas/auditables,
+  sin causalidad inferida ni dos correos equivalentes a las 08:00.
+  La decisión histórica contraria queda supersedida.
+- COMM-CLOSE-SCHEDULE mantiene día 15, mes anterior, snapshots candidatos y
+  aprobación humana. Continúa pendiente.
+- Deuda UX explícita de Intereses, Llamadas, Campañas, Comisiones y Stock.
+  Alertas se migra aquí; Reservas/Ventas ya migrado; Summary/SEO consumidores
+  del Design System, pendientes solo de auditoría de residuos.
+- Runbook actualizado con deploy, rollback, Queue/cron, diagnóstico, SQL
+  sin payloads y recuperación de reservas.
+
+### Verificaciones realmente ejecutadas
+
+- php artisan test, suite final: 1356 pruebas, 12081 aserciones, 1356 correctas, 367042 ms. Resultado local; CI remota no ejecutada.
+- Focal operacional anterior a la última prueba concurrente: 46 pruebas y 686 aserciones, correcta. Prueba HTTP concurrente aislada: 1 prueba y 6 aserciones, correcta. La suite final incluye ambas.
+- Pint --test sobre todos los PHP modificados/nuevos; php -l sobre todos ellos. Resultados correctos.
+- npm ci --ignore-scripts; npm run build: correcto con Vite 8.3.4. node --check sobre los 8 bundles JS: correcto.
+- composer validate --strict: correcto. composer audit --locked --no-dev: cero advisories. npm audit y npm audit --omit=dev: cero vulnerabilidades.
+- git diff --check: correcto. schedule:list --timezone=Europe/Madrid verificado por tests; no se ejecutó schedule:run contra datos reales.
+- La prueba concurrente falló inicialmente por rutas absolutas Windows de caché del fixture; se corrigió usando rutas relativas temporales. Dos kernels HTTP independientes producen 302/429 y exactamente un run/Job queued.
+- Build conserva avisos no bloqueantes de imagen login-bg resuelta en runtime y deprecación Node module.register. No se sustituyó esa imagen.
+
+### Despliegue, rollback, límites y pendientes
+
+- Requiere revisar/aplicar la migración aditiva, publicar bundles/configuración y provisionar worker dedicado: php artisan queue:work operations --queue=operations --timeout=14400 --tries=1 --sleep=3. No modificar .env automáticamente.
+- Comprobar PHP >=8.4.1 y señales/timeouts del host. El estado ACTUAL de cron/Queue productivos no se infiere del repositorio.
+- Checks: migrate:status, schedule:list Madrid, queue:failed, supervisor, cron cada minuto, SQL de estados/runs/jobs y dos intervalos de heartbeat operations-health. Certificar Queue con una acción ordinaria autorizada por admin en despliegue; Codex no la ejecutó.
+- Rollback: detener operations y pausar cron, confirmar procesos terminados, volver a código compatible conservando tablas/evidencia. No ejecutar down ni rollback genérico; no consumir jobs nuevos con código antiguo. Mantener worker default.
+- Pendientes: certificación en MySQL/MariaDB y bajo carga, cron/supervisor reales, validación visual móvil/desktop/teclado en QA y supervisión externa del heartbeat del propio monitor.
+- El detector de omisiones depende de marcadores CLI existentes cubiertos por tests. Mantener ese contrato si cambia el vocabulario. El hardening no es una auditoría exhaustiva de todos los logs legacy; Stock conserva su manejo previo fuera del ledger.
+- No se ejecutaron sincronizaciones reales, backfills, cierres, envíos de email, migraciones productivas ni cambios de .env. No se amplió acceso a otros módulos.
+- Rama final: feat/ops-1-operational-control; HEAD final: e7073d3affa43b7d6a5295292667993b7a164493; cambios sin commit.
+- Commit recomendado: feat(operations): add audited admin task control and scheduler health.
+
+### Inventario exacto de archivos de la entrega
+
+~~~text
+A	app/Console/Commands/CheckOperationalTaskHealthCommand.php
+M	app/Console/Commands/PruneTransversalDataCommand.php
+A	app/Console/Commands/ReleaseOperationalTaskCommand.php
+A	app/Console/Commands/RunOperationalTaskCommand.php
+M	app/Console/Commands/SyncStockAnalysisCommand.php
+M	app/Http/Controllers/Reports/Operations/OperationalAlertController.php
+A	app/Jobs/Operations/ExecuteOperationalTask.php
+A	app/Models/OperationalTaskRun.php
+M	app/Services/Campaigns/GoogleCampaignSyncService.php
+M	app/Services/Campaigns/MetaCampaignSyncService.php
+M	app/Services/Operations/OperationalAlertService.php
+A	app/Services/Operations/OperationalTaskCatalog.php
+A	app/Services/Operations/OperationalTaskHealthService.php
+A	app/Services/Operations/OperationalTaskOutput.php
+A	app/Services/Operations/OperationalTaskService.php
+M	composer.lock
+M	config/queue.php
+A	database/migrations/2026_10_15_120000_create_operational_task_runs.php
+M	docs/ai/DECISIONS.md
+M	docs/ai/HANDOFF.md
+A	docs/ai/OPERATIONS.md
+M	docs/ai/PROJECT_CONTEXT.md
+M	docs/ai/ROADMAP.md
+M	docs/ai/SEO_ANALYTICS.md
+M	docs/informe-comisiones.md
+M	docs/operaciones-produccion.md
+M	package-lock.json
+D	public/build/assets/app-34mOoJaZ.js
+D	public/build/assets/app-BqB0BBS7.css
+A	public/build/assets/app-BvRk9kiK.js
+A	public/build/assets/app-DfvlhaOd.css
+A	public/build/assets/app-shell-C60se5JH.js
+D	public/build/assets/app-shell-DKbHEObD.js
+A	public/build/assets/calls-dashboard-CNL44Zwq.js
+D	public/build/assets/calls-dashboard-pf9BB5IL.js
+A	public/build/assets/campaigns-dashboard-C0wdkSRf.js
+D	public/build/assets/campaigns-dashboard-uwC_KUe1.js
+A	public/build/assets/commercial-commissions-dashboard-DIO8X5Lc.js
+D	public/build/assets/commercial-commissions-dashboard-DjAaqBZU.js
+D	public/build/assets/leads-dashboard-B0vS8zzF.js
+A	public/build/assets/leads-dashboard-D6fLg-lw.js
+D	public/build/assets/reservations-sales-dashboard-C7IIG8FY.js
+A	public/build/assets/reservations-sales-dashboard-CtEu6ItD.js
+A	public/build/assets/stock-dashboard-a7G92PVg.js
+D	public/build/assets/stock-dashboard-BrzfZPFN.js
+M	public/build/manifest.json
+M	resources/views/reports/operations/alerts.blade.php
+M	routes/console.php
+M	routes/web.php
+A	tests/Concerns/AssertsOperationalSchedule.php
+M	tests/Feature/CampaignCommandsTest.php
+A	tests/Feature/OperationalTasksTest.php
+M	tests/Feature/ReservationsSalesCommercialPerformanceTest.php
+M	tests/Feature/SalesforceCallsScheduleTest.php
+M	tests/Feature/SeoAnalyticalEvaluationsTest.php
+M	tests/Feature/SeoAnalyticalSnapshotsTest.php
+M	tests/Feature/SeoExecutiveDailyEmailTest.php
+M	tests/Feature/SeoSyncCommandsTest.php
+M	tests/Feature/SeoTechnicalHealthSyncTest.php
+A	tests/Fixtures/operational_http_request.php
+A	tests/Fixtures/operational_schedule_baseline.php
+~~~
+
+## 2026-10-15 — OPS-1, correcciones tras revisión 41c1e7a
+
+### Estado y base verificada
+
+Trabajo local revisable, sin commit ni push. Rama existente
+feat/ops-1-operational-control; HEAD inicial y final:
+41c1e7abf8b60d5e95f4af31287d5820a5b5f21a.
+Se comprobó worktree limpio antes de modificar y se ejecutó git fetch origin;
+origin/main: e7073d3affa43b7d6a5295292667993b7a164493.
+No se crearon ramas, PR ni despliegues. No se ejecutaron integraciones reales,
+backfills, correos, liberaciones reales ni migraciones productivas.
+
+### Cambios y decisiones
+
+- Matriz común de retorno: 0 éxito acreditado; 1 fallo técnico; 2 entrada
+  inválida; 3 omisión iniciada; 4 bloqueo/estado incierto; 5 evaluación de salud
+  con incidencias. check-health usa 0/1/5; release 0 significa liberación auditada,
+  nunca éxito de sincronización. La salida nativa del comando se conserva en el run.
+- El monitor usa unhealthy y last_completed_id para acreditar evaluación técnica
+  sin atribuir éxito global ni generar fallos recursivos. Un monitor técnicamente
+  recuperado puede resolver su fallo previo aunque aún encuentre tareas enfermas.
+- Inicio de observación persistente: nuevas tareas esperan su primera ocurrencia
+  futura más margen; estados previos conservan created_at. Sin runs fabricados,
+  sin resolver alertas por el margen inicial ni ocultarlas con un reintento queued.
+- Las recuperaciones reconcilian solo la tarea terminada, evitando multiplicar
+  incidencias de las otras tareas. El chequeo completo conserva cadencia cinco min.
+- Release exige confirmación externa, motivo cerrado y reserva candidata huérfana;
+  la auditoría y transición failed son atómicas. Registra momento/correlación y UID
+  efectivo cuando existe posix_geteuid; en Windows unverified_cli/null. No identifica
+  una persona a partir del entorno. Referencia opcional OPS-NNN, sin texto libre.
+- Catálogo único de 22 tareas y 18 manuales, firmas/argumentos ordinarios,
+  horarios (reseñas 02:20 Europe/Madrid), locks y cola operations intactos.
+
+### Archivos modificados y finalidad
+
+- app/Console/Commands/CheckOperationalTaskHealthCommand.php: 0/1/5 sanitizados.
+- app/Console/Commands/RunOperationalTaskCommand.php: retorno según evidencia real.
+- app/Console/Commands/ReleaseOperationalTaskCommand.php: validación y liberación auditada.
+- app/Console/Commands/PruneTransversalDataCommand.php: proteger último heartbeat y retener unhealthy.
+- app/Models/OperationalTaskRun.php: cast entero de exit_code.
+- app/Services/Operations/OperationalTaskCatalog.php: constante de clave del monitor, sin alterar contratos.
+- app/Services/Operations/OperationalTaskExitCode.php (nuevo): semántica común de resultados.
+- app/Services/Operations/OperationalTaskHealthService.php: bootstrap, heartbeat, incidencias y recuperación.
+- app/Services/Operations/OperationalTaskService.php: transiciones y auditoría transaccional de liberaciones.
+- database/migrations/2026_10_15_130000_extend_operational_observation_and_release_audit.php (nueva): esquema aditivo.
+- resources/views/reports/operations/alerts.blade.php: estado textual/Design System unhealthy.
+- tests/Feature/OperationalTaskReviewTest.php (nuevo): regresiones de revisión.
+- tests/Feature/OperationalTasksTest.php: fixtures acordes a margen inicial y motivo obligatorio.
+- tests/Fixtures/operational_http_request.php: transacción IMMEDIATE solo en fixture SQLite concurrente.
+- docs/ai/OPERATIONS.md: matriz, arranque, alertas, auditoría y límites.
+- docs/operaciones-produccion.md: despliegue, supervisión, runtime y rollback.
+- docs/ai/PROJECT_CONTEXT.md: arquitectura realmente implementada.
+- docs/ai/DECISIONS.md: decisiones operacionales.
+- docs/ai/ROADMAP.md: estado local pendiente de aprobación/certificación.
+- docs/ai/HANDOFF.md: evidencia de esta entrega.
+
+### Base de datos, seguridad y rendimiento
+
+Una migración aditiva: monitoring_started_at y last_completed_id en estados;
+siembra del catálogo sin runs y migración de punteros existentes; tabla separada
+operational_task_releases con índices run_id y task_key/released_at. No se borra
+historial. Retención conserva evidencia apuntada, reservas e incidencias abiertas;
+los eventos de liberación no se podan automáticamente.
+
+Se mantiene admin activo + allowlist + CSRF + Queue; no hay endpoint de release ni
+argumentos libres. Mensajes constantes, sin stdout, excepciones crudas o identidad
+humana inventada. No se modifican .env, credenciales ni dependencias.
+Snapshot usa dos consultas acotadas por catálogo/punteros; check añade consulta
+por claves/tipos operacionales abiertos usando índice task/state. Sin escanear
+report_sync_runs o historial completo ni llamar a Salesforce desde el panel.
+
+### Verificaciones realmente ejecutadas
+
+- php artisan test: 1387/1387 pruebas, 12484 aserciones, 312493 ms, exit 0.
+- php artisan test --filter=Operational: 78/78, 1095 aserciones, exit 0.
+- Prueba HTTP concurrente aislada: 1/1, 6 aserciones, exit 0.
+- Una ejecución completa anterior falló únicamente en el fixture HTTP concurrente
+  (302/500 frente a 302/429). Se ajustó SQLite a transacción IMMEDIATE para adquirir
+  reserva de escritura antes de leer; no tiene locks por fila. Después pasó aislada,
+  el conjunto operacional y la suite completa. No cambia la configuración productiva.
+- Pint --test sobre todos los PHP modificados/nuevos: pasa tras aplicar Pint al fixture.
+- php -l sobre los 14 archivos PHP/Blade modificados/nuevos: sin errores.
+- npm run build: pasa, Vite 8.3.4; assets sin diferencias respecto a HEAD.
+  Warnings existentes: login-bg.jpg resuelto en runtime y module.register de Node deprecado.
+- composer validate --strict: pasa.
+- composer check-platform-reqs --lock --no-dev: pasa con PHP local 8.4.21.
+- composer audit --locked --no-dev: sin advisories; npm audit: 0 vulnerabilidades.
+- git diff --check: pasa.
+- schedule:list --timezone=Europe/Madrid --no-ansi: 22 tareas; reseñas 20 2 * * *.
+  Regresión automatizada contrasta todos los horarios, argumentos y mutex previos.
+- Sin diferencias en composer.json/lock, package.json/lock, routes/console.php,
+  config/queue.php, ExecuteOperationalTask.php ni public/build.
+- No se ha modificado JavaScript específico. No se afirma resultado de CI remota.
+
+### Despliegue posterior autorizado, rollback y riesgos pendientes
+
+Aplicar la migración aditiva antes de reactivar el código y worker nuevos, con
+plan de mantenimiento y migrate:status previo. Conservar conexión/cola operations,
+timeout y retry_after. Reiniciar de forma controlada los workers tras el cambio;
+no lanzar sincronizaciones para comprobar instalación. Para rollback del código,
+conservar columnas y tabla de auditoría; no ejecutar migration down ni borrar runs.
+
+El operador confirma PHP 8.4.21 en web, CLI y worker, compatible con el mínimo
+8.4.1 del composer.lock definitivo. El repositorio conserva ^8.3 en composer.json;
+no basta esa restricción para acreditar compatibilidad del lock. Comprobar en
+cada entorno real sus extensiones y composer check-platform-reqs --lock --no-dev.
+No se han inspeccionado los procesos productivos ni certificado MariaDB/InnoDB,
+cron, señales/timeouts, supervisor o retención a escala.
+
+Verificar cron cada minuto, schedule:list en Madrid, servicio del worker dedicado
+y evidencia real de queued/started/completed en el panel/BD. Supervisión externa
+independiente debe ejecutar check-health y clasificar 0/1/5 para detectar incluso
+cron totalmente detenido. Ninguna lista de horarios acredita ejecución real.
+Laravel genera ScheduledTaskFailed/log genérico por cualquier retorno no cero,
+pero continúa otras tareas; no hay listeners propios que creen alertas recursivas.
+Los observadores externos deben clasificar 3/4 como diferimiento y 5 como incidencias,
+sin presentarlos como éxito ni como fallo técnico del monitor.
+
+Nunca liberar por timeout solamente: verificar terminación del proceso y sus hijos
+en todos los hosts. UID OS no identifica a una persona; atribución humana requiere
+auditoría externa autenticada/ticket. Sin confirmación fiable conservar la reserva.
+Sin cambios incompatibles de sincronización; operations:release sí exige ahora
+--reason además de --confirm-stopped. Adaptar procedimientos existentes.
+
+## 2026-10-15 — PR #78, aislamiento del HTTP concurrente y diagnóstico separado de CI
+
+Base verificada antes de editar: d5b37b8b27ff56d56f04961553cd0b768a58c4ea;
+rama feat/ops-1-operational-control, worktree inicialmente limpio. Sin rama nueva.
+
+### Cambios mínimos y causa
+
+Archivos: tests/Feature/OperationalTasksTest.php y este HANDOFF.
+Cada proceso recibe rutas exclusivas APP_PACKAGES_CACHE, APP_SERVICES_CACHE,
+APP_CONFIG_CACHE y APP_ROUTES_CACHE con prefijo process-0/process-1 dentro del
+mismo directorio UUID de prueba. Laravel reconstruye manifiestos mediante
+Filesystem::replace/rename antes de llegar a la barrera: compartir el destino
+expone la carrera de Windows Acceso denegado. El aislamiento evita esa escritura
+compartida sin reintentar rename, añadir sleeps ni reconstruir cachés globales.
+Las rutas relativas son resueltas por Laravel contra base_path en Windows/Linux.
+
+Ambos procesos siguen arrancando mediante Symfony Process, comparten SQLite y
+barrera, y envían POST real al controlador con un administrador activo sintético.
+Se preservan respuestas 302/429, un run queued y un Job operations. El fixture
+conserva transaction_mode IMMEDIATE y busy_timeout; no se toca la exclusión
+productiva. El finally detiene los procesos y purga la conexión antes de eliminar
+los archivos planos, incluidos los manifiestos privados y temporales de rename.
+Tras las diez repeticiones no quedan directorios ops-concurrency temporales.
+
+### CI: causa distinta, corrección separada en el test de rate limiting
+
+Se consultaron el PR y los jobs/logs del HEAD d5b37b8:
+https://github.com/Hispania-Real-Motor/informes-app-hrmotor/actions/runs/38726591742/job/116393856177
+Run CI 172: falla PHP tests en admin_rate_limit_is_per_actor_and_never_replaces_non_admin_403,
+esperaba 429 y recibió 302. No es el fallo rename de Windows. El test concurrente
+no figura como fallo. Pint/build/whitespace quedaron skipped después del fallo PHP;
+no se presentan como verdes. El resumen remoto muestra 1 failed, 1284 warnings,
+102 passed y 12472 aserciones; esas warnings no equivalen a fallos de aserciones.
+
+El test elegía first admin sin asegurar que fuera el actor de la sesión que crea
+Tests/TestCase. Se reprodujo localmente con dos administradores sintéticos:
+el contador de un actor y la petición de otro producen el mismo 302 inesperado.
+Ahora el test crea y autentica explícitamente al administrador cuyo contador llena.
+No cambia autorización ni rate limiting productivo. La reproducción controlada
+falló como se esperaba (1 prueba/1 aserción); la corrección aislada pasa con 13
+aserciones, incluidos los doce 403 de Dirección. Ambas correcciones son hunks
+independientes del mismo archivo de tests.
+
+### Evidencia local completada
+
+- Concurrente aislado: 1/1, 6 aserciones, 38126 ms, exit 0.
+- Diez ejecuciones consecutivas adicionales, sin cambiar código entre ellas:
+  10/10, 60 aserciones, 124962 ms acumulados, todas exit 0.
+- Clase OperationalTasksTest completa: 41/41, 623 aserciones, 28896 ms, exit 0.
+- Pint --test del archivo y de todos los PHP cambiados por el PR frente a
+  origin/main: pasa. php -l del archivo: sin errores. git diff --check: pasa.
+- composer validate --no-check-publish --strict: pasa; composer audit --locked
+  --no-dev: sin advisories. No cambian dependencias.
+- npm run build: pasa, assets sin diff. Warnings existentes de login-bg.jpg
+  resuelto en runtime y module.register de Node deprecado; no se modifica frontend.
+
+### Seguridad, rendimiento y acciones pendientes
+
+No cambian producción, scheduler, catálogo, permisos, argumentos, reservas,
+Queue, fixture HTTP ni phpunit.xml. Sin migraciones, ajustes de configuración,
+.env, secretos ni limpieza de caché global. No se ejecutan sincronizaciones,
+workers, liberaciones reales, despliegues o integraciones externas.
+
+Se mantiene concurrencia real y tiempos de espera existentes. No cambia arquitectura:
+PROJECT_CONTEXT y DECISIONS no requieren actualización por este arreglo de tests.
+El commit local correctivo está autorizado; no se hace push por la restricción
+previa de requerir autorización expresa. Los checks remotos del nuevo commit
+requieren publicación y una nueva ejecución de CI Linux antes de certificar el PR.
+No se afirma certificación productiva ni CI verde a partir de resultados locales.
+
+Verificación final de esta corrección: php artisan test completa pasa con
+1387/1387 pruebas, 12484 aserciones, 342171 ms y exit 0. Se ejecutó después de las
+diez repeticiones y la clase completa, sin cambios de código entre ellas. Solo
+resta la ejecución remota sobre el commit publicado; el run 172 sigue acreditando
+el fallo del HEAD anterior, no el resultado de esta corrección.

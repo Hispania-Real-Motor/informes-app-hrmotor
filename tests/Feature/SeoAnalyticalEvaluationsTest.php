@@ -21,10 +21,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
+use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\TestCase;
 
 class SeoAnalyticalEvaluationsTest extends TestCase
 {
+    use AssertsOperationalSchedule;
     use RefreshDatabase;
 
     private const SEARCH_PROPERTY = 'sc-domain:evaluation.test';
@@ -290,11 +292,7 @@ class SeoAnalyticalEvaluationsTest extends TestCase
         $this->assertNotEmpty($failed->error_message);
         $this->assertStringNotContainsString('select ', strtolower($failed->error_message));
 
-        $scheduler = file_get_contents(base_path('routes/console.php'));
-        $this->assertStringContainsString("Schedule::command('seo:evaluate-analytical-snapshots')", $scheduler);
-        $this->assertStringContainsString("dailyAt('06:30')", $scheduler);
-        $this->assertStringContainsString("'seo-evaluate-analytical-snapshots'", $scheduler);
-        $this->assertStringContainsString('withoutOverlapping(120)', $scheduler);
+        $this->assertOperationalSchedule();
     }
 
     public function test_dashboard_preserves_factual_comparison_and_shows_latest_evaluation_and_recent_signals_without_http(): void

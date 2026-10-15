@@ -244,3 +244,15 @@ Archivos principales:
 - El jefe al cierre puede estar confirmado aunque el historial de rotaciones del mes no sea verificable. En ese caso se muestra el jefe, se le atribuye inicialmente el 100 % y se conserva una alerta. Solo evidencia continua del mes permite informar el número de responsables.
 - Backfill unitario en validación: `php artisan commissions:record-delegation-manager-evidence <delegation-id> "<delegación>" <manager-id> "<jefe>" 2026-07 --source=it_confirmation --reference=<referencia> --recorded-by=<usuario> --evidence-type=month_end --dry-run`.
 - Backfill por lote: `php artisan commissions:import-delegation-manager-evidence <csv> --dry-run`. El CSV requiere `delegation_id,delegation_name,manager_id,manager_name,month,source,reference,recorded_by,evidence_type`. No usar `full_month` salvo evidencia real de cobertura completa.
+
+## Evidencia operacional de reseñas (2026-10-15)
+
+OPS-1 programa salesforce:sync-commercial-reviews --months=2 a las 02:20
+Europe/Madrid, sin fresh y con withoutOverlapping(120), auditoría y reserva común.
+El dataset commercial_reviews conserva su contrato. La readiness sigue exigiendo
+cobertura del mes, completed/completed_at y frescura de 48 h por defecto; una
+ejecución operacional correcta no sustituye esas comprobaciones.
+
+La preparación automática del mes anterior el día 15 continúa pendiente en
+COMM-CLOSE-SCHEDULE. Preparará candidatos; no aprobará cierres automáticamente.
+No cambian fórmulas, permisos de aprobación ni UX de Comisiones en OPS-1.

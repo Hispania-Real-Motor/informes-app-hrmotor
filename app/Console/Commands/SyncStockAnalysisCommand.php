@@ -41,7 +41,8 @@ class SyncStockAnalysisCommand extends Command
         if (! $lock->get()) {
             $this->warn('Ya hay una sincronización diaria de stock en curso.');
 
-            return self::SUCCESS;
+            // An omitted sync must not publish a false successful heartbeat.
+            return self::INVALID;
         }
 
         try {

@@ -1119,3 +1119,29 @@ del hash porque no alteran la regla v1.
   aproximadamente 40.557 filas y baja selectividad no existe un `EXPLAIN` que
   justifique el coste adicional de escritura/DDL. No se añade un índice
   alternativo sin evidencia.
+
+## 2026-10-15 — Operación, distribución ejecutiva y preparación mensual
+
+1. El correo diario SEO será sustituido por el Resumen Ejecutivo global en EXE-4. Queda supersedido el contrato histórico “el correo SEO no se sustituye”. La sustitución debe evitar dos envíos diarios equivalentes a las 08:00; OPS-1 mantiene el envío actual sin implementar el nuevo.
+2. Las medidas recomendadas del futuro correo serán deterministas y auditables; no implican inferencia causal.
+3. El día 15 se prepararán snapshots candidatos del mes anterior, por scope y con readiness vigente. La aprobación definitiva continúa siendo humana. Esa automatización sigue pendiente.
+4. Solo admin activo puede solicitar ejecución operacional desde el front; Dirección y todos los demás roles quedan excluidos.
+5. Las tareas web usan allowlist cerrada, argumentos fijos de servidor, Queue database dedicada, reserva compartida y auditoría. Se preservan los horarios anteriores. Stock, pruning, correo y monitor interno quedan solo scheduler.
+6. Ausencia de heartbeat significa nunca ejecutado/desconocido/retrasado, nunca éxito. Un exit 0 con omisión conocida tampoco acredita éxito. La salud del comando no sustituye readiness de datasets.
+7. Reserva persistente en BD sin caducidad automática para running/unknown: liberar por TTL podría solapar un proceso vivo. El operador verifica su terminación antes de operations:release con --confirm-stopped. El scheduler conserva withoutOverlapping; los locks internos mantienen claves distintas y no se readquieren externamente.
+8. Cola separada de default, timeout 14400 s y retry_after 14700 s, un intento y revalidación de autorización. No se reejecutan jobs antiguos para recuperar procesos: se solicita un nuevo run.
+9. Actor como ID numérico sin FK destructiva: borrar una cuenta no borra su atribución histórica; scheduler tiene actor null. No se guardan excepciones ni stdout en el ledger operacional.
+
+## 2026-10-15 — Correcciones operacionales tras revisión 41c1e7a
+
+- Los códigos 0/1/2/3/4/5 distinguen éxito acreditado, fallo técnico, entrada
+inválida, omisión iniciada, bloqueo/estado incierto e incidencias de salud.
+Solo el monitor puede terminar unhealthy; su evaluación terminada es heartbeat,
+no éxito global. Se conserva mediante last_completed_id y no last_success_id.
+- La primera observación se persiste y no se reinicia con cron/workers. Las
+claves nuevas esperan la primera ocurrencia futura más margen, sin fabricar
+runs. Estados existentes conservan su created_at como inicio de observación.
+- Las liberaciones se auditan aparte y en la misma transacción. Motivos cerrados,
+referencias OPS numéricas, UID efectivo verificable o actor explícitamente no
+verificado. Sin identidad humana inventada ni confianza en variables del shell.
+Exigen confirmación externa; no basta timeout. No hay superficie HTTP nueva.

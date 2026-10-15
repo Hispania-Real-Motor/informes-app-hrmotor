@@ -9,10 +9,12 @@ use App\Services\SeoAnalytics\SearchConsoleSyncService;
 use App\Services\SeoAnalytics\SeoAnalyticsDatasetService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\TestCase;
 
 class SeoSyncCommandsTest extends TestCase
 {
+    use AssertsOperationalSchedule;
     use RefreshDatabase;
 
     public function test_unconfigured_commands_skip_without_http_and_invalid_days_fail(): void
@@ -60,23 +62,7 @@ class SeoSyncCommandsTest extends TestCase
 
     public function test_scheduler_declares_independent_windows_and_locks(): void
     {
-        $scheduler = file_get_contents(base_path('routes/console.php'));
-
-        $this->assertStringContainsString('seo:sync-search-console --days=120', $scheduler);
-        $this->assertStringContainsString("dailyAt('05:15')", $scheduler);
-        $this->assertStringContainsString('seo:sync-salesforce-organic --days=120', $scheduler);
-        $this->assertStringContainsString("dailyAt('05:30')", $scheduler);
-        $this->assertStringContainsString('seo:sync-ga4-organic --days=120', $scheduler);
-        $this->assertStringContainsString("dailyAt('05:45')", $scheduler);
-        $this->assertLessThan(strpos($scheduler, "dailyAt('05:45')"), strpos($scheduler, "dailyAt('05:30')"));
-        $this->assertLessThan(strpos($scheduler, "dailyAt('06:30')"), strpos($scheduler, "dailyAt('06:15')"));
-        $this->assertSame(1, substr_count($scheduler, "Schedule::command('salesforce:sync-interest-reporting')"));
-        $this->assertStringContainsString('->hourlyAt(5)', $scheduler);
-        $this->assertLessThan(
-            strpos($scheduler, "Schedule::command('seo:sync-salesforce-organic --days=120')"),
-            strpos($scheduler, "Schedule::command('salesforce:sync-interest-reporting')"),
-        );
-        $this->assertGreaterThanOrEqual(3, substr_count($scheduler, 'withoutOverlapping(120)'));
+        $this->assertOperationalSchedule();
     }
 
     public function test_failed_search_console_command_keeps_property_metadata_and_previous_completed_cutoff(): void

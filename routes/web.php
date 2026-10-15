@@ -172,6 +172,9 @@ Route::middleware('reports.auth')->group(function () {
             Route::delete('/{reportUser}', [ReportUserManagementController::class, 'destroy'])->name('destroy');
         });
 
+    Route::post('informes/alertas-operativas/ejecutar', [OperationalAlertController::class, 'execute'])
+        ->name('reports.operational-alerts.execute');
+
     Route::get('informes/alertas-operativas', [OperationalAlertController::class, 'index'])
         ->name('reports.operational-alerts.index');
 

@@ -40,7 +40,7 @@ class GoogleCampaignSyncService
             try {
                 $rows = $this->client->searchDailyMetrics($customerId, $start, $end);
             } catch (Throwable $exception) {
-                $warnings[] = "No se ha podido actualizar la inversion de Google Ads ({$customerId}). ".$exception->getMessage();
+                $warnings[] = 'No se ha podido actualizar la inversion de Google Ads. Error de integración; detalle externo omitido.';
                 Log::warning(end($warnings));
 
                 continue;
@@ -50,7 +50,7 @@ class GoogleCampaignSyncService
                 $identifiers = $this->client->searchAttributionIdentifiers($customerId);
                 $this->replaceIdentifiers($customerId, $identifiers);
             } catch (Throwable $exception) {
-                $warnings[] = "No se ha podido actualizar el inventario auditable de Google Ads ({$customerId}). ".$exception->getMessage();
+                $warnings[] = 'No se ha podido actualizar el inventario auditable de Google Ads. Error de integración; detalle externo omitido.';
                 Log::warning(end($warnings));
             }
 

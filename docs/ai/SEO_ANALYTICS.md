@@ -384,3 +384,12 @@ datos. La proyección Salesforce SEO es local: exige F2 completed y estable, y
 falla de forma sanitizada si esa precondición no se cumple. Los fallos quedan en
 `ReportSyncRun` y no sustituyen datos completed anteriores. No se persisten
 tokens, secretos ni payloads raw.
+
+## OPS-1 (2026-10-15)
+
+El scheduler conserva el correo SEO de las 08:00 hasta su sustitución coordinada
+por EXE-4. La decisión de mantenerlo independiente queda supersedida: el futuro
+correo será el Resumen Ejecutivo global, con alertas y medidas recomendadas
+deterministas/auditables, sin inferencia causal ni dos correos diarios equivalentes.
+OPS-1 no implementa ese correo. Las ventanas actuales se registran en el catálogo
+operacional; las omisiones conocidas no cuentan como heartbeat de éxito.

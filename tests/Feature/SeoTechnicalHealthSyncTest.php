@@ -17,10 +17,12 @@ use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Psr\Http\Message\StreamInterface;
 use RuntimeException;
+use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\TestCase;
 
 class SeoTechnicalHealthSyncTest extends TestCase
 {
+    use AssertsOperationalSchedule;
     use RefreshDatabase;
 
     public function test_registry_daily_checks_active_flags_and_findings_are_idempotent(): void
@@ -111,15 +113,7 @@ class SeoTechnicalHealthSyncTest extends TestCase
         $this->assertSame('failed', $run->status);
         $this->assertSame(['site_host' => 'example.test'], $run->stats);
 
-        $scheduler = file_get_contents(base_path('routes/console.php'));
-        $this->assertStringContainsString("Schedule::command('seo:sync-technical-health')", $scheduler);
-        $this->assertStringContainsString("dailyAt('06:00')", $scheduler);
-        $this->assertStringContainsString("dailyAt('05:15')", $scheduler);
-        $this->assertStringContainsString("dailyAt('05:30')", $scheduler);
-        $this->assertStringContainsString("dailyAt('05:45')", $scheduler);
-        $this->assertStringContainsString("timezone('Europe/Madrid')", $scheduler);
-        $this->assertStringContainsString('withoutOverlapping(120)', $scheduler);
-        $this->assertStringContainsString("'seo-sync-technical-health'", $scheduler);
+        $this->assertOperationalSchedule();
     }
 
     public function test_successful_command_completes_report_run_with_aggregated_non_secret_stats(): void
