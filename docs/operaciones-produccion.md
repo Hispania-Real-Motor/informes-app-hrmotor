@@ -572,3 +572,133 @@ compensarlo con `forceScheme` ni reemplazos de texto.
   detectan el código de salida, pero no sustituyen un heartbeat externo.
 - No existe readiness profunda; diseñarla solo con dependencias y permisos
   acordados, sin exponer detalles.
+
+## OPS-1 — Verificación y recuperación operacional (2026-10-15)
+
+Antes de habilitar el panel, comprobar el worker ACTUAL; una validación histórica
+del worker default no certifica la cola nueva. Catálogo completo y exclusiones:
+[OPERATIONS.md](ai/OPERATIONS.md). Solo admin activo puede ejecutar desde el panel;
+Dirección no obtiene esta capacidad. Se mantienen los comandos/horarios anteriores.
+
+### Despliegue previsto (no ejecutado por Codex)
+
+1. Publicar código y public/build construido y revisado. Instalar Composer desde
+   lockfile; no actualizar dependencias en producción.
+2. Aplicar únicamente migraciones pendientes, revisando antes migrate:status.
+   OPS-1 añade 2026_10_15_120000_create_operational_task_runs; no transforma datos
+   funcionales. Mantener pausa controlada de cron/workers durante la publicación.
+3. Regenerar caché de configuración según el procedimiento del entorno.
+4. Provisionar y supervisar un worker dedicado, sin sustituir el default:
+
+~~~bash
+php artisan queue:work operations --queue=operations --timeout=14400 --tries=1 --sleep=3
+~~~
+
+   operations es conexión database con retry_after 14700 s. El timeout del Job es
+   14400 s y un solo intento. El supervisor debe permitir terminación ordenada
+   superior a 14400 s; comprobar soporte real de timeouts/señales en el host.
+   Cron y Queue deben compartir BD de aplicación; validar DB_QUEUE_CONNECTION y
+   DB_QUEUE_TABLE existentes sin imprimir sus credenciales. No usar sync/deferred.
+5. Reiniciar los workers con el mecanismo de despliegue existente y reactivar
+   cron una vez aplicadas las tablas. No ejecutar sincronizaciones de prueba.
+
+### Checks concretos sin sincronizar ni enviar correos
+
+~~~bash
+php artisan migrate:status
+php artisan schedule:list --timezone=Europe/Madrid
+php artisan queue:failed
+~~~
+
+Comprobar en el supervisor que el proceso dedicado está activo con los argumentos
+anteriores y que el default sigue funcionando. Comprobar que cron invoca
+schedule:run cada minuto con el PHP, usuario, ruta y entorno correctos. schedule:list
+demuestra definición, no que cron haya ejecutado. Revisar el ledger tras dos
+intervalos del monitor; no ejecutar schedule:run manualmente como un “check”,
+porque podría ejecutar integraciones y correo reales.
+
+Consultas de solo lectura (sin payloads ni contenido de failed_jobs):
+
+~~~sql
+SELECT task_key, active_run_id, last_run_id, last_success_id, last_failure_id
+FROM operational_task_states ORDER BY task_key;
+
+SELECT id, task_key, origin, status, queued_at, started_at, finished_at, exit_code
+FROM operational_task_runs ORDER BY id DESC LIMIT 50;
+
+SELECT queue, COUNT(*) AS pending, MIN(created_at) AS oldest
+FROM jobs GROUP BY queue;
+
+SELECT task_key, status, MAX(finished_at) AS last_finish
+FROM operational_task_runs
+WHERE task_key = 'operations-health' GROUP BY task_key, status;
+~~~
+
+Certificar cron observando nuevos éxitos de operations-health cada cinco minutos
+y tareas diarias en sus ventanas reales. Certificar Queue mediante una operación
+ordinaria autorizada por admin: el POST vuelve con En cola antes del inicio y el
+mismo run pasa a running y terminal con actor humano. Esta prueba productiva la
+realiza el operador autorizado; Codex no la ejecuta. No usar queue:retry sobre
+runs expirados o terminales; crear una nueva solicitud desde el panel.
+
+### Uso y estados
+
+Abrir /informes/alertas-operativas con admin. Leer tarea, cron Madrid, margen,
+último inicio/éxito/fallo, duración, origen y próxima ocurrencia. Marcar la
+confirmación específica antes de Ejecutar. Actualizar estado manualmente; no hay
+polling agresivo. El navegador no espera al comando. El historial está paginado.
+
+Nunca ejecutado no significa Correcto. Una solicitud en cola >15 min requiere
+revisar el worker; el Job caducado no ejecuta cuando vuelve el worker.
+Running fuera de ventana o unknown conserva la reserva. Fallos y retrasos usan
+alertas deduplicadas; un éxito vigente resuelve la condición stale. Una omisión
+por configuración o lock no publica éxito. Consultar el ledger del dataset para
+readiness: el ledger operacional solo certifica ejecución del contrato.
+
+Si el propio cron se detiene no habrá nuevas evaluaciones: integrar supervisión
+externa del último éxito operations-health. /up solo acredita liveness HTTP.
+
+### Locks y tareas stale
+
+1. Identificar active_run_id, origen, estado y tiempos sin inspeccionar payloads.
+2. Comprobar procesos del scheduler y worker y su terminación real. No asumir
+   que una ventana vencida equivale a un proceso muerto.
+3. Si sigue vivo, esperar o aplicar el procedimiento de parada controlada del host.
+4. Solo tras verificar que terminó y registrar intervención en el sistema de
+   operaciones, liberar por CLI (no disponible por HTTP):
+
+~~~bash
+php artisan operations:release ID_DEL_RUN --confirm-stopped
+~~~
+
+La liberación deja fin fallido auditable y no resuelve stale como si hubiera
+éxito. La intervención se identifica como CLI en el resumen; la identidad del
+operador se registra externamente, no se inventa actor Sistema. No borrar filas,
+no ejecutar cache:clear o schedule:clear-cache para saltarse una reserva.
+Los locks internos son distintos; no borrarlos mientras pueda existir proceso.
+Las ejecuciones ordinarias por CLI deben usar operations:run CLAVE para respetar
+la misma exclusión y auditoría; un comando directo queda fuera de ese contrato.
+
+### Rollback
+
+Parar el consumo de operations y pausar cron según el procedimiento operativo;
+comprobar que no quede un proceso largo antes de volver a código anterior.
+Conservar ambas tablas aditivas y su evidencia. No ejecutar down ni rollback
+genérico: eliminarían la auditoría. No reactivar jobs operations con código antiguo;
+volver primero a una versión compatible y decidir su cancelación de forma
+auditada. El worker default no se retira. No se requiere cambio de .env en este
+lote; sí provisión explícita del worker y publicación de configuración/código.
+
+Pendiente de certificación externa: procesos reales, BD productiva/InnoDB,
+timeout/señales, cron, servicio supervisor y retención a escala. No se ha
+desplegado, hecho push, ejecutado sincronización, backfill o enviado email.
+
+## Dependencias verificadas en OPS-1
+
+El audit inicial detectó un advisory de symfony/http-foundation y seis advisories
+en herramientas npm de desarrollo. El lockfile fija http-foundation 8.1.9,
+compatible con Laravel y con requisito PHP >=8.4.1; comprobar esa versión antes
+de instalar en producción (el CLI local verificado usa PHP 8.4.21). El lockfile
+npm corrige las versiones compatibles y los assets se han reconstruido con Vite
+8.3.4. No se modificaron las fuentes de los demás dashboards. No ejecutar
+composer update o npm audit fix en producción; desplegar los lockfiles revisados.

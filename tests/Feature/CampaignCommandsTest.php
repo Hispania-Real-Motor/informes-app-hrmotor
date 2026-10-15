@@ -20,11 +20,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Mockery\MockInterface;
+use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\Concerns\ProvidesRot4CampaignContext;
 use Tests\TestCase;
 
 class CampaignCommandsTest extends TestCase
 {
+    use AssertsOperationalSchedule;
     use ProvidesRot4CampaignContext;
     use RefreshDatabase;
 
@@ -37,51 +39,7 @@ class CampaignCommandsTest extends TestCase
 
     public function test_rot4_scheduler_no_longer_runs_campaign_lead_sync_and_builds_after_direct_snapshot(): void
     {
-        $scheduler = file_get_contents(base_path('routes/console.php'));
-        $command = "Schedule::command('salesforce:sync-campaign-leads --days=120')";
-        $this->assertSame(0, substr_count($scheduler, $command));
-
-        $builder = "Schedule::command('campaigns:build-attribution --days=120')";
-        $direct = "Schedule::command('salesforce:sync-opportunity-interest-direct";
-        $directPosition = strpos($scheduler, $direct);
-        $this->assertNotFalse($directPosition);
-        $builderPosition = strpos($scheduler, $builder);
-        $this->assertNotFalse($builderPosition);
-        $builderIdentifierPosition = strpos($scheduler, "'campaigns-build-attribution'", $builderPosition);
-        $this->assertNotFalse($builderIdentifierPosition);
-
-        $builderConfiguration = substr($scheduler, $builderPosition, $builderIdentifierPosition - $builderPosition);
-        $this->assertStringContainsString("dailyAt('08:30')", $builderConfiguration);
-        $directIdentifierPosition = strpos($scheduler, "'salesforce-sync-opportunity-interest-direct'", $directPosition);
-        $this->assertNotFalse($directIdentifierPosition);
-        $directConfiguration = substr($scheduler, $directPosition, $directIdentifierPosition - $directPosition);
-        $this->assertStringContainsString("dailyAt('07:35')", $directConfiguration);
-
-        $opportunityPosition = strpos($scheduler, "Schedule::command('salesforce:sync-opportunities --days=2 --modified')");
-        $interestPosition = strpos($scheduler, "Schedule::command('salesforce:sync-interest-reporting')");
-        $refreshPosition = strpos($scheduler, "Schedule::command('reports:refresh-campaigns --days=120 --store')");
-        $this->assertNotFalse($opportunityPosition);
-        $this->assertNotFalse($interestPosition);
-        $this->assertNotFalse($refreshPosition);
-        $this->assertStringContainsString("dailyAt('07:10')", substr($scheduler, $opportunityPosition, 300));
-        $this->assertStringContainsString('hourlyAt(5)', substr($scheduler, $interestPosition, 300));
-        $this->assertStringContainsString("dailyAt('09:00')", substr($scheduler, $refreshPosition, 300));
-        $dailyTime = static function (string $configuration): string {
-            preg_match("/dailyAt\\('([0-9]{2}:[0-9]{2})'\\)/", $configuration, $matches);
-
-            return $matches[1] ?? '';
-        };
-        $this->assertSame(
-            ['07:10', '07:35', '08:05', '08:30', '09:00'],
-            [
-                $dailyTime(substr($scheduler, $opportunityPosition, 300)),
-                $dailyTime($directConfiguration),
-                '08:05',
-                $dailyTime($builderConfiguration),
-                $dailyTime(substr($scheduler, $refreshPosition, 300)),
-            ],
-            'El pipeline diario debe respetar Opportunity < directo < F2 horario < builder < refresh.',
-        );
+        $this->assertOperationalSchedule();
     }
 
     public function test_campaign_lead_sync_mapper_guarda_campos_de_adquisicion(): void

@@ -31,7 +31,7 @@ class OperationalAlertService
             $alert = OperationalAlert::query()->where('fingerprint', $fingerprint)->lockForUpdate()->first();
 
             if ($alert === null) {
-                return OperationalAlert::query()->create([
+                $created = OperationalAlert::query()->createOrFirst(['fingerprint' => $fingerprint], [
                     'fingerprint' => $fingerprint,
                     'type' => $type,
                     'severity' => $severity,
@@ -44,6 +44,10 @@ class OperationalAlertService
                     'last_detected_at' => $now,
                     'occurrences' => 1,
                 ]);
+                if ($created->wasRecentlyCreated) {
+                    return $created;
+                }
+                $alert = OperationalAlert::query()->whereKey($created->id)->lockForUpdate()->firstOrFail();
             }
 
             $reopening = $alert->state === OperationalAlert::STATE_RESOLVED;
@@ -63,7 +67,7 @@ class OperationalAlertService
             ]);
 
             return $alert->refresh();
-        });
+        }, 3);
     }
 
     public function resolve(

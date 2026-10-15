@@ -4797,3 +4797,179 @@ vez por construcción del dataset, en lotes de 1.000 y sin consultas por fila.
   `git diff --check`: correctos.
 - No se ejecutaron sincronizaciones ni llamadas Salesforce, migraciones,
   dependencias, build frontend, escrituras productivas, push, merge o deploy.
+
+## OPS-1 — Control operacional auditable (2026-10-15)
+
+### Base y alcance real
+
+- Rama utilizada: feat/ops-1-operational-control, ya existente al iniciar.
+- Antes de modificar: git status limpio; HEAD y origin/main, tras git fetch origin,
+  ambos e7073d3affa43b7d6a5295292667993b7a164493. Ese es el SHA base real.
+- No se ha creado commit: el SHA final de HEAD sigue siendo el de base; los
+  cambios se entregan en el worktree. Sin push, merge, PR ni despliegue.
+- ROT-5 está integrado mediante PR #75, merge
+  137995384260c5e29986556fca221b45a60815f4, verificado en el historial.
+- Se implementaron catálogo canónico, ledger, reserva persistente compartida,
+  Job asíncrono, monitor de cadencias, panel Design System e historial paginado.
+- No se implementaron cierre mensual automático, aprobación de cierres ni correo
+  ejecutivo nuevo. No se migraron otros dashboards ni se alteraron fórmulas,
+  universos, métricas, atribución, thresholds o compatibilidad legacy/shadow.
+
+### Arquitectura, base de datos y seguridad
+
+- Migración aditiva:
+  database/migrations/2026_10_15_120000_create_operational_task_runs.php.
+  Crea operational_task_states y operational_task_runs e índice adicional
+  ops_alerts_task_state_idx sobre alertas. Solo aplicada por tests sintéticos;
+  no se ejecutó contra producción ni la BD funcional local.
+- Estado por tarea bloqueado con lockForUpdate dentro de transacciones:
+  queued reserva desde el POST; scheduler y manual comparten exclusión.
+  withoutOverlapping se conserva con los valores anteriores. Los locks internos
+  de Stock, pipeline Interest/F5 y snapshot directo mantienen sus claves.
+- 22 tareas; 18 permitidas manualmente con argumentos fijos. Catálogo exacto,
+  políticas y allowlist completa en OPERATIONS.md. Solo scheduler: retención,
+  Stock, correo SEO y monitor interno.
+- POST con CSRF y confirmación, autorización admin en servidor, rechazo de
+  campos adicionales, rate limit por actor de 10/min y cooldown persistente
+  por tarea de 60 s. Dirección y los demás roles devuelven 403 con CSRF válido.
+- Queue connection/queue operations usa database, un intento, timeout 14400 s y
+  retry_after 14700 s. No usa la conexión default sync. Actor activo/admin se
+  revalida al consumir; una solicitud manual >15 min no ejecuta.
+- Un acuse ambiguo de Queue no libera un run ya iniciado. Callbacks de fallo,
+  duplicados y liberación se coordinan con la misma reserva. Running/unknown no
+  se liberan por TTL; CLI exige confirmación humana de proceso detenido.
+- UUID por run, intento, tiempos UTC, exit code, duración, argumentos efectivos
+  y actor numérico histórico; scheduler tiene actor null. No se creó Sistema.
+- No se retienen stdout, excepciones externas, cuerpos HTTP ni credenciales
+  en el nuevo ledger. Se reconocen omisiones SEO/Ads y errores parciales Ads sin
+  publicar heartbeat de éxito. Warnings/logs Ads detectados se convierten en
+  mensajes constantes sin cuentas ni excepciones crudas.
+- Stock conserva firma y opciones, pero su omisión por lock ahora devuelve 2:
+  el wrapper la audita como skipped. Revisar cualquier consumidor CLI que
+  interpretara el antiguo 0 como ejecución real.
+- Comprobación cada cinco minutos, basada en cron Madrid y margen explícito,
+  sin ejecutar sincronizaciones. Un éxito antiguo que acaba tarde no encubre
+  ocurrencias perdidas. La ausencia de evidencia nunca se convierte en Correcto.
+- Retención transversal de terminales >90 días, preservando activos/unknown,
+  evidencia apuntada e incidencias abiertas. No se borró información real.
+
+### Reseñas y rendimiento
+
+- Nueva ventana: 02:20 Europe/Madrid, salesforce:sync-commercial-reviews
+  --months=2, withoutOverlapping(120). Entre Ads y Stock; sin fresh.
+  Los 20 horarios, argumentos y mutex previos se contrastan con baseline
+  independiente capturado del SHA base.
+- El dataset commercial_reviews y su readiness no cambian: completed,
+  completed_at, cobertura mensual y max_age 48 h por defecto.
+- Panel sin consultas a Salesforce: estados mediante punteros por PK,
+  máximo 22 tareas y 25 runs por página, alertas paginadas, sin N+1.
+  Refresh manual explícito; no polling ni comandos largos dentro de HTTP.
+- Fechas UTC en persistencia y Europe/Madrid en presentación/cadencia.
+
+### Dependencias y documentación
+
+- Audit inicial: un advisory de symfony/http-foundation y seis advisories npm
+  de desarrollo. Corrección mínima del paquete PHP a 8.1.9; requisito nuevo
+  PHP >=8.4.1 (CLI local 8.4.21). Lockfile npm actualizado dentro de rangos
+  existentes; Vite 8.3.4 y bundles reconstruidos. Manifiestos de dependencias
+  sin nuevas dependencias directas.
+- Se reconciliaron ROADMAP, PROJECT_CONTEXT y DECISIONS. EXE-4 sustituirá SEO
+  por correo ejecutivo global con alertas y medidas deterministas/auditables,
+  sin causalidad inferida ni dos correos equivalentes a las 08:00.
+  La decisión histórica contraria queda supersedida.
+- COMM-CLOSE-SCHEDULE mantiene día 15, mes anterior, snapshots candidatos y
+  aprobación humana. Continúa pendiente.
+- Deuda UX explícita de Intereses, Llamadas, Campañas, Comisiones y Stock.
+  Alertas se migra aquí; Reservas/Ventas ya migrado; Summary/SEO consumidores
+  del Design System, pendientes solo de auditoría de residuos.
+- Runbook actualizado con deploy, rollback, Queue/cron, diagnóstico, SQL
+  sin payloads y recuperación de reservas.
+
+### Verificaciones realmente ejecutadas
+
+- php artisan test, suite final: 1356 pruebas, 12081 aserciones, 1356 correctas, 367042 ms. Resultado local; CI remota no ejecutada.
+- Focal operacional anterior a la última prueba concurrente: 46 pruebas y 686 aserciones, correcta. Prueba HTTP concurrente aislada: 1 prueba y 6 aserciones, correcta. La suite final incluye ambas.
+- Pint --test sobre todos los PHP modificados/nuevos; php -l sobre todos ellos. Resultados correctos.
+- npm ci --ignore-scripts; npm run build: correcto con Vite 8.3.4. node --check sobre los 8 bundles JS: correcto.
+- composer validate --strict: correcto. composer audit --locked --no-dev: cero advisories. npm audit y npm audit --omit=dev: cero vulnerabilidades.
+- git diff --check: correcto. schedule:list --timezone=Europe/Madrid verificado por tests; no se ejecutó schedule:run contra datos reales.
+- La prueba concurrente falló inicialmente por rutas absolutas Windows de caché del fixture; se corrigió usando rutas relativas temporales. Dos kernels HTTP independientes producen 302/429 y exactamente un run/Job queued.
+- Build conserva avisos no bloqueantes de imagen login-bg resuelta en runtime y deprecación Node module.register. No se sustituyó esa imagen.
+
+### Despliegue, rollback, límites y pendientes
+
+- Requiere revisar/aplicar la migración aditiva, publicar bundles/configuración y provisionar worker dedicado: php artisan queue:work operations --queue=operations --timeout=14400 --tries=1 --sleep=3. No modificar .env automáticamente.
+- Comprobar PHP >=8.4.1 y señales/timeouts del host. El estado ACTUAL de cron/Queue productivos no se infiere del repositorio.
+- Checks: migrate:status, schedule:list Madrid, queue:failed, supervisor, cron cada minuto, SQL de estados/runs/jobs y dos intervalos de heartbeat operations-health. Certificar Queue con una acción ordinaria autorizada por admin en despliegue; Codex no la ejecutó.
+- Rollback: detener operations y pausar cron, confirmar procesos terminados, volver a código compatible conservando tablas/evidencia. No ejecutar down ni rollback genérico; no consumir jobs nuevos con código antiguo. Mantener worker default.
+- Pendientes: certificación en MySQL/MariaDB y bajo carga, cron/supervisor reales, validación visual móvil/desktop/teclado en QA y supervisión externa del heartbeat del propio monitor.
+- El detector de omisiones depende de marcadores CLI existentes cubiertos por tests. Mantener ese contrato si cambia el vocabulario. El hardening no es una auditoría exhaustiva de todos los logs legacy; Stock conserva su manejo previo fuera del ledger.
+- No se ejecutaron sincronizaciones reales, backfills, cierres, envíos de email, migraciones productivas ni cambios de .env. No se amplió acceso a otros módulos.
+- Rama final: feat/ops-1-operational-control; HEAD final: e7073d3affa43b7d6a5295292667993b7a164493; cambios sin commit.
+- Commit recomendado: feat(operations): add audited admin task control and scheduler health.
+
+### Inventario exacto de archivos de la entrega
+
+~~~text
+A	app/Console/Commands/CheckOperationalTaskHealthCommand.php
+M	app/Console/Commands/PruneTransversalDataCommand.php
+A	app/Console/Commands/ReleaseOperationalTaskCommand.php
+A	app/Console/Commands/RunOperationalTaskCommand.php
+M	app/Console/Commands/SyncStockAnalysisCommand.php
+M	app/Http/Controllers/Reports/Operations/OperationalAlertController.php
+A	app/Jobs/Operations/ExecuteOperationalTask.php
+A	app/Models/OperationalTaskRun.php
+M	app/Services/Campaigns/GoogleCampaignSyncService.php
+M	app/Services/Campaigns/MetaCampaignSyncService.php
+M	app/Services/Operations/OperationalAlertService.php
+A	app/Services/Operations/OperationalTaskCatalog.php
+A	app/Services/Operations/OperationalTaskHealthService.php
+A	app/Services/Operations/OperationalTaskOutput.php
+A	app/Services/Operations/OperationalTaskService.php
+M	composer.lock
+M	config/queue.php
+A	database/migrations/2026_10_15_120000_create_operational_task_runs.php
+M	docs/ai/DECISIONS.md
+M	docs/ai/HANDOFF.md
+A	docs/ai/OPERATIONS.md
+M	docs/ai/PROJECT_CONTEXT.md
+M	docs/ai/ROADMAP.md
+M	docs/ai/SEO_ANALYTICS.md
+M	docs/informe-comisiones.md
+M	docs/operaciones-produccion.md
+M	package-lock.json
+D	public/build/assets/app-34mOoJaZ.js
+D	public/build/assets/app-BqB0BBS7.css
+A	public/build/assets/app-BvRk9kiK.js
+A	public/build/assets/app-DfvlhaOd.css
+A	public/build/assets/app-shell-C60se5JH.js
+D	public/build/assets/app-shell-DKbHEObD.js
+A	public/build/assets/calls-dashboard-CNL44Zwq.js
+D	public/build/assets/calls-dashboard-pf9BB5IL.js
+A	public/build/assets/campaigns-dashboard-C0wdkSRf.js
+D	public/build/assets/campaigns-dashboard-uwC_KUe1.js
+A	public/build/assets/commercial-commissions-dashboard-DIO8X5Lc.js
+D	public/build/assets/commercial-commissions-dashboard-DjAaqBZU.js
+D	public/build/assets/leads-dashboard-B0vS8zzF.js
+A	public/build/assets/leads-dashboard-D6fLg-lw.js
+D	public/build/assets/reservations-sales-dashboard-C7IIG8FY.js
+A	public/build/assets/reservations-sales-dashboard-CtEu6ItD.js
+A	public/build/assets/stock-dashboard-a7G92PVg.js
+D	public/build/assets/stock-dashboard-BrzfZPFN.js
+M	public/build/manifest.json
+M	resources/views/reports/operations/alerts.blade.php
+M	routes/console.php
+M	routes/web.php
+A	tests/Concerns/AssertsOperationalSchedule.php
+M	tests/Feature/CampaignCommandsTest.php
+A	tests/Feature/OperationalTasksTest.php
+M	tests/Feature/ReservationsSalesCommercialPerformanceTest.php
+M	tests/Feature/SalesforceCallsScheduleTest.php
+M	tests/Feature/SeoAnalyticalEvaluationsTest.php
+M	tests/Feature/SeoAnalyticalSnapshotsTest.php
+M	tests/Feature/SeoExecutiveDailyEmailTest.php
+M	tests/Feature/SeoSyncCommandsTest.php
+M	tests/Feature/SeoTechnicalHealthSyncTest.php
+A	tests/Fixtures/operational_http_request.php
+A	tests/Fixtures/operational_schedule_baseline.php
+~~~

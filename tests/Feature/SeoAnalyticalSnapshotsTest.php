@@ -20,10 +20,12 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\TestCase;
 
 class SeoAnalyticalSnapshotsTest extends TestCase
 {
+    use AssertsOperationalSchedule;
     use RefreshDatabase;
 
     private const SEARCH_PROPERTY = 'sc-domain:current.test';
@@ -273,15 +275,7 @@ class SeoAnalyticalSnapshotsTest extends TestCase
         $this->assertSame(90, config('seo_analytics.analytical_comparison.max_snapshot_build_days'));
         $this->assertSame(SameWeekdayComparisonEngine::VERSION, config('seo_analytics.analytical_comparison.engine_version'));
 
-        $scheduler = file_get_contents(base_path('routes/console.php'));
-        $this->assertStringContainsString("Schedule::command('seo:build-analytical-snapshots')", $scheduler);
-        $this->assertStringNotContainsString("Schedule::command('seo:build-analytical-snapshots --days=", $scheduler);
-        $this->assertStringContainsString("dailyAt('06:15')", $scheduler);
-        $this->assertStringContainsString("'seo-build-analytical-snapshots'", $scheduler);
-        $this->assertStringContainsString('withoutOverlapping(120)', $scheduler);
-        foreach (["dailyAt('05:15')", "dailyAt('05:30')", "dailyAt('05:45')", "dailyAt('06:00')"] as $existingTime) {
-            $this->assertStringContainsString($existingTime, $scheduler);
-        }
+        $this->assertOperationalSchedule();
     }
 
     public function test_builder_default_consumes_snapshot_refresh_days_without_relaxing_maximum(): void

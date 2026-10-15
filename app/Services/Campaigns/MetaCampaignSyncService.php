@@ -40,7 +40,7 @@ class MetaCampaignSyncService
             try {
                 $rows = $this->client->insights($accountId, $start, $end);
             } catch (Throwable $exception) {
-                $warnings[] = "No se ha podido actualizar la inversion de Meta Ads ({$accountId}). ".$exception->getMessage();
+                $warnings[] = 'No se ha podido actualizar la inversion de Meta Ads. Error de integración; detalle externo omitido.';
                 Log::warning(end($warnings));
 
                 continue;
@@ -50,7 +50,7 @@ class MetaCampaignSyncService
                 $campaigns = collect($this->client->campaigns($accountId))->keyBy('id');
             } catch (Throwable $exception) {
                 $campaigns = collect();
-                $warnings[] = "No se ha podido actualizar el estado de campanas de Meta Ads ({$accountId}). ".$exception->getMessage();
+                $warnings[] = 'No se ha podido actualizar el estado de campanas de Meta Ads. Error de integración; detalle externo omitido.';
                 Log::warning(end($warnings));
             }
 
@@ -58,7 +58,7 @@ class MetaCampaignSyncService
                 $identifiers = $this->client->attributionIdentifiers($accountId);
                 $this->replaceIdentifiers($accountId, $identifiers);
             } catch (Throwable $exception) {
-                $warnings[] = "No se ha podido actualizar el inventario auditable de Meta Ads ({$accountId}). ".$exception->getMessage();
+                $warnings[] = 'No se ha podido actualizar el inventario auditable de Meta Ads. Error de integración; detalle externo omitido.';
                 Log::warning(end($warnings));
             }
 

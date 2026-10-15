@@ -24,10 +24,12 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
+use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\TestCase;
 
 class ReservationsSalesCommercialPerformanceTest extends TestCase
 {
+    use AssertsOperationalSchedule;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -2269,20 +2271,13 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
 
     public function test_scheduler_evitar_solapes_y_deja_un_unico_propietario_de_snapshots(): void
     {
-        $scheduler = file_get_contents(base_path('routes/console.php'));
+        $this->assertOperationalSchedule();
         $opportunitiesCommand = file_get_contents(app_path('Console/Commands/SalesforceSyncOpportunitiesCommand.php'));
         $monthlyCommand = file_get_contents(app_path('Console/Commands/SalesforceSyncMonthlyCommercialCommand.php'));
-
-        $this->assertStringContainsString("dailyAt('07:10')", $scheduler);
-        $this->assertStringContainsString('salesforce:sync-opportunity-interest-direct --reason="Snapshot diario ROT-3 posterior al sync de Opportunities"', $scheduler);
-        $this->assertStringContainsString("dailyAt('07:35')", $scheduler);
-        $this->assertSame(1, substr_count($scheduler, 'salesforce:sync-opportunity-interest-direct'));
-        $this->assertStringNotContainsString("dailyAt('02:45')", $scheduler);
         $this->assertStringNotContainsString('CommercialDelegationSnapshotService', $opportunitiesCommand);
         $this->assertStringNotContainsString('captureCurrentUsers', $opportunitiesCommand);
         $this->assertStringContainsString('CommercialDelegationSnapshotService', $monthlyCommand);
         $this->assertStringContainsString('captureCurrentUsers', $monthlyCommand);
-        $this->assertStringNotContainsString('--bootstrap-performance-history', $scheduler);
     }
 
     public function test_funnel_clasifica_caidas_en_el_mes_de_reserva_y_excluye_cumplimiento(): void

@@ -29,10 +29,12 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
 use RuntimeException;
+use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\TestCase;
 
 class SeoExecutiveDailyEmailTest extends TestCase
 {
+    use AssertsOperationalSchedule;
     use RefreshDatabase;
 
     private const DATE = '2026-08-21';
@@ -384,15 +386,7 @@ class SeoExecutiveDailyEmailTest extends TestCase
 
     public function test_scheduler_keeps_existing_sequence_and_adds_monitored_0800_delivery(): void
     {
-        $scheduler = file_get_contents(base_path('routes/console.php'));
-        foreach (['05:15', '05:30', '05:45', '06:00', '06:15', '06:30'] as $time) {
-            $this->assertStringContainsString("dailyAt('{$time}')", $scheduler);
-        }
-        $this->assertStringContainsString("Schedule::command('seo:send-executive-daily-email')", $scheduler);
-        $this->assertStringContainsString("dailyAt('08:00')", $scheduler);
-        $this->assertStringContainsString("timezone('Europe/Madrid')", $scheduler);
-        $this->assertStringContainsString('withoutOverlapping(30)', $scheduler);
-        $this->assertStringContainsString("'seo-send-executive-daily-email'", $scheduler);
+        $this->assertOperationalSchedule();
     }
 
     /** @param array<int, string> $recipients */

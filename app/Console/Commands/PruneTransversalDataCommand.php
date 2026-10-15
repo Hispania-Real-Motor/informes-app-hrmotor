@@ -42,6 +42,22 @@ class PruneTransversalDataCommand extends Command
             );
         }
 
+        // Preserve active/unknown runs, evidence pointers and open incidents.
+        $protectedIds = DB::table('operational_task_states')->get()
+            ->flatMap(fn ($state) => [$state->active_run_id, $state->last_run_id, $state->last_success_id, $state->last_failure_id])
+            ->filter()->unique()->values()->all();
+        $metrics['operations.closed_runs'] = $this->deleteInChunks(
+            DB::table('operational_task_runs')
+                ->whereIn('status', ['success', 'failed', 'skipped'])
+                ->where('finished_at', '<', $now->copy()->subDays(90))
+                ->whereNotIn('id', $protectedIds)
+                ->whereNotExists(fn (Builder $alerts) => $alerts->selectRaw('1')
+                    ->from('operational_alerts')
+                    ->whereColumn('technical_identifier', 'operational_task_runs.task_key')
+                    ->where('state', 'open')),
+            'id', $chunkSize, $dryRun,
+        );
+
         $metrics['sync_runs.completed'] = $this->deleteInChunks(
             DB::table('report_sync_runs')
                 ->where('status', 'completed')

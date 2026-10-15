@@ -679,8 +679,9 @@ Actualizado: 2026-10-14.
   panel, section header, tabla densa, tabs lineales, filter bar, highlight neutral
   y source status. No incluyen datos, comportamiento JavaScript ni taxonomías
   funcionales propias.
-- Resumen y SEO/Analytics son las primeras pantallas migradas. Los seis
-  dashboards conservan sus estilos internos hasta lotes específicos.
+- Summary, SEO/Analytics y Reservas/Ventas consumen el Design System.
+  OPS-1 migra Alertas operativas; Intereses, Llamadas, Campañas, Comisiones y
+  Stock conservan deuda legacy para lotes propios.
 - Los estados analíticos oficiales son `ok`, `observation`, `deviation`,
   `critical` y `not-evaluable`; cualquier clave desconocida usa el último como
   fallback seguro. El contrato operativo está en `docs/ai/DESIGN_SYSTEM.md`.
@@ -732,3 +733,13 @@ Actualizado: 2026-10-14.
 # Comisiones: cierres y responsables temporales
 
 Los cierres económicos de Comisiones son independientes para `commercials`, `delegations`, `area_manager`, `financials`, `call_center` y `contact_center`. Los responsables de delegación se sincronizan en `salesforce_delegation_manager_history`; el dashboard nunca consulta Salesforce bajo demanda.
+
+## Capa operacional OPS-1 (2026-10-15)
+
+- OperationalTaskCatalog concentra comandos, argumentos fijos, cron Madrid, márgenes, riesgo y permiso manual. routes/console.php registra wrappers operations:run manteniendo los mutex previos.
+- operational_task_runs es el ledger común; operational_task_states tiene punteros al último run/éxito/fallo y reserva activa. Las transacciones con bloqueo de fila coordinan scheduler y Queue sin depender de TTL de caché.
+- Admin solicita por POST/CSRF una clave y confirmación; ExecuteOperationalTask usa conexión database operations, cola operations, un intento y timeout 14400 s; retry_after 14700 s. El worker default permanece separado.
+- La reserva comienza al encolar. Una solicitud manual de más de 15 min no se ejecuta; el worker revalida admin activo. Un proceso con terminación incierta conserva su reserva. Liberación CLI exige verificación humana previa.
+- operations:check-health consulta evidencia cada cinco minutos. El panel solo lee punteros y 25 ejecuciones por página; no llama a integraciones. No existe prueba externa de vida del propio cron.
+- Stdout se descarta; solo se retienen flags para omisiones documentadas SEO/Ads y fallos parciales Ads. Errores operacionales usan mensajes constantes. Los ledgers de fuentes/readiness siguen independientes.
+- Retención transversal incorpora runs terminales de más de 90 días conservando reservas, evidencia apuntada e incidencias abiertas. El actor se conserva como identificador numérico histórico.
