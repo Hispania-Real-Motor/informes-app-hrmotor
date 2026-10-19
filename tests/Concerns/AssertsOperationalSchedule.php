@@ -30,6 +30,7 @@ trait AssertsOperationalSchedule
             $this->assertStringContainsString('operations:run', $event->command);
             $this->assertStringContainsString($key, $event->command);
             $this->assertStringNotContainsString('task=', $event->command);
+            $this->assertSame($key === OperationalTaskCatalog::HEALTH_TASK_KEY, str_contains($event->command, '--scheduler'));
         }
     }
 }

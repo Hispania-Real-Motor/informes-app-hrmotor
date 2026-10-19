@@ -115,11 +115,16 @@ class OperationalTaskService
             $skipped = $output->skipped || ($task['command'] === 'stock:sync-daily' && $exit === 2);
             $healthIncidents = $run->task_key === OperationalTaskCatalog::HEALTH_TASK_KEY && $exit === OperationalTaskExitCode::Unhealthy->value;
             $success = $exit === 0 && ! $skipped && ! $output->partialFailure;
-            $this->finish($run, $success, $exit, $success || $skipped || $healthIncidents ? null : 'El comando falló o comunicó una integración parcial.', $skipped);
+            $error = $success || $skipped || $healthIncidents ? null : 'El comando falló o comunicó una integración parcial.';
         } catch (Throwable) {
             // Deliberate information minimization; never persist/report raw exceptions.
-            $this->finish($run, false, null, 'La ejecución produjo una excepción. Revisar el sistema de integración por un canal autorizado.');
+            $success = false;
+            $exit = null;
+            $skipped = false;
+            $error = 'La ejecución produjo una excepción. Revisar el sistema de integración por un canal autorizado.';
         }
+        // Persistence and recovery failures must reach the caller, never masquerade as completion.
+        $this->finish($run, $success, $exit, $error, $skipped);
     }
 
     public function finish(OperationalTaskRun $run, bool $success, ?int $exit, ?string $error = null, bool $skipped = false): void
