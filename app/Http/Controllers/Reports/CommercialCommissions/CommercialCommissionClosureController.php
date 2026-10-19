@@ -56,14 +56,16 @@ class CommercialCommissionClosureController extends Controller
     {
         $data = $request->validate(['month' => ['required', 'date_format:Y-m'], 'closure_scope' => ['required', Rule::in(CommercialCommissionClosure::CLOSABLE_SCOPES)]]);
         DB::transaction(function () use ($request, $data, $closures): void {
-            CommercialCommissionApprover::query()->where('closure_scope', $data['closure_scope'])->lockForUpdate()->firstOrFail();
+            // Assignment -> active actor -> closure: same order as administrative edits.
+            $assignment = CommercialCommissionApprover::query()->where('closure_scope', $data['closure_scope'])->lockForUpdate()->first();
+            abort_unless($assignment !== null, 403);
             $actor = ReportUser::query()->whereKey($request->session()->get('report_user_id'))->where('is_active', true)->lockForUpdate()->first();
             abort_unless($actor !== null, 403);
             $request->attributes->set('resolved_report_user', $actor);
             $request->attributes->remove('commission_approvers');
             abort_unless(ReportUserAccess::canApproveCommissionClosure($request, $data['closure_scope']), 403);
             $closures->approve($data['month'], $data['closure_scope'], $actor);
-        });
+        }, 3);
 
         return back()->with('status', 'Cierre económico aprobado y fotografiado como definitivo.');
     }

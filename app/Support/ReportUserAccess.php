@@ -284,6 +284,9 @@ class ReportUserAccess
 
     public static function commissionApprovalScopes(Request $request): array
     {
+        if (self::current($request) === null || ! self::canViewCommercialCommissions($request)) {
+            return [];
+        }
         if (! $request->attributes->has('commission_approvers')) {
             $request->attributes->set('commission_approvers', CommercialCommissionApprover::query()->with('user:id,is_active')->get()->keyBy('closure_scope'));
         }
@@ -294,8 +297,11 @@ class ReportUserAccess
 
         return array_values(array_filter(CommercialCommissionClosure::CLOSABLE_SCOPES, function (string $scope) use ($request, $user): bool {
             $assignment = $request->attributes->get('commission_approvers')->get($scope);
-            if ($assignment?->configured_at === null) {
-                return self::canApproveEconomicClosures($request);
+            if ($assignment === null) {
+                return false;
+            }
+            if ($assignment->configured_at === null) {
+                return $assignment->report_user_id === null && self::canApproveEconomicClosures($request);
             }
 
             return $assignment->user?->is_active && (int) $assignment->report_user_id === (int) $user['id'];

@@ -270,3 +270,15 @@ La autorización central ReportUserAccess::canApproveCommissionClosure valida el
 La aprobación sigue exigiendo pending_approval, mes natural terminado, scope disponible para ese mes y snapshot candidato existente. Conserva snapshot_version, approved_by real y evento approved; no recalcula importes. No se modifican fórmulas, universos ni cierres históricos.
 
 Operación tras despliegue autorizado: ejecutar php artisan migrate en el entorno correspondiente antes de servir el código y seleccionar el usuario existente activo en Administración. No se requiere variable de entorno ni backfill. Esta tarea no ejecuta migraciones ni cambios de datos en producción.
+
+### Hardening de aprobadores (2026-10-19)
+
+Administración utiliza el mismo resumen de aprobación del snapshot preparado que los demás aprobadores. Solo aparece una acción de aprobación por scope pendiente autorizado. La tabla de preparación conserva preparación y reapertura, sin duplicar la acción de aprobación. Un administrador no puede aprobar scopes asignados a otro usuario; conserva su política original de reapertura, también para esos scopes.
+
+El formulario marca expresamente los scopes bloqueados por aprobador inactivo/eliminado o configuración inválida, muestra el error junto a su selector e identifica la pestaña que requiere intervención. Es necesario seleccionar un usuario activo para sustituir la asignación; no hay sustituciones automáticas. Guardar una asignación vigente sin cambios conserva su fecha y no crea auditoría adicional. Los seis scopes se validan y guardan como una unidad: cualquier error revierte todos los cambios y sus eventos de asignación.
+
+La ausencia de una fila de configuración o una fila incoherente no habilita legacy: se deniega la aprobación. Solo una fila inicial válida, sin usuario y sin configured_at, permite la política original. Una configuración incompleta impide guardar el conjunto hasta corregir su integridad; el formulario no recrea silenciosamente filas faltantes. Asignar el mismo usuario activo a una fila incoherente con ID pero sin configured_at formaliza la asignación explícita y deja auditoría.
+
+La asignación tampoco concede acceso al informe si el rol no lo permite. Financiero conserva su pestaña Financieros y los controles administrativos siguen separados. La autorización del POST se revalida dentro de la transacción.
+
+Orden de bloqueos: fila(s) de configuración por ID, usuarios implicados por ID y, para aprobación, cierre económico. El bloqueo de configuración se mantiene hasta el commit del cierre. Los controladores pueden repetir hasta tres veces la transacción completa ante deadlocks detectados por Laravel; los intentos abortados no conservan eventos ni cambios parciales. No se modifican algoritmos de preparación ni cálculos.

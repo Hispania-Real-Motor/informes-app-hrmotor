@@ -1,5 +1,50 @@
 # Handoff para agentes
 
+## Hardening final de aprobadores por scope (2026-10-19)
+
+- Base comprobada: feat/commission-approvers-by-scope, HEAD ec3cf5e132ea3f2a8cadd0f6482583706fac55ed, árbol limpio. No se cambia rama ni main. Commit independiente local; sin push, PR ni despliegue.
+- Problemas confirmados: test de usuario inactivo sin comprobación de efectos; formulario sin aviso explícito del scope bloqueado ni error junto al selector; Administración aprobaba únicamente desde una acción excepcional sin resumen del candidato; una fila ausente/incoherente podía resolverse como legacy en la UI; resolución sin comprobar acceso al informe; lecturas repetidas de usuarios en edición y actor administrativo sin revalidación bajo bloqueo.
+- Correcciones: comprobaciones económicas completas, resumen de aprobación también para Administración, una única acción por scope autorizado, preparación/reapertura conservadas en su tabla. Formulario con aviso persistente de bloqueo y errores por pestaña; solo acepta sustitutos activos, no borra la marca explícita. Guardado sin cambios no altera fecha ni auditoría. Configuración incompleta bloquea todo el guardado. Filas ausentes/incoherentes y roles sin acceso al informe reciben denegación.
+- Seguridad: autorización central por scope y acceso al informe; POST valida scope, bloquea configuración y actor activo antes del cierre. Edición bloquea scopes primero, después todos los usuarios implicados ordenados por ID y revalida rol/actividad administrativa. Sin elevación de canManageEconomicClosures ni cambios de política en preparación/reapertura/ajustes.
+- Concurrencia: edición y aprobación comparten orden configuración -> usuarios -> cierre; mantienen bloqueo de asignación durante la aprobación del snapshot. Tres intentos de la transacción completa ante deadlocks de motor (por ejemplo borrado de usuario con FK); rollback incluye auditoría. El servicio de cierre no cambia. Pruebas en SQLite en memoria no reproducen contención multiconexión de MySQL: no se afirma una prueba de carga/concurrencia real.
+- Base de datos: ninguna migración nueva o modificada. Pruebas verifican seis filas iniciales, unicidad, FK de usuario inexistente, nullOnDelete conservando configured_at y rollback que solo elimina las dos tablas de la feature. Las migraciones solo se ejecutan mediante pruebas en SQLite :memory:.
+- Rendimiento: resolución cacheada una vez por request y sin dashboards adicionales; test verifica una sola consulta de configuración tras múltiples comprobaciones. Edición carga usuarios bloqueados en una consulta compacta. Prueba con mock verifica que aprobar no invoca build del dashboard financiero.
+- Integridad: pruebas comparan el estado completo de cierres, snapshots y eventos tras denegaciones e invalidaciones. Inactivos/eliminados redirigen a login; Administrador/Dirección reciben 403 para esos scopes. No cambian approved_by, approved_at ni snapshot_version y no aparecen eventos approved ni snapshots definitivos. Reasignación conserva exactamente todo el historial económico y verifica IDs anterior/nuevo/actor, scope y fecha del evento administrativo.
+- Pruebas focalizadas ejecutadas mediante php artisan test --filter=...: CommissionScopeApproverTest 23/23, 223 aserciones; CommissionMonthClosureTest 16/16, 120; CommissionVisibilitySecurityTest 13/13, 101; ReportAccessManagementTest 9/9, 58. Total 61 tests y 502 aserciones correctos.
+- Suite completa: php artisan test correcto: 1.426/1.426 tests, 13.037 aserciones, 295,531 segundos; SQLite en memoria.
+- Pint: vendor/bin/pint --test global ejecutado y fallido por 61 archivos ajenos sin cambios respecto a ec3cf5e (incluye migraciones históricas, seeders y servicios externos a la feature). La comparación de la lista de fallos con git diff --name-only ec3cf5e confirma cero archivos propios con fallos. Pint --test de los seis PHP modificados pasa. No se formatean esos 61 archivos porque el alcance prohíbe cambios ajenos y modificar migraciones históricas.
+- Build: npm run build correcto; avisos existentes de deprecación module.register() de Node y /images/login-bg.jpg sin resolver al compilar. Assets generados restaurados a HEAD y archivos nuevos del build retirados; no se incluyen cambios frontend compilados ajenos al hardening.
+- git diff --check: correcto (revalidar al cerrar documentación).
+- Configuración: no hay nuevas variables, dependencias, permisos sobre usuarios reales ni cambios de fórmulas/importes/universos/algoritmos/Salesforce/scheduler. No se migran bases reales ni se modifican datos históricos.
+
+Archivos modificados:
+
+- app/Http/Controllers/Reports/CommercialCommissions/CommercialCommissionClosureController.php
+- app/Http/Controllers/Reports/CommercialCommissions/CommercialCommissionDashboardController.php
+- app/Http/Controllers/Reports/Settings/ReportAccessManagementController.php
+- app/Models/CommercialCommissionApprover.php
+- app/Support/ReportUserAccess.php
+- resources/views/reports/commercial-commissions/index.blade.php
+- resources/views/reports/commercial-commissions/partials/closure-approval.blade.php
+- resources/views/reports/settings/access.blade.php
+- tests/Feature/CommissionScopeApproverTest.php
+- docs/informe-comisiones.md
+- docs/ai/DECISIONS.md
+- docs/ai/HANDOFF.md
+
+Validación manual antes del despliegue (exclusivamente entorno local desechable con usuarios y economía sintéticos):
+
+1. Confirmar las seis filas iniciales sin asignación; comprobar selección vacía y aprobación legacy por Administrador/Dirección sobre un mes terminado preparado.
+2. Asignar Financieros a un usuario financiero activo; acceder con ese usuario, ver su candidato y aprobar; confirmar approved_by, approved_at y un único evento approved sin cambio del snapshot. Manipular POST a otro scope pendiente: 403, sin efectos.
+3. Confirmar que el financiero no puede preparar/reabrir/ajustar ni gestionar fórmulas/usuarios/asignaciones o abrir detalles de otras pestañas. Asignar otro scope solo si su acceso por rol lo permite; no se amplían pestañas al asignarlo.
+4. Verificar que Administración ve una única acción de aprobación para un scope legacy o asignado a sí misma y ninguna para uno asignado a otra persona; preparación y reapertura conservan sus reglas.
+5. Desactivar y después eliminar un aprobador sintético: aviso de bloqueo en su selector; intentos con su sesión antigua redirigen a login y con Administración/Dirección son 403. Comprobar que cierre, fechas, eventos y snapshots siguen intactos.
+6. Enviar un formulario con cambios en un scope válido y otro configurado vacío, inactivo o inexistente; comprobar error por pestaña y ausencia de cambios parciales/auditoría. Elegir un sustituto activo para recuperar el scope. Guardar sin cambios: sin nueva auditoría ni cambio de fecha.
+7. Reasignar después de un cierre definitivo: comprobar trazabilidad administrativa e historial económico idéntico. En un MySQL local desechable, comprobar con dos conexiones que reasignación/aprobación serializan por fila de scope y que un deadlock no deja efectos parciales.
+
+Riesgos residuales / revisión pendiente: Pint global sigue fallando por deuda de estilo preexistente (61 archivos); debe tratarse fuera de este commit conforme a la prohibición de cambios ajenos. No se valida contención real del motor productivo con SQLite ni se despliega nada. No hay migraciones adicionales ni acciones sobre datos reales necesarias para este hardening.
+
+
 ## Aprobadores de comisiones por scope (2026-10-19)
 
 - Rama exclusiva: feat/commission-approvers-by-scope. Inicio limpio en d8cd17820523889fdcb84f87c57dd6cee3cb4b16. main local en 3154bd033671b4ad3bc5e5e06f93b39f51331c29 es antecesor de la base; no se modifica main ni se incorpora otro desarrollo.

@@ -22,8 +22,10 @@
                                         <td>
                                             @if ($status === 'pending_approval' && data_get($approval, 'status.is_prepared'))
                                                 <form method="POST" action="{{ route('reports.commercial-commissions.closure.approve') }}">@csrf<input type="hidden" name="month" value="{{ $approval['month'] }}"><input type="hidden" name="closure_scope" value="{{ $approval['scope'] }}"><button class="main-tab active" type="submit">Aprobar</button></form>
-                                            @elseif ($status === 'definitive' && ($canReopenEconomicClosures ?? false))
+                                            @elseif ($status === 'definitive' && ($canReopenEconomicClosures ?? false) && ($adminPreparationOverview ?? []) === [])
                                                 <details class="commission-exception-actions"><summary>Reabrir</summary><form method="POST" action="{{ route('reports.commercial-commissions.closure.reopen') }}" class="commission-exception-form">@csrf<input type="hidden" name="month" value="{{ $approval['month'] }}"><input type="hidden" name="closure_scope" value="{{ $approval['scope'] }}"><label>Motivo obligatorio<input name="reason" minlength="10" required></label><button class="filter-reset" type="submit">Confirmar reapertura</button></form></details>
+                                            @elseif ($status === 'definitive')
+                                                <span class="small">Cierre definitivo</span>
                                             @else
                                                 <span class="small">Pendiente de preparación</span>
                                             @endif

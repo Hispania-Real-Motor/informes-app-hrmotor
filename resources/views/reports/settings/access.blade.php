@@ -58,15 +58,25 @@
             <form method="POST" action="{{ route('reports.access-settings.commission-approvers') }}" class="report-access-grid">
                 @csrf @method('PUT')
                 @foreach ($commissionScopes as $scope)
-                    @php($assignment = $commissionApprovers->get($scope))
+                    @php
+                        $assignment = $commissionApprovers->get($scope);
+                        $blocked = $assignment === null
+                            || ($assignment->configured_at === null && $assignment->report_user_id !== null)
+                            || ($assignment->configured_at !== null && ! $assignment->user?->is_active);
+                        $scopeLabel = $commissionScopeLabels[$scope];
+                    @endphp
                     <div class="filter-group">
-                        <label for="approver_{{ $scope }}">{{ ['commercials'=>'Comerciales','delegations'=>'Delegaciones','area_manager'=>'Area Manager','financials'=>'Financieros','call_center'=>'Call Center','contact_center'=>'Contact Center'][$scope] }}</label>
-                        <select id="approver_{{ $scope }}" name="approvers[{{ $scope }}]">
-                            <option value="">{{ $assignment?->configured_at ? 'Seleccione un usuario activo (aprobación bloqueada sin usuario válido)' : 'Sin asignación: política legacy' }}</option>
+                        <label for="approver_{{ $scope }}">{{ $scopeLabel }}</label>
+                        @if ($blocked)
+                            <p class="notice" role="status">{{ $scopeLabel }}: aprobación bloqueada. El aprobador está inactivo, ha sido eliminado o la configuración no es válida. Seleccione un sustituto activo.</p>
+                        @endif
+                        <select id="approver_{{ $scope }}" name="approvers[{{ $scope }}]" @error("approvers.$scope") aria-invalid="true" aria-describedby="approver_error_{{ $scope }}" @enderror>
+                            <option value="">{{ $assignment?->configured_at ? 'Seleccione un sustituto activo (sin retorno a legacy)' : 'Sin asignación: política legacy' }}</option>
                             @foreach ($approverUsers as $user)
                                 <option value="{{ $user->id }}" @selected((string) old("approvers.$scope", $assignment?->report_user_id) === (string) $user->id)>{{ $user->name }} · {{ $user->email }}</option>
                             @endforeach
                         </select>
+                        @error("approvers.$scope")<p id="approver_error_{{ $scope }}" role="alert">{{ $message }}</p>@enderror
                     </div>
                 @endforeach
                 <button type="submit" class="main-tab active">Guardar aprobadores</button>

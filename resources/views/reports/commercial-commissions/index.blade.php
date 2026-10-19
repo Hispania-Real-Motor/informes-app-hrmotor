@@ -196,14 +196,10 @@
                                                 <span class="small">Fuentes pendientes</span>
                                             @endif
 
-                                            @if (data_get($preparation, 'status.is_prepared') && in_array($status, ['pending_approval', 'definitive'], true))
+                                            @if (data_get($preparation, 'status.is_prepared') && $status === 'definitive' && ($canReopenEconomicClosures ?? false))
                                                 <details class="commission-exception-actions">
                                                     <summary>Acciones excepcionales</summary>
-                                                    @if ($status === 'pending_approval' && in_array($preparation['scope'], $approvalScopes ?? [], true))
-                                                        <form method="POST" action="{{ route('reports.commercial-commissions.closure.approve') }}">@csrf<input type="hidden" name="month" value="{{ $dashboard['month'] }}"><input type="hidden" name="closure_scope" value="{{ $preparation['scope'] }}"><button type="submit" class="filter-reset">Aprobar excepcionalmente</button></form>
-                                                    @elseif ($status === 'definitive' && ($canReopenEconomicClosures ?? false))
                                                         <form method="POST" action="{{ route('reports.commercial-commissions.closure.reopen') }}" class="commission-exception-form">@csrf<input type="hidden" name="month" value="{{ $dashboard['month'] }}"><input type="hidden" name="closure_scope" value="{{ $preparation['scope'] }}"><label>Motivo de reapertura<input name="reason" minlength="10" required></label><button type="submit" class="filter-reset">Reabrir</button></form>
-                                                    @endif
                                                 </details>
                                             @endif
                                         </td>

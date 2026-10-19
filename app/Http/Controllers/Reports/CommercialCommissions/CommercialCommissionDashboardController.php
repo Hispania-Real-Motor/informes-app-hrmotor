@@ -182,7 +182,7 @@ class CommercialCommissionDashboardController extends Controller
         if ($role === ReportUser::ROLE_FINANCIAL) {
             $approvalScopes = array_values(array_intersect($approvalScopes, ['financials']));
         }
-        $directorApprovalOverview = ! ReportUserAccess::isAdmin($request) && $approvalScopes !== []
+        $directorApprovalOverview = $approvalScopes !== []
             ? $closureService->approvalOverview($payload['month'], $closureScope, $activeClosureDashboard, $approvalScopes)
             : [];
         $adminPreparationOverview = ReportUserAccess::isAdmin($request)

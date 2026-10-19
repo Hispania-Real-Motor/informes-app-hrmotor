@@ -1165,3 +1165,9 @@ Los errores de persistencia/reconciliación final se propagan fuera del servicio
 - Auditoría append-only por la aplicación siguiendo el patrón de eventos con actor, contexto y fecha. El contexto conserva IDs anterior, nuevo y actor, sin nombres/emails; las FKs nullable permiten eliminar usuarios sin perder esas identidades históricas.
 - La autorización por scope se centraliza en ReportUserAccess y es independiente de gestión económica. Solo el POST de aprobación y su UI utilizan el nuevo permiso; preparación, reapertura y ajustes conservan su política.
 - El resumen compartido de aprobación usa snapshots y filtra los scopes antes de consultarlos. No se amplían detalles ni pestañas por recibir una asignación.
+
+### Hardening del contrato de aprobación (2026-10-19)
+
+- Denegación por defecto para filas de scope ausentes o incoherentes: legacy exige explícitamente una fila inicial con usuario/configured_at nulos. El permiso exige asimismo autenticación activa y acceso vigente al informe.
+- Se conserva la misma frontera transaccional HTTP: configuración -> usuarios ordenados por ID -> cierre económico. Edición agrupa las lecturas bloqueadas de usuarios y revalida al administrador dentro de la transacción. Tres intentos completos ante deadlocks; sin efectos externos dentro del bloque reintentable. El servicio conserva su bloqueo del cierre y sus validaciones sin cambios.
+- El administrador utiliza el resumen de snapshots para aprobar y la tabla administrativa para preparar/reabrir. Se evita duplicar formularios económicos. No cambian los permisos de reapertura.
