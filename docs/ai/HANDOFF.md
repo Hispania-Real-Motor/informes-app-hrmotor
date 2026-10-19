@@ -5266,3 +5266,15 @@ Validación general final, realmente ejecutada: php artisan test pasa con
 integraciones aisladas (GA4/Search Console/Tasaciones). No certifica su estado
 externo actual. Se prepara commit y PR hacia main para revisión humana, sin merge
 ni despliegue. Resultados remotos posteriores se comunican con evidencia separada.
+
+Revisión final adicional: prueba sintética local (sin red) del mensaje sanitizado
+Salesforce SOQL HTTP 400/INVALID_FIELD contra invalidFieldFromMessage devolvió null.
+El fallback de retirada de campos de Tasaciones depende de un nombre que el cliente
+sanitizado no conserva. Se documenta esta limitación separadamente: no se acredita
+como causa productiva, ni se cambia la sincronización ni restaura un payload bruto.
+Debe contrastarse con el tipo de error reciente antes de abordar otro correctivo.
+
+PR #79 creado hacia main, rama publicada. CI run 39228596171 del commit 19c08b7:
+PHP tests, Pint, Composer/audit, build y whitespace completados con success.
+La actualización documental posterior no cambia el código ya probado; no se
+extrapola ese resultado a futuros commits sin consultar su ejecución remota.

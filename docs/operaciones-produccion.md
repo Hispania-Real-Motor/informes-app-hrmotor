@@ -1005,3 +1005,16 @@ la alerta histórica: la ejecución ordinaria auditada de la misma tarea debe ac
 recuperación. Solo un nuevo éxito del wrapper resuelve los dos tipos de fallo;
 un nuevo monitor unhealthy no los resuelve. Stale exige además evidencia fresca
 según la cadencia. No forzar runs ni resolver por SQL para conseguir pantalla verde.
+
+Observación reproducida en la revisión final de Tasaciones: invalidFieldFromMessage
+intenta extraer un campo del mensaje de excepción. SalesforceClient reduce las
+respuestas a HTTP/tipo mediante IntegrationErrorSanitizer::remoteFailure, perdiendo
+ese nombre. Con respuesta sintética INVALID_FIELD, el mensaje seguro conserva
+HTTP 400/tipo INVALID_FIELD y el parser devuelve null. Por tanto la retirada de
+campos inválidos dentro de un perfil no dispone de ese detalle en este recorrido;
+puede fallar aunque el adaptador sepa retirar campos cuando recibe un mensaje bruto.
+No se restaura el payload ni se modifica el contrato de sincronización en este lote.
+Pendiente específico: si el error reciente real es INVALID_FIELD, reproducir con
+cliente HTTP fake y diseñar metadatos tipados/permitidos para el fallback, sin
+exponer respuestas crudas. No se atribuye la alerta histórica a esta limitación
+sin evidencia actual de tipo/campo permitido del servidor.
