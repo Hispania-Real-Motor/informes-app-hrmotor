@@ -754,3 +754,13 @@ margen, sin reiniciar observación existente. Recuperaciones reconcilian solo un
 tarea. operational_task_releases registra de forma transaccional las intervenciones
 CLI confirmadas, con motivo cerrado, momento y principal OS cuando es verificable;
 la identidad humana no se infiere del entorno. No cambia el catálogo ni Queue.
+
+### Actualización OPS-1 del 19/10/2026
+
+PR #78 integrado; infraestructura y bootstrap F2/F5 verificados por el operador,
+con evidencia detallada en operaciones-produccion.md (no inspección de Codex).
+Worker Docker OPS independiente del default: conexión/cola operations, proyecto
+informes-ops. Correctivo local: flag CLI --scheduler solo para el monitor programado,
+traduce unhealthy/5 completo a 0 técnico sin cambiar ledger ni checker directo.
+La finalización auditada propaga sus fallos. Sin cambios de datasets, horarios,
+permisos o UX; certificación de host/reinicio/timeout largo sigue pendiente.

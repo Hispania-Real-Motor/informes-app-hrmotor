@@ -1145,3 +1145,14 @@ runs. Estados existentes conservan su created_at como inicio de observación.
 referencias OPS numéricas, UID efectivo verificable o actor explícitamente no
 verificado. Sin identidad humana inventada ni confianza en variables del shell.
 Exigen confirmación externa; no basta timeout. No hay superficie HTTP nueva.
+
+## 2026-10-19 — Límite entre monitor y scheduler
+
+Se conserva OperationalTaskExitCode y la salida directa 5. Solo la invocación
+programada de operations-health usa operations:run --scheduler: una evaluación
+unhealthy/5 auditada, completa y con reserva liberada devuelve 0 al proceso padre.
+El estado de negocio continúa unhealthy y no acredita éxito de integraciones.
+No se normalizan omisiones, bloqueos o fallos técnicos. Se rechaza esa opción
+para tareas ordinarias. Se descarta modificar el checker o filtrar logs: romperían
+la supervisión externa o esconderían el fallo en lugar de adaptar el contrato.
+Los errores de persistencia/reconciliación final se propagan fuera del servicio.

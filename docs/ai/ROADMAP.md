@@ -749,3 +749,13 @@ aditiva; sin nuevas sincronizaciones ni cambios de informes. No se actualizan
 dependencias. Lock compatible localmente con PHP 8.4.21; producción requiere
 >=8.4.1. Operador confirma 8.4.21 en web/CLI/worker; extensiones y ejecución
 real pendientes de certificación. Resultados reales en HANDOFF.
+
+### OPS-1 — Cierre productivo y monitor (2026-10-19)
+
+PR #78 integrado en main; el operador acredita bootstrap F2/F5 del 15/10,
+pipeline recuperado y worker Docker OPS independiente operativo el 19/10
+(run manual 1622 success). Supersede notas de provisión totalmente pendiente.
+Correctivo de salida del monitor preparado en rama específica desde main 3154bd0;
+pendiente revisión/despliegue. Integraciones GA4/Search Console/Tasaciones tienen
+alertas históricas: estado actual no acreditado desde el repositorio. Reinicio
+real del host y timeout de cuatro horas pendientes. Sin trabajos UX en este lote.

@@ -134,7 +134,7 @@ argumentos, 18 acciones manuales y cola operations se mantienen.
 
 ### Matriz de códigos de salida
 
-| Código | operations:check-health | operations:run | operations:release |
+| Código | operations:check-health | operations:run (sin --scheduler) | operations:release |
 |---:|---|---|---|
 | 0 | Evaluación completa sin incidencias actualmente exigibles | Solo run success con inicio, fin y salida 0 | Liberación auditada; el run queda failed, nunca success |
 | 1 | Fallo técnico al evaluar; mensaje constante | Run failed o fallo técnico del wrapper | Fallo técnico; transacción revierte si no se pudo auditar |
@@ -226,7 +226,7 @@ código hijo no cero, incluidos 3/4/5; continúa con las demás tareas. El proye
 tiene listeners ni callbacks que transformen ese evento en OperationalAlert.
 La matriz anterior se aplica también a observadores de esos eventos/logs:
 3/4 son diferimientos y 5 es una evaluación con incidencias, no fallo técnico.
-Se mantienen retornos no cero para no convertirlos en éxitos falsos del scheduler.
+En el contrato directo se mantienen retornos no cero. La adaptación explícita del monitor programado se describe en la corrección del 19/10/2026.
 
 Una alerta previa no se resuelve por el margen inicial ni por un reintento en
 cola. La evaluación consulta los tipos operacionales abiertos por las claves del
@@ -234,3 +234,15 @@ catálogo usando el índice task/state; la recuperación exige evidencia real.
 El fixture de concurrencia SQLite usa transacciones IMMEDIATE, porque SQLite no
 tiene bloqueos por fila. No cambia la configuración MariaDB/InnoDB productiva;
 la concurrencia en ese motor sigue requiriendo certificación del despliegue.
+
+## Corrección del scheduler, 2026-10-19
+
+Supersede exclusivamente el tratamiento de 5 por el proceso programado descrito
+arriba: routes/console.php añade --scheduler solo a operations-health. El wrapper
+exige unhealthy/5 con inicio/fin, last_completed_id del run y reserva liberada antes
+de devolver 0 al scheduler. El ledger permanece unhealthy/5 y el checker directo
+(y wrapper sin flag) mantienen 5. Omisión/bloqueo/fallo no se normalizan; el flag se
+rechaza para las otras 21 claves. Fallos de finalización/reconciliación se propagan.
+No cambia OperationalTaskExitCode, cron, argumentos de integraciones ni Queue.
+Ver operaciones-produccion.md: evidencia productiva F2/F5 y worker comunicada por
+el operador, diagnóstico histórico de las tres integraciones y validación pendiente.

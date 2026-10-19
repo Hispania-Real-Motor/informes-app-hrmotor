@@ -12,7 +12,7 @@ Artisan::command('inspire', function () {
 // Fixed commands/options/cadences live in the catalog. Both origins claim
 // the same durable reservation; the scheduler mutex remains an outer guard.
 foreach (app(OperationalTaskCatalog::class)->all() as $key => $task) {
-    Schedule::command('operations:run', [$key])
+    Schedule::command('operations:run', $key === OperationalTaskCatalog::HEALTH_TASK_KEY ? [$key, '--scheduler'] : [$key])
         ->name($key)
         ->cron($task['cron'])
         ->timezone($task['timezone'])

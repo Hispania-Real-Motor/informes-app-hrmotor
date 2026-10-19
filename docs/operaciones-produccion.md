@@ -2,7 +2,7 @@
 
 ## Alcance e inventario
 
-Runbook para PHP 8.4, MariaDB 10.6 y cPanel. Producción no dispone de Node/npm.
+Runbook para PHP 8.4 y MariaDB. Las secciones originales describen el entorno histórico de cPanel; la evidencia Docker vigente del 19/10/2026 se detalla en OPS-1 en producción. No se necesita Node/npm para servir los assets compilados.
 Este hardening no modifica KPIs, fórmulas, cierres ni reglas funcionales.
 
 - Web humana: `/login`, sesión Laravel y rutas bajo `reports.auth` más
@@ -751,3 +751,270 @@ check-platform-reqs. Un PHP 8.3 o 8.4.0 no es compatible con el lock. El operado
 ha confirmado PHP 8.4.21 para web, CLI y worker (2026-10-15), compatible con el
 mínimo del lock. No se han inspeccionado esos procesos ni sus extensiones desde
 este entorno; esa comprobación sigue siendo obligatoria.
+
+## OPS-1 en producción — evidencia comunicada el 19/10/2026
+
+Esta sección actualiza las notas históricas anteriores sobre cPanel, provisión
+pendiente y ausencia de pruebas del worker. La evidencia procede del operador;
+Codex no accedió al host ni ejecutó comandos productivos. Los ejemplos siguientes
+son procedimientos para operación autorizada, no acciones realizadas en este lote.
+
+### Verificado por el operador
+
+Host infra-01, proyecto aplicación app-informes, imagen local app-informes-app,
+base Laravel app_informes en laravel-informes-db, red externa existente
+app-informes_informes-network. Código compartido por bind mount de
+/srv/production/laravel/app-informes a /var/www. Contenedores:
+laravel-informes-app, laravel-informes-queue-worker, laravel-informes-db y
+laravel-informes-ops-worker.
+
+El worker default se conserva sin cambios:
+php artisan queue:work --queue=default --sleep=1 --tries=3 --timeout=90
+(incluye restablecimiento de contraseñas). OPS utiliza un proyecto Compose
+independiente informes-ops, archivo /srv/production/laravel/ops-worker/compose.yaml,
+contenedor laravel-informes-ops-worker, con:
+
+~~~text
+php artisan queue:work operations --queue=operations --timeout=14400 --tries=1 --sleep=3
+~~~
+
+Conexión Laravel operations, driver database, tabla jobs, cola operations,
+retry_after=14700. Reinicio unless-stopped. Se verificó proceso PHP activo,
+Running=true, Restarting=false, ExitCode=0, RestartCount=0. No publica HTTP;
+usa la imagen y red existentes, el bind mount indicado, parada ordenada y
+rotación de logs. No constan aquí valores exactos de stop_grace_period o de
+rotación: contrastarlos con el archivo instalado antes de intervenir.
+
+Prueba funcional comunicada: run 1622, salesforce-sync-delegation-managers,
+manual, success/0; queued 2026-10-19 08:27:03, started 08:27:05, finished 08:27:06.
+Demuestra consumo real de operations y auditoría; no demuestra reinicio del host
+ni ejecución durante cuatro horas. Fechas del ledger en UTC según contrato de
+la aplicación; conservar el timestamp original al contrastar evidencias.
+
+### Cierre del incidente F2/F5 del 15/10/2026
+
+La ausencia de bootstrap local hizo no evaluables Intereses y su métrica del
+Resumen. El operador ejecutó la carga completa F2 y bootstrap F5. Son hechos
+históricos, NO instrucciones de repetición para este correctivo:
+
+| Evidencia | Resultado comunicado |
+|---|---|
+| F2 run 4281 | completed; 283932 intereses, 196640 activos, 87292 eliminados; cutoff 2026-10-15 14:45:15 UTC; sin errores declarados |
+| F5 run 1 | completed; fuente F2 4281; 15129 actividades, 15114 relaciones resueltas, 15 no resueltas; errores 0 |
+| Pipeline run operacional 28 | salesforce-sync-interest-reporting, success/0, 2026-10-15 15:05:02–15:05:15 |
+| Fuentes posteriores | F2 4283 completed, F5 2 completed, IDs/cutoffs alineados |
+
+El usuario confirmó que ambos dashboards cargaban resultados. No se reejecutan
+cargas completas ni snapshots en este lote. Se mantiene el pipeline serial F2/F5.
+
+### Provisión y recuperación exclusiva de OPS
+
+Las etiquetas Docker referían /srv/production/laravel/app-informes/docker-compose.production.yml,
+pero ese archivo no estaba presente. No recrearlo, sustituirlo ni ejecutar un
+Compose supuesto para app-informes. No utilizar comandos down globales.
+
+1. Recuperar el YAML OPS exacto desde el host o un respaldo autorizado; no se
+   incluye un supuesto YAML instalado en este repositorio. Revisarlo privadamente,
+   sin copiar secretos a tickets, terminales compartidos o Git.
+2. Comprobar imagen local, red externa y bind mount. Si falta la red, imagen,
+   archivo o configuración de conexión, detenerse: no crear sustitutos por intuición.
+3. Para reconstruir SOLO el worker a partir de un archivo nuevo aprobado, conservar
+   proyecto informes-ops, nombre de contenedor, imagen, working directory /var/www,
+   bind mount, red externa y comando indicados. No añadir puertos o dependencias
+   que levanten/recreen DB, app o worker default. Heredar configuración por el
+   mecanismo seguro revisado en el host, sin incrustar secretos en el YAML.
+4. Aprobar parada ordenada acorde con una tarea de hasta 14400 s y revisar la
+   rotación de logs y política unless-stopped. No se conoce aquí su valor instalado.
+   No lanzar una segunda instancia mientras un proceso anterior pueda seguir vivo.
+5. Arrancar exclusivamente el proyecto OPS con su archivo validado. El servicio
+   exacto dentro del YAML debe comprobarse, no inferirse del nombre del contenedor.
+
+Checks sin mostrar variables de entorno ni payloads (ejecutar solo con autorización):
+
+~~~sh
+docker image inspect app-informes-app --format '{{.Id}}'
+docker network inspect app-informes_informes-network --format '{{.Name}}'
+docker compose -p informes-ops -f /srv/production/laravel/ops-worker/compose.yaml config --services
+docker compose -p informes-ops -f /srv/production/laravel/ops-worker/compose.yaml ps
+docker inspect laravel-informes-ops-worker --format '{{.State.Running}} {{.State.Restarting}} {{.State.ExitCode}} {{.RestartCount}}'
+docker top laravel-informes-ops-worker -eo pid,etime,args
+~~~
+
+Usar config --services, no volcar docker inspect/config completos: pueden incluir
+secretos. Los argumentos del worker conocidos no contienen credenciales; no
+compartir procesos ajenos. Para arrancar o parar SOLO OPS, después de comprobar
+que el archivo define exclusivamente ese worker:
+
+~~~sh
+docker compose -p informes-ops -f /srv/production/laravel/ops-worker/compose.yaml up -d --no-deps --no-build
+docker compose -p informes-ops -f /srv/production/laravel/ops-worker/compose.yaml stop
+~~~
+
+No ejecutar stop mientras exista trabajo vivo sin ventana y plan aprobados.
+Tras caída, unless-stopped permite recuperar el contenedor cuando Docker vuelve,
+pero no acredita terminación de hijos ni reanuda de forma segura un run unknown.
+Primero comprobar procesos, reserva y jobs. No usar queue:retry en masa. Un job
+operations tiene un intento; un worker muerto puede dejar reserva persistente.
+El timeout 14400 es inferior a retry_after 14700; esta separación no demuestra
+que un proceso o sus hijos hayan muerto. Mantener reservas inciertas hasta
+verificación externa; operations:release exige --confirm-stopped y motivo cerrado.
+No borrar jobs, reservas o locks para obtener estado verde.
+
+Revisar logs acotados localmente (por ejemplo docker logs --since 30m --tail 100
+laravel-informes-ops-worker), sin publicarlos sin sanitizar. Logs legacy de
+integraciones pueden contener detalles externos; nunca subir el stdout completo,
+.env, docker inspect completo o failed_jobs.exception/payload a tickets.
+
+Consultas acotadas con acceso administrativo a la BD, sin secretos:
+
+~~~sql
+SELECT queue, COUNT(*) AS pending FROM jobs WHERE queue IN ('operations','default') GROUP BY queue;
+SELECT id, queue, attempts, reserved_at, available_at, created_at FROM jobs
+ WHERE queue='operations' ORDER BY id DESC LIMIT 20;
+SELECT id, connection, queue, failed_at FROM failed_jobs
+ WHERE queue='operations' ORDER BY id DESC LIMIT 20;
+SELECT s.task_key, s.active_run_id, r.status, r.queued_at, r.started_at, r.finished_at
+ FROM operational_task_states s LEFT JOIN operational_task_runs r ON r.id=s.active_run_id
+ WHERE s.active_run_id IS NOT NULL LIMIT 22;
+~~~
+
+### Implementado por el correctivo del monitor (pendiente de desplegar)
+
+La programación del monitor añade únicamente --scheduler al wrapper operations:run.
+El comando de salud y el wrapper directo siguen devolviendo 5 ante incidencias.
+En modo scheduler solo unhealthy/5 con inicio, fin, last_completed_id coincidente
+y reserva liberada se traduce a salida de proceso 0. El ledger conserva unhealthy/5,
+no actualiza last_success_id ni elimina alertas. Laravel deja de reportar un fallo
+por esa evaluación técnicamente completada. Las otras 21 tareas no usan la opción;
+se rechaza para cualquier clave distinta de operations-health.
+
+Errores, códigos inesperados, catálogo/BD no disponibles, persistencia fallida,
+reconciliación incompleta, ejecuciones no iniciadas y reservas perdidas conservan
+salida no cero. 3/4 no se normalizan. Los fallos al finalizar ya no quedan atrapados
+como si el run persistido fuera suficiente para acreditar toda la evaluación.
+La comprobación extra por PK solo afecta al monitor programado; no escanea historia.
+
+Alertas: scheduled_task_failure/scheduler es el contrato histórico; los fallos
+actuales usan operational_task_failure/operations. Un éxito posterior de esa misma
+tarea resuelve ambos tipos por fingerprint, conservando filas y resolución.
+La ausencia de evidencia fresca abre operational_task_stale; para el monitor,
+operational_monitor_stale. Un heartbeat unhealthy válido recupera técnicamente al
+monitor, nunca a las integraciones. Fallo, omisión, queued o despliegue no resuelven
+fallos de integración. No multiplicar chequeos completos por cada tarea recuperada.
+
+### Validación posterior al despliegue y pendientes
+
+No hay migraciones ni cambios de configuración de colas. Desplegar el código por
+el procedimiento humano aprobado y recargar procesos que mantengan código antiguo
+solo en ventana controlada. No usar queue:restart global indiscriminado: puede
+afectar al worker default. No se autoriza aquí ninguna actuación en el host.
+
+- Comprobar schedule:list --timezone=Europe/Madrid: 22 tareas, mismos cron/mutex;
+  solo operations-health incorpora --scheduler. Comprobar cron externo cada minuto.
+- Esperar una ocurrencia natural: comprobar ledger unhealthy/5 cuando existan
+  incidencias, fin y reserva liberada. En logs/eventos del scheduler no debe aparecer
+  fallo de ese monitor por código 5; sí deben seguir visibles los fallos técnicos.
+- Supervisión externa mantiene operations:check-health: 5 incidencias, 1 fallo
+  técnico, 0 sin incidencias exigibles. La ausencia total de cron requiere supervisor
+  independiente y alerta por heartbeat; un schedule:run global 0 no prueba salud.
+- Consultar alertas y últimos runs con los checks de diagnóstico siguientes; no
+  resolver manualmente, reintentar jobs antiguos o ejecutar sincronizaciones para
+  forzar verde. La prueba manual 1622 ya aporta evidencia de consumo de cola.
+- Pendiente certificar reinicio real del host, tarea de cuatro horas, señales y
+  parada ordenada bajo carga, valores efectivos de logging/grace del YAML y recuperación
+  de huérfanos multihost. Nada de ello queda acreditado por Running=true.
+- Rollback: volver al código previo conservando ledgers y configuración OPS;
+  volverá el ruido de código 5, pero no borrar auditoría ni modificar default.
+
+### Diagnóstico de las tres integraciones — evidencia histórica, no estado actual
+
+| Tarea / hora Madrid | Comando y dataset | Evidencia comunicada (timestamp original) |
+|---|---|---|
+| seo-sync-ga4-organic / 05:45 | seo:sync-ga4-organic --days=120; seo_ga4_organic_conversions | scheduled_task_failure high, 2026-10-15 03:45:13 |
+| seo-sync-search-console / 05:15 | seo:sync-search-console --days=120; seo_search_console | scheduled_task_failure high, 2026-10-15 03:15:17 |
+| salesforce-sync-tasaciones / 01:00 | salesforce:sync-tasaciones --days=120; salesforce_tasaciones | scheduled_task_failure high, 2026-10-14 23:00:19 |
+
+No hay acceso productivo en este encargo: no se ha consultado su estado actual.
+El horario coincide con cron en Madrid y timestamps UTC en octubre, pero el
+operador debe contrastar zona/origen del registro. No se infiere fallo vigente,
+recuperación ni causa OAuth de esos timestamps. Ninguna alerta real se modifica.
+
+Rutas reales inspeccionadas:
+
+- SyncSeoGa4OrganicCommand -> Ga4OrganicConversionSyncService -> GoogleAnalyticsClient
+  -> GoogleOAuthTokenProvider. Config services.google_analytics y seo_analytics.
+  configured exige valores presentes y property_id numérico, no demuestra acceso.
+  Si falta configuración emite SKIPPED/0: el wrapper lo registra skipped, sin
+  cerrar fallos ni acreditar éxito. Además de OAuth, puede fallar acceso a Admin/Data
+  API, property no verificable, timezone inválido, falta de web stream o Key Events,
+  red, cuotas, formato de respuesta o persistencia. No se atribuye un error actual
+  a ninguna de estas hipótesis sin el último run y clase/código sanitizados.
+- SyncSeoSearchConsoleCommand -> SearchConsoleSyncService -> SearchConsoleClient
+  -> GoogleOAuthTokenProvider. Config services.google_search_console y seo_analytics;
+  falta de configuración también omite. Puede fallar acceso exacto a la property,
+  HTTP/red/cuotas, datos rows inválidos o confirmación de un cutoff finalizado,
+  además de OAuth. Su calendario fuente usa search_console_timezone; no cambiarlo
+  para acomodar el horario Madrid del scheduler.
+- SalesforceSyncTasacionesCommand -> CallCenterCommissions/Sync/SalesforceTasacionSyncService
+  -> SalesforceClient/SalesforceAuthService. Config salesforce. Consulta por bloques
+  de 31 días y perfiles de relaciones/campos con fallback; el cliente pagina y
+  reautentica una vez tras 401. Posibles fallos de OAuth, permisos/campos, consulta,
+  paginación, timeout o escritura local; una respuesta con cero filas es completed,
+  no se interpreta por sí sola como fallo. No cambiar campos, periodos o fórmulas
+  sin evidencia. El error de consultas ya se reduce a HTTP/tipo en SalesforceClient;
+  el comando legacy imprime getMessage() sin sanitización adicional. No recoger ni
+  publicar su stdout bruto, que el ledger operacional descarta; hardening general
+  de CLI legacy queda fuera de este correctivo y sigue siendo riesgo residual.
+
+Los comandos crean report_sync_runs con running, completan con cutoff/completed_at
+o fallan con error_message sanitizado por ReportSyncRunService. Un fallo previo al
+inicio del run de fuente puede tener solo evidencia operacional. El wrapper guarda
+salida/estado y mensaje constante; no retiene stdout ni payload. El panel no consulta
+Google/Salesforce. No se encontró un defecto reproducible específico que explique
+las tres alertas con la evidencia aportada; las pruebas existentes simulan errores
+HTTP/datos y se incluyen en la validación local, no certifican servicio externo.
+
+Checks propuestos para el operador autorizado: obtener alerta actual y punteros
+operacionales por claves, después fuente reciente por dataset/id. Existen índices
+operacionales task/state y task/status/id, y de fuentes dataset/source/status/completed_at.
+No seleccionar stats, payloads, SOQL ni errores crudos. Consultas de una fuente a
+la vez usando su dataset y estado, con índice y límite:
+
+~~~sql
+SELECT id, type, source, state, first_detected_at, last_detected_at, resolved_at, occurrences
+ FROM operational_alerts WHERE technical_identifier IN
+ ('seo-sync-ga4-organic','seo-sync-search-console','salesforce-sync-tasaciones')
+ ORDER BY id DESC LIMIT 20;
+SELECT s.task_key, r.id, r.status, r.exit_code, r.started_at, r.finished_at,
+ s.last_success_id, s.last_failure_id, s.active_run_id
+ FROM operational_task_states s LEFT JOIN operational_task_runs r ON r.id=s.last_run_id
+ WHERE s.task_key IN ('seo-sync-ga4-organic','seo-sync-search-console','salesforce-sync-tasaciones');
+SELECT id, dataset, status, started_at, completed_at, source_cutoff_at
+ FROM report_sync_runs WHERE dataset='seo_ga4_organic_conversions'
+ AND source='google_analytics' AND status='failed'
+ ORDER BY completed_at DESC LIMIT 5;
+~~~
+
+Repetir la última consulta para cada dataset y status completed, usando source google_search_console para Search Console y salesforce para Tasaciones. El operador debe
+extraer localmente solo categoría/HTTP/tipo permitido del error de esos IDs y
+correlacionar con el run operacional/horario, omitiendo tokens y datos personales.
+Para cerrar diagnóstico faltan: estado actual, último fallo y éxito verificables,
+cutoff/cobertura y código sanitizado reciente (o confirmación de ausencia de run).
+Un report_sync_run completed aislado o un despliegue no resuelve automáticamente
+la alerta histórica: la ejecución ordinaria auditada de la misma tarea debe acreditar
+recuperación. Solo un nuevo éxito del wrapper resuelve los dos tipos de fallo;
+un nuevo monitor unhealthy no los resuelve. Stale exige además evidencia fresca
+según la cadencia. No forzar runs ni resolver por SQL para conseguir pantalla verde.
+
+Observación reproducida en la revisión final de Tasaciones: invalidFieldFromMessage
+intenta extraer un campo del mensaje de excepción. SalesforceClient reduce las
+respuestas a HTTP/tipo mediante IntegrationErrorSanitizer::remoteFailure, perdiendo
+ese nombre. Con respuesta sintética INVALID_FIELD, el mensaje seguro conserva
+HTTP 400/tipo INVALID_FIELD y el parser devuelve null. Por tanto la retirada de
+campos inválidos dentro de un perfil no dispone de ese detalle en este recorrido;
+puede fallar aunque el adaptador sepa retirar campos cuando recibe un mensaje bruto.
+No se restaura el payload ni se modifica el contrato de sincronización en este lote.
+Pendiente específico: si el error reciente real es INVALID_FIELD, reproducir con
+cliente HTTP fake y diseñar metadatos tipados/permitidos para el fallback, sin
+exponer respuestas crudas. No se atribuye la alerta histórica a esta limitación
+sin evidencia actual de tipo/campo permitido del servidor.

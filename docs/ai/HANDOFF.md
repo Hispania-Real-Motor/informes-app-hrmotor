@@ -5173,3 +5173,108 @@ Verificación final de esta corrección: php artisan test completa pasa con
 diez repeticiones y la clase completa, sin cambios de código entre ellas. Solo
 resta la ejecución remota sobre el commit publicado; el run 172 sigue acreditando
 el fallo del HEAD anterior, no el resultado de esta corrección.
+
+## 2026-10-19 — Cierre productivo OPS-1 y límite del monitor/scheduler
+
+Base real verificada con status/rama/HEAD/fetch: origin/main
+3154bd033671b4ad3bc5e5e06f93b39f51331c29 (merge PR #78). Worktree limpio;
+checkout anterior feat/ops-1-operational-control en 18522e1. Rama nueva solicitada:
+fix/ops-1-monitor-production-closure, creada desde ese origin/main.
+
+### Causa, cambio y alcance revisado
+
+Laravel ScheduleRunCommand convierte toda salida no cero de un comando programado
+en ScheduledTaskFailed y reporta excepción. El ledger ya distinguía unhealthy/5,
+pero operations:run propagaba 5 como fallo técnico al padre. Se elige flag CLI
+--scheduler solo para operations-health en routes/console.php. Tras verificar run
+unhealthy/5 con inicio/fin, last_completed_id y reserva liberada, devuelve 0 técnico.
+Se mantienen estado y exit_code persistidos, checker y wrapper directos con 5,
+alertas y heartbeat. Se rechaza el flag para otras claves; ningún 3/4/fallo se normaliza.
+Se descarta modificar el checker o filtrar logs por pérdida de contrato/evidencia.
+
+La finalización y reconciliación se sacan del catch de errores del comando hijo:
+si fallan después de persistir unhealthy, el wrapper retorna fallo técnico, no
+traduce una evaluación incompleta a éxito. Se añade una consulta por PK al monitor,
+sin escanear historia ni multiplicar el chequeo de todas las tareas.
+
+Archivos de código/tests:
+- app/Console/Commands/RunOperationalTaskCommand.php: límite explícito del scheduler.
+- app/Services/Operations/OperationalTaskService.php: propagación del fallo de finalización.
+- routes/console.php: opción solo del monitor, mismos cron/mutex/22 tareas.
+- tests/Concerns/AssertsOperationalSchedule.php: verifica la opción exclusiva y calendario.
+- tests/Feature/OperationalMonitorSchedulerTest.php (nuevo): scheduler Laravel en callback
+  aislado, cero/una/varias incidencias, contrato directo, fallos/código inesperado,
+  pérdida de reserva, fallo de auditoría, no recursión y recuperación de tres alertas.
+
+Documentos: docs/operaciones-produccion.md, docs/ai/OPERATIONS.md,
+docs/ai/DECISIONS.md, docs/ai/PROJECT_CONTEXT.md, docs/ai/ROADMAP.md y este HANDOFF.
+No migraciones, nuevas dependencias, cambios de cola, catálogo, fórmulas, permisos,
+UX ni assets. Conexión operations y worker default intactos; argumentos ordinarios
+y serialización F2/F5 no cambian. Sin .env ni secretos en el diff.
+
+### Producción y diagnóstico: hechos aportados frente a límites
+
+El operador acredita F2 4281 completed/cutoff 2026-10-15 14:45:15 UTC,
+F5 1 completed/fuente 4281, pipeline run 28 success con F2 4283/F5 2 alineados
+y dashboards recuperados. Se documentan recuentos agregados y las 15 referencias
+no resueltas de F5; no se ejecuta ni recomienda repetir bootstrap/snapshots.
+El 19/10 acredita infra-01, Compose OPS independiente informes-ops y run 1622
+manual success/0 en operations. Runbook distingue evidencia comunicada de inspección
+propia: Codex NO accedió al host. No se copia/inventa el YAML instalado ni se
+reconstruye el Compose original ausente. Procedimientos de red/imagen/mount,
+provisión/recuperación, logs acotados, jobs fallidos y reservas están documentados.
+
+GA4, Search Console y Tasaciones: se inspeccionan comandos, clientes, config,
+report_sync_runs y reconciliación de fingerprints. No hay evidencia actual de
+causa OAuth ni defecto específico reproducible que explique los fallos históricos.
+El runbook enumera posibles clases de fallo y consultas por índice/dataset/source/
+status con límites. Falta estado actual, último fallo/éxito/cutoff y categoría/HTTP
+de errores recientes sanitizados. Las alertas no se cierran por despliegue, skipped
+o monitor unhealthy. Tasaciones conserva impresión legacy de getMessage(): stdout
+no debe compartirse; el ledger lo descarta. Hardening general de CLI queda pendiente.
+
+### Verificaciones completadas antes de cerrar la suite general
+
+- php artisan test --filter=Operational: 94/94, 1249 aserciones, 12689 ms, exit 0.
+  Incluye autorización, cola dedicada, doble proceso concurrente, timeout/unknown,
+  heartbeat Madrid/DST y las 16 regresiones añadidas. Fixtures iniciales ajustados
+  a CallbackEvent (retorno booleano) y a omisiones reales; no se relajan contratos.
+- Pint --test en todos los PHP modificados/nuevos: pasa; php -l en los cinco: pasa.
+- composer validate --strict y check-platform-reqs --lock --no-dev: pasan, PHP 8.4.21.
+- composer audit --locked --no-dev: sin advisories; npm audit: 0 vulnerabilidades.
+- npm run build: pasa; warnings existentes login-bg.jpg/runtime y module.register
+  deprecado. Assets idénticos a main; no hay JavaScript específico modificado.
+- schedule:list --timezone=Europe/Madrid: 22 tareas, reseñas 02:20; solo monitor con flag.
+- git diff --check: pasa. Catálogo, enum, Queue, jobs, recursos y lockfiles sin diff.
+
+### Acciones humanas y riesgos pendientes
+
+Correctivo pendiente de revisión y despliegue humano. No hay migraciones ni cambio
+de .env; no se interviene en producción. Tras despliegue comprobar ocurrencia
+natural, unhealthy/5 persistido y ausencia de error técnico por ese 5; supervisión
+externa conserva checker/5 y ausencia de heartbeat. Recuperar solo OPS conforme
+al YAML real aprobado, sin reinicios globales que afecten a default.
+
+Pendiente: reinicio real del host, señales/parada bajo carga y tarea de cuatro
+horas, valores exactos de logging/grace del YAML, diagnóstico actual de integraciones.
+No se ejecutaron sincronizaciones, cargas completas, snapshots, comandos productivos,
+reinicios, cambios de alertas reales ni despliegues. Rollback del código conserva
+ledgers/worker; reaparece ruido 5 sin destruir evidencia. No hacer merge automático.
+
+Validación general final, realmente ejecutada: php artisan test pasa con
+1403/1403 pruebas, 12814 aserciones, 317664 ms y exit 0. Incluye las suites de
+integraciones aisladas (GA4/Search Console/Tasaciones). No certifica su estado
+externo actual. Se prepara commit y PR hacia main para revisión humana, sin merge
+ni despliegue. Resultados remotos posteriores se comunican con evidencia separada.
+
+Revisión final adicional: prueba sintética local (sin red) del mensaje sanitizado
+Salesforce SOQL HTTP 400/INVALID_FIELD contra invalidFieldFromMessage devolvió null.
+El fallback de retirada de campos de Tasaciones depende de un nombre que el cliente
+sanitizado no conserva. Se documenta esta limitación separadamente: no se acredita
+como causa productiva, ni se cambia la sincronización ni restaura un payload bruto.
+Debe contrastarse con el tipo de error reciente antes de abordar otro correctivo.
+
+PR #79 creado hacia main, rama publicada. CI run 39228596171 del commit 19c08b7:
+PHP tests, Pint, Composer/audit, build y whitespace completados con success.
+La actualización documental posterior no cambia el código ya probado; no se
+extrapola ese resultado a futuros commits sin consultar su ejecución remota.
