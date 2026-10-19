@@ -1,5 +1,53 @@
 # Handoff para agentes
 
+## Aprobadores de comisiones por scope (2026-10-19)
+
+- Rama exclusiva: feat/commission-approvers-by-scope. Inicio limpio en d8cd17820523889fdcb84f87c57dd6cee3cb4b16. main local en 3154bd033671b4ad3bc5e5e06f93b39f51331c29 es antecesor de la base; no se modifica main ni se incorpora otro desarrollo.
+- Resumen: configuración administrativa de seis aprobadores independientes por ID de ReportUser, validación de usuario activo, autorización server-side por scope y resumen de aprobación sobre el candidato preparado.
+- Decisiones: persistencia separada, configured_at como marca de asignación explícita irreversible desde la UI, fallback legacy exclusivamente antes de primera asignación y bloqueo al desaparecer/desactivarse el usuario. Una asignación explícita prevalece sobre Administrador/Dirección. Resolver central con caché por request. Auditoría siguiendo patrón de eventos con contexto y actor.
+- Base de datos: migración aditiva 2026_10_19_120000_create_commercial_commission_approvers.php. Crea commercial_commission_approvers (unicidad por scope, FK nullable con nullOnDelete, seis filas inicialmente legacy) y commercial_commission_approver_events (actor FK, IDs anterior/nuevo/actor en contexto JSON, fecha). No modifica tablas de cierres ni snapshots existentes.
+- Seguridad: POST valida el scope antes de autorizarlo, bloquea fila de asignación y actor activo durante aprobación, CSRF intacto. Edición solo administrativa y transaccional, con revalidación bajo bloqueo. No usa correo/nombre para autorizar. El resumen compartido filtra scopes antes de consultar snapshots; Financiero solo conserva pestaña Financieros y auditor mantiene su proyección sin detalles. No concede permisos adicionales de preparación, reapertura, ajustes, fórmulas, usuarios ni penalizaciones. Las reglas de acceso al informe por rol siguen vigentes.
+- Rendimiento: configuración cargada una vez por request con usuarios precargados; no se construyen dashboards para decidir permisos ni aprobar. No hay consultas de autorización por fila del dashboard.
+- Integridad económica: no se cambian fórmulas, universos, importes, Salesforce, snapshots definitivos, approved_by histórico ni eventos existentes. Aprobar utiliza el snapshot candidato y registra actor real en approved_by y evento approved.
+- Validación focalizada: 49 tests y 364 aserciones correctas con Pest (CommissionMonthClosureTest, CommissionVisibilitySecurityTest, ReportAccessManagementTest y CommissionScopeApproverTest). Pint --test correcto. git diff --check correcto. Build npm run build correcto; avisos de deprecación Node e imagen /images/login-bg.jpg preexistente sin resolver al compilar. Assets generados restaurados para evitar churn ajeno a esta feature.
+- Suite completa: 1.414 tests correctos, 12.899 aserciones; duración 337,698 segundos (Pest --compact, SQLite en memoria).
+- Acciones manuales: tras revisar y autorizar un despliegue, ejecutar php artisan migrate antes de servir este código. En Administración → Permisos por informe seleccionar los usuarios activos existentes por cada scope. No requiere variables de entorno, backfills ni creación automática de usuarios. No se ha desplegado ni migrado producción.
+- Riesgos/pendientes: comprobar operativamente que el usuario deseado existe y está activo; si no existe o se desactiva, Administración debe resolver su configuración. El rollback de la migración elimina únicamente las dos tablas nuevas y su historial de asignación, por lo que debe preservarse dicho historial si se requiere rollback.
+
+Archivos modificados:
+
+- app/Http/Controllers/Reports/CommercialCommissions/CommercialCommissionClosureController.php
+- app/Http/Controllers/Reports/CommercialCommissions/CommercialCommissionDashboardController.php
+- app/Http/Controllers/Reports/Settings/ReportAccessManagementController.php
+- app/Services/Reports/CommercialCommissions/CommercialCommissionClosureService.php
+- app/Support/ReportUserAccess.php
+- resources/views/reports/commercial-commissions/index.blade.php
+- resources/views/reports/commercial-commissions/audit-summary.blade.php
+- resources/views/reports/settings/access.blade.php
+- routes/web.php
+- tests/Feature/CommissionMonthClosureTest.php
+- docs/informe-comisiones.md
+- docs/ai/HANDOFF.md
+- docs/ai/PROJECT_CONTEXT.md
+- docs/ai/DECISIONS.md
+
+Archivos creados:
+
+- app/Models/CommercialCommissionApprover.php
+- database/migrations/2026_10_19_120000_create_commercial_commission_approvers.php
+- resources/views/reports/commercial-commissions/partials/closure-approval.blade.php
+- tests/Feature/CommissionScopeApproverTest.php
+
+Comandos de validación (PHP 8.4 de Herd; Pest directo evita depender del PATH):
+
+- php vendor/bin/pest --filter='CommissionMonthClosureTest|CommissionVisibilitySecurityTest|ReportAccessManagementTest|CommissionScopeApproverTest' --compact
+- php vendor/bin/pest --compact
+- php vendor/bin/pint --test [nueve archivos PHP de esta feature]
+- npm run build
+- npm run build -- --outDir storage/app/commission-scope-build (revalidación final correcta sin cambios en assets versionados)
+- git diff --check
+
+
 ## Alineación de pruebas Executive con Interest (2026-10-14)
 
 - No cambia runtime: `ExecutiveDailyDatasetService` ya inyectaba

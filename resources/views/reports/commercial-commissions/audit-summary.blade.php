@@ -31,5 +31,6 @@
                 </tbody></table></div>
             @endif
         </section>
+        @include('reports.commercial-commissions.partials.closure-approval', ['approvalMonth' => $auditProjection['month']])
     </main>
 </x-reports.app-shell>

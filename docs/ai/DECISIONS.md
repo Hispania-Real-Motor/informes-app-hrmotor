@@ -1156,3 +1156,12 @@ No se normalizan omisiones, bloqueos o fallos técnicos. Se rechaza esa opción
 para tareas ordinarias. Se descarta modificar el checker o filtrar logs: romperían
 la supervisión externa o esconderían el fallo en lugar de adaptar el contrato.
 Los errores de persistencia/reconciliación final se propagan fuera del servicio.
+
+## 2026-10-19 — Aprobador único explícito por scope de comisiones
+
+- Persistencia separada de report_access_settings y permissions: commercial_commission_approvers con unicidad por closure_scope y FK nullable a report_users.
+- Se crean las seis filas sin configured_at para preservar legacy y disponer de una fila estable sobre la que serializar edición y aprobación mediante lockForUpdate.
+- configured_at distingue nunca asignado de usuario eliminado: la desaparición o inactividad del aprobador bloquea sin fallback. Una asignación explícita se sustituye, no se borra desde la aplicación.
+- Auditoría append-only por la aplicación siguiendo el patrón de eventos con actor, contexto y fecha. El contexto conserva IDs anterior, nuevo y actor, sin nombres/emails; las FKs nullable permiten eliminar usuarios sin perder esas identidades históricas.
+- La autorización por scope se centraliza en ReportUserAccess y es independiente de gestión económica. Solo el POST de aprobación y su UI utilizan el nuevo permiso; preparación, reapertura y ajustes conservan su política.
+- El resumen compartido de aprobación usa snapshots y filtra los scopes antes de consultarlos. No se amplían detalles ni pestañas por recibir una asignación.

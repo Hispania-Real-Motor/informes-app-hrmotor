@@ -183,6 +183,7 @@ Route::middleware('reports.auth')->group(function () {
         ->group(function () {
             Route::get('/', [ReportAccessManagementController::class, 'index'])->name('index');
             Route::put('/', [ReportAccessManagementController::class, 'update'])->name('update');
+            Route::put('/commission-approvers', [ReportAccessManagementController::class, 'updateApprovers'])->name('commission-approvers');
         });
 
     Route::prefix('informes/configuracion-comisiones')
