@@ -63,6 +63,8 @@ class CommercialCommissionDashboardController extends Controller
                         : null,
                 ),
                 'auditProjectionService' => $auditProjection,
+                'directorApprovalOverview' => $closureService->approvalOverview(is_string($selectedMonth) ? $selectedMonth : null, allowedScopes: ReportUserAccess::commissionApprovalScopes($request)),
+                'canReopenEconomicClosures' => false,
             ]);
         }
 
@@ -176,8 +178,12 @@ class CommercialCommissionDashboardController extends Controller
             'contact_center' => $contactCenterPayload,
             default => null,
         };
-        $directorApprovalOverview = ReportUserAccess::isDirector($request)
-            ? $closureService->approvalOverview($payload['month'], $closureScope, $activeClosureDashboard)
+        $approvalScopes = ReportUserAccess::commissionApprovalScopes($request);
+        if ($role === ReportUser::ROLE_FINANCIAL) {
+            $approvalScopes = array_values(array_intersect($approvalScopes, ['financials']));
+        }
+        $directorApprovalOverview = $approvalScopes !== []
+            ? $closureService->approvalOverview($payload['month'], $closureScope, $activeClosureDashboard, $approvalScopes)
             : [];
         $adminPreparationOverview = ReportUserAccess::isAdmin($request)
             ? $closureService->preparationOverview($payload['month'], $closureScope, $activeClosureDashboard)
@@ -201,7 +207,8 @@ class CommercialCommissionDashboardController extends Controller
             'closureScope' => $closureScope,
             'canManageEconomicClosures' => ReportUserAccess::canManageEconomicClosures($request),
             'canPrepareEconomicClosures' => ReportUserAccess::canPrepareEconomicClosures($request),
-            'canApproveEconomicClosures' => ReportUserAccess::canApproveEconomicClosures($request),
+            'canApproveEconomicClosures' => $closureScope !== null && ReportUserAccess::canApproveCommissionClosure($request, $closureScope),
+            'approvalScopes' => $approvalScopes,
             'canReopenEconomicClosures' => ReportUserAccess::canReopenEconomicClosures($request),
             'canViewCallContactDetails' => $canViewCallContactDetails,
             'canManageFinancingPenalties' => ReportUserAccess::canManageFinancingPenalties($request),

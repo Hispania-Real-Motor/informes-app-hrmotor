@@ -256,3 +256,29 @@ ejecución operacional correcta no sustituye esas comprobaciones.
 La preparación automática del mes anterior el día 15 continúa pendiente en
 COMM-CLOSE-SCHEDULE. Preparará candidatos; no aprobará cierres automáticamente.
 No cambian fórmulas, permisos de aprobación ni UX de Comisiones en OPS-1.
+
+## Aprobadores económicos por scope (2026-10-19)
+
+Administración → Permisos por informe permite elegir un ReportUser activo para cada uno de los seis scopes: Comerciales, Delegaciones, Area Manager, Financieros, Call Center y Contact Center. La selección usa el ID interno; no crea usuarios ni depende de nombres o correos. El mismo usuario puede aprobar varios scopes.
+
+La migración aditiva 2026_10_19_120000_create_commercial_commission_approvers crea seis filas únicas en commercial_commission_approvers y un registro separado commercial_commission_approver_events. configured_at nulo significa que el scope nunca fue asignado: conserva inicialmente aprobación por Administrador/Dirección. Tras la primera asignación solo aprueba el usuario asignado y activo, incluso frente a Administrador/Dirección. Si se elimina el usuario, la FK queda a NULL y configured_at se conserva: el scope queda bloqueado. No se permite vaciar una asignación para recuperar legacy; Administración debe seleccionar otro usuario activo.
+
+Cada cambio se guarda en una transacción con scope, IDs anterior/nuevo, actor y fecha. Los IDs de auditoría también se conservan en contexto JSON sin PII aunque posteriormente se elimine un usuario. La asignación actual usa FK con nullOnDelete. Las actualizaciones y aprobaciones bloquean la fila del scope; la aprobación verifica al actor activo dentro de la transacción.
+
+La autorización central ReportUserAccess::canApproveCommissionClosure valida el scope en backend; la configuración se carga una vez por request. El resumen de aprobación consulta únicamente snapshots de scopes autorizados y no construye dashboards adicionales. El rol Financiero mantiene exclusivamente la pestaña Financieros. La asignación no concede acceso al informe, detalles, preparación, reapertura, ajustes, fórmulas, penalizaciones ni administración: esos accesos conservan sus reglas anteriores. El auditor puede aprobar mediante el resumen solo los scopes que tenga asignados.
+
+La aprobación sigue exigiendo pending_approval, mes natural terminado, scope disponible para ese mes y snapshot candidato existente. Conserva snapshot_version, approved_by real y evento approved; no recalcula importes. No se modifican fórmulas, universos ni cierres históricos.
+
+Operación tras despliegue autorizado: ejecutar php artisan migrate en el entorno correspondiente antes de servir el código y seleccionar el usuario existente activo en Administración. No se requiere variable de entorno ni backfill. Esta tarea no ejecuta migraciones ni cambios de datos en producción.
+
+### Hardening de aprobadores (2026-10-19)
+
+Administración utiliza el mismo resumen de aprobación del snapshot preparado que los demás aprobadores. Solo aparece una acción de aprobación por scope pendiente autorizado. La tabla de preparación conserva preparación y reapertura, sin duplicar la acción de aprobación. Un administrador no puede aprobar scopes asignados a otro usuario; conserva su política original de reapertura, también para esos scopes.
+
+El formulario marca expresamente los scopes bloqueados por aprobador inactivo/eliminado o configuración inválida, muestra el error junto a su selector e identifica la pestaña que requiere intervención. Es necesario seleccionar un usuario activo para sustituir la asignación; no hay sustituciones automáticas. Guardar una asignación vigente sin cambios conserva su fecha y no crea auditoría adicional. Los seis scopes se validan y guardan como una unidad: cualquier error revierte todos los cambios y sus eventos de asignación.
+
+La ausencia de una fila de configuración o una fila incoherente no habilita legacy: se deniega la aprobación. Solo una fila inicial válida, sin usuario y sin configured_at, permite la política original. Una configuración incompleta impide guardar el conjunto hasta corregir su integridad; el formulario no recrea silenciosamente filas faltantes. Asignar el mismo usuario activo a una fila incoherente con ID pero sin configured_at formaliza la asignación explícita y deja auditoría.
+
+La asignación tampoco concede acceso al informe si el rol no lo permite. Financiero conserva su pestaña Financieros y los controles administrativos siguen separados. La autorización del POST se revalida dentro de la transacción.
+
+Orden de bloqueos: fila(s) de configuración por ID, usuarios implicados por ID y, para aprobación, cierre económico. El bloqueo de configuración se mantiene hasta el commit del cierre. Los controladores pueden repetir hasta tres veces la transacción completa ante deadlocks detectados por Laravel; los intentos abortados no conservan eventos ni cambios parciales. No se modifican algoritmos de preparación ni cálculos.

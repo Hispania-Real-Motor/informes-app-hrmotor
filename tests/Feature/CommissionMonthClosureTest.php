@@ -144,7 +144,7 @@ class CommissionMonthClosureTest extends TestCase
             ->assertRedirect();
     }
 
-    public function test_prepare_is_admin_only_but_admin_and_director_can_approve_and_reopen(): void
+    public function test_prepare_is_admin_only_and_unconfigured_scopes_keep_legacy_approval_and_reopening(): void
     {
         CarbonImmutable::setTestNow('2026-08-05 10:00:00');
         $admin = $this->user(ReportUser::ROLE_ADMIN);

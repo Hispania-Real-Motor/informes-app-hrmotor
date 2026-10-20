@@ -764,3 +764,7 @@ informes-ops. Correctivo local: flag CLI --scheduler solo para el monitor progra
 traduce unhealthy/5 completo a 0 técnico sin cambiar ledger ni checker directo.
 La finalización auditada propaga sus fallos. Sin cambios de datasets, horarios,
 permisos o UX; certificación de host/reinicio/timeout largo sigue pendiente.
+
+## Aprobadores por scope de Comisiones (2026-10-19)
+
+La asignación administrativa vive en commercial_commission_approvers (seis filas únicas) y sus cambios en commercial_commission_approver_events. ReportUserAccess::commissionApprovalScopes / canApproveCommissionClosure centralizan la resolución por request. configured_at nulo conserva legacy; asignación explícita con usuario ausente/inactivo bloquea. Esta identidad administrativa es independiente del rol mínimo del informe y de los permisos de gestión económica. El partial closure-approval permite aprobar snapshots desde la vista normal y la del auditor, sin conceder detalles adicionales.

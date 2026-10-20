@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\CommercialCommissionApprover;
+use App\Models\CommercialCommissionClosure;
 use App\Models\ReportAccessSetting;
 use App\Models\ReportUser;
 use Illuminate\Http\Request;
@@ -278,6 +280,37 @@ class ReportUserAccess
     public static function canApproveEconomicClosures(Request $request): bool
     {
         return self::isAdmin($request) || self::isDirector($request);
+    }
+
+    public static function commissionApprovalScopes(Request $request): array
+    {
+        if (self::current($request) === null || ! self::canViewCommercialCommissions($request)) {
+            return [];
+        }
+        if (! $request->attributes->has('commission_approvers')) {
+            $request->attributes->set('commission_approvers', CommercialCommissionApprover::query()->with('user:id,is_active')->get()->keyBy('closure_scope'));
+        }
+        $user = self::current($request);
+        if ($user === null) {
+            return [];
+        }
+
+        return array_values(array_filter(CommercialCommissionClosure::CLOSABLE_SCOPES, function (string $scope) use ($request, $user): bool {
+            $assignment = $request->attributes->get('commission_approvers')->get($scope);
+            if ($assignment === null) {
+                return false;
+            }
+            if ($assignment->configured_at === null) {
+                return $assignment->report_user_id === null && self::canApproveEconomicClosures($request);
+            }
+
+            return $assignment->user?->is_active && (int) $assignment->report_user_id === (int) $user['id'];
+        }));
+    }
+
+    public static function canApproveCommissionClosure(Request $request, string $scope): bool
+    {
+        return in_array($scope, self::commissionApprovalScopes($request), true);
     }
 
     public static function canReopenEconomicClosures(Request $request): bool

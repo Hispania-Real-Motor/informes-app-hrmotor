@@ -279,11 +279,11 @@ class CommercialCommissionClosureService
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function approvalOverview(?string $month, ?string $knownScope = null, ?array $knownDashboard = null): array
+    public function approvalOverview(?string $month, ?string $knownScope = null, ?array $knownDashboard = null, ?array $allowedScopes = null): array
     {
         $monthKey = $this->monthResolver->resolve($month)->format('Y-m');
 
-        return collect($this->availableScopes($monthKey))->map(function (string $scope) use ($monthKey): array {
+        return collect($this->availableScopes($monthKey))->filter(fn (string $scope): bool => $allowedScopes === null || in_array($scope, $allowedScopes, true))->map(function (string $scope) use ($monthKey): array {
             $status = $this->status($monthKey, $scope);
             $dashboard = null;
 
