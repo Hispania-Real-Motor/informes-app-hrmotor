@@ -1,5 +1,22 @@
 # Handoff para agentes
 
+## Segunda revisión de presentación de campañas (2026-10-21)
+
+- Inicio limpio en fix/campaign-status-empty-rows-cost-display, HEAD 681bfea30344ddb988702d87bf2c25dc572afa6e; segundo commit en la misma rama, sin merge, push ni despliegue.
+- Problemas verificados: salesforce_origin no estaba contemplado por el helper y podía mostrar cero sin inversión verificable; eliminar puntos null de una sola polyline conectaba períodos separados; tooltip genérico no diferenciaba causas; opciones Activas/Inactivas podían sugerir vigencia remota.
+- Corrección: costPresentation centraliza texto, motivo y valor visual; salesforce_campaign_without_spend => No aplica; salesforce_origin => Sin datos aunque el payload contenga cero. Cero confirmado exige inversión conocida y denominador disponible distinto de cero. Ninguna fórmula ni valor JSON se reescribe. Tooltips de tabla/gráfico distinguen inversión desconocida, divisor cero, denominador ausente y métrica no aplicable.
+- Gráficos: tramos contiguos separados por null; no se dibujan costes sin evidencia ni ceros artificiales. Serie totalmente nula sin líneas/puntos; final null conserva ausencia; cero y negativos válidos permanecen. Render lineal, sin consultas ni llamadas remotas.
+- Estado: etiqueta y opciones del selector indican explícitamente criterio histórico. Conserva valores active/inactive, lógica, universo y columna Estado no disponible. NO se implementa identificación real de estados remotos vigentes.
+- Archivos: resources/js/reports/campaign-presentation.js; resources/js/reports/campaigns-dashboard.js; resources/views/reports/campaigns/index.blade.php; tests/js/campaign-presentation.test.mjs; docs/informe-campanas.md; docs/ai/CAMPAIGN_PRESENTATION_DIAGNOSTIC.md; docs/ai/HANDOFF.md.
+- Base de datos/arquitectura: sin migraciones, configuración nueva, sincronizaciones, cierres ni datos históricos tocados. app/, database/ y routes/ idénticos a 681bfea. No cambian convenciones generales; PROJECT_CONTEXT.md y DECISIONS.md no requieren actualización.
+- Seguridad: escape HTML conservado, autenticación/autorización/CSP intactas. Documentación y fixtures sin datos reales ni secretos.
+- Pruebas ejecutadas: node --test tests/js/campaign-presentation.test.mjs => 9/9 correctos; PHP Herd 8.4 -d max_execution_time=0 vendor/bin/pest --filter=CampaignDashboardTest --compact => 47/47, 473 aserciones, 21,569 s; incluye las pruebas existentes de integridad de cierres/snapshots/atribución/exportación y fórmulas. No se modifica ningún test PHP.
+- Verificaciones: node --check resources/js/reports/campaigns-dashboard.js y git diff --check correctos; git diff 681bfea --exit-code -- app database routes sin diferencias. npm run build final correcto; avisos deprecación module.register() y tiempo de plugins. Artefactos de QA restaurados/retirados para excluir cambios de compilación de otros informes.
+- Alcance de validación: no se repite la suite completa ni Pint global en esta revisión solo frontend; sus limitaciones anteriores siguen documentadas en la entrada de 681bfea. No hay ESLint ni otro análisis estático JS configurado en package.json. Pruebas nuevas y existentes focalizadas pasan.
+- Acciones manuales: compilar assets con npm run build durante el despliegue habitual; verificar visualmente tooltip y discontinuidad de series en escritorio/móvil. Rollback de este segundo commit y recompilación, sin operaciones de datos. No requiere variables, dependencias, migraciones ni invalidación de caché económica.
+- Riesgos pendientes: no hay verificación de estado remoto vigente ni acceso a datos productivos de las dos campañas. La semántica histórica del filtro/API sigue vigente por aprobación. No se declara resuelto el estado real de campañas ni una auditoría productiva.
+
+
 ## Presentación conservadora de campañas y autenticación (2026-10-21)
 
 - Base verificada tras git fetch origin: d459e9f68970e683b78bd552457089807cc9ab37. Árbol inicial limpio; rama fix/campaign-status-empty-rows-cost-display creada desde origin/main. Sin push, merge ni despliegue.

@@ -21,17 +21,46 @@ export const costDenominators = {
     cost_per_appraisal: 'appraisals_generated', cost_per_result: 'result_count',
 };
 
-export function costDisplay(value, row, key, formatMoney) {
+export function costPresentation(value, row, key, formatMoney) {
     if (row.campaign_source_type === 'salesforce_campaign_without_spend') {
-        return 'No aplica';
+        return { text: 'No aplica', tooltip: 'Métrica no aplicable: campaña Salesforce sin inversión publicitaria atribuible.' };
     }
-    if (value !== null && value !== undefined) {
-        return formatMoney(value);
+    if (row.campaign_source_type === 'salesforce_origin') {
+        return { text: 'Sin datos', tooltip: 'Procedencia Salesforce sin inversión publicitaria verificable.' };
+    }
+    if (row.spend === null || row.spend === undefined || row.spend === '' || !Number.isFinite(Number(row.spend))) {
+        return { text: 'Sin datos', tooltip: 'Inversión desconocida: no se puede verificar el coste.' };
     }
     const denominator = row[costDenominators[key]];
-    if (row.spend === null || row.spend === undefined) {
-        return 'Sin datos';
+    if (denominator === null || denominator === undefined || denominator === '' || !Number.isFinite(Number(denominator))) {
+        return { text: 'No calculable', tooltip: 'Denominador de resultados no disponible.' };
     }
-    return denominator === null || denominator === undefined || Number(denominator) === 0
-        ? 'No calculable' : 'Sin datos';
+    if (Number(denominator) === 0) {
+        return { text: 'No calculable', tooltip: 'Divisor cero: no hay resultados para calcular el coste.' };
+    }
+    if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) {
+        return { text: 'Sin datos', tooltip: 'Valor del coste no disponible en los datos recibidos.' };
+    }
+    const text = formatMoney(value);
+    return { text, tooltip: text, value: Number(value) };
+}
+
+export function costDisplay(value, row, key, formatMoney) {
+    return costPresentation(value, row, key, formatMoney).text;
+}
+
+// Keep gaps in the original sequence; never join points across missing periods.
+export function contiguousChartSegments(coordinates) {
+    const segments = [];
+    let current = [];
+    for (const point of coordinates) {
+        if (point.value === null) {
+            if (current.length) segments.push(current);
+            current = [];
+        } else {
+            current.push(point);
+        }
+    }
+    if (current.length) segments.push(current);
+    return segments;
 }

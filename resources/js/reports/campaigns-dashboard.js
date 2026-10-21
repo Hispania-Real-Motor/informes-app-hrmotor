@@ -1,4 +1,4 @@
-import { hasDetailActivity, costDisplay, costDenominators } from './campaign-presentation.js';
+import { hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
 
 const numberFormatter = new Intl.NumberFormat('es-ES');
 const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
@@ -1279,7 +1279,9 @@ function grafanaMetricChartHtml(rows, definition) {
         `;
     }
 
-    const values = rows.map((row) => numericChartValue(row[definition.key]));
+    const values = rows.map((row) => costDenominators[definition.key]
+        ? costPresentation(row[definition.key], row, definition.key, formatMoney).value ?? null
+        : numericChartValue(row[definition.key]));
     const finiteValues = values.filter((value) => value !== null);
     const max = Math.max(...finiteValues, 0);
     const min = Math.min(...finiteValues, 0);
@@ -1290,13 +1292,13 @@ function grafanaMetricChartHtml(rows, definition) {
     const plotBottom = 66;
     const gridRatios = [0.75, 0.5, 0.25];
     const coordinates = rows.map((row, index) => {
-        const value = numericChartValue(row[definition.key]);
+        const value = values[index];
         const x = rows.length === 1 ? 50 : (index / (rows.length - 1)) * width;
         const y = plotBottom - (((value - min) / range) * (plotBottom - plotTop));
 
         return { x, y, value };
     });
-    const points = coordinates.filter((point) => point.value !== null).map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+    const segments = contiguousChartSegments(coordinates);
     const lastValue = values.at(-1) ?? null;
     const previousValue = values.at(-2) ?? null;
     const delta = previousValue !== null && previousValue !== 0 && lastValue !== null
@@ -1335,7 +1337,7 @@ function grafanaMetricChartHtml(rows, definition) {
                         <div class="grafana-plot">
                             <svg viewBox="0 0 100 72" preserveAspectRatio="none" aria-hidden="true">
                                 ${yAxisTicks.map((tick) => `<line class="grafana-grid-line" x1="0" x2="100" y1="${tick.y.toFixed(2)}" y2="${tick.y.toFixed(2)}" />`).join('')}
-                                <polyline class="grafana-line ${escapeHtml(definition.className)}" points="${points}" />
+                                ${segments.map((segment) => `<polyline class="grafana-line ${escapeHtml(definition.className)}" points="${segment.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')}" />`).join('')}
                             </svg>
                             <div class="grafana-point-layer">
                                 ${coordinates.filter((point) => point.value !== null).map((point) => `<span class="grafana-point-dot ${escapeHtml(definition.className)}" style="left:${point.x.toFixed(4)}%;top:${(point.y / height * 100).toFixed(4)}%"></span>`).join('')}
@@ -1368,8 +1370,10 @@ function grafanaHoverZoneHtml(row, coordinates, index, definition) {
         : (index === total - 1 ? 100 : (point.x + coordinates[index + 1].x) / 2);
     const width = Math.max(rightBoundary - leftBoundary, total === 1 ? 100 : 0);
     const anchor = width > 0 ? ((point.x - leftBoundary) / width) * 100 : 50;
-    const displayValue = definition.key === 'cost_per_result'
-        ? costDisplay(row.cost_per_result, row, 'cost_per_result', formatMoney)
+    const cost = definition.key === 'cost_per_result'
+        ? costPresentation(row.cost_per_result, row, 'cost_per_result', formatMoney) : null;
+    const displayValue = cost
+        ? `${cost.text} · ${cost.tooltip}`
         : definition.formatter(numericChartValue(row[definition.key]));
     const tooltip = `${formatGrafanaTooltipMonthLabel(row)}\n${definition.label}: ${displayValue}`;
     const edgeClass = index === 0 ? 'is-first' : (index === total - 1 ? 'is-last' : '');
@@ -3169,17 +3173,19 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
             <tr>
                 ${columns.map((column) => {
                     const formatter = column.formatter || ((value) => value);
+                    const cost = costDenominators[column.key]
+                        ? costPresentation(row[column.key], row, column.key, formatMoney) : null;
                     return cellHtml([
                         column.key === 'campaign_status_label'
                             ? 'Estado no disponible'
-                            : costDenominators[column.key]
-                                ? costDisplay(row[column.key], row, column.key, formatMoney)
+                            : cost
+                                ? cost.text
                                 : formatter(row[column.key], row),
                         column.numeric,
                         column.key === 'campaign_status_label'
                             ? 'Las métricas históricas no verifican el estado actual. El filtro conserva su criterio histórico.'
-                            : costDenominators[column.key] && row[column.key] == null
-                                ? 'Requiere inversión conocida y un denominador de resultados mayor que cero.'
+                            : cost
+                                ? cost.tooltip
                                 : row[column.key],
                         column.key,
                     ]);

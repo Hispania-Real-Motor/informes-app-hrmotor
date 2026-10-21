@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { activityMetrics, hasDetailActivity, costDisplay, costDenominators } from '../../resources/js/reports/campaign-presentation.js';
+import { activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
 
 const money = (value) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
 
@@ -34,7 +34,7 @@ test('costs distinguish zero, positive, zero denominator, unknown source and not
 const source = fs.readFileSync(new URL('../../resources/js/reports/campaigns-dashboard.js', import.meta.url), 'utf8');
 const root = { innerHTML: '' };
 const sandbox = {
-    Intl, hasDetailActivity, costDisplay, costDenominators,
+    Intl, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
     localStorage: { getItem: () => null },
     document: { addEventListener() {}, getElementById: () => null },
     window: { reportUserCanExport: true, reportUserCanAudit: true },
@@ -66,7 +66,11 @@ test('sorting, context columns and incomplete monthly costs retain their contrac
     assert.equal(vm.runInContext('numericChartValue(0)', sandbox), 0);
     const chart = vm.runInContext("grafanaMetricChartHtml([{spend: 100, result_count: 0, cost_per_result: null}], {key: 'cost_per_result', label: 'Coste', formatter: formatMoney})", sandbox);
     assert.ok(chart.includes('No calculable'));
-    assert.ok(chart.includes('points=""'));
+    assert.ok(!chart.includes('<polyline'));
+    const originChart = vm.runInContext("grafanaMetricChartHtml([{campaign_source_type: 'salesforce_origin', spend: 0, result_count: 1, cost_per_result: 0}], {key: 'cost_per_result', label: 'Coste', formatter: formatMoney})", sandbox);
+    assert.ok(originChart.includes('Sin datos'));
+    assert.ok(!originChart.includes('<polyline'));
+    assert.ok(!originChart.includes('class="grafana-point-dot '));
     assert.equal(vm.runInContext("columnAllowedInContext('cost_per_result', 'venta')", sandbox), false);
     assert.equal(vm.runInContext("columnAllowedInContext('cost_per_result', 'tasacion')", sandbox), false);
     assert.equal(vm.runInContext("columnAllowedInContext('cost_per_result', 'all')", sandbox), true);
@@ -86,4 +90,55 @@ test('historical active, paused, removed, unknown and Salesforce states never co
     const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [statusRow])", sandbox);
     assert.ok(html.includes('Estado no disponible'));
     assert.ok(html.includes('No aplica'));
+});
+
+
+test('Salesforce origin zeros and incomplete investment never become verified zero costs', () => {
+    for (const key of Object.keys(costDenominators)) {
+        const denominator = costDenominators[key];
+        for (const value of [null, 0, 25]) {
+            assert.equal(costDisplay(value, { campaign_source_type: 'salesforce_origin', spend: 0, [denominator]: 2 }, key, money), 'Sin datos');
+            assert.equal(costDisplay(value, { campaign_source_type: 'salesforce_campaign_without_spend', spend: 0, [denominator]: 2 }, key, money), 'No aplica');
+        }
+        assert.equal(costDisplay(0, { spend: null, [denominator]: 1 }, key, money), 'Sin datos');
+        assert.equal(costDisplay(0, { spend: 0, [denominator]: 0 }, key, money), 'No calculable');
+        assert.equal(costDisplay(-5, { spend: -10, [denominator]: 2 }, key, money), money(-5));
+    }
+});
+
+test('cost explanations match zero divisors, unavailable investment and inapplicable metrics', () => {
+    assert.match(costPresentation(null, { spend: 20, sales: 0 }, 'cost_per_sale', money).tooltip, /Divisor cero/);
+    assert.match(costPresentation(0, { spend: null, sales: 1 }, 'cost_per_sale', money).tooltip, /Inversión desconocida/);
+    assert.match(costPresentation(0, { campaign_source_type: 'salesforce_origin' }, 'cost_per_sale', money).tooltip, /sin inversión publicitaria verificable/);
+    assert.match(costPresentation(null, { campaign_source_type: 'salesforce_campaign_without_spend' }, 'cost_per_sale', money).tooltip, /Métrica no aplicable/);
+    sandbox.tooltipRow = { spend: 10, sales: 0, cost_per_sale: null };
+    const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [tooltipRow])", sandbox);
+    assert.ok(html.includes('title="Divisor cero:'));
+});
+
+test('real charts split at gaps while preserving zero, negatives and terminal null', () => {
+    const render = (values) => {
+        sandbox.chartRows = values.map((value, index) => ({ date: '2026-0' + (index + 1) + '-01', spend: value }));
+        return vm.runInContext("grafanaMetricChartHtml(chartRows, {key: 'spend', label: 'Inversión', className: 'spend', formatter: formatMoney})", sandbox);
+    };
+    const gap = render([10, null, 20]);
+    const lines = [...gap.matchAll(/<polyline[^>]*points="([^"]*)"/g)].map((match) => match[1]);
+    assert.equal(lines.length, 2);
+    assert.ok(lines.every((points) => !points.includes(' ')), 'isolated months must not be connected');
+    assert.equal((gap.match(/class="grafana-point-dot /g) || []).length, 2);
+    assert.ok(!render([null, null, null]).includes('<polyline'));
+    assert.match(render([10, null]), /grafana-panel-value">Sin datos/);
+    const signed = render([-10, 0, 20]);
+    assert.equal((signed.match(/<polyline/g) || []).length, 1);
+    assert.equal((signed.match(/class="grafana-point-dot /g) || []).length, 3);
+    const coordinates = [{value: -1}, {value: 0}, {value: null}, {value: 2}];
+    assert.deepEqual(contiguousChartSegments(coordinates).map((segment) => segment.map((p) => p.value)), [[-1, 0], [2]]);
+});
+
+test('historical state selector is explicit without changing option values', () => {
+    const blade = fs.readFileSync(new URL('../../resources/views/reports/campaigns/index.blade.php', import.meta.url), 'utf8');
+    assert.ok(blade.includes('Estado histórico (filtro)'));
+    assert.ok(blade.includes('value="active" selected>Activas según criterio histórico'));
+    assert.ok(blade.includes('value="inactive">Inactivas según criterio histórico'));
+    assert.ok(blade.includes('no verifica el estado actual'));
 });

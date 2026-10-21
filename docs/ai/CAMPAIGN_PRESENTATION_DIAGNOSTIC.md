@@ -69,3 +69,14 @@ El último comando no devuelve archivos: la lógica económica y persistencia si
 ## Despliegue y rollback (no ejecutados)
 
 Desplegar el commit revisado mediante el procedimiento habitual y generar `npm run build` con dependencias del lockfile. Los artefactos generados durante QA no se incluyen para evitar cambios de compilación ajenos. No requiere migraciones, variables nuevas, invalidación de dataset económico, sync ni backfill. Verificar caché de assets y las comprobaciones manuales antes de promover. Rollback: restaurar el release anterior con sus assets o revertir este commit y recompilar; no ejecutar rollback de base de datos ni tocar snapshots.
+
+
+## Revisión de presentación posterior a 681bfea (2026-10-21)
+
+Se distinguen los dos tipos reales de procedencia: salesforce_campaign_without_spend muestra No aplica para costes publicitarios; salesforce_origin muestra Sin datos porque su inversión no está verificada, incluso si el JSON contiene un coste cero. Para otras procedencias, un cero solo se presenta como conocido con inversión conocida y denominador disponible distinto de cero. El valor JSON no se modifica.
+
+El helper costPresentation centraliza texto, motivo y valor exclusivamente visual. Los tooltips distinguen divisor cero, denominador ausente, inversión desconocida, procedencia sin inversión verificable y métrica no aplicable. Los costes sin evidencia tampoco dibujan puntos cero en gráficos.
+
+Las líneas se generan por tramos contiguos: un período null interrumpe la línea, incluso entre dos valores válidos. Una serie enteramente nula no dibuja líneas ni puntos; un final null no reutiliza el último valor conocido. Ceros legítimos y valores negativos se conservan. El recorrido sigue siendo lineal, sin consultas ni llamadas remotas.
+
+El selector se titula Estado histórico (filtro) y sus opciones indican según criterio histórico. Sus valores active/inactive y su lógica permanecen idénticos; Estado no disponible sigue significando que NO se ha implementado la identificación del estado remoto vigente. Sin cambios de API, KPIs, fórmulas, snapshots, atribuciones o permisos.
