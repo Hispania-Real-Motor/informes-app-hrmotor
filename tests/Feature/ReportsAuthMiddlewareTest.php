@@ -14,6 +14,16 @@ class ReportsAuthMiddlewareTest extends TestCase
 
     protected bool $authenticateReportsByDefault = false;
 
+    public function test_login_keeps_keyboard_navigation_without_automatic_focus_or_missing_background(): void
+    {
+        $this->get('/login')->assertOk()->assertDontSee('autofocus', false)
+            ->assertSee('name="email"', false)->assertSee('name="password"', false);
+        $this->assertStringNotContainsString('/images/login-bg.jpg', file_get_contents(resource_path('css/app.css')));
+        foreach (['informes-login', 'informes-password-forgot', 'informes-password-reset'] as $view) {
+            $this->assertStringNotContainsString('autofocus', file_get_contents(resource_path('views/auth/'.$view.'.blade.php')));
+        }
+    }
+
     public function test_usuario_no_autenticado_es_redirigido_al_login_sin_basic_auth(): void
     {
         $response = $this->get('/informes/leads');
