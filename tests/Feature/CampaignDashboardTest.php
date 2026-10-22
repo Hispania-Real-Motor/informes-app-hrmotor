@@ -9,10 +9,12 @@ use App\Models\SalesforceInterest;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
+use App\Services\Campaigns\CampaignDashboardDatasetService;
 use App\Services\Campaigns\CampaignSaleAmountResolver;
 use App\Services\Campaigns\GoogleAdsClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -2398,6 +2400,65 @@ class CampaignDashboardTest extends TestCase
         $this->assertSame(0, data_get($summary, 'kpis.opportunities'));
         $this->assertSame(0, data_get($summary, 'kpis.purchases'));
         $this->assertNull(data_get($summary, 'kpis.appraisal_amount'));
+    }
+
+    public function test_dashboard_reads_preserve_closed_snapshots_attributions_and_export_universe(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'campaign_id' => 'integrity-spend', 'spend' => 125, 'clicks' => 5,
+        ]));
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'campaign_id' => 'integrity-empty',
+        ]));
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'campaign_id' => 'integrity-spend', 'interest_id' => 'synthetic-integrity',
+        ]));
+        $this->postJson('/informes/campanas/investment-closure', ['month' => '2026-05-01'])->assertOk();
+        $tables = [
+            'campaign_investment_closures', 'campaign_investment_closure_snapshots',
+            'campaign_investment_closure_events', 'campaign_attributions',
+            'campaign_lead_attributions', 'campaign_platform_daily_metrics',
+        ];
+        $before = [];
+        foreach ($tables as $table) {
+            $before[$table] = DB::table($table)->orderBy('id')->get()->toJson();
+        }
+        $query = $this->campaignQuery().'&campaign_status=';
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertEquals(125, $summary['kpis']['spend']);
+        $this->assertEquals(1, $summary['kpis']['leads_salesforce']);
+        $this->assertEquals(0, $summary['kpis']['sales']);
+        $this->assertNull($summary['kpis']['cost_per_sale']);
+        $dataset = app(CampaignDashboardDatasetService::class);
+        $request = Request::create('/', 'GET', [
+            'start_date' => '2026-05-01', 'end_date' => '2026-05-31', 'campaign_status' => '',
+        ]);
+        $rows = $dataset->campaignRows($request)['items'];
+        $this->assertSame($rows, $dataset->exportRows($request));
+        $this->assertContains('integrity-empty', array_column($rows, 'campaign_id'));
+        foreach (['', '&context=venta', '&context=tasacion', '&campaign_status=active', '&campaign_status=inactive'] as $suffix) {
+            $this->getJson('/informes/campanas/data/summary?'.$query.$suffix)->assertOk();
+        }
+        foreach ($tables as $table) {
+            $this->assertSame($before[$table], DB::table($table)->orderBy('id')->get()->toJson(), $table);
+        }
+    }
+
+    public function test_approved_result_denominators_and_zero_cost_contract(): void
+    {
+        $service = app(CampaignDashboardDatasetService::class);
+        $count = new \ReflectionMethod($service, 'resultCountForRow');
+        $cost = new \ReflectionMethod($service, 'costPerResultForRow');
+        $totals = new \ReflectionMethod($service, 'resultCountForTotals');
+        $row = ['spend' => 120, 'sales' => 2, 'purchases' => 3, 'opportunities' => 4, 'leads_salesforce' => 5];
+        foreach (['venta' => 2, 'tasacion' => 3, 'exposicion' => 4, 'branding' => 5, 'otros' => 5] as $type => $expected) {
+            $typed = array_merge($row, ['campaign_type' => $type]);
+            $this->assertSame($expected, $count->invoke($service, $typed));
+            $this->assertSame($expected, $totals->invoke($service, $row, $type));
+            $this->assertEquals(120 / $expected, $cost->invoke($service, $typed));
+            $this->assertEquals(0, $cost->invoke($service, array_merge($typed, ['spend' => 0])));
+        }
+        $this->assertNull($cost->invoke($service, ['campaign_type' => 'venta', 'spend' => 120, 'sales' => 0]));
     }
 
     private function authenticatedSession(string $role): array

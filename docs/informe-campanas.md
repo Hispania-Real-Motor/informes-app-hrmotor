@@ -161,3 +161,25 @@ de habilitar ROT-4 en un
 entorno debe aplicarse la migración aditiva, disponer de un F2 completo/estable,
 un snapshot directo coherente y reconstruir el período bajo procedimiento
 operacional revisado. Esta implementación no ejecuta backfill ni despliegue.
+
+
+## Presentación conservadora de estados y costes (2026-10-21)
+
+La columna Estado indica «Estado no disponible»: los estados guardados con métricas históricas no garantizan el estado vigente en Meta/Google, y Salesforce-only no acredita actividad publicitaria actual. El filtro conserva su criterio histórico por aprobación expresa; no es una consulta de estado vigente. MIN y el fallback legacy siguen limitados al contrato histórico y no se usan para verificar el estado mostrado. No se alteran universos económicos ni cierres.
+
+Solo el detalle visual oculta filas sin ninguna actividad cuantitativa: inversión, impresiones, clics, leads/conversiones de plataforma, intereses, oportunidades, reservas, ventas, compras, tasaciones e importes asociados. Cualquier indicador distinto de cero mantiene la fila, con independencia del estado. Un null no se convierte en cero. Dataset, exportaciones, rankings y KPIs permanecen completos.
+
+Los costes conocidos cero muestran 0,00 €; un denominador cero/ausente con inversión conocida muestra No calculable; inversión de origen desconocido muestra Sin datos; costes Salesforce-only muestran No aplica. No cambia ningún valor JSON ni fórmula económica. Los gráficos preservan null como ausencia de cálculo. Coste por resultado conserva ventas/compras/oportunidades/intereses según tipo funcional, y máximo para Otros; la columna sigue oculta por diseño en Venta/Tasación y otros contextos específicos.
+
+Procedimiento para las dos campañas solicitadas, límites, evidencia y despliegue: [diagnóstico de presentación](ai/CAMPAIGN_PRESENTATION_DIAGNOSTIC.md).
+
+
+## Revisión de presentación posterior a 681bfea (2026-10-21)
+
+Se distinguen los dos tipos reales de procedencia: salesforce_campaign_without_spend muestra No aplica para costes publicitarios; salesforce_origin muestra Sin datos porque su inversión no está verificada, incluso si el JSON contiene un coste cero. Para otras procedencias, un cero solo se presenta como conocido con inversión conocida y denominador disponible distinto de cero. El valor JSON no se modifica.
+
+El helper costPresentation centraliza texto, motivo y valor exclusivamente visual. Los tooltips distinguen divisor cero, denominador ausente, inversión desconocida, procedencia sin inversión verificable y métrica no aplicable. Los costes sin evidencia tampoco dibujan puntos cero en gráficos.
+
+Las líneas se generan por tramos contiguos: un período null interrumpe la línea, incluso entre dos valores válidos. Una serie enteramente nula no dibuja líneas ni puntos; un final null no reutiliza el último valor conocido. Ceros legítimos y valores negativos se conservan. El recorrido sigue siendo lineal, sin consultas ni llamadas remotas.
+
+El selector se titula Estado histórico (filtro) y sus opciones indican según criterio histórico. Sus valores active/inactive y su lógica permanecen idénticos; Estado no disponible sigue significando que NO se ha implementado la identificación del estado remoto vigente. Sin cambios de API, KPIs, fórmulas, snapshots, atribuciones o permisos.

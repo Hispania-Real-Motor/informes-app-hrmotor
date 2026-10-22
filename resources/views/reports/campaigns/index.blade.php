@@ -54,12 +54,13 @@
             </select>
         </div>
         <div class="filter-group">
-            <label for="campaignStatus">Estado de campaña</label>
-            <select id="campaignStatus">
+            <label for="campaignStatus">Estado histórico (filtro)</label>
+            <select id="campaignStatus" aria-describedby="campaignStatusHelp">
                 <option value="">Todas</option>
-                <option value="active" selected>Activas</option>
-                <option value="inactive">Inactivas</option>
+                <option value="active" selected>Activas según criterio histórico</option>
+                <option value="inactive">Inactivas según criterio histórico</option>
             </select>
+            <div class="small" id="campaignStatusHelp">Filtro histórico conservado; no verifica el estado actual en Meta o Google.</div>
         </div>
         <div class="filter-group campaign-search">
             <label for="campaignSearch">Buscar campaña</label>

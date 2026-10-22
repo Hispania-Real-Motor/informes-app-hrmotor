@@ -44,7 +44,6 @@
                 autocomplete="username"
                 inputmode="email"
                 required
-                autofocus
             >
 
             <button type="submit">Enviar enlace</button>

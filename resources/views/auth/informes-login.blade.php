@@ -44,7 +44,6 @@
                 autocomplete="username"
                 inputmode="email"
                 required
-                autofocus
             >
 
             <label for="password">Contraseña</label>

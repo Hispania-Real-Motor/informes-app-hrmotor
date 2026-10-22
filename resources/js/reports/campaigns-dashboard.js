@@ -1,3 +1,5 @@
+import { hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
+
 const numberFormatter = new Intl.NumberFormat('es-ES');
 const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 const columnsStorageKey = 'hrmotor_campaign_columns_v5';
@@ -1237,13 +1239,13 @@ function metricChartRows(rows) {
         .slice(-6)
         .map((row) => {
             const results = numericChartValue(row.result_count) ?? monthlyResultCountForRow(row);
-            const spend = Number(row.spend || 0);
+            const spend = numericChartValue(row.spend);
             const costPerResult = numericChartValue(row.cost_per_result);
 
             return {
                 ...row,
                 result_count: results,
-                cost_per_result: costPerResult ?? (results > 0 ? spend / results : null),
+                cost_per_result: costPerResult ?? (results > 0 && spend !== null ? spend / results : null),
             };
         });
 }
@@ -1277,7 +1279,9 @@ function grafanaMetricChartHtml(rows, definition) {
         `;
     }
 
-    const values = rows.map((row) => numericChartValue(row[definition.key]));
+    const values = rows.map((row) => costDenominators[definition.key]
+        ? costPresentation(row[definition.key], row, definition.key, formatMoney).value ?? null
+        : numericChartValue(row[definition.key]));
     const finiteValues = values.filter((value) => value !== null);
     const max = Math.max(...finiteValues, 0);
     const min = Math.min(...finiteValues, 0);
@@ -1288,15 +1292,15 @@ function grafanaMetricChartHtml(rows, definition) {
     const plotBottom = 66;
     const gridRatios = [0.75, 0.5, 0.25];
     const coordinates = rows.map((row, index) => {
-        const value = numericChartValue(row[definition.key]) ?? 0;
+        const value = values[index];
         const x = rows.length === 1 ? 50 : (index / (rows.length - 1)) * width;
         const y = plotBottom - (((value - min) / range) * (plotBottom - plotTop));
 
         return { x, y, value };
     });
-    const points = coordinates.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
-    const lastValue = finiteValues.length ? finiteValues[finiteValues.length - 1] : null;
-    const previousValue = finiteValues.length > 1 ? finiteValues[finiteValues.length - 2] : null;
+    const segments = contiguousChartSegments(coordinates);
+    const lastValue = values.at(-1) ?? null;
+    const previousValue = values.at(-2) ?? null;
     const delta = previousValue !== null && previousValue !== 0 && lastValue !== null
         ? (lastValue - previousValue) / previousValue
         : null;
@@ -1317,7 +1321,7 @@ function grafanaMetricChartHtml(rows, definition) {
             <div class="grafana-panel-head">
                 <div>
                     <div class="grafana-panel-title">${escapeHtml(definition.label)}</div>
-                    <div class="grafana-panel-value">${escapeHtml(definition.formatter(lastValue))}</div>
+                    <div class="grafana-panel-value">${escapeHtml(definition.key === 'cost_per_result' ? costDisplay(lastValue, rows.at(-1), 'cost_per_result', formatMoney) : definition.formatter(lastValue))}</div>
                 </div>
                 <div class="grafana-delta-block">
                     <span class="grafana-delta ${deltaClass}">${delta === null ? 'Sin datos' : escapeHtml(formatPercentRatio(delta))}</span>
@@ -1333,10 +1337,10 @@ function grafanaMetricChartHtml(rows, definition) {
                         <div class="grafana-plot">
                             <svg viewBox="0 0 100 72" preserveAspectRatio="none" aria-hidden="true">
                                 ${yAxisTicks.map((tick) => `<line class="grafana-grid-line" x1="0" x2="100" y1="${tick.y.toFixed(2)}" y2="${tick.y.toFixed(2)}" />`).join('')}
-                                <polyline class="grafana-line ${escapeHtml(definition.className)}" points="${points}" />
+                                ${segments.map((segment) => `<polyline class="grafana-line ${escapeHtml(definition.className)}" points="${segment.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')}" />`).join('')}
                             </svg>
                             <div class="grafana-point-layer">
-                                ${coordinates.map((point) => `<span class="grafana-point-dot ${escapeHtml(definition.className)}" style="left:${point.x.toFixed(4)}%;top:${(point.y / height * 100).toFixed(4)}%"></span>`).join('')}
+                                ${coordinates.filter((point) => point.value !== null).map((point) => `<span class="grafana-point-dot ${escapeHtml(definition.className)}" style="left:${point.x.toFixed(4)}%;top:${(point.y / height * 100).toFixed(4)}%"></span>`).join('')}
                             </div>
                             <div class="grafana-hover-layer">
                                 ${rows.map((row, index) => grafanaHoverZoneHtml(row, coordinates, index, definition)).join('')}
@@ -1366,7 +1370,12 @@ function grafanaHoverZoneHtml(row, coordinates, index, definition) {
         : (index === total - 1 ? 100 : (point.x + coordinates[index + 1].x) / 2);
     const width = Math.max(rightBoundary - leftBoundary, total === 1 ? 100 : 0);
     const anchor = width > 0 ? ((point.x - leftBoundary) / width) * 100 : 50;
-    const tooltip = `${formatGrafanaTooltipMonthLabel(row)}\n${definition.label}: ${definition.formatter(numericChartValue(row[definition.key]))}`;
+    const cost = definition.key === 'cost_per_result'
+        ? costPresentation(row.cost_per_result, row, 'cost_per_result', formatMoney) : null;
+    const displayValue = cost
+        ? `${cost.text} · ${cost.tooltip}`
+        : definition.formatter(numericChartValue(row[definition.key]));
+    const tooltip = `${formatGrafanaTooltipMonthLabel(row)}\n${definition.label}: ${displayValue}`;
     const edgeClass = index === 0 ? 'is-first' : (index === total - 1 ? 'is-last' : '');
 
     return `
@@ -1380,6 +1389,9 @@ function grafanaHoverZoneHtml(row, coordinates, index, definition) {
 }
 
 function numericChartValue(value) {
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
     const number = Number(value);
 
     return Number.isFinite(number) ? number : null;
@@ -1695,7 +1707,7 @@ function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, m
                 ${platformMetricItemHtml('Intereses Salesforce', row.leads_salesforce, formatNumber)}
                 ${platformMetricItemHtml('Oportunidades', row.opportunities, formatNumber)}
                 ${platformMetricItemHtml(resultLabel, resultValue, formatNumber)}
-                ${platformMetricItemHtml(costLabel, resultCost, formatMoney)}
+                ${platformMetricItemHtml(costLabel, resultCost, (value) => costDisplay(value, { ...row, result_count: resultValue }, 'cost_per_result', formatMoney))}
             </div>
         </article>
     `;
@@ -1765,7 +1777,7 @@ function platformResultValueForContext(row, context) {
 function platformResultCostForContext(row, context) {
     if (presentationCampaignContext(context) === 'all') {
         const results = Number(row.sales || 0) + Number(row.purchases || 0);
-        return results > 0 ? Number(row.spend || 0) / results : null;
+        return results > 0 && row.spend !== null && row.spend !== undefined ? Number(row.spend) / results : null;
     }
 
     switch (presentationCampaignContext(context)) {
@@ -1841,7 +1853,7 @@ function monthlyResultCountForRow(row) {
 
 function monthlyCostPerResultForRow(row) {
     const resultCount = monthlyResultCountForRow(row);
-    return resultCount > 0 ? Number(row.spend || 0) / resultCount : 0;
+    return resultCount > 0 && row.spend !== null && row.spend !== undefined ? Number(row.spend) / resultCount : null;
 }
 
 function bindCampaignTableActions() {
@@ -1863,62 +1875,62 @@ function kpiCardsForContext(context, kpis) {
     switch (normalized) {
         case 'venta':
             return [
-                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
-                { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${formatMoney(kpis.cost_per_opportunity)}`, metric: 'opportunities' },
-                { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${formatMoney(kpis.cost_per_reservation)}`, metric: 'reservations' },
-                { label: 'Ventas', value: formatNumber(kpis.sales), hint: `CPV ${formatMoney(kpis.cost_per_sale)}`, metric: 'sales' },
+                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
+                { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${costDisplay(kpis.cost_per_reservation, kpis, 'cost_per_reservation', formatMoney)}`, metric: 'reservations' },
+                { label: 'Ventas', value: formatNumber(kpis.sales), hint: `CPV ${costDisplay(kpis.cost_per_sale, kpis, 'cost_per_sale', formatMoney)}`, metric: 'sales' },
                 { label: 'Importe vendido', value: formatMoney(kpis.sale_amount), hint: `ROAS ${formatMultiplier(kpis.roas)} · ROI ${formatPercentRatio(kpis.estimated_roi)}`, metric: 'sales' },
-                { label: 'Coste por venta', value: formatMoney(kpis.cost_per_sale), hint: `Resultados ${formatNumber(kpis.sales)}`, metric: 'sales' },
+                { label: 'Coste por venta', value: costDisplay(kpis.cost_per_sale, kpis, 'cost_per_sale', formatMoney), hint: `Resultados ${formatNumber(kpis.sales)}`, metric: 'sales' },
                 { label: 'ROAS / ROI', value: formatMultiplier(kpis.roas), hint: `ROI ${formatPercentRatio(kpis.estimated_roi)}` },
             ];
         case 'tasacion':
             return [
-                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
-                { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${formatMoney(kpis.cost_per_opportunity)}`, metric: 'opportunities' },
-                { label: 'Compras', value: formatNumber(kpis.purchases), hint: `CP compra ${formatMoney(kpis.cost_per_purchase)}`, metric: 'purchases' },
-                { label: 'Coste por interés', value: formatMoney(kpis.cost_per_lead), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
-                { label: 'Coste por oportunidad', value: formatMoney(kpis.cost_per_opportunity), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
-                { label: 'Coste por compra', value: formatMoney(kpis.cost_per_purchase), hint: `Compras ${formatNumber(kpis.purchases)}`, metric: 'purchases' },
+                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
+                { label: 'Compras', value: formatNumber(kpis.purchases), hint: `CP compra ${costDisplay(kpis.cost_per_purchase, kpis, 'cost_per_purchase', formatMoney)}`, metric: 'purchases' },
+                { label: 'Coste por interés', value: costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
+                { label: 'Coste por oportunidad', value: costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
+                { label: 'Coste por compra', value: costDisplay(kpis.cost_per_purchase, kpis, 'cost_per_purchase', formatMoney), hint: `Compras ${formatNumber(kpis.purchases)}`, metric: 'purchases' },
                 { label: 'Conversión interés → compra', value: formatPercentRatio(kpis.lead_to_purchase), hint: `Oportunidad → compra ${formatPercentRatio(kpis.opportunity_to_purchase)}`, metric: 'purchases' },
             ];
         case 'exposicion':
             return [
-                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
+                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
                 { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
                 { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
-                { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${formatMoney(kpis.cost_per_opportunity)}`, metric: 'opportunities' },
-                { label: 'Coste por interés', value: formatMoney(kpis.cost_per_lead), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
-                { label: 'Coste por oportunidad', value: formatMoney(kpis.cost_per_opportunity), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
-                { label: 'CTR / CPC', value: formatPercentRatio(kpis.ctr), hint: `CPC ${formatMoney(kpis.cpc)}` },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
+                { label: 'Coste por interés', value: costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
+                { label: 'Coste por oportunidad', value: costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
+                { label: 'CTR / CPC', value: formatPercentRatio(kpis.ctr), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
             ];
         case 'branding':
             return [
-                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
+                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
                 { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
                 { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
-                { label: 'CTR', value: formatPercentRatio(kpis.ctr), hint: `CPC ${formatMoney(kpis.cpc)}` },
-                { label: 'CPC', value: formatMoney(kpis.cpc), hint: `Clicks ${formatNumber(kpis.clicks)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
-                { label: 'Coste por interés', value: formatMoney(kpis.cost_per_lead), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
+                { label: 'CTR', value: formatPercentRatio(kpis.ctr), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
+                { label: 'CPC', value: costDisplay(kpis.cpc, kpis, 'cpc', formatMoney), hint: `Clicks ${formatNumber(kpis.clicks)}` },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Coste por interés', value: costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `Total ${totalResults}`, metric: 'opportunities' },
             ];
         case 'otros':
         case 'all':
         default:
             return [
-                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
+                { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
                 { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
                 { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${formatMoney(kpis.cost_per_lead)}`, metric: 'leads_salesforce' },
-                { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${formatMoney(kpis.cost_per_opportunity)}`, metric: 'opportunities' },
-                { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${formatMoney(kpis.cost_per_reservation)}`, metric: 'reservations' },
+                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
+                { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${costDisplay(kpis.cost_per_reservation, kpis, 'cost_per_reservation', formatMoney)}`, metric: 'reservations' },
                 { label: 'Ventas / Compras', value: totalResults, hint: `Ventas ${formatNumber(kpis.sales)} · Compras ${formatNumber(kpis.purchases)}`, metric: 'result_count' },
                 {
                     label: normalized === 'all' ? 'Coste por venta / compra' : 'Coste por resultado',
-                    value: formatMoney(kpis.cost_per_result),
+                    value: costDisplay(kpis.cost_per_result, kpis, 'cost_per_result', formatMoney),
                     hint: normalized === 'all' ? `Ventas / Compras ${totalResults}` : `Resultados ${totalResults}`,
                     metric: 'result_count',
                 },
@@ -3141,7 +3153,7 @@ function renderCampaignTables(rows, emptyMessage = null) {
     };
     const [title, subtitle] = titleMap[context] || titleMap.all;
 
-    root.innerHTML = renderCampaignTable(context, title, subtitle, rows || [], emptyMessage);
+    root.innerHTML = renderCampaignTable(context, title, subtitle, (rows || []).filter(hasDetailActivity), emptyMessage);
     renderColumnsPopover();
     applyColumnVisibility();
     syncCampaignTableScrollWidth();
@@ -3161,10 +3173,20 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
             <tr>
                 ${columns.map((column) => {
                     const formatter = column.formatter || ((value) => value);
+                    const cost = costDenominators[column.key]
+                        ? costPresentation(row[column.key], row, column.key, formatMoney) : null;
                     return cellHtml([
-                        formatter(row[column.key], row),
+                        column.key === 'campaign_status_label'
+                            ? 'Estado no disponible'
+                            : cost
+                                ? cost.text
+                                : formatter(row[column.key], row),
                         column.numeric,
-                        row[column.key],
+                        column.key === 'campaign_status_label'
+                            ? 'Las métricas históricas no verifican el estado actual. El filtro conserva su criterio histórico.'
+                            : cost
+                                ? cost.tooltip
+                                : row[column.key],
                         column.key,
                     ]);
                 }).join('')}

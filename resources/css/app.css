@@ -25,7 +25,6 @@
     overflow: hidden;
     background:
         linear-gradient(rgba(255, 255, 255, .84), rgba(248, 250, 252, .92)),
-        url('/images/login-bg.jpg') center center / cover no-repeat,
         radial-gradient(circle at 20% 18%, rgba(229, 26, 46, .14), transparent 28%),
         linear-gradient(135deg, #f8fafc 0%, #eef2f7 50%, #ffffff 100%);
 }
