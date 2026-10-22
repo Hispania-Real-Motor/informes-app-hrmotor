@@ -2461,6 +2461,82 @@ class CampaignDashboardTest extends TestCase
         $this->assertNull($cost->invoke($service, ['campaign_type' => 'venta', 'spend' => 120, 'sales' => 0]));
     }
 
+    public function test_historical_status_labels_match_final_filter_when_advertising_evidence_exists(): void
+    {
+        $cases = [
+            ['meta-active', 'meta', 'ACTIVE', 'ACTIVE', 'Activa'],
+            ['meta-paused', 'meta', 'PAUSED', 'PAUSED', 'Inactiva'],
+            ['google-active', 'google_ads', 'ENABLED', null, 'Activa'],
+            ['google-paused', 'google_ads', 'PAUSED', null, 'Inactiva'],
+            ['google-removed', 'google_ads', 'REMOVED', null, 'Inactiva'],
+            ['empty-active', 'meta', 'ACTIVE', 'ACTIVE', 'Activa'],
+        ];
+        foreach ($cases as [$id, $platform, $status, $effective, $label]) {
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'campaign_id' => $id, 'campaign_name' => $id, 'platform' => $platform,
+                'campaign_status' => $status, 'campaign_effective_status' => $effective,
+                'spend' => $id === 'empty-active' ? 0 : 10,
+            ]));
+        }
+        $dataset = app(CampaignDashboardDatasetService::class);
+        $request = Request::create('/', 'GET', [
+            'start_date' => '2026-05-01', 'end_date' => '2026-05-31', 'campaign_status' => '',
+        ]);
+        $rows = $dataset->campaignRows($request)['items'];
+        $this->assertSame($rows, $dataset->exportRows($request));
+        $byId = collect($rows)->keyBy('campaign_id');
+        $isActive = new \ReflectionMethod($dataset, 'campaignIsActive');
+        $mainRows = new \ReflectionMethod($dataset, 'mainCampaignRows');
+        foreach ($cases as [$id, $platform, $status, $effective, $label]) {
+            $row = $byId[$id];
+            $this->assertSame($label, $row['campaign_status_label']);
+            $this->assertSame($label === 'Activa', $isActive->invoke($dataset, $row));
+            foreach (['active', 'inactive'] as $filter) {
+                $filters = array_merge($dataset->filters($request), ['campaign_status' => $filter]);
+                $selected = $mainRows->invoke($dataset, [$row], $filters);
+                $this->assertCount(($filter === 'active') === ($label === 'Activa') ? 1 : 0, $selected);
+            }
+        }
+        $csv = $this->get('/informes/campanas/export/campaigns.csv?'.$this->campaignQuery().'&campaign_status=')->assertOk()->streamedContent();
+        $csvRows = array_map('str_getcsv', array_filter(explode("\n", trim($csv))));
+        $header = array_shift($csvRows);
+        $labelColumn = array_search('Estado campana', $header, true);
+        $idColumn = array_search('Campaign ID', $header, true);
+        $this->assertNotFalse($labelColumn);
+        $this->assertNotFalse($idColumn);
+        foreach ($csvRows as $csvRow) {
+            $this->assertSame($byId[$csvRow[$idColumn]]['campaign_status_label'], $csvRow[$labelColumn]);
+        }
+    }
+
+    public function test_legacy_label_before_attribution_is_not_a_reliable_status_without_advertising_evidence(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'campaign_id' => 'status-late-interest', 'campaign_name' => 'status-late-interest',
+            'campaign_status' => null, 'campaign_effective_status' => null,
+        ]));
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'interest_id' => 'synthetic-late-interest', 'campaign_id' => 'status-late-interest',
+            'campaign_name' => 'status-late-interest',
+        ]));
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'interest_id' => 'synthetic-only-interest', 'campaign_id' => 'status-only-interest',
+            'campaign_name' => 'status-only-interest',
+        ]));
+        $dataset = app(CampaignDashboardDatasetService::class);
+        $request = Request::create('/', 'GET', [
+            'start_date' => '2026-05-01', 'end_date' => '2026-05-31', 'campaign_status' => '',
+        ]);
+        $rows = $dataset->campaignRows($request)['items'];
+        $this->assertSame($rows, $dataset->exportRows($request));
+        $byId = collect($rows)->keyBy('campaign_id');
+        $this->assertSame('Inactiva', $byId['status-late-interest']['campaign_status_label']);
+        $this->assertNull($byId['status-only-interest']['campaign_status_label']);
+        $isActive = new \ReflectionMethod($dataset, 'campaignIsActive');
+        $this->assertTrue($isActive->invoke($dataset, $byId['status-late-interest']));
+        $this->assertTrue($isActive->invoke($dataset, $byId['status-only-interest']));
+    }
+
     private function authenticatedSession(string $role): array
     {
         $this->reportUserSequence++;

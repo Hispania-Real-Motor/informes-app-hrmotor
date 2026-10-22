@@ -1,4 +1,4 @@
-import { hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
+import { historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
 
 const numberFormatter = new Intl.NumberFormat('es-ES');
 const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
@@ -111,7 +111,7 @@ const rankingDefinitions = [
 const columnDefinitions = [
     { key: 'campaign', label: 'Campaña', visible: true, formatter: (_value, row) => campaignLabel(row) },
     { key: 'platform', label: 'Plataforma', visible: true, formatter: formatPlatform },
-    { key: 'campaign_status_label', label: 'Estado', visible: true },
+    { key: 'campaign_status_label', label: 'Estado histórico', visible: true },
     { key: 'spend', label: 'Inversión', visible: true, numeric: true, formatter: formatMoney },
     { key: 'impressions', label: 'Impresiones', visible: true, numeric: true, formatter: formatNumber },
     { key: 'clicks', label: 'Clicks', visible: true, numeric: true, formatter: formatNumber },
@@ -3173,17 +3173,18 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
             <tr>
                 ${columns.map((column) => {
                     const formatter = column.formatter || ((value) => value);
+                    const status = column.key === 'campaign_status_label' ? historicalStatusPresentation(row) : null;
                     const cost = costDenominators[column.key]
                         ? costPresentation(row[column.key], row, column.key, formatMoney) : null;
                     return cellHtml([
-                        column.key === 'campaign_status_label'
-                            ? 'Estado no disponible'
+                        status
+                            ? status.text
                             : cost
                                 ? cost.text
                                 : formatter(row[column.key], row),
                         column.numeric,
-                        column.key === 'campaign_status_label'
-                            ? 'Las métricas históricas no verifican el estado actual. El filtro conserva su criterio histórico.'
+                        status
+                            ? status.tooltip
                             : cost
                                 ? cost.tooltip
                                 : row[column.key],

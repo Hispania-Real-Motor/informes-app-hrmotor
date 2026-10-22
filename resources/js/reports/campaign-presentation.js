@@ -1,4 +1,27 @@
 // Presentation only: never filter the shared dataset or export payload.
+export function historicalStatusPresentation(row) {
+    const unavailable = {
+        text: 'Estado no disponible',
+        tooltip: 'No hay una etiqueta histórica fiable con evidencia publicitaria para esta fila. El filtro conserva su criterio histórico. No es una consulta actual a Meta Ads o Google Ads.',
+    };
+    if (['salesforce_campaign_without_spend', 'salesforce_origin'].includes(row.campaign_source_type)) {
+        return unavailable;
+    }
+    // Only gate evidence here. PHP remains the owner of the active/inactive rule.
+    const evidenceField = row.platform === 'meta' ? 'campaign_effective_status'
+        : row.platform === 'google_ads' ? 'campaign_status' : null;
+    const evidence = String(row[evidenceField] ?? '').trim().toUpperCase();
+    if (!evidenceField || ['', 'UNKNOWN', 'UNSPECIFIED'].includes(evidence)) {
+        return unavailable;
+    }
+    const label = row.campaign_status_label === 'Activa' ? 'Activa (histórico)'
+        : row.campaign_status_label === 'Inactiva' ? 'Inactiva (histórico)' : null;
+    return label ? {
+        text: label,
+        tooltip: 'Clasificación histórica del informe, coherente con su filtro. No representa una consulta actual a Meta Ads o Google Ads.',
+    } : unavailable;
+}
+
 export const activityMetrics = [
     'spend', 'impressions', 'clicks', 'platform_leads', 'platform_conversions',
     'leads_salesforce', 'interests_salesforce', 'opportunities', 'reservations',

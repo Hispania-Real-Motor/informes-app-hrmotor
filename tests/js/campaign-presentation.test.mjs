@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
+import { historicalStatusPresentation, activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
 
 const money = (value) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
 
@@ -34,7 +34,7 @@ test('costs distinguish zero, positive, zero denominator, unknown source and not
 const source = fs.readFileSync(new URL('../../resources/js/reports/campaigns-dashboard.js', import.meta.url), 'utf8');
 const root = { innerHTML: '' };
 const sandbox = {
-    Intl, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
+    Intl, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
     localStorage: { getItem: () => null },
     document: { addEventListener() {}, getElementById: () => null },
     window: { reportUserCanExport: true, reportUserCanAudit: true },
@@ -79,19 +79,35 @@ test('sorting, context columns and incomplete monthly costs retain their contrac
     assert.equal(vm.runInContext("sortedCampaignRows([{spend: 1}, {spend: 2}], 'all')[0].spend", sandbox), 2);
 });
 
-test('historical active, paused, removed, unknown and Salesforce states never confirm current activity', () => {
-    for (const status of ['ACTIVE', 'ENABLED', 'PAUSED', 'REMOVED', null]) {
-        sandbox.statusRow = { campaign_name: 'STATE', campaign_status: status, campaign_effective_status: status, campaign_status_label: 'Activa', leads_salesforce: 3 };
+test('historical labels are presented only with platform evidence, without inferring from interests', () => {
+    for (const [platform, field, state, label, expected] of [
+        ['meta', 'campaign_effective_status', 'ACTIVE', 'Activa', 'Activa (histórico)'],
+        ['meta', 'campaign_effective_status', 'PAUSED', 'Inactiva', 'Inactiva (histórico)'],
+        ['meta', 'campaign_effective_status', 'DELETED', 'Inactiva', 'Inactiva (histórico)'],
+        ['google_ads', 'campaign_status', 'ENABLED', 'Activa', 'Activa (histórico)'],
+        ['google_ads', 'campaign_status', 'PAUSED', 'Inactiva', 'Inactiva (histórico)'],
+        ['google_ads', 'campaign_status', 'REMOVED', 'Inactiva', 'Inactiva (histórico)'],
+    ]) {
+        sandbox.statusRow = { campaign_name: 'SYNTHETIC', platform, [field]: state, campaign_status_label: label };
+        const before = JSON.stringify(sandbox.statusRow);
         const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [statusRow])", sandbox);
-        assert.ok(html.includes('Estado no disponible'));
-        assert.ok(!html.includes('>Activa<'));
+        assert.ok(html.includes(expected));
+        assert.ok(html.includes('No representa una consulta actual'));
+        assert.equal(JSON.stringify(sandbox.statusRow), before);
     }
-    sandbox.statusRow = { campaign_name: 'SF', platform: 'salesforce', campaign_source_type: 'salesforce_campaign_without_spend', leads_salesforce: 1 };
-    const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [statusRow])", sandbox);
-    assert.ok(html.includes('Estado no disponible'));
-    assert.ok(html.includes('No aplica'));
+    for (const row of [
+        { platform: 'meta', campaign_status_label: 'Inactiva', leads_salesforce: 3 },
+        { platform: 'meta', campaign_status_label: null, leads_salesforce: 3 },
+        { platform: 'google_ads', campaign_status: 'UNKNOWN', campaign_status_label: 'Inactiva' },
+        { platform: 'google_ads', campaign_status: 'ENABLED', campaign_status_label: null },
+        { platform: 'salesforce', campaign_status_label: 'Activa', leads_salesforce: 1 },
+        { platform: 'meta', campaign_source_type: 'salesforce_origin', campaign_effective_status: 'ACTIVE', campaign_status_label: 'Activa' },
+        { platform: 'salesforce', campaign_source_type: 'salesforce_campaign_without_spend', leads_salesforce: 1 },
+        {},
+    ]) {
+        assert.equal(historicalStatusPresentation(row).text, 'Estado no disponible');
+    }
 });
-
 
 test('Salesforce origin zeros and incomplete investment never become verified zero costs', () => {
     for (const key of Object.keys(costDenominators)) {
