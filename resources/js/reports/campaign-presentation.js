@@ -1,4 +1,9 @@
 // Presentation only: never filter the shared dataset or export payload.
+// Campaign.effective_status from Meta and campaign.status from Google Ads.
+// Unknown/new provider values stay neutral until explicitly reviewed.
+const metaHistoricalStates = new Set(['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']);
+const googleHistoricalStates = new Set(['ENABLED', 'PAUSED', 'REMOVED']);
+
 export function historicalStatusPresentation(row) {
     const unavailable = {
         text: 'Estado no disponible',
@@ -10,8 +15,10 @@ export function historicalStatusPresentation(row) {
     // Only gate evidence here. PHP remains the owner of the active/inactive rule.
     const evidenceField = row.platform === 'meta' ? 'campaign_effective_status'
         : row.platform === 'google_ads' ? 'campaign_status' : null;
-    const evidence = String(row[evidenceField] ?? '').trim().toUpperCase();
-    if (!evidenceField || ['', 'UNKNOWN', 'UNSPECIFIED'].includes(evidence)) {
+    const evidence = row[evidenceField];
+    const recognizedStates = row.platform === 'meta' ? metaHistoricalStates
+        : row.platform === 'google_ads' ? googleHistoricalStates : null;
+    if (!recognizedStates || typeof evidence !== 'string' || !recognizedStates.has(evidence)) {
         return unavailable;
     }
     const label = row.campaign_status_label === 'Activa' ? 'Activa (histórico)'

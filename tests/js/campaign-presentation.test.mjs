@@ -109,6 +109,39 @@ test('historical labels are presented only with platform evidence, without infer
     }
 });
 
+test('only explicit provider campaign states admit the backend historical label', () => {
+    const platforms = [
+        ['meta', 'campaign_effective_status', ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']],
+        ['google_ads', 'campaign_status', ['ENABLED', 'PAUSED', 'REMOVED']],
+    ];
+    for (const [platform, field, recognized] of platforms) {
+        for (const state of recognized) {
+            for (const label of ['Activa', 'Inactiva']) {
+                const row = { platform, [field]: state, campaign_status_label: label };
+                const before = JSON.stringify(row);
+                assert.equal(historicalStatusPresentation(row).text, `${label} (histórico)`);
+                assert.equal(JSON.stringify(row), before);
+            }
+        }
+        const otherPlatformStates = platform === 'meta' ? ['ENABLED', 'REMOVED'] : ['ACTIVE', 'DELETED', 'ARCHIVED', 'WITH_ISSUES'];
+        for (const state of [null, undefined, '', 'UNKNOWN', 'UNSPECIFIED', 'FUTURE_STATE', 'not-a-state',
+            '<script>alert(1)</script>', 'paused', ' PAUSED ', 'PAUSED\n', 0, 1, true, {}, ['PAUSED'], ...otherPlatformStates]) {
+            for (const label of ['Activa', 'Inactiva']) {
+                sandbox.invalidStatusRow = { platform, [field]: state, campaign_status_label: label };
+                assert.equal(historicalStatusPresentation(sandbox.invalidStatusRow).text, 'Estado no disponible');
+                const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [invalidStatusRow])", sandbox);
+                assert.ok(html.includes('Estado no disponible'));
+                assert.ok(!html.includes('>Inactiva (histórico)<'));
+                assert.ok(!html.includes('>Activa (histórico)<'));
+                assert.ok(!html.includes('<script>'));
+            }
+        }
+        for (const source of ['salesforce_campaign_without_spend', 'salesforce_origin']) {
+            assert.equal(historicalStatusPresentation({ platform, [field]: recognized[0], campaign_status_label: 'Activa', campaign_source_type: source }).text, 'Estado no disponible');
+        }
+    }
+});
+
 test('Salesforce origin zeros and incomplete investment never become verified zero costs', () => {
     for (const key of Object.keys(costDenominators)) {
         const denominator = costDenominators[key];

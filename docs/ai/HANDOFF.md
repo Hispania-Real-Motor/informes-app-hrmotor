@@ -1,5 +1,20 @@
 # Handoff para agentes
 
+## Endurecimiento de estados históricos reconocidos (2026-10-22)
+
+- Inicio limpio en fix/campaign-historical-status-visibility, HEAD 9bbff3e40551958cd5c1150293bc02ecbf8a8d2d. Commit adicional en la misma rama, sin merge, push ni despliegue.
+- Problema: excluir solo vacíos/UNKNOWN/UNSPECIFIED admitía cadenas arbitrarias y normalizaba tipos/formato inválidos, pudiendo mostrar Inactiva (histórico) sin evidencia válida.
+- Integraciones inspeccionadas: MetaAdsClient solicita effective_status y MetaCampaignSyncService lo copia sin traducción; GoogleAdsClient solicita campaign.status y GoogleCampaignSyncService lo copia sin traducción. No hay enum local exhaustivo. Contraste con Campaign.EffectiveStatus del SDK oficial de Meta y referencia oficial Google CampaignStatus, enlazadas en docs/informe-campanas.md. Ninguna llamada a cuentas o sincronización ejecutada.
+- Solución: sets privados creados una vez por módulo. Meta ACTIVE/PAUSED/DELETED/ARCHIVED/IN_PROCESS/WITH_ISSUES; Google ENABLED/PAUSED/REMOVED. Solo cadenas canónicas exactas permiten presentar la etiqueta del backend; otros códigos, campos de otra plataforma, tipos, espacios o minúsculas quedan neutrales. Salesforce sigue neutral. Sin duplicación de reglas de clasificación económica.
+- Archivos: resources/js/reports/campaign-presentation.js; tests/js/campaign-presentation.test.mjs; docs/informe-campanas.md; docs/ai/CAMPAIGN_PRESENTATION_DIAGNOSTIC.md; docs/ai/HANDOFF.md; public/build/manifest.json; bundle de campañas sustituido por public/build/assets/campaigns-dashboard-DTHx9DKs.js.
+- Pruebas: node --test tests/js/campaign-presentation.test.mjs => 10/10 correctos; PHP Herd 8.4 -d max_execution_time=0 vendor/bin/pest --filter=CampaignDashboardTest --compact => 49/49, 512 aserciones, 6,951 s. Incluye integridad económica y contrato API/CSV existentes. node --check resources/js/reports/campaign-presentation.js y git diff --check correctos. No PHP modificado; no se requiere Pint focalizado. No se repite suite global.
+- Build npm run build correcto (Vite 8.3.4); aviso de deprecación module.register() de Node. Bundle/manifest actualizados. Verificación automática: solo cambia la entrada de campañas en el manifest, todos sus archivos existen y el bundle incluye los estados de la lista.
+- Integridad/seguridad: git diff 9bbff3e --exit-code -- app database routes sin diferencias; sin cambios económicos, API, CSV, filtros, atribuciones, snapshots, cierres, sincronizaciones, migraciones, autenticación, permisos o CSP. Escape HTML probado también con texto arbitrario malicioso. Sin secretos o datos reales en fixtures/docs.
+- Rendimiento: Set.has en memoria O(1) por fila; sin consultas ni llamadas remotas. Sin arquitectura o convención general nueva: PROJECT_CONTEXT.md y DECISIONS.md no cambian.
+- Acciones manuales: publicar assets y manifest del mismo release conjuntamente durante despliegue autorizado; comprobar caché y texto servido. No se ejecuta despliegue. Sin migraciones, variables, dependencias o invalidación de caché económica. Rollback de código y assets juntos.
+- Riesgo deliberado: códigos nuevos/no contemplados quedarán neutrales hasta revisión explícita. No se afirma estado remoto vigente. Sigue pendiente QA visual real; no se alteran las limitaciones legacy de etiquetas API/CSV ya documentadas.
+
+
 ## Visibilidad del estado histórico de campañas (2026-10-22)
 
 - Base verificada tras git fetch origin: 72d7fb968bb61c168dcd38c9c624882380ab1b72. Árbol inicial limpio; rama nueva fix/campaign-historical-status-visibility desde origin/main. Sin merge, push ni despliegue.
