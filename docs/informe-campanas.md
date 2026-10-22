@@ -165,7 +165,7 @@ operacional revisado. Esta implementación no ejecuta backfill ni despliegue.
 
 ## Presentación conservadora de estados y costes (2026-10-21)
 
-La columna Estado indica «Estado no disponible»: los estados guardados con métricas históricas no garantizan el estado vigente en Meta/Google, y Salesforce-only no acredita actividad publicitaria actual. El filtro conserva su criterio histórico por aprobación expresa; no es una consulta de estado vigente. MIN y el fallback legacy siguen limitados al contrato histórico y no se usan para verificar el estado mostrado. No se alteran universos económicos ni cierres.
+La columna Estado histórico muestra Activa (histórico) o Inactiva (histórico) usando la etiqueta del backend cuando existe evidencia publicitaria local para el criterio de la plataforma. Sin esa evidencia, con etiqueta ausente, estados desconocidos o procedencias Salesforce, muestra Estado no disponible. Ninguna etiqueta garantiza el estado remoto vigente. El filtro conserva su criterio histórico por aprobación expresa; no es una consulta de estado vigente. MIN y el fallback legacy siguen limitados al contrato histórico y no se usan para verificar el estado mostrado. No se alteran universos económicos ni cierres.
 
 Solo el detalle visual oculta filas sin ninguna actividad cuantitativa: inversión, impresiones, clics, leads/conversiones de plataforma, intereses, oportunidades, reservas, ventas, compras, tasaciones e importes asociados. Cualquier indicador distinto de cero mantiene la fila, con independencia del estado. Un null no se convierte en cero. Dataset, exportaciones, rankings y KPIs permanecen completos.
 
@@ -183,3 +183,21 @@ El helper costPresentation centraliza texto, motivo y valor exclusivamente visua
 Las líneas se generan por tramos contiguos: un período null interrumpe la línea, incluso entre dos valores válidos. Una serie enteramente nula no dibuja líneas ni puntos; un final null no reutiliza el último valor conocido. Ceros legítimos y valores negativos se conservan. El recorrido sigue siendo lineal, sin consultas ni llamadas remotas.
 
 El selector se titula Estado histórico (filtro) y sus opciones indican según criterio histórico. Sus valores active/inactive y su lógica permanecen idénticos; Estado no disponible sigue significando que NO se ha implementado la identificación del estado remoto vigente. Sin cambios de API, KPIs, fórmulas, snapshots, atribuciones o permisos.
+
+
+## Visibilidad de la clasificación histórica (2026-10-22)
+
+Se elimina la sustitución incondicional por Estado no disponible. El frontend traduce únicamente las etiquetas Activa/Inactiva ya recibidas; no replica campaignIsActive ni deduce actividad de intereses. Exige evidencia local de campaign_effective_status para Meta o campaign_status para Google; valores vacíos, UNKNOWN o UNSPECIFIED no justifican la etiqueta. Campañas Salesforce-only y salesforce_origin permanecen neutrales: no acreditan estado publicitario. El tooltip aclara que la clasificación no consulta actualmente Meta Ads ni Google Ads.
+
+Se ha verificado que mergeRows asigna campaign_status_label antes de sumar atribuciones: una fila sin estados puede tener etiqueta Inactiva o null, mientras campaignIsActive final considera activa la fila por su fallback de intereses. Cambiar esa etiqueta afectaría el contrato API/CSV; no se modifica. Estas filas se muestran neutrales en lugar de reproducir una etiqueta potencialmente contradictoria. El selector histórico, sus valores active/inactive y todos los filtros permanecen intactos. Las filas con estado publicitario y etiqueta disponible conservan la coherencia con el filtro final. No se implementa consulta de estado remoto vigente.
+
+Los assets de campañas se generan mediante npm run build y se incluyen junto con su referencia actualizada en public/build/manifest.json. Durante un despliegue autorizado se deben publicar bundle y manifest del mismo release de forma conjunta/atómica, comprobar que la URL del manifest responde y revisar el texto histórico servido. No se debe desplegar solo el código fuente o un manifest sin su bundle. No se ha ejecutado ningún despliegue.
+
+
+## Lista explícita de estados históricos reconocidos (2026-10-22)
+
+La evidencia se valida con conjuntos explícitos en memoria, usando los campos que las integraciones existentes persisten directamente: Meta campaign_effective_status desde effective_status y Google campaign_status desde campaign.status. Meta admite ACTIVE, PAUSED, DELETED, ARCHIVED, IN_PROCESS y WITH_ISSUES; Google admite ENABLED, PAUSED y REMOVED. Una vez validado el código, se conserva la etiqueta Activa/Inactiva del backend; el frontend no recalcula esa clasificación.
+
+Se exige una cadena canónica exacta: valores vacíos, UNKNOWN, UNSPECIFIED, códigos de otra plataforma, códigos futuros, texto arbitrario, minúsculas, espacios añadidos y tipos no textuales muestran Estado no disponible, incluso cuando el backend envía Inactiva. No se convierte ni normaliza un valor malformado para aceptarlo. Las procedencias Salesforce siguen siendo neutrales. Nuevos códigos deben revisarse explícitamente antes de ampliarse la lista; esta cautela puede ocultar temporalmente una clasificación histórica, nunca confirmar un estado no reconocido. No se consulta el estado remoto vigente.
+
+Fuentes oficiales contrastadas sin llamadas a cuentas publicitarias: [Meta Campaign.EffectiveStatus (SDK oficial)](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/campaign.py) y [Google CampaignStatus](https://developers.google.com/google-ads/api/reference/rpc/v26/CampaignStatusEnum.CampaignStatus). La documentación Google define UNKNOWN/UNSPECIFIED, pero no se admiten como evidencia de clasificación. Sin cambios en filtros, API/CSV, economía o sincronizaciones.
