@@ -5788,3 +5788,5 @@ Persisten como límite separado los 19 errores Dashboard/MariaDB reproducidos ta
 ### Cierre estático de integración Fase B
 
 Pint --test y PHP -l: 15 archivos correctos. Pruebas documentales finales: 37, con 36 correctas y una omitida por symlink Windows. git diff --check correcto. Configuración sin variable de activación: enabled=false, manual_allowed=false y scheduler_filters_pass=false; cron 37 */6 * * *, Europe/Madrid. Suite general final: 1458 pruebas/13447 aserciones, cero errores, fallos u omisiones, 494,710877 s. Validador integral se ejecuta sobre el SHA del commit de integración. No se ha activado la tarea ni publicado o desplegado código.
+
+Validador integral ejecutado contra e26dcb2 (base 89282a3), con descripción realista incluida en CAMPAIGN_PHASE_B_VALIDATION.md: PASS, 33 rutas cambiadas. Se conserva la descripción con Docs-Impact, Docs-Matrix-Impact y excepciones operacionales justificadas. Rama local preparada para revisión; sin push ni PR publicados.
