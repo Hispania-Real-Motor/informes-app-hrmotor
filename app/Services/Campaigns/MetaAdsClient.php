@@ -19,7 +19,7 @@ class MetaAdsClient
         $accountId = CampaignCurrentStatusService::identifier($accountId, 'meta', true);
         $url = sprintf('https://graph.facebook.com/%s/act_%s/campaigns', config('services.meta_ads.api_version', 'v25.0'), $accountId);
         $params = ['fields' => 'id,account_id,name,status,effective_status', 'limit' => 500,
-            'filtering' => json_encode([['field' => 'effective_status', 'operator' => 'IN', 'value' => ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']]])];
+            'effective_status' => json_encode(['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES'])];
         $seen = [];
         $started = microtime(true);
         for ($page = 0; $page < 100; $page++) {

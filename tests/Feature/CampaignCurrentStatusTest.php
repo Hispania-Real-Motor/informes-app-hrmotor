@@ -98,7 +98,7 @@ class CampaignCurrentStatusTest extends TestCase
         $this->fake(['graph.facebook.com/*' => Http::response($this->inventory($code ?? 'ACTIVE'))]);
         if ($code === null) {
             $inventory = $this->inventory();
-            unset($inventory['data'][0]['effective_status']);
+            $inventory['data'][0]['effective_status'] = null;
             $this->fake(['graph.facebook.com/*' => Http::response($inventory)]);
         }
         $tables = ['campaign_platform_daily_metrics', 'campaign_attributions', 'campaign_lead_attributions', 'campaign_investment_closures', 'campaign_investment_closure_snapshots', 'campaign_investment_closure_events'];
@@ -161,6 +161,9 @@ class CampaignCurrentStatusTest extends TestCase
             ->push(['data' => [['id' => '2', 'account_id' => '123', 'status' => 'PAUSED', 'effective_status' => 'PAUSED']]])]);
         $service = app(CampaignCurrentStatusService::class);
         $this->assertSame(2, $service->sync($run)['campaigns']);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/campaigns')
+            && json_decode($request['effective_status'], true) === ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']
+            && ! isset($request['filtering']) && ! isset($request['time_range']));
         $before = DB::table('campaign_current_statuses')->orderBy('id')->get()->toJson();
         $this->fake(['graph.facebook.com/*' => Http::response($this->inventory('PAUSED') + ['paging' => ['next' => 'not-followed']])]);
         $this->assertSame(1, $service->sync($run)['failed']);
@@ -307,6 +310,11 @@ class CampaignCurrentStatusTest extends TestCase
             $this->assertSame(1, $service->sync($run)['failed']);
             $this->assertDatabaseCount('campaign_current_statuses', 0);
         }
+        $inventory = $this->inventory();
+        unset($inventory['data'][0]['effective_status']);
+        $this->fake(['graph.facebook.com/*' => Http::response($inventory)]);
+        $this->assertSame(1, $service->sync($run)['failed']);
+        $this->assertDatabaseCount('campaign_current_statuses', 0);
     }
 
     public function test_unique_identity_is_enforced_by_database(): void
@@ -318,5 +326,18 @@ class CampaignCurrentStatusTest extends TestCase
         unset($existing['id']);
         $this->expectException(UniqueConstraintViolationException::class);
         DB::table('campaign_current_statuses')->insert($existing);
+    }
+
+    public function test_missing_or_failed_audit_cannot_confirm_freshness_even_with_a_recent_timestamp(): void
+    {
+        $run = $this->reservation();
+        $this->fake(['graph.facebook.com/*' => Http::response($this->inventory())]);
+        $service = app(CampaignCurrentStatusService::class);
+        $service->sync($run);
+        DB::table('report_sync_runs')->where('dataset', CampaignCurrentStatusService::DATASET)->update(['status' => 'failed']);
+        $this->assertSame('stale', $service->decorate([$this->row()])[0]['current_status']['availability']);
+        DB::table('report_sync_runs')->where('dataset', CampaignCurrentStatusService::DATASET)->delete();
+        $this->assertNull(DB::table('campaign_current_statuses')->value('report_sync_run_id'));
+        $this->assertSame('stale', $service->decorate([$this->row()])[0]['current_status']['availability']);
     }
 }

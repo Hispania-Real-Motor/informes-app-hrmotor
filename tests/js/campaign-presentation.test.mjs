@@ -351,3 +351,14 @@ test('open page expires only state cells without fetching or rebuilding the tabl
     assert.equal(root.innerHTML, before);
     sandbox.document.querySelectorAll = () => [];
 });
+
+
+test('real numeric table tooltips use the same grouped text without losing cost explanations', () => {
+    sandbox.tooltipRow = {platform: 'meta', campaign_name: 'Synthetic', spend: 1234.56, clicks: 1234, purchases: 0, cost_per_purchase: null};
+    const before = JSON.stringify(sandbox.tooltipRow);
+    const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [tooltipRow])", sandbox);
+    assert.ok(html.includes('data-column="clicks" title="1.234">1.234</td>'));
+    assert.ok(!html.includes('title="1234"'));
+    assert.ok(html.includes('Divisor cero: no hay resultados para calcular el coste.'));
+    assert.equal(JSON.stringify(sandbox.tooltipRow), before);
+});

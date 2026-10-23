@@ -2946,7 +2946,8 @@ function cellHtml([value, numeric, rawValue, columnKey, expiresAt]) {
     }
 
     const expiry = Number.isFinite(expiresAt) ? ` data-status-expires-at="${expiresAt}"` : '';
-    return `<td class="${classes.join(' ')}" data-column="${escapeHtml(columnKey)}"${expiry} title="${escapeHtml(rawValue ?? '')}">${escapeHtml(value)}</td>`;
+    const tooltip = numeric && rawValue !== null && rawValue !== undefined && rawValue !== '' && Number.isFinite(Number(rawValue)) ? value : rawValue;
+    return `<td class="${classes.join(' ')}" data-column="${escapeHtml(columnKey)}"${expiry} title="${escapeHtml(tooltip ?? '')}">${escapeHtml(value)}</td>`;
 }
 
 // Expire only status cells: no requests, economic work, table rebuild or scroll reset.

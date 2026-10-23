@@ -35,6 +35,9 @@ class GoogleAdsClient
             }
             $rows = [];
             foreach ($payload['results'] ?? [] as $result) {
+                if (! is_array($result['campaign'] ?? null) || ! array_key_exists('status', $result['campaign'])) {
+                    throw new RuntimeException('Faltan atributos del inventario de Google Ads.');
+                }
                 $rows[] = ['id' => $result['campaign']['id'] ?? null, 'account_id' => $result['customer']['id'] ?? null, 'status' => $result['campaign']['status'] ?? null];
             }
             yield $rows;

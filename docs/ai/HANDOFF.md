@@ -5717,3 +5717,28 @@ Resultado documental definitivo del agente: Python -B -m unittest discover -s te
 
 
 Cierre focal del agente principal: PHP estados+dashboard 75/75 y693 aserciones; JS19/19; Pint --test pasado; sintaxis PHP y node --check correctos. Build final correcto con campaigns-dashboard-DlRi4wRD.js y manifest comprobados; se restauran los bundles anteriores eliminados por la limpieza de Vite. Sin cambios en sincronizadores históricos, CampaignInvestmentClosureService ni constructor económico. Ninguna migración, llamada real, despliegue o activación realizados. Revisión documental delegada terminada y diff revisado por el principal. Suite completa y validador contra commit final pendientes todavía; resultados se añaden a continuación al terminar.
+
+### Revisión incremental posterior a 29ab39f — evidencia de auditoría obligatoria
+
+Diff revisado completo: CampaignCurrentStatusService::decorate añade join del último run y exige status completed +referencias no nulas/coincidentes. Se evita que dos null tras retención, o un mismo ID fallido, acrediten frescura de un estado reciente. Regresión nueva cubre ambos casos. Informe/matriz/validación actualizados; no cambia metadata económica, CSV ni número de consultas por lote.
+
+Resultados comunicados por el agente principal: PHP final76/76,696 aserciones (25 estados+51 dashboard); JS19/19; build final correcto DlRi4wRD.js60,68kB y manifest con destinos existentes. Validador pasó sobre29ab39f,34rutas; repetir al final. Primer intento de suite general interrumpido por max_execution_time120 local; reiniciada con subscriber PHPUnitPrepared aislado que restablece límite0 antes de cada test, sin cambios app/ini. Suite general en curso, sin éxito anticipado. Pint se repetirá tras este ajuste. No se ejecutaron sincronizaciones/migraciones reales.
+
+Última revisión B2: diff cellHtml+test real confirma title numérico con mismo texto agrupado visible, conservando razones de costes/estado, escape y datos originales. JS20/20 correctas; Pint --test/PHP-l finales correctos comunicados por el principal. Rebuild posterior en curso: DlRi4wRD es hash de iteración previa, el principal registrará el asset final y suite general al cierre. No se anticipa éxito de esta suite.
+
+
+Asset definitivo: campaigns-dashboard-DisEWXqJ.js (60,73kB), build completo24,86s y manifest verificados, bundles previos conservados. PHP final76/696 y JS20/20; Pint --test y PHP -l del último endurecimiento correctos. La primera suite general abortó al alcanzar120s reactivados por servicios existentes; el runner final restablece max_execution_time=0 al preparar cada test, solo en CLI, sin cambiar código/configuración productiva. Se detuvo el intento intermedio para ejecutar la versión PHP final. Suite completa final en curso; no se anticipa resultado. Lista completa de archivos y comandos en CAMPAIGN_PHASE_B_VALIDATION.md.
+
+### Ajuste final del contrato de proveedor
+
+Diff incremental revisado: Meta sustituye filtering por parámetro efectivo `effective_status` lista JSON6estados sin rango temporal, conforme a AdAccount.get_campaigns del SDK oficial. El test HTTP exige esa forma y la inclusión de ARCHIVED/DELETED. Servicio y decoder Google rechazan atributos requeridos ausentes; null explícito sigue siendo código no verificable y no renueva último válido. Ausencia invalida cuenta completa y preserva filas anteriores. Sin cambios de economía, identidades o filtros.
+
+Build definitivo comunicado: campaigns-dashboard-DisEWXqJ.js60,73kB junto a manifest; JS20/20. Fuente oficial contrastada por el agente principal: https://raw.githubusercontent.com/facebook/facebook-python-business-sdk/main/facebook_business/adobjects/adaccount.py (AdAccount.get_campaigns). No se realiza consulta a cuentas reales.
+
+### Cierre final Fase B — resultado y limitación general
+
+PHP focal final:76 pruebas/699 aserciones correctas; batería existente campañas/operaciones167/2279 correcta (con solapamiento, no sumar como únicos); JS20/20; documentación35pass+1skipWindows; build, sintaxis, Pint final y diff--check correctos. Bundle vigente DisEWXqJ con manifest y archivos comprobados. Revisión documental delegada finalizada y revisada por el principal.
+
+Suite PHP general no completada: fatal120s en primer intento; repetición CLI con subscriber terminó código1 sin salida concluyente; repetición paralela4workers registra WorkerCrashedException en DashboardMetricPercentStyleTest por Maximumexecutiontime120seconds en Container.php1541. No se modifica código de otros informes ni se declara éxito global. Repetir suite completa en CI con límites/recursos apropiados antes de integrar. Evidencia, comandos y lista completa de archivos en CAMPAIGN_PHASE_B_VALIDATION.md; su cierre prevalece sobre cifras intermedias anteriores.
+
+Sin migración productiva, sincronización real, activación, push, merge ni despliegue. Una tabla operativa aditiva; auditoría reutiliza report_sync_runs. Tarea cada6h a minuto37 Madrid, deshabilitada por defecto; activación explícita posterior separada. Rollback restaura release completo conservando tabla y auditoría; jamás toca históricos. Integridad de KPIs/CSV/cierres/atribuciones demostrada con fixtures, no con producción. QA de cuentas reales, cobertura/permisos, capacidad/MariaDB y suite completa pendientes.

@@ -79,6 +79,10 @@ class CampaignCurrentStatusService
                         foreach ($pages as $page) {
                             $pagesRead++;
                             foreach ($page as $item) {
+                                if (! is_array($item) || ! array_key_exists('status', $item)
+                                    || ($platform === 'meta' && ! array_key_exists('effective_status', $item))) {
+                                    throw new RuntimeException('Faltan atributos del inventario.');
+                                }
                                 $campaign = self::identifier($item['id'] ?? null, $platform);
                                 if (isset($rows[$campaign]) || count($rows) >= 50000 || self::identifier($item['account_id'] ?? null, $platform, true) !== $account) {
                                     throw new RuntimeException('Inventario incompleto o ambiguo.');
@@ -172,10 +176,11 @@ class CampaignCurrentStatusService
             foreach (array_chunk(array_unique(array_column($identities, 2)), 500) as $ids) {
                 $found = DB::table('campaign_current_statuses as c')
                     ->leftJoinSub($latestRuns, 'latest', fn ($join) => $join->on('latest.source', '=', 'c.sync_source'))
+                    ->leftJoin('report_sync_runs as latest_run', 'latest_run.id', '=', 'latest.latest_id')
                     ->whereIn('c.platform', $platforms)
                     ->whereIn('c.account_id', $accounts)
                     ->whereIn('c.campaign_id', $ids)
-                    ->select('c.*', 'latest.latest_id')->get();
+                    ->select('c.*', 'latest.latest_id', 'latest_run.status as latest_status')->get();
                 foreach ($found as $state) {
                     $states[$state->platform.'|'.$state->account_id.'|'.$state->campaign_id] = $state;
                 }
@@ -210,7 +215,9 @@ class CampaignCurrentStatusService
 
                             continue;
                         }
-                        $fresh = $age >= 0 && $age < 86400 && (int) $state->latest_id === (int) $state->report_sync_run_id;
+                        $fresh = $age < 86400 && $state->latest_status === 'completed'
+                            && $state->report_sync_run_id !== null && $state->latest_id !== null
+                            && (int) $state->latest_id === (int) $state->report_sync_run_id;
                         $metadata['availability'] = $fresh ? 'fresh' : 'stale';
                         $metadata['label'] = $fresh ? $label : 'Estado no actualizado';
                     }
