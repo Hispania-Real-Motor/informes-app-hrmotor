@@ -1,15 +1,14 @@
 # Matriz de trazabilidad de KPIs
 
-Estado: pendiente de auditoría integral. Esta base no contenía matriz; este
-registro documenta exclusivamente el impacto de la tarea Campañas de 2026-10-23.
-No certifica los seis informes ni incorpora fichas verificadas por conjetura.
-El contrato siguiente define el esquema requerido para futuras fichas, sin
-completar por conjetura ninguno de los informes.
+Estado: **estructura pendiente de auditoría inicial**. Esta entrega no certifica
+ningún KPI ni traslada reglas históricas sin comprobarlas con código, pruebas y
+fuentes. Las fichas se incorporarán en una tarea posterior, una por KPI y
+siempre asociadas a una pestaña o sección real.
 
 ## Contrato de ficha KPI
 
-Cada ficha verificada debe cubrir estos 23 campos con evidencia; No aplica exige
-justificación. Este esquema no equivale a una ficha auditada.
+Cada ficha verificada debe contener estos campos, con referencias concretas y
+valor `No aplica` justificado cuando corresponda:
 
 1. Informe.
 2. Pestaña o sección real.
@@ -25,7 +24,7 @@ justificación. Este esquema no equivale a una ficha auditada.
 12. Filtros e inclusiones.
 13. Exclusiones.
 14. Deduplicación y clave de identidad.
-15. Fórmula exacta explicada.
+15. Fórmula exacta explicada, sin copiar el archivo PHP.
 16. Redondeos, umbrales y coeficientes.
 17. Tratamiento de nulos y división por cero.
 18. Configuración y vigencia de parámetros.
@@ -35,21 +34,43 @@ justificación. Este esquema no equivale a una ficha auditada.
 22. Estado de verificación: pendiente, verificado o discrepancia.
 23. Commit de referencia comprobado.
 
-## Intereses (ruta histórica Leads)
+Un cambio funcional que altere KPI, fuente, universo, filtro, fórmula o
+trazabilidad debe actualizar el documento del informe y esta matriz en el mismo
+diff. Si todavía no existe ficha verificada, se registra la evidencia y el
+impacto como pendiente; no se crea una ficha de 23 campos por conjetura. Si el
+cambio documentado no afecta a ningún KPI, la descripción de la PR declara
+`Docs-Matrix-Impact: unchanged` con razón técnica y ruta de evidencia revisable.
+La matriz indexa la evidencia y no crea una segunda especificación
+contradictoria. Una discrepancia conserva referencias a las dos evidencias y
+queda pendiente de decisión humana.
 
-Auditoría inicial pendiente. Esta tarea no modifica ni certifica sus KPIs.
+## Índice de informes y secciones pendientes
 
-## Reservas / Ventas
+### Intereses (ruta histórica Leads)
 
-Auditoría inicial pendiente. Esta tarea no modifica ni certifica sus KPIs.
+Auditoría inicial pendiente. Secciones y KPIs concretos por verificar contra
+la interfaz actual. Referencias: [reglas vigentes de Intereses](reglas-negocio-leads.md)
+y [documentación general](Documentacion_general_informes_y_contraste_salesforce.md).
 
-## Llamadas
+### Reservas / Ventas
 
-Auditoría inicial pendiente. Esta tarea no modifica ni certifica sus KPIs.
+Auditoría inicial pendiente. Pestañas y KPIs concretos por verificar contra la
+interfaz actual. Referencias: [informe de Reservas / Ventas](informe-reservas-ventas.md)
+y [documentación general](Documentacion_general_informes_y_contraste_salesforce.md).
 
-## Campañas
+### Llamadas
 
-### Registro focalizado: Detalle y Campañas a revisar
+Auditoría inicial pendiente. Secciones y KPIs concretos por verificar contra
+la interfaz actual. Referencias: [informe de Llamadas](informe-llamadas.md)
+y [documentación general](Documentacion_general_informes_y_contraste_salesforce.md).
+
+### Campañas
+
+Auditoría inicial pendiente. Secciones y KPIs concretos por verificar contra
+la interfaz actual. Referencias: [informe de Campañas](informe-campanas.md)
+y [documentación general](Documentacion_general_informes_y_contraste_salesforce.md).
+
+#### Registro focalizado: Detalle y Campañas a revisar
 
 Base contrastada: 01d3aa8ad428ad413f184741d9a4f2314696f1fe más diff Fase A.
 
@@ -61,7 +82,7 @@ Base contrastada: 01d3aa8ad428ad413f184741d9a4f2314696f1fe más diff Fase A.
 | Benchmark y top 8 de Campañas a revisar | CampaignDashboardDatasetService::reviewCampaigns() | Elegibilidad publicitaria antes de medias por tipo; promedio de costes por resultado positivos no nulos, cuatro decimales; Coste alto > 2 × media. Mismos motivos y prioridad; universo cambia solo aquí. |
 | Estado publicitario | historicalStatusPresentation(); MetaCampaignSyncService, GoogleCampaignSyncService y clientes | Sigue histórico, no remoto vigente. Fase B pendiente de aprobación, sin nueva fuente implementada. |
 
-## Fuentes contrastadas y límites de esta revisión
+##### Fuentes contrastadas y límites de esta revisión
 
 MetaAdsClient consulta insights y campañas; MetaCampaignSyncService persiste
 metric_date, spend, campaign_status y campaign_effective_status en métricas
@@ -89,27 +110,33 @@ La propuesta de estado actual se detalla en
 Reglas funcionales vigentes: [Informe de Campañas](informe-campanas.md).
 
 
-## Comisiones
+### Comisiones
 
-Auditoría inicial pendiente de todas sus pestañas. Este índice no valida reglas
-ni cálculos y no modifica la documentación funcional de ese informe.
+Auditoría inicial pendiente en cada una de las seis pestañas reales:
 
-| Pestaña | Estado |
-| --- | --- |
-| Comerciales | Pendiente |
-| Delegaciones | Pendiente |
-| Call Center | Pendiente |
-| Contact Center | Pendiente |
-| Área Manager | Pendiente |
-| Financieros | Pendiente |
+| Pestaña | Estado | Referencia funcional |
+| --- | --- | --- |
+| Comerciales | Pendiente | [Comisiones](informe-comisiones.md) y [cálculo comercial](Calculo_comisiones_comerciales.txt) |
+| Delegaciones | Pendiente | [Comisiones](informe-comisiones.md) |
+| Call Center | Pendiente | [Comisiones](informe-comisiones.md) |
+| Contact Center | Pendiente | [Comisiones](informe-comisiones.md) |
+| Área Manager | Pendiente | [Comisiones](informe-comisiones.md) |
+| Financieros | Pendiente | [Comisiones](informe-comisiones.md) y [guía financiera](informe-comisiones-financieras.md) |
 
-## Stock
+### Stock
 
-Auditoría inicial pendiente. Esta tarea no modifica ni certifica sus KPIs.
+Auditoría inicial pendiente. Secciones y KPIs concretos por verificar contra
+la interfaz actual. Referencias: [informe de Stock](informe-stock.md)
+y [documentación general](Documentacion_general_informes_y_contraste_salesforce.md).
 
 ## Fichas verificadas
 
-Ninguna ficha integral certificada en esta tarea. El registro focal de Campañas
-identifica el impacto contrastado; no sustituye las 23 dimensiones de auditoría
-por KPI. Una auditoría posterior debe completar la evidencia antes de promover
-cualquier ficha a verificada.
+Ninguna todavía. La auditoría inicial de los seis informes es una tarea
+posterior independiente. No se deben promover fichas a `verificado` sin
+comprobar implementación, fuentes y tests.
+
+## Decisiones y discrepancias
+
+Consultar [decisiones de negocio pendientes](decisiones-negocio-pendientes.md).
+Las discrepancias nuevas se registrarán aquí con evidencia y responsable de
+resolución, sin alterar retrospectivamente reglas históricas.

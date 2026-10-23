@@ -1,0 +1,58 @@
+name: Documentation integrity
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  docs-integrity:
+    name: docs-integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify validator entry points
+        shell: bash
+        run: |
+          for directory in scripts tests tests/documentation; do
+            mode="$(git ls-tree HEAD -- "$directory" | cut -d' ' -f1)"
+            if [[ "$mode" != "040000" ]]; then
+              echo "Validator directory is not a Git tree: $directory" >&2
+              exit 1
+            fi
+          done
+          while IFS= read -r -d '' entry; do
+            mode="${entry%% *}"
+            if [[ "$mode" != "100644" && "$mode" != "100755" ]]; then
+              echo "Validator entry point is not a regular file: ${entry#*$'\t'}" >&2
+              exit 1
+            fi
+          done < <(git ls-files -s -z -- scripts/check_documentation_integrity.py tests/documentation)
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test documentation validator
+        run: python -m unittest discover -s tests/documentation -p 'test_*.py'
+
+      - name: Validate PR documentation
+        env:
+          DOCS_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DOCS_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python scripts/check_documentation_integrity.py
+          --base "$DOCS_BASE_SHA"
+          --head "$DOCS_HEAD_SHA"
+          --event-json "$GITHUB_EVENT_PATH"

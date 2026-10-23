@@ -93,3 +93,29 @@ Después de completar cualquier tarea que modifique el proyecto:
    - Migraciones o configuración necesaria.
    - Riesgos conocidos.
    - Mensaje de commit recomendado.
+
+## Mantenimiento documental de informes
+
+Tras una feature, bugfix, hotfix o refactor que afecte al comportamiento, origen,
+cálculo, presentación o auditoría de cualquiera de los seis informes, estabiliza
+primero el código y ejecuta sus pruebas. Obtén después el diff completo de la
+tarea e invoca al agente de proyecto `report_docs_maintainer` con el diff o las
+referencias de base/HEAD, los informes y las pestañas sospechadas. Espera a que
+termine y revisa su resultado y el diff documental antes de finalizar. El
+agente documental solo puede modificar documentación, nunca código de la
+aplicación. Incluye código y documentación en la misma PR.
+
+El agente debe contrastar la implementación PHP, configuración, sincronizadores,
+normalizadores y pruebas con los documentos existentes y con
+`docs/matriz-trazabilidad-kpi.md`. La documentación histórica no prevalece sobre
+el comportamiento implementado; conserva las decisiones anteriores y distingue
+lo vigente, lo histórico y lo pendiente. Sigue el procedimiento de
+`docs/guia-mantenimiento-documental.md` y ejecuta el validador documental.
+
+Si la sesión no permite invocar el agente personalizado, informa de ello y
+aplica el mismo procedimiento desde el agente principal; registra el trabajo
+como fallback, sin afirmar que hubo delegación. Si el cambio no tiene impacto
+documental, explica técnicamente por qué y no hagas cambios cosméticos. En la
+descripción de la PR usa el contrato `Docs-Impact` de la guía. El agente
+principal sigue siendo responsable de revisar y validar la documentación y de
+cumplir el protocolo de entrega anterior.
