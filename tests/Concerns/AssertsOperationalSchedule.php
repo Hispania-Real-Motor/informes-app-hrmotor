@@ -12,6 +12,7 @@ trait AssertsOperationalSchedule
         $baseline = require base_path('tests/Fixtures/operational_schedule_baseline.php');
         $baseline['salesforce-sync-commercial-reviews'] = ['salesforce:sync-commercial-reviews', ['--months' => '2'], '20 2 * * *', 120];
         $baseline['operations-health'] = ['operations:check-health', [], '*/5 * * * *', 5];
+        $baseline['campaigns-sync-current-status'] = ['campaigns:sync-current-status', [], '37 */6 * * *', 240];
         $tasks = app(OperationalTaskCatalog::class)->all();
         $events = collect(app(Schedule::class)->events())->keyBy('description');
         $this->assertCount(count($baseline), $tasks);

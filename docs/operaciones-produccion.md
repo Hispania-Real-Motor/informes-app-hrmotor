@@ -1018,3 +1018,23 @@ Pendiente específico: si el error reciente real es INVALID_FIELD, reproducir co
 cliente HTTP fake y diseñar metadatos tipados/permitidos para el fallback, sin
 exponer respuestas crudas. No se atribuye la alerta histórica a esta limitación
 sin evidencia actual de tipo/campo permitido del servidor.
+
+## Fase B Campañas — activación separada del despliegue (2026-10-23)
+
+La nueva tarea `campaigns-sync-current-status` pertenece al catálogo central, con cron `37 */6 * * *` en Europe/Madrid (00:37, 06:37, 12:37 y 18:37). Se evita el minuto de las tareas económicas principales; esto no garantiza ausencia de carga concurrente. Ventana operacional y lock: 240 minutos. No hay cron paralelo ni llamadas de proveedor desde HTTP.
+
+**Estado inicial obligatorio:** `CAMPAIGN_CURRENT_STATUS_ENABLED=false` (valor por defecto en `config/campaign_current_status.php`). Scheduler y ejecución manual no reservan ni ejecutan la tarea; el monitor omite tareas deshabilitadas. Una reserva en cola se vuelve a validar antes de iniciar. Los permisos manuales siguen limitados a Administración activa mediante el mecanismo existente. No se introduce endpoint público.
+
+Despliegue humano futuro, sin ejecución realizada por esta entrega:
+
+1. Revisar el diff/migración y plan operativo; mantener la variable deshabilitada. Aplicar únicamente la migración aditiva `2026_10_23_120000_create_campaign_current_statuses_table.php` bajo el procedimiento habitual autorizado **antes de servir el nuevo código web**, ya que las consultas de estado requieren la tabla. Revisar previamente el conjunto de migraciones pendientes: no ejecutar otras implícitamente por este runbook.
+2. Publicar código, bundles Vite y `public/build/manifest.json` del mismo release juntos. Compilar con `npm run build` en desarrollo/CI; no instalar Node en PHP de producción. Actualizar caché de configuración y reiniciar workers según el proceso vigente; no reconstruir datasets ni cierres.
+3. Con la tarea aún deshabilitada, verificar permisos, endpoints, CSV y asset referenciado; Estado no disponible es esperado hasta una consulta válida. Confirmar que no se ha iniciado ninguna nueva sincronización.
+4. La activación es una operación separada y expresamente autorizada: revisar credenciales existentes, cuentas, límites, retención de `report_sync_runs`, conectividad y capacidad. El operador configura `CAMPAIGN_CURRENT_STATUS_ENABLED=true`, actualiza caché de configuración y procesos de larga duración. No añadir comandos de sincronización a hooks de despliegue.
+5. Solo tras autorizar la primera prueba, el operador puede ejecutar `php artisan operations:run campaigns-sync-current-status` o utilizar la acción operacional existente con permisos/confirmación. No invocar directamente `campaigns:sync-current-status` ni fabricar `--operational-run`. Supervisar resultado agregado y runs por cuenta; un fallo parcial hace fallar la tarea aunque otras cuentas completen. La primera activación permite también el siguiente horario del scheduler: elegir su momento deliberadamente.
+
+Las lecturas tienen paginación acotada, máximo diez cuentas por plataforma, cien páginas y 50.000 campañas por cuenta. Una página admite dos intentos de 30 s; se comprueba presupuesto antes de la siguiente página tras 540 s. OAuth Google tiene timeout adicional de hasta 60 s. No considerar este presupuesto un timeout duro global. Errores y estadísticas persistidas son genéricos, sin tokens ni payloads completos. Inventario incompleto no renueva filas de la cuenta y una ausencia no implica baja.
+
+Rollback de código: deshabilitar primero la tarea, refrescar configuración y detener nuevas reservas; esperar o gestionar bajo protocolo las ejecuciones en curso antes de cambiar release. Restaurar código/manifest/assets previos juntos y reiniciar workers según el procedimiento habitual. **Conservar la tabla operativa y auditoría**: no ejecutar rollback de migraciones generales, borrar tablas históricas ni regenerar snapshots. La migración es técnicamente reversible, pero su `down()` solo elimina la tabla nueva y no forma parte del rollback de código recomendado. El release anterior ignora los campos nuevos.
+
+Pendientes de validación humana: permisos y cobertura reales de Meta/Google, carga con inventario real, QA de tooltips/zonas horarias/números, y monitorización tras una primera lectura autorizada. Las pruebas de desarrollo usan respuestas simuladas y SQLite aislado.

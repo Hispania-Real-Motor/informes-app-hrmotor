@@ -10,6 +10,42 @@ use RuntimeException;
 
 class MetaAdsClient
 {
+    /** Independent operational inventory; fixed endpoint, bounded complete pagination. */
+    public function currentStatusPages(string $accountId): \Generator
+    {
+        if (! $this->configured()) {
+            throw new RuntimeException('Meta Ads no configurado.');
+        }
+        $accountId = CampaignCurrentStatusService::identifier($accountId, 'meta', true);
+        $url = sprintf('https://graph.facebook.com/%s/act_%s/campaigns', config('services.meta_ads.api_version', 'v25.0'), $accountId);
+        $params = ['fields' => 'id,account_id,name,status,effective_status', 'limit' => 500,
+            'filtering' => json_encode([['field' => 'effective_status', 'operator' => 'IN', 'value' => ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']]])];
+        $seen = [];
+        $started = microtime(true);
+        for ($page = 0; $page < 100; $page++) {
+            if (microtime(true) - $started > 540) {
+                throw new RuntimeException('Tiempo máximo de inventario superado.');
+            }
+            $response = Http::withToken(config('services.meta_ads.access_token'))->connectTimeout(5)->timeout(30)
+                ->retry(2, 250, throw: false)->get($url, $params);
+            $payload = $response->json();
+            if (! $response->successful() || ! is_array($payload) || isset($payload['error']) || ! isset($payload['data']) || ! is_array($payload['data']) || ! array_is_list($payload['data'])) {
+                throw new RuntimeException('No se pudo leer el inventario de Meta Ads.');
+            }
+            yield $payload['data'];
+            if (empty($payload['paging']['next'])) {
+                return;
+            }
+            $cursor = $payload['paging']['cursors']['after'] ?? null;
+            if (! is_string($cursor) || $cursor === '' || strlen($cursor) > 4096 || isset($seen[$cursor])) {
+                throw new RuntimeException('Paginación de Meta Ads incompleta.');
+            }
+            $seen[$cursor] = true;
+            $params['after'] = $cursor;
+        }
+        throw new RuntimeException('Límite de paginación de Meta Ads superado.');
+    }
+
     public function configured(): bool
     {
         return filled(config('services.meta_ads.access_token'))

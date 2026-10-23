@@ -5669,3 +5669,51 @@ Padres del merge:6fe686a y e314c8d, sin reescritura de historia. Revisados diff
 final, enlaces, ausencia de conflictos y conservación de FaseB. Publicación
 autorizada mediante push normal a la rama remota de PR85, sin fusionar la PR;
 los resultados de GitHub Actions deberán comprobarse tras la publicación.
+
+## 2026-10-23 — Fase B: estado actual independiente y agrupamiento numérico
+
+### Resumen, base y decisiones
+
+Rama feat/campaign-current-status-and-number-format sobre main e314c8d48e8deb091206bd8a3aadb3dff910929e. Fase A no fusionada: dependencia 6fe686ad incorporada en 2f3791e, sin modificar main. El nuevo encargo autoriza implementar persistencia/operación deshabilitada. La propuesta original queda como antecedente, resuelta con una tabla y auditoría reutilizada.
+
+Estado actual deja de depender de métricas diarias: inventario Meta/Google por lotes, identidad plataforma/cuenta/ID textual, último válido separado de observación, frescura <24h sin intentos posteriores. Metadata current_status aditiva después de caché económica; CSV/filtros históricos intactos. Un filtro histórico activo puede devolver una campaña con estado actual Pausada. Formato es-ES agrupado explícitamente en todo Campañas, sin mutar números ni IDs; ejes sin k/M. Preferencias v7 migradas selectivamente.
+
+### Archivos y cambios de base de datos
+
+- CampaignCurrentStatusService, comando SyncCampaignCurrentStatus, config campaign_current_status y migración aditiva campaign_current_statuses: implementación nueva aislada.
+- MetaAdsClient/GoogleAdsClient: métodos paginados independientes; CampaignDashboardDatasetService: decoración posterior a caché solo en filas JSON.
+- OperationalTaskCatalog/Service/HealthService y routes/console: tarea habilitable, reserva persistente, comprobación al ejecutar y supervisión que omite deshabilitadas.
+- campaign-presentation.js/campaigns-dashboard.js: Estado actual, tooltips, frescura defensiva, agrupamiento y preferencias.
+- CampaignCurrentStatusTest, CampaignDashboardTest, AssertsOperationalSchedule y tests JS: regresiones nuevas/mantenidas; assets Vite/manifest generados por el agente principal.
+- Validador documental y prueba: mapping explícito del nuevo config. Guía, informe, matriz, decisiones pendientes, operaciones, proposal, PROJECT_CONTEXT, DECISIONS y este HANDOFF: trazabilidad focal. CAMPAIGN_PHASE_B_VALIDATION contiene contrato PR y evidencia.
+
+Una sola tabla nueva con índice único (platform,account_id,campaign_id), índice sync_source y FK nullable al run; down elimina solo esa tabla. Se reutiliza report_sync_runs por cuenta y operational_task_runs para supervisión. No se ejecutó migración real ni se modifican tablas económicas. No se crea una segunda tabla de auditoría.
+
+### Seguridad y rendimiento
+
+Tarea campaigns-sync-current-status deshabilitada por defecto mediante CAMPAIGN_CURRENT_STATUS_ENABLED=false; scheduler cada seis horas minuto37 Europe/Madrid solo tras activación explícita. Ejecución manual conserva admin activo y confirmación existentes. Reserva persistente más lock global14400s, sin endpoint público. Identificadores estrictos, errors sanitizados, sin tokens/payloads completos en logs, sin auth/CSP modificados. No se sincronizan proveedores reales.
+
+Paginación por cuenta, cien páginas/50.000 campañas, upsert500, máximo10cuentas por plataforma. Timeout30s por intento, dos intentos; presupuesto comprobado antes de página a540s más la última página y OAuth Google previo hasta60s. No es un deadline global duro. Fallo de cuenta no publica inventario parcial; otras cuentas completan. Unión de lectura por lote local fuera caché; sin consultas por fila ni red HTTP de dashboard. La cadencia se separa de horarios principales, sin garantizar ausencia absoluta de carga concurrente.
+
+### Evidencia y pruebas
+
+Resultados focales comunicados por el agente principal: CampaignCurrentStatusTest24/24 (154 aserciones), existentes campañas/comandos/sync legacy/operaciones167/167 (2279), integración nueva1/1 (20), JS18/18. Los comandos y resultados finales de suite/build/Pint se registrarán al cierre principal; no se anticipa su éxito. La prueba económica compara KPIs, CSV exacto, filas legacy y seis tablas antes/después de sync simulado con cierre sintético. No se inspecciona producción ni se reconstruye atribución real.
+
+Revisión documental delegada al agente documental: contraste del diff completo contra main, archivos nuevos, clientes, esquema, servicio, proyección, operaciones y pruebas. Matriz focal sin certificar auditoría integral de KPIs. No hay fallback ni copia de código en documentos. Verificación estructural requiere commit final y contrato PR en CAMPAIGN_PHASE_B_VALIDATION; se repetirá tras cierre.
+
+### Acciones humanas y pendientes
+
+No fusionar/desplegar/activar. Migración nueva antes de servir nuevo código web, tarea deshabilitada; código+bundle+manifest del mismo release, sin Node en producción. Activación y primera lectura futuras requieren autorización separada, revisión de cuentas/permisos/carga/retención y supervisión. Rollback deshabilitando tarea, gestionando ejecuciones activas y restaurando release completo, conservando tabla nueva/auditoría y todo histórico. QA visual real, cobertura de proveedores y MariaDB no quedan certificados por mocks/SQLite. Runbook detallado: operaciones-produccion.md.
+
+Ampliación final del contrato: `current_status` incluye `observed_at` y `last_valid_raw_status`, con identidad canónica o null si no es verificable, sin modificar campos legacy. La consulta filtra IDs solicitados y divide en lotes de hasta500 para evitar límites SQL; no lee todo el inventario de las cuentas. Stats por cuenta incorporan operational_run_id,pages,campaigns,recognized,unverifiable; los conteos leídos no confirman códigos desconocidos. Pint focal aplicado y sintaxis PHP correctos; JS18/18 tras ajustes. Suite documental:36 ejecutadas,35 correctas y1 omitida por falta de privilegio Windows para symlink. Build inicial correcto; se repetirá tras el ajuste final del tooltip. Suite general aún en curso al registrar esta ampliación.
+
+Verificación documental del agente: primera repetición encontró cinco fallos de fixture por enlace de matriz a documento nuevo aún no tracked; se sustituyó por HANDOFF existente (sin alterar pruebas). Segunda repetición: resultado comunicado al agente principal al cierre. Validador CLI ejecutado con SHA completo de HEAD previo: no valida todavía la Fase B sin commit (rechaza OutsidePaths no presentes en diff comprometido); repetir tras commit final. Un intento con literal HEAD fue rechazado por exigir SHA de40 caracteres. git diff --check correcto. Estas limitaciones no son fallos de código económico.
+
+Actualización de presentación final: temporizador único para próxima caducidad y revalidación al volver visible la pestaña; actualiza solo texto/title de celdas, sin peticiones ni métricas nuevas. Test de página abierta incluido, JS19/19 correctas según ejecución del agente principal. Bundle final se recompila después de este ajuste; su resultado y la suite general se registrarán al cerrar.
+
+Tercera repetición documental: se retira el enlace Markdown adicional de la matriz a HANDOFF, manteniendo su ruta textual, porque la fixture de tests copia únicamente su inventario explícito de documentos. Los cinco fallos previos fueron de esos destinos ausentes dentro de la fixture, no del repositorio real; la referencia funcional existente permanece enlazada. No se cambió código ni tests para resolverlo.
+
+Resultado documental definitivo del agente: Python -B -m unittest discover -s tests/documentation -p test_*.py,36 ejecutadas,35 correctas y1 skip por privilegio de symlink Windows,37,064s. git diff --check correcto. Validador integral queda a cargo del agente principal tras commit con SHA completo, usando CAMPAIGN_PHASE_B_VALIDATION como cuerpo PR. La comparación de semántica/refs documentales fue focal al informe Campañas y motor operacional afectado; no certifica fichas de otros informes.
+
+
+Cierre focal del agente principal: PHP estados+dashboard 75/75 y693 aserciones; JS19/19; Pint --test pasado; sintaxis PHP y node --check correctos. Build final correcto con campaigns-dashboard-DlRi4wRD.js y manifest comprobados; se restauran los bundles anteriores eliminados por la limpieza de Vite. Sin cambios en sincronizadores históricos, CampaignInvestmentClosureService ni constructor económico. Ninguna migración, llamada real, despliegue o activación realizados. Revisión documental delegada terminada y diff revisado por el principal. Suite completa y validador contra commit final pendientes todavía; resultados se añaden a continuación al terminar.

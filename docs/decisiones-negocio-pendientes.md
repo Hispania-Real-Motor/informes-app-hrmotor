@@ -112,3 +112,7 @@ desplegado, reconciliado e idempotente en producción el 8 de septiembre de 2026
 No deben introducirse excepciones por IDs concretos ni ajustes manuales para
 cuadrar cifras. Toda nueva decisión debe centralizarse, versionarse cuando
 afecte históricos y acompañarse de pruebas y auditoría por ID.
+
+## 2026-10-23 — Estado actual de campañas: decisión de implementación autorizada
+
+El encargo Fase B autoriza persistencia independiente, contrato JSON aditivo y tarea cada seis horas **deshabilitada por defecto**. La propuesta de dos tablas se resuelve con una sola `campaign_current_statuses` y reutilización de `report_sync_runs`/catálogo operacional. No queda pendiente decidir esa arquitectura en esta rama; sí la revisión del diff, integración, migración productiva y activación por operador. No cambia ninguna decisión de atribución, fórmula o cierres. Evidencia y límites: [decisión](ai/DECISIONS.md), [contrato funcional](informe-campanas.md) y [runbook](operaciones-produccion.md). No consta ejecución remota ni verificación de campañas reales.

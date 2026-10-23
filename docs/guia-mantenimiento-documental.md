@@ -206,3 +206,7 @@ opera sobre PR completas y no puede distinguir con certeza una corrección
 editorial de una tarea funcional ni verificar que el contenido del handoff
 describe la tarea. El agente principal debe revisarlo en el protocolo de
 entrega; la revisión humana de la PR comprueba su presencia y exactitud.
+
+### Mapeo añadido para configuración de estado actual de Campañas
+
+`config/campaign_current_status.php` se mapea explícitamente al informe `campaigns` en el validador y su prueba de regresión; pertenece al contrato de estado operativo del detalle, aunque no modifica KPIs económicos. Las modificaciones del motor central `OperationalTaskCatalog`, `OperationalTaskService`, `OperationalTaskHealthService` y `routes/console.php` requieren declarar las rutas exactas en `Docs-Outside-Paths` cuando su diff se limita a activación/reserva/supervisión de tareas, además de documentar Campañas por las rutas funcionales mapeadas. La excepción no elimina la revisión humana ni permite omitir cambios reales de informes.

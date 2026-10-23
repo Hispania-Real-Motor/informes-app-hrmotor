@@ -39,7 +39,7 @@ class CampaignDashboardDatasetService
         $includeDiagnostics = ReportUserAccess::isAdmin($request) && $request->boolean('include_diagnostics', true);
         $payload = $this->payload($request, $includeDiagnostics, true);
         $summary = $payload['summary'];
-        $summary['campaigns'] = $payload['campaigns'];
+        $summary['campaigns'] = app(CampaignCurrentStatusService::class)->decorate($payload['campaigns']);
         $summary['rankings'] = $payload['rankings'];
 
         if (! ReportUserAccess::isAdmin($request)) {
@@ -58,7 +58,7 @@ class CampaignDashboardDatasetService
 
         return [
             'ok' => true,
-            'items' => $payload['campaigns'],
+            'items' => app(CampaignCurrentStatusService::class)->decorate($payload['campaigns']),
             'total' => count($payload['campaigns']),
         ];
     }

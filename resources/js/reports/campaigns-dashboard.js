@@ -1,9 +1,11 @@
-import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, historicalStatusPresentation, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
+import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
 
-const numberFormatter = new Intl.NumberFormat('es-ES');
-const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
-const columnsStorageKey = 'hrmotor_campaign_columns_v6';
-const legacyColumnsStorageKey = 'hrmotor_campaign_columns_v5';
+const numberFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true });
+const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', useGrouping: true });
+const percentFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const multiplierFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const columnsStorageKey = 'hrmotor_campaign_columns_v7';
+const legacyColumnsStorageKey = 'hrmotor_campaign_columns_v6';
 const rankingsStorageKey = 'campaigns.visibleRankings.v7';
 const campaignContextStorageKey = 'campaigns.selectedContext.v1';
 const dailySeriesStorageKey = 'campaigns.dailyChart.visibleSeries';
@@ -19,6 +21,7 @@ const campaignPeriodMinDate = '2026-01-01';
 const campaignPeriodMaxDate = '2026-12-31';
 
 let campaignRows = [];
+let currentStatusExpiryTimer = null;
 let tableSort = {
     all: { key: 'spend', direction: 'desc' },
     venta: { key: 'sales', direction: 'desc' },
@@ -112,7 +115,7 @@ const rankingDefinitions = [
 const columnDefinitions = [
     { key: 'campaign', label: 'Campaña', visible: true, formatter: (_value, row) => campaignLabel(row) },
     { key: 'platform', label: 'Plataforma', visible: true, formatter: formatPlatform },
-    { key: 'campaign_status_label', label: 'Estado histórico', visible: true },
+    { key: 'current_status', label: 'Estado actual', visible: true },
     { key: 'spend', label: 'Inversión', visible: true, numeric: true, formatter: formatMoney },
     { key: 'impressions', label: 'Impresiones', visible: true, numeric: true, formatter: formatNumber },
     { key: 'clicks', label: 'Clicks', visible: true, numeric: true, formatter: formatNumber },
@@ -162,6 +165,7 @@ let visibleColumns = loadVisibleColumns();
 let visibleRankings = loadVisibleRankings(currentContext);
 
 document.addEventListener('DOMContentLoaded', async () => {
+    document.addEventListener('visibilitychange', scheduleCurrentStatusExpiry);
     populatePeriodPreset();
     applyCampaignDateBounds();
     setDefaultDates();
@@ -1427,23 +1431,7 @@ function formatGrafanaAxisValue(value, definition) {
 }
 
 function formatCompactAxisValue(value, useCurrency = false) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) {
-        return '0';
-    }
-
-    const abs = Math.abs(number);
-    let formatted;
-
-    if (abs >= 1000000) {
-        formatted = `${trimTrailingZero((number / 1000000).toFixed(abs >= 10000000 ? 0 : 1))}M`;
-    } else if (abs >= 1000) {
-        formatted = `${trimTrailingZero((number / 1000).toFixed(abs >= 10000 ? 0 : 1))}k`;
-    } else {
-        formatted = String(Math.round(number));
-    }
-
-    return useCurrency ? `${formatted} €` : formatted;
+    return useCurrency ? formatMoney(value) : formatNumber(value);
 }
 
 function trimTrailingZero(value) {
@@ -2431,18 +2419,7 @@ function monthlyAxisFormatter(definitions) {
 }
 
 function formatAxisValue(value) {
-    const numeric = Number(value || 0);
-    const absolute = Math.abs(numeric);
-
-    if (absolute >= 1000000) {
-        return `${(numeric / 1000000).toFixed(1)}M`;
-    }
-
-    if (absolute >= 1000) {
-        return `${(numeric / 1000).toFixed(1)}k`;
-    }
-
-    return formatNumber(numeric);
+    return formatNumber(value);
 }
 
 function lineGridHtml(chartHeight) {
@@ -2929,7 +2906,7 @@ function formatPercentRatio(value) {
         return 'Sin datos';
     }
 
-    return `${(Number(value) * 100).toFixed(1)}%`;
+    return `${percentFormatter.format(Number(value) * 100)}%`;
 }
 
 function formatMultiplier(value) {
@@ -2937,7 +2914,7 @@ function formatMultiplier(value) {
         return 'Sin datos';
     }
 
-    return Number(value).toFixed(2);
+    return multiplierFormatter.format(Number(value));
 }
 
 function formatPlatform(value) {
@@ -2949,6 +2926,7 @@ function formatPlatform(value) {
 }
 
 function formatReviewValue(row) {
+    if (typeof row.value === 'string' && /^\d+ \/ \d+$/.test(row.value)) return row.value.split(' / ').map(formatNumber).join(' / ');
     return row.value !== null && row.value !== undefined ? (Number.isFinite(Number(row.value)) ? formatNumber(row.value) : String(row.value)) : 'Sin datos';
 }
 
@@ -2961,13 +2939,30 @@ function escapeHtml(value) {
         .replaceAll("'", '&#039;');
 }
 
-function cellHtml([value, numeric, rawValue, columnKey]) {
+function cellHtml([value, numeric, rawValue, columnKey, expiresAt]) {
     const classes = ['table-cell'];
     if (numeric) {
         classes.push('num');
     }
 
-    return `<td class="${classes.join(' ')}" data-column="${escapeHtml(columnKey)}" title="${escapeHtml(rawValue ?? '')}">${escapeHtml(value)}</td>`;
+    const expiry = Number.isFinite(expiresAt) ? ` data-status-expires-at="${expiresAt}"` : '';
+    return `<td class="${classes.join(' ')}" data-column="${escapeHtml(columnKey)}"${expiry} title="${escapeHtml(rawValue ?? '')}">${escapeHtml(value)}</td>`;
+}
+
+// Expire only status cells: no requests, economic work, table rebuild or scroll reset.
+function scheduleCurrentStatusExpiry() {
+    window.clearTimeout(currentStatusExpiryTimer);
+    const now = Date.now();
+    let next = Infinity;
+    document.querySelectorAll('[data-status-expires-at]').forEach((cell) => {
+        const expiry = Number(cell.dataset.statusExpiresAt);
+        if (expiry <= now) {
+            cell.textContent = 'Estado no actualizado';
+            cell.title += ' Verificación caducada: han transcurrido al menos 24 horas.';
+            delete cell.dataset.statusExpiresAt;
+        } else if (Number.isFinite(expiry)) next = Math.min(next, expiry);
+    });
+    if (Number.isFinite(next)) currentStatusExpiryTimer = window.setTimeout(scheduleCurrentStatusExpiry, Math.max(1, next - now));
 }
 
 function sortedCampaignRows(rows, tableType) {
@@ -2975,8 +2970,8 @@ function sortedCampaignRows(rows, tableType) {
     const direction = sortState.direction === 'asc' ? 1 : -1;
 
     return [...(rows || [])].sort((a, b) => {
-        const left = a[sortState.key];
-        const right = b[sortState.key];
+        const left = sortState.key === 'current_status' ? currentStatusPresentation(a).text : a[sortState.key];
+        const right = sortState.key === 'current_status' ? currentStatusPresentation(b).text : b[sortState.key];
 
         if (left === null || left === undefined || left === '') {
             return 1;
@@ -3156,9 +3151,10 @@ function renderCampaignTables(rows, emptyMessage = null) {
 
     const detail = advertisingDetailRows(rows || []);
     const reasons = { other_platform: 'otra plataforma', unverifiable_source: 'procedencia sin inversión verificable', unknown_spend: 'inversión desconocida', invalid_spend: 'inversión inválida', negative_spend: 'inversión negativa', zero_spend: 'inversión cero' };
-    const counts = Object.entries(detail.excludedByReason).map(([reason, count]) => `${reasons[reason]}: ${count}`).join(' · ');
-    root.innerHTML = `<div class="small" title="${escapeHtml(counts)}">Filas excluidas del detalle publicitario: ${detail.excludedTotal}${counts ? ` (${escapeHtml(counts)})` : ''}</div>`
+    const counts = Object.entries(detail.excludedByReason).map(([reason, count]) => `${reasons[reason]}: ${formatNumber(count)}`).join(' · ');
+    root.innerHTML = `<div class="small" title="${escapeHtml(counts)}">Filas excluidas del detalle publicitario: ${formatNumber(detail.excludedTotal)}${counts ? ` (${escapeHtml(counts)})` : ''}</div>`
         + renderCampaignTable(context, title, subtitle, detail.rows, emptyMessage);
+    scheduleCurrentStatusExpiry();
     renderColumnsPopover();
     applyColumnVisibility();
     syncCampaignTableScrollWidth();
@@ -3178,7 +3174,7 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
             <tr>
                 ${columns.map((column) => {
                     const formatter = column.formatter || ((value) => value);
-                    const status = column.key === 'campaign_status_label' ? historicalStatusPresentation(row) : null;
+                    const status = column.key === 'current_status' ? currentStatusPresentation(row) : null;
                     const cost = column.formatter === formatMoney
                         ? detailMoneyPresentation(row[column.key], row, column.key, formatMoney) : null;
                     return cellHtml([
@@ -3194,6 +3190,7 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
                                 ? cost.tooltip
                                 : row[column.key],
                         column.key,
+                        status?.expiresAt,
                     ]);
                 }).join('')}
             </tr>
@@ -3240,11 +3237,11 @@ function loadVisibleColumns() {
     const defaults = columnDefinitions.filter((column) => column.visible).map((column) => column.key);
     try {
         const current = localStorage.getItem(columnsStorageKey);
-        const legacy = current === null ? localStorage.getItem(legacyColumnsStorageKey) : null;
+        const legacy = current === null ? (localStorage.getItem(legacyColumnsStorageKey) ?? localStorage.getItem('hrmotor_campaign_columns_v5')) : null;
         const saved = JSON.parse(current ?? legacy ?? 'null');
         if (!Array.isArray(saved) || !saved.length) return defaults;
-        const known = [...new Set(saved.filter((key) => columnDefinitions.some((column) => column.key === key)))];
-        if (legacy !== null && !known.includes('cost_per_purchase')) known.push('cost_per_purchase');
+        const known = [...new Set(saved.map((key) => key === 'campaign_status_label' ? 'current_status' : key).filter((key) => columnDefinitions.some((column) => column.key === key)))];
+        if (legacy !== null && localStorage.getItem(legacyColumnsStorageKey) === null && !known.includes('cost_per_purchase')) known.push('cost_per_purchase');
         const migrated = known.length ? known : defaults;
         if (legacy !== null) {
             try { localStorage.setItem(columnsStorageKey, JSON.stringify(migrated)); } catch { /* Storage may be unavailable. */ }
