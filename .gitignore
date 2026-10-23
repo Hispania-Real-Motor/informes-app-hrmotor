@@ -1,11 +1,16 @@
 *.log
+__pycache__/
+*.pyc
 .DS_Store
 .env
 .env.backup
 .env.production
 .phpactor.json
 .phpunit.result.cache
-/.codex
+/.codex/*
+!/.codex/agents/
+/.codex/agents/*
+!/.codex/agents/report_docs_maintainer.toml
 /.cursor/
 /.idea
 /.nova
