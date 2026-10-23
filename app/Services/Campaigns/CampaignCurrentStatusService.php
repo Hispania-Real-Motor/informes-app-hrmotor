@@ -156,7 +156,7 @@ class CampaignCurrentStatusService
         foreach ($rows as $row) {
             try {
                 $platform = $row['platform'] ?? '';
-                if (! isset(self::LABELS[$platform])) {
+                if (! isset(self::LABELS[$platform]) || ($row['current_status']['identity_ambiguous'] ?? false)) {
                     continue;
                 }
                 $account = self::identifier($row['account_id'] ?? null, $platform, true);
@@ -190,6 +190,13 @@ class CampaignCurrentStatusService
             $metadata = ['availability' => 'unavailable', 'label' => 'Estado no disponible', 'verified_at' => null,
                 'raw_status' => null, 'configured_status' => null, 'observed_at' => null, 'last_valid_raw_status' => null,
                 'platform' => $row['platform'] ?? null, 'account_id' => null, 'campaign_id' => null, 'fresh_hours' => 24];
+            if ($row['current_status']['identity_ambiguous'] ?? false) {
+                $metadata['identity_ambiguous'] = true;
+                $metadata['reason'] = 'ambiguous_account_identity';
+                $row['current_status'] = $metadata;
+
+                continue;
+            }
             try {
                 $platform = $row['platform'] ?? '';
                 if (! isset(self::LABELS[$platform])) {

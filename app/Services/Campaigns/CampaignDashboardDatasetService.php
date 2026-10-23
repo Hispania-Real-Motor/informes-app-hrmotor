@@ -73,7 +73,11 @@ class CampaignDashboardDatasetService
 
     public function exportRows(Request $request): array
     {
-        return $this->payload($request, false, false)['campaigns'];
+        return array_map(function (array $row): array {
+            unset($row['current_status']);
+
+            return $row;
+        }, $this->payload($request, false, false)['campaigns']);
     }
 
     public function attributionAuditRows(Request $request): array
@@ -250,7 +254,7 @@ class CampaignDashboardDatasetService
         $period = $this->period($filters);
 
         return Cache::remember(
-            'campaign-dashboard-v5:'.md5(json_encode([
+            'campaign-dashboard-v6:'.md5(json_encode([
                 'filters' => $filters,
                 'period' => $period,
                 'include_diagnostics' => $includeDiagnostics,
@@ -702,6 +706,7 @@ class CampaignDashboardDatasetService
     private function mergeRows(array $metricRows, array $attributionRows, array $filters): array
     {
         $rows = [];
+        $metricAccounts = [];
         $hasAttributionSpecificFilters = $this->hasAttributionSpecificFilters($filters);
 
         foreach ($metricRows as $row) {
@@ -711,6 +716,14 @@ class CampaignDashboardDatasetService
 
             $key = $this->rowKey($row);
             $rows[$key] ??= $this->emptyCampaignRow($row);
+            // Track only advertising contributions, not account-less Salesforce attribution.
+            try {
+                $account = CampaignCurrentStatusService::identifier($row['account_id'] ?? null, $row['platform'], true);
+            } catch (\RuntimeException) {
+                $account = 'unknown';
+            }
+            $metricAccounts[$key][$account] = true;
+            $rows[$key]['current_status'] = ['identity_ambiguous' => count($metricAccounts[$key]) > 1];
             $rows[$key]['account_name'] = $row['account_name'];
             $rows[$key]['campaign_status'] = $row['campaign_status'] ?? null;
             $rows[$key]['campaign_effective_status'] = $row['campaign_effective_status'] ?? null;

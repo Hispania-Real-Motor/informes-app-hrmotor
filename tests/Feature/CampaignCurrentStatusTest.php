@@ -57,6 +57,21 @@ class CampaignCurrentStatusTest extends TestCase
         return ['data' => [['id' => '9007199254740993', 'account_id' => '123', 'status' => 'ACTIVE', 'effective_status' => $status]]];
     }
 
+    public function test_ambiguous_identity_does_not_query_an_arbitrary_account(): void
+    {
+        $row = $this->row();
+        $row['current_status'] = ['identity_ambiguous' => true];
+        DB::enableQueryLog();
+        $decorated = app(CampaignCurrentStatusService::class)->decorate([$row])[0];
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $this->assertSame([], $queries);
+        $this->assertSame('unavailable', $decorated['current_status']['availability']);
+        $this->assertSame('ambiguous_account_identity', $decorated['current_status']['reason']);
+        $this->assertNull($decorated['current_status']['account_id']);
+        $this->assertNull($decorated['current_status']['verified_at']);
+    }
+
     public function test_disabled_by_default_and_direct_execution_requires_a_persistent_reservation(): void
     {
         $this->assertFalse(config('campaign_current_status.enabled'));

@@ -362,3 +362,9 @@ test('real numeric table tooltips use the same grouped text without losing cost 
     assert.ok(html.includes('Divisor cero: no hay resultados para calcular el coste.'));
     assert.equal(JSON.stringify(sandbox.tooltipRow), before);
 });
+
+test('ambiguous economic identity never confirms an individual account status', () => {
+    const result = currentStatusPresentation({ platform: 'meta', current_status: { identity_ambiguous: true, availability: 'fresh', label: 'Activa', verified_at: new Date().toISOString() } });
+    assert.equal(result.text, 'Estado no disponible');
+    assert.match(result.tooltip, /Identidad de cuenta ambigua/);
+});

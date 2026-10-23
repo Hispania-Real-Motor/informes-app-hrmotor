@@ -11,6 +11,7 @@ export function currentStatusPresentation(row, now = Date.now()) {
     const status = row.current_status;
     const platform = { meta: 'Meta Ads', google_ads: 'Google Ads' }[row.platform];
     if (!status || !platform) return { text: 'Estado no disponible', tooltip: 'Sin consulta operativa verificable. No se utiliza el estado histórico como respaldo.' };
+    if (status.identity_ambiguous === true) return { text: 'Estado no disponible', tooltip: 'Identidad de cuenta ambigua: la fila económica combina varias cuentas publicitarias. No se confirma el estado de una cuenta individual.' };
     const verified = Date.parse(status.verified_at);
     const age = now - verified;
     const stale = Number.isFinite(verified) && age >= 0 && (status.availability === 'stale' || (status.availability === 'fresh' && age >= 86400000));
