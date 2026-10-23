@@ -250,7 +250,7 @@ class CampaignDashboardDatasetService
         $period = $this->period($filters);
 
         return Cache::remember(
-            'campaign-dashboard-v4:'.md5(json_encode([
+            'campaign-dashboard-v5:'.md5(json_encode([
                 'filters' => $filters,
                 'period' => $period,
                 'include_diagnostics' => $includeDiagnostics,
@@ -2580,7 +2580,13 @@ class CampaignDashboardDatasetService
 
     private function reviewCampaigns(array $rows, array $filters): array
     {
-        $rows = array_values($rows);
+        // Presentation block only: exclude non-advertising rows before benchmarks.
+        $rows = array_values(array_filter($rows, fn (array $row): bool => in_array($row['platform'] ?? null, ['meta', 'google_ads'], true)
+            && ! in_array($row['campaign_source_type'] ?? null, ['salesforce_campaign_without_spend', 'salesforce_origin'], true)
+            && is_numeric($row['spend'] ?? null)
+            && is_finite((float) $row['spend'])
+            && (float) $row['spend'] > 0
+        ));
         $avgCostByType = collect($rows)
             ->groupBy(fn (array $row) => $this->campaignType($row))
             ->map(function ($items): ?float {

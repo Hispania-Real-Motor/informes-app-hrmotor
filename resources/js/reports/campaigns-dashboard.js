@@ -1,8 +1,9 @@
-import { historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
+import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, historicalStatusPresentation, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
 
 const numberFormatter = new Intl.NumberFormat('es-ES');
 const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
-const columnsStorageKey = 'hrmotor_campaign_columns_v5';
+const columnsStorageKey = 'hrmotor_campaign_columns_v6';
+const legacyColumnsStorageKey = 'hrmotor_campaign_columns_v5';
 const rankingsStorageKey = 'campaigns.visibleRankings.v7';
 const campaignContextStorageKey = 'campaigns.selectedContext.v1';
 const dailySeriesStorageKey = 'campaigns.dailyChart.visibleSeries';
@@ -128,8 +129,6 @@ const columnDefinitions = [
     { key: 'cost_per_reservation', label: 'Coste por reserva', visible: true, numeric: true, formatter: formatMoney },
     { key: 'cost_per_sale', label: 'Coste por venta', visible: true, numeric: true, formatter: formatMoney },
     { key: 'cost_per_purchase', label: 'Coste por compra', visible: true, numeric: true, formatter: formatMoney },
-    { key: 'cost_per_result', label: 'Coste por resultado', visible: true, numeric: true, formatter: formatMoney },
-    { key: 'result_count', label: 'Resultados', visible: true, numeric: true, formatter: formatNumber },
     { key: 'roas', label: 'ROAS', visible: true, numeric: true, formatter: formatMultiplier },
     { key: 'estimated_roi', label: 'ROI estimado', visible: true, numeric: true, formatter: formatPercentRatio },
     { key: 'account_id', label: 'Cuenta', visible: false },
@@ -1802,8 +1801,9 @@ function renderReviewCampaigns(rows, emptyMessage = 'Sin campañas a revisar') {
         return;
     }
 
-    root.innerHTML = rows.length
-        ? rows.slice(0, 8).map((row) => `
+    const eligibleRows = rows.filter((row) => advertisingEligibility(row).eligible);
+    root.innerHTML = eligibleRows.length
+        ? eligibleRows.slice(0, 8).map((row) => `
             <article class="review-card">
                 <div class="review-card-copy">
                     <strong>${escapeHtml(row.campaign || row.campaign_name || '-')}</strong>
@@ -2503,13 +2503,14 @@ function applyColumnVisibility() {
 }
 
 function columnAllowedInContext(key, context = currentContext) {
+    if (['cost_per_result', 'result_count'].includes(key)) return false;
     const hiddenByContext = {
         venta: ['purchases', 'cost_per_lead', 'cost_per_opportunity', 'cost_per_purchase', 'cost_per_result', 'result_count', 'lead_to_purchase', 'opportunity_to_purchase', 'appraisals_generated', 'cost_per_appraisal', 'appraisal_amount'],
         tasacion: ['reservations', 'sales', 'sale_amount', 'cost_per_reservation', 'cost_per_sale', 'cost_per_result', 'result_count', 'roas', 'estimated_roi', 'opportunity_to_reservation', 'reservation_to_sale', 'lead_to_sale'],
         exposicion: ['reservations', 'sales', 'sale_amount', 'purchases', 'cost_per_reservation', 'cost_per_sale', 'cost_per_purchase', 'cost_per_result', 'result_count', 'roas', 'estimated_roi', 'opportunity_to_reservation', 'reservation_to_sale', 'lead_to_sale', 'lead_to_purchase', 'opportunity_to_purchase', 'appraisals_generated', 'cost_per_appraisal', 'appraisal_amount'],
         branding: ['reservations', 'sales', 'sale_amount', 'purchases', 'cost_per_reservation', 'cost_per_sale', 'cost_per_purchase', 'cost_per_opportunity', 'cost_per_result', 'result_count', 'roas', 'estimated_roi', 'opportunity_to_reservation', 'reservation_to_sale', 'lead_to_sale', 'lead_to_purchase', 'opportunity_to_purchase', 'appraisals_generated', 'cost_per_appraisal', 'appraisal_amount'],
-        otros: ['appraisals_generated', 'cost_per_appraisal', 'appraisal_amount', 'cost_per_purchase'],
-        all: ['appraisals_generated', 'cost_per_appraisal', 'appraisal_amount', 'cost_per_purchase'],
+        otros: ['appraisals_generated', 'cost_per_appraisal', 'appraisal_amount'],
+        all: ['appraisals_generated', 'cost_per_appraisal', 'appraisal_amount'],
     };
 
     return !(hiddenByContext[presentationCampaignContext(context)] || []).includes(key);
@@ -3153,7 +3154,11 @@ function renderCampaignTables(rows, emptyMessage = null) {
     };
     const [title, subtitle] = titleMap[context] || titleMap.all;
 
-    root.innerHTML = renderCampaignTable(context, title, subtitle, (rows || []).filter(hasDetailActivity), emptyMessage);
+    const detail = advertisingDetailRows(rows || []);
+    const reasons = { other_platform: 'otra plataforma', unverifiable_source: 'procedencia sin inversión verificable', unknown_spend: 'inversión desconocida', invalid_spend: 'inversión inválida', negative_spend: 'inversión negativa', zero_spend: 'inversión cero' };
+    const counts = Object.entries(detail.excludedByReason).map(([reason, count]) => `${reasons[reason]}: ${count}`).join(' · ');
+    root.innerHTML = `<div class="small" title="${escapeHtml(counts)}">Filas excluidas del detalle publicitario: ${detail.excludedTotal}${counts ? ` (${escapeHtml(counts)})` : ''}</div>`
+        + renderCampaignTable(context, title, subtitle, detail.rows, emptyMessage);
     renderColumnsPopover();
     applyColumnVisibility();
     syncCampaignTableScrollWidth();
@@ -3174,8 +3179,8 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
                 ${columns.map((column) => {
                     const formatter = column.formatter || ((value) => value);
                     const status = column.key === 'campaign_status_label' ? historicalStatusPresentation(row) : null;
-                    const cost = costDenominators[column.key]
-                        ? costPresentation(row[column.key], row, column.key, formatMoney) : null;
+                    const cost = column.formatter === formatMoney
+                        ? detailMoneyPresentation(row[column.key], row, column.key, formatMoney) : null;
                     return cellHtml([
                         status
                             ? status.text
@@ -3232,18 +3237,21 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
 }
 
 function loadVisibleColumns() {
+    const defaults = columnDefinitions.filter((column) => column.visible).map((column) => column.key);
     try {
-        const saved = JSON.parse(localStorage.getItem(columnsStorageKey) || 'null');
-        const defaults = columnDefinitions.filter((column) => column.visible).map((column) => column.key);
-
-        if (!Array.isArray(saved) || !saved.length) {
-            return defaults;
+        const current = localStorage.getItem(columnsStorageKey);
+        const legacy = current === null ? localStorage.getItem(legacyColumnsStorageKey) : null;
+        const saved = JSON.parse(current ?? legacy ?? 'null');
+        if (!Array.isArray(saved) || !saved.length) return defaults;
+        const known = [...new Set(saved.filter((key) => columnDefinitions.some((column) => column.key === key)))];
+        if (legacy !== null && !known.includes('cost_per_purchase')) known.push('cost_per_purchase');
+        const migrated = known.length ? known : defaults;
+        if (legacy !== null) {
+            try { localStorage.setItem(columnsStorageKey, JSON.stringify(migrated)); } catch { /* Storage may be unavailable. */ }
         }
-
-        const known = saved.filter((key) => columnDefinitions.some((column) => column.key === key));
-        return known.length ? known : defaults;
-    } catch (error) {
-        return columnDefinitions.filter((column) => column.visible).map((column) => column.key);
+        return migrated;
+    } catch {
+        return defaults;
     }
 }
 

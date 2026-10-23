@@ -5437,3 +5437,128 @@ PR #79 creado hacia main, rama publicada. CI run 39228596171 del commit 19c08b7:
 PHP tests, Pint, Composer/audit, build y whitespace completados con success.
 La actualización documental posterior no cambia el código ya probado; no se
 extrapola ese resultado a futuros commits sin consultar su ejecución remota.
+
+
+## 2026-10-23 — Fase A publicitaria y propuesta de estado actual
+
+Rama: fix/campaign-advertising-table-and-current-status.
+Base: 01d3aa8ad428ad413f184741d9a4f2314696f1fe. Trabajo en checkout aislado;
+no se sobrescriben los cambios ajenos del checkout principal.
+
+### Resumen, decisiones y alcance
+
+Causa raíz: detalle basado en cualquier actividad retenía procedencias sin
+gasto publicitario; columnas funcionales variables confundían compras;
+Campañas a revisar admitía Salesforce antes de calcular benchmarks. La fuente
+histórica de estado no acredita vigencia.
+
+Detalle: Meta/Google, fuente publicitaria y spend finito > 0. Excluye cero,
+negativo/desconocido/inválido aunque haya resultados comerciales. Gasto positivo
+sin resultados permanece. Conteos por motivo únicamente en DOM. Se retiran
+result_count/cost_per_result solo de columnas; Coste por compra usa
+cost_per_purchase. Columnas v5 migran a v6 sin tocar otras preferencias. Solo
+importes del detalle usan — con tooltip; cero válido conserva formato EUR.
+
+reviewCampaigns filtra elegibles antes de media por tipo/top 8; misma prioridad,
+fórmulas y umbrales. Cambio intencional limitado al bloque; cache payload v5
+invalida la representación v4. No se cambia universo económico general, API/CSV
+legacy, filtros históricos ni rankings ajenos. Estado sigue histórico. Fase B
+requiere autorización de nueva persistencia/operación: propuesta en documento
+independiente; ninguna decisión arquitectónica implementada.
+
+### Archivos de la tarea
+
+- app/Services/Campaigns/CampaignDashboardDatasetService.php: filtro local del
+  bloque revisión y versión de caché, sin cambios económicos.
+- resources/js/reports/campaign-presentation.js y campaigns-dashboard.js:
+  elegibilidad, formato del detalle, columnas/preferencias y renderizado.
+- tests/Feature/CampaignDashboardTest.php y
+  tests/js/campaign-presentation.test.mjs: regresiones focalizadas.
+- public/build/manifest.json y nuevo bundle de campañas referenciado: build
+  conjunto; se conserva el bundle anterior, sin borrados.
+- docs/informe-campanas.md y docs/ai/CAMPAIGN_PRESENTATION_DIAGNOSTIC.md:
+  reglas vigentes distinguidas de antecedentes.
+- docs/ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md: diseño propuesto, no implementado.
+- docs/matriz-trazabilidad-kpi.md: registro focalizado pendiente de auditoría,
+  sin certificar otros KPIs ni copiar estructura ajena no incluida en la base.
+- docs/ai/CAMPAIGN_PHASE_A_REVIEW.md: contrato Docs-Impact para futura PR.
+- docs/ai/HANDOFF.md: esta entrada. PROJECT_CONTEXT/DECISIONS no cambian porque
+  no se incorpora arquitectura nueva ni decisión irreversible.
+
+### Integridad, seguridad y rendimiento
+
+Sin migraciones, escrituras de datos, sincronizaciones ni cambios de auth/CSP,
+permisos, deduplicación, first touch o fórmulas. No se consulta base productiva
+ni proveedores. Escape HTML conservado. Filtrado en memoria lineal, sin nuevas
+consultas ni red. Los estados actuales no se resuelven desde inversión.
+
+El agente principal ejecutó sonda temporal de paridad con servicio original
+obtenido de git show de la base y servicio actual, misma fecha congelada y
+fixtures SQLite :memory:. 1 test/27 aserciones correctos, 2,725 s. Mes abierto y
+cerrado × Todas/active/inactive: KPIs, filas completas, exportRows y rankings
+salvo review_campaigns idénticos. Hashes de seis tablas de métricas,
+atribuciones, cierres, snapshots y eventos iguales antes/después. Conteos de
+filas 4/4/0 en ambos servicios. La sonda/copia temporal se retiró, sin incluir
+código auxiliar en el commit; JSON agregado en storage/app ignorado. Evidencia
+sintética local, no auditoría de datos productivos ni prueba de MySQL real.
+
+### Pruebas comunicadas por el agente principal
+
+- PHP focalizado: 50/50, 519 aserciones correctas.
+- node --test tests/js/campaign-presentation.test.mjs: 15/15 correctas.
+- npm run build final: correcto; manifest y bundle actualizados juntos.
+- php -l y Pint focalizado: correctos.
+- Suite general: 1432/1432 tests, 13131 aserciones correctas, 375,622 s.
+  PHP Herd 8.4 -d max_execution_time=0 vendor/bin/pest --compact; SQLite
+  :memory: y APP_KEY sintética solo en proceso, sin modificar .env.
+- git diff --check: correcto en revisión documental inicial; repetir final.
+
+La revisión documental fue delegada a report_docs_maintainer, con diff completo,
+base y alcance Campañas/Detalle/Campañas a revisar. Se contrastaron dataset,
+clientes/sincronizadores, persistencia, formateadores y pruebas. Guía/matriz
+esqueleto/validador del checkout principal se leyeron como referencia ajena;
+no se incorporan esos cambios por copia. La validación externa requiere refs
+finales y root explícito del checkout aislado, y no debe declararse exitosa si
+falla por guía o estructura general ausente en esta base.
+
+### Acciones manuales y riesgos
+
+No desplegar ni fusionar automáticamente. Publicar fuentes, manifest y bundle
+juntos mediante procedimiento autorizado; comprobar asset servido y QA visual
+de columnas, preferencias, exclusiones, tooltips y filtros. Sin variables de
+entorno nuevas, migraciones, syncs o invalidación de snapshots. Rollback:
+release anterior con assets o revertir código y recompilar, sin operaciones de
+base de datos. La caché usa namespace de código; no manipular cierres.
+
+Pendientes: aprobación de Fase B, QA real de navegador, auditoría integral de
+trazabilidad KPI y estados de campañas de producción. Desaparición visual no
+implica pérdida de filas en API/CSV. No presentar como actuales los estados
+históricos ni certificar integraciones remotas desde pruebas simuladas.
+
+
+Revisión documental ejecutada: Python del runtime con -B -m unittest discover
+-s C:/Users/Usuario/Herd/informes-app-hrmotor/tests/documentation -p test_*.py:
+27/27 correctas, 4,379 s. Es la suite externa de infraestructura documental,
+no certificación integral de la matriz. Comprobación de enlaces Markdown
+locales de los seis documentos: cero destinos inexistentes; git diff --check
+correcto. La guía y validador no se copiaron desde el checkout principal.
+
+
+La nueva matriz incorpora el esquema contractual de 23 campos y el índice de
+los seis informes/pestañas de Comisiones como pendientes, para permitir control
+estructural posterior. No son fichas auditadas ni traslado de reglas de otros
+informes. Solo Campañas incluye evidencia focalizada de esta tarea.
+
+
+Validación documental integral realmente ejecutada mediante módulo externo
+scripts/check_documentation_integrity.py del checkout principal (solo lectura),
+Python runtime -B: changes_between(base=01d3aa8ad428ad413f184741d9a4f2314696f1fe,
+head=HEAD local de Fase A, root=checkout aislado), seguida
+de validate(changes, cuerpo CAMPAIGN_PHASE_A_REVIEW.md, root=checkout aislado).
+Resultado: FAIL sobre 13 rutas, único error: Falta referencia documental
+obligatoria: docs/guia-mantenimiento-documental.md. La guía existe únicamente
+como cambio ajeno del checkout principal y no se copia ni se incorpora aquí.
+validate_matrix(root=checkout aislado) devuelve cero errores. No se declara
+superado el validador integral ni se confunde con los 27 tests externos que sí
+pasaron. El agente principal repitió la validación tras incorporar esta
+evidencia: mismo único bloqueo por guía ausente; el código funcional no cambia.

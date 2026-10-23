@@ -2537,6 +2537,48 @@ class CampaignDashboardTest extends TestCase
         $this->assertTrue($isActive->invoke($dataset, $byId['status-only-interest']));
     }
 
+    public function test_review_benchmarks_and_top_eight_use_only_positive_spend_advertising_rows(): void
+    {
+        $dataset = app(CampaignDashboardDatasetService::class);
+        $review = new \ReflectionMethod($dataset, 'reviewCampaigns');
+        $base = [
+            'platform' => 'meta', 'campaign_source_type' => 'platform_campaign',
+            'campaign_type' => 'venta', 'campaign_status' => 'ACTIVE', 'campaign_effective_status' => 'ACTIVE',
+            'campaign_name' => 'Synthetic paid', 'campaign_id' => 'paid',
+            'clicks' => 10, 'leads_salesforce' => 10, 'opportunities' => 5,
+            'sales' => 1, 'purchases' => 0, 'spend' => 100,
+        ];
+        $paid = [
+            array_merge($base, ['campaign_id' => 'high', 'spend' => 1000]),
+            array_merge($base, ['campaign_id' => 'low-1']),
+            array_merge($base, ['campaign_id' => 'low-2', 'platform' => 'google_ads', 'campaign_status' => 'ENABLED']),
+        ];
+        $excluded = [
+            array_merge($base, ['platform' => 'salesforce', 'campaign_source_type' => 'salesforce_origin', 'spend' => 100000]),
+            array_merge($base, ['platform' => 'salesforce', 'campaign_source_type' => 'salesforce_campaign_without_spend', 'spend' => 0]),
+            array_merge($base, ['spend' => 0, 'opportunities' => 0]),
+            array_merge($base, ['spend' => -1]),
+            array_merge($base, ['spend' => null]),
+            array_merge($base, ['spend' => 'invalid']),
+        ];
+        $rows = array_merge($paid, $excluded);
+        $before = $rows;
+        $expected = $review->invoke($dataset, $paid, []);
+        $actual = $review->invoke($dataset, $rows, []);
+        $this->assertSame($expected, $actual);
+        $this->assertSame($before, $rows);
+        $this->assertCount(1, $actual);
+        $this->assertSame('high', $actual[0]['campaign_id']);
+        $this->assertSame('Coste alto', $actual[0]['reason']);
+        $this->assertSame(1000.0, $actual[0]['cost_per_result']);
+        $tracking = [
+            array_merge($base, ['campaign_id' => 'tracking-1', 'spend' => 200, 'leads_salesforce' => 0]),
+            array_merge($base, ['campaign_id' => 'tracking-2', 'spend' => 300, 'leads_salesforce' => 0]),
+        ];
+        $top = $review->invoke($dataset, array_merge($tracking, $excluded), []);
+        $this->assertSame(['tracking-2', 'tracking-1'], array_column($top, 'campaign_id'));
+    }
+
     private function authenticatedSession(string $role): array
     {
         $this->reportUserSequence++;
