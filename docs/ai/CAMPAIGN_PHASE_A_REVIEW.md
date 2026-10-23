@@ -3,6 +3,24 @@
 Docs-Impact: updated
 Docs-Matrix-Impact: updated
 
+## Resolución posterior del PR #85 con main
+
+El merge documental e913f08 incorpora main e314c8d y conserva Fase A6fe686a.
+La matriz general mantiene su contrato y se añade el registro focal de Campañas.
+La guía y el validador ya forman parte de esta rama: el bloqueo histórico por
+guía ausente descrito al final no sigue vigente. Una fixture documental incluye
+el enlace de la propuesta y una regresión verifica que retirarlo produce error.
+Fase B no se integra: continúa como propuesta dentro de esta rama.
+
+Verificación de esta resolución: PHP de campañas50/50,519aserciones; JS15/15;
+documentación35correctas y1skipWindows; validador integral PASS15rutas con
+descripción estructurada; enlaces, manifest/assets de A, conflictos y diffcheck
+correctos. No se ejecuta nuevamente la suite general ni se recompilan assets
+porque no se cambia código de aplicación. Las cifras generales posteriores
+pertenecen a la ejecución histórica de Fase A, no a esta resolución.
+
+## Alcance y evidencia histórica de Fase A
+
 El detalle publicitario admite solo Meta/Google con inversión positiva
 verificable y elimina Resultados/Coste por resultado. Coste por compra usa su
 métrica existente. Los importes no calculables usan — con motivo específico;

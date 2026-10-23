@@ -5662,3 +5662,10 @@ sincronizaciones, despliegues ni fusión del PR; solo merge de main hacia su ram
 Descripción de PR preparada con Docs-Impact:updated y Docs-Matrix-Impact:updated.
 Validación integral del SHA de merge y push normal quedan como pasos finales;
 si aparece concurrencia remota, detenerse sin force. CI remota pendiente.
+
+Validación posterior al merge e913f08bfd8cc1df083c2adbf05fa7dfe3ac0941:
+PASS integral sobre15rutas contra main e314c8d con descripción realista de PR.
+Padres del merge:6fe686a y e314c8d, sin reescritura de historia. Revisados diff
+final, enlaces, ausencia de conflictos y conservación de FaseB. Publicación
+autorizada mediante push normal a la rama remota de PR85, sin fusionar la PR;
+los resultados de GitHub Actions deberán comprobarse tras la publicación.
