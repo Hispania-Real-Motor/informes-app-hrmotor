@@ -70,6 +70,46 @@ Auditoría inicial pendiente. Secciones y KPIs concretos por verificar contra
 la interfaz actual. Referencias: [informe de Campañas](informe-campanas.md)
 y [documentación general](Documentacion_general_informes_y_contraste_salesforce.md).
 
+#### Registro focalizado: Detalle y Campañas a revisar
+
+Base contrastada: 01d3aa8ad428ad413f184741d9a4f2314696f1fe más diff Fase A.
+
+| Contrato afectado | Evidencia implementada | Impacto y estado de auditoría |
+| --- | --- | --- |
+| Universo del detalle | advertisingEligibility()/advertisingDetailRows(), resources/js/reports/campaign-presentation.js; renderCampaignTables(), campaigns-dashboard.js | Meta/Google, sin procedencias Salesforce sin gasto atribuible y spend finito > 0; solo presentación. No cambia API/CSV/atribución. Auditada la exclusión visual sintética; trazabilidad completa de adquisición pendiente. |
+| Coste por compra | CampaignDashboardDatasetService::withRatios()/divide(); cost_per_purchase = spend / purchases | Fórmula existente intacta; denominador cero o null produce null; divide redondea a cuatro decimales. Solo selección y presentación monetaria cambian. Auditoría integral de compras/origen/fecha/deduplicación pendiente. |
+| Resultados y coste por resultado | resultCountForRow()/costPerResultForRow(); columnDefinitions y columnAllowedInContext() JS | Se retiran solo del detalle/selector; permanecen fórmulas funcionales y datos de API/CSV y otros bloques. No equivale a compras. |
+| Benchmark y top 8 de Campañas a revisar | CampaignDashboardDatasetService::reviewCampaigns() | Elegibilidad publicitaria antes de medias por tipo; promedio de costes por resultado positivos no nulos, cuatro decimales; Coste alto > 2 × media. Mismos motivos y prioridad; universo cambia solo aquí. |
+| Estado publicitario | historicalStatusPresentation(); MetaCampaignSyncService, GoogleCampaignSyncService y clientes | Sigue histórico, no remoto vigente. Fase B pendiente de aprobación, sin nueva fuente implementada. |
+
+##### Fuentes contrastadas y límites de esta revisión
+
+MetaAdsClient consulta insights y campañas; MetaCampaignSyncService persiste
+metric_date, spend, campaign_status y campaign_effective_status en métricas
+diarias. GoogleAdsClient consulta campaign.status con segmentos/métricas;
+GoogleCampaignSyncService persiste metric_date y campaign_status. El dataset
+usa el período solicitado y snapshots aprobados cuando proceden; no se cambian
+fechas pivote, zonas, identidades, reglas de atribución, first touch ni deduplicación.
+La fuente CRM canónica documentada es Interest (aliases técnicos leads_salesforce
+no significan Lead); no se ha hecho una auditoría nueva de los campos API CRM
+ni se ha consultado Salesforce. La clasificación funcional no se deduce aquí del
+nombre. Configuración y sincronizaciones permanecen intactas.
+
+El costo visible conserva el valor backend; Intl.NumberFormat es-ES/EUR muestra
+dos decimales y los inválidos del detalle usan — con motivo. No se convierte null
+en cero. El conjunto recibido no se muta. exportRows() y los CSV conservan filas
+ocultas del detalle. Pruebas: CampaignDashboardTest (integridad cerrada y
+exportación, denominadores aprobados, benchmarks/top 8 publicitarios) y
+campaign-presentation.test.mjs (elegibilidad, formato y migración de columnas).
+
+Pendiente: fichas completas por KPI (fuente/campo API, tabla/columna, fecha
+pivote, universo/deduplicación y configuración de extremo a extremo) y auditoría
+de otros informes, fuera del alcance. Este registro no certifica esos contratos.
+La propuesta de estado actual se detalla en
+[CAMPAIGN_CURRENT_STATUS_PROPOSAL](ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md).
+Reglas funcionales vigentes: [Informe de Campañas](informe-campanas.md).
+
+
 ### Comisiones
 
 Auditoría inicial pendiente en cada una de las seis pestañas reales:

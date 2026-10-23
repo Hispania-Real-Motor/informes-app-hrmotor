@@ -1,6 +1,6 @@
 # Informe de Campañas
 
-Actualizado: 2026-10-09. URL: `/informes/campanas`.
+Actualizado: 2026-10-23. URL: `/informes/campanas`.
 
 ## Contrato funcional ROT-4
 
@@ -163,7 +163,7 @@ un snapshot directo coherente y reconstruir el período bajo procedimiento
 operacional revisado. Esta implementación no ejecuta backfill ni despliegue.
 
 
-## Presentación conservadora de estados y costes (2026-10-21)
+## Antecedentes de presentación (2026-10-21; detalle sustituido por Fase A de 2026-10-23)
 
 La columna Estado histórico muestra Activa (histórico) o Inactiva (histórico) usando la etiqueta del backend cuando existe evidencia publicitaria local para el criterio de la plataforma. Sin esa evidencia, con etiqueta ausente, estados desconocidos o procedencias Salesforce, muestra Estado no disponible. Ninguna etiqueta garantiza el estado remoto vigente. El filtro conserva su criterio histórico por aprobación expresa; no es una consulta de estado vigente. MIN y el fallback legacy siguen limitados al contrato histórico y no se usan para verificar el estado mostrado. No se alteran universos económicos ni cierres.
 
@@ -201,3 +201,36 @@ La evidencia se valida con conjuntos explícitos en memoria, usando los campos q
 Se exige una cadena canónica exacta: valores vacíos, UNKNOWN, UNSPECIFIED, códigos de otra plataforma, códigos futuros, texto arbitrario, minúsculas, espacios añadidos y tipos no textuales muestran Estado no disponible, incluso cuando el backend envía Inactiva. No se convierte ni normaliza un valor malformado para aceptarlo. Las procedencias Salesforce siguen siendo neutrales. Nuevos códigos deben revisarse explícitamente antes de ampliarse la lista; esta cautela puede ocultar temporalmente una clasificación histórica, nunca confirmar un estado no reconocido. No se consulta el estado remoto vigente.
 
 Fuentes oficiales contrastadas sin llamadas a cuentas publicitarias: [Meta Campaign.EffectiveStatus (SDK oficial)](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/campaign.py) y [Google CampaignStatus](https://developers.google.com/google-ads/api/reference/rpc/v26/CampaignStatusEnum.CampaignStatus). La documentación Google define UNKNOWN/UNSPECIFIED, pero no se admiten como evidencia de clasificación. Sin cambios en filtros, API/CSV, economía o sincronizaciones.
+
+
+## Fase A vigente: detalle publicitario y campañas a revisar (2026-10-23)
+
+Esta sección reemplaza, únicamente para el detalle publicitario, las reglas anteriores de visibilidad por cualquier actividad y texto monetario. Las reglas económicas, los históricos y el resto de bloques no se sustituyen.
+
+### Detalle de campañas
+
+advertisingEligibility() y advertisingDetailRows(), en resources/js/reports/campaign-presentation.js, admiten exclusivamente filas meta o google_ads, sin procedencia salesforce_campaign_without_spend ni salesforce_origin, con spend numérico decimal finito estrictamente mayor que cero en el período y después de los filtros funcionales existentes. Se admiten números o cadenas decimales, incluida notación exponencial; booleanos, hexadecimal, objetos, vacíos y valores no finitos no constituyen evidencia. La verificación se limita al dato local recibido, sin nueva certificación externa del gasto.
+
+Inversión cero, negativa, ausente o inválida excluye visualmente la fila aunque tenga intereses, oportunidades o ventas. Gasto positivo sin conversiones o con datos parciales conserva la fila. No se infiere inversión desde actividad CRM. Los intereses Salesforce atribuidos a campañas publicitarias siguen siendo métricas de esas campañas. El detalle muestra un conteo agregado de exclusiones por motivo (otra plataforma, procedencia no verificable, inversión desconocida, inválida, negativa o cero), solo en el DOM: no crea registros, logs ni métricas persistidas. Es un conteo del conjunto recibido tras los filtros, no del total de la base de datos. Los gastos negativos quedan disponibles en respuestas y auditorías para diagnóstico; no se corrigen importes.
+
+Se retiran result_count (Resultados) y cost_per_result (Coste por resultado) del detalle y su selector. Permanecen en backend, API/CSV, rankings, tarjetas y gráficos donde ya se utilizan. La única columna Coste por compra utiliza cost_per_purchase: inversión dividida entre compras según el backend. No se renombra el resultado funcional. Está disponible en Todos, Tasación y Otros; se conservan las restricciones de Venta, Exposición y Branding y sus subcontextos. Una selección v6 explícita puede ocultarla voluntariamente.
+
+Las preferencias de columnas migran de hrmotor_campaign_columns_v5 a hrmotor_campaign_columns_v6: se descartan claves no definidas, se deduplican y se añade Coste por compra una sola vez en la migración. Si v6 ya existe se respeta. No se borran preferencias ajenas, de rankings, contexto o gráficos; la clave anterior se conserva para compatibilidad de rollback.
+
+Solo las celdas monetarias del detalle usan — cuando no hay cálculo válido: importe/coste ausente, inversión desconocida, denominador cero o desconocido y métrica no aplicable. El tooltip conserva el motivo concreto. Los valores válidos positivos, negativos o cero conservan el formato EUR existente; no se transforma null en cero ni se recalcula ningún coste. Una fila de inversión negativa se excluye aunque el formateador pueda representar importes negativos. Tarjetas, gráficos y exportaciones conservan sus formateadores previos.
+
+### Campañas a revisar
+
+CampaignDashboardDatasetService::reviewCampaigns() aplica elegibilidad publicitaria con inversión numérica finita positiva antes de calcular medias por tipo y seleccionar motivos/top 8. Excluye Salesforce y las dos procedencias sin gasto verificable. El frontend vuelve a comprobar plataforma e inversión antes de renderizar. Puede mostrar menos de ocho campañas; nunca se completa con Salesforce. Se conserva el orden de motivos, fórmulas, umbrales y prioridad por impacto económico. La media utiliza los costes por resultado positivos no nulos del tipo, redondeados a cuatro decimales como antes; el umbral Coste alto sigue siendo mayor que el doble de esa media.
+
+Este cambio altera deliberadamente solo el contenido y benchmarks de este bloque. No altera el dataset general ni las filas económicas exportadas. La caché de payload pasa de campaign-dashboard-v4 a campaign-dashboard-v5 para no servir el bloque anterior desde caché; no se reconstruyen snapshots.
+
+### Estado y fase pendiente
+
+La columna y filtro siguen siendo históricos; no se ha implementado Estado actual. Se mantienen validación conservadora de estados reconocidos y tooltips sin promesa de vigencia remota. El estado actual requiere persistencia independiente y autorización explícita. Véase la [propuesta de Fase B](ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md), no implementada.
+
+### Evidencia y entrega
+
+Regresiones en tests/js/campaign-presentation.test.mjs cubren elegibilidad, conteos, gasto sin resultados, escape HTML, columnas, preferencias y guiones monetarios. tests/Feature/CampaignDashboardTest.php cubre benchmarks/top 8 sin Salesforce y conserva las pruebas de API/CSV, atribuciones y cierres. Son pruebas sintéticas; no certifican datos productivos. Resultados de ejecución en [HANDOFF](ai/HANDOFF.md). La trazabilidad focalizada queda registrada como [pendiente de auditoría integral](matriz-trazabilidad-kpi.md).
+
+Despliegue humano: publicar código y assets generados por npm run build con public/build/manifest.json del mismo release; comprobar que el bundle referenciado existe y se sirve. No requiere migraciones, nuevas variables, sincronizaciones ni operaciones sobre datos. Rollback: release anterior completo con su manifest/assets o reversión del commit y recompilación. No borrar ni regenerar cierres. Verificar visualmente columnas, conteos, filtros y tooltips.

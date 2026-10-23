@@ -5472,3 +5472,200 @@ PR #79 creado hacia main, rama publicada. CI run 39228596171 del commit 19c08b7:
 PHP tests, Pint, Composer/audit, build y whitespace completados con success.
 La actualización documental posterior no cambia el código ya probado; no se
 extrapola ese resultado a futuros commits sin consultar su ejecución remota.
+
+
+## 2026-10-23 — Fase A publicitaria y propuesta de estado actual
+
+Rama: fix/campaign-advertising-table-and-current-status.
+Base: 01d3aa8ad428ad413f184741d9a4f2314696f1fe. Trabajo en checkout aislado;
+no se sobrescriben los cambios ajenos del checkout principal.
+
+### Resumen, decisiones y alcance
+
+Causa raíz: detalle basado en cualquier actividad retenía procedencias sin
+gasto publicitario; columnas funcionales variables confundían compras;
+Campañas a revisar admitía Salesforce antes de calcular benchmarks. La fuente
+histórica de estado no acredita vigencia.
+
+Detalle: Meta/Google, fuente publicitaria y spend finito > 0. Excluye cero,
+negativo/desconocido/inválido aunque haya resultados comerciales. Gasto positivo
+sin resultados permanece. Conteos por motivo únicamente en DOM. Se retiran
+result_count/cost_per_result solo de columnas; Coste por compra usa
+cost_per_purchase. Columnas v5 migran a v6 sin tocar otras preferencias. Solo
+importes del detalle usan — con tooltip; cero válido conserva formato EUR.
+
+reviewCampaigns filtra elegibles antes de media por tipo/top 8; misma prioridad,
+fórmulas y umbrales. Cambio intencional limitado al bloque; cache payload v5
+invalida la representación v4. No se cambia universo económico general, API/CSV
+legacy, filtros históricos ni rankings ajenos. Estado sigue histórico. Fase B
+requiere autorización de nueva persistencia/operación: propuesta en documento
+independiente; ninguna decisión arquitectónica implementada.
+
+### Archivos de la tarea
+
+- app/Services/Campaigns/CampaignDashboardDatasetService.php: filtro local del
+  bloque revisión y versión de caché, sin cambios económicos.
+- resources/js/reports/campaign-presentation.js y campaigns-dashboard.js:
+  elegibilidad, formato del detalle, columnas/preferencias y renderizado.
+- tests/Feature/CampaignDashboardTest.php y
+  tests/js/campaign-presentation.test.mjs: regresiones focalizadas.
+- public/build/manifest.json y nuevo bundle de campañas referenciado: build
+  conjunto; se conserva el bundle anterior, sin borrados.
+- docs/informe-campanas.md y docs/ai/CAMPAIGN_PRESENTATION_DIAGNOSTIC.md:
+  reglas vigentes distinguidas de antecedentes.
+- docs/ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md: diseño propuesto, no implementado.
+- docs/matriz-trazabilidad-kpi.md: registro focalizado pendiente de auditoría,
+  sin certificar otros KPIs ni copiar estructura ajena no incluida en la base.
+- docs/ai/CAMPAIGN_PHASE_A_REVIEW.md: contrato Docs-Impact para futura PR.
+- docs/ai/HANDOFF.md: esta entrada. PROJECT_CONTEXT/DECISIONS no cambian porque
+  no se incorpora arquitectura nueva ni decisión irreversible.
+
+### Integridad, seguridad y rendimiento
+
+Sin migraciones, escrituras de datos, sincronizaciones ni cambios de auth/CSP,
+permisos, deduplicación, first touch o fórmulas. No se consulta base productiva
+ni proveedores. Escape HTML conservado. Filtrado en memoria lineal, sin nuevas
+consultas ni red. Los estados actuales no se resuelven desde inversión.
+
+El agente principal ejecutó sonda temporal de paridad con servicio original
+obtenido de git show de la base y servicio actual, misma fecha congelada y
+fixtures SQLite :memory:. 1 test/27 aserciones correctos, 2,725 s. Mes abierto y
+cerrado × Todas/active/inactive: KPIs, filas completas, exportRows y rankings
+salvo review_campaigns idénticos. Hashes de seis tablas de métricas,
+atribuciones, cierres, snapshots y eventos iguales antes/después. Conteos de
+filas 4/4/0 en ambos servicios. La sonda/copia temporal se retiró, sin incluir
+código auxiliar en el commit; JSON agregado en storage/app ignorado. Evidencia
+sintética local, no auditoría de datos productivos ni prueba de MySQL real.
+
+### Pruebas comunicadas por el agente principal
+
+- PHP focalizado: 50/50, 519 aserciones correctas.
+- node --test tests/js/campaign-presentation.test.mjs: 15/15 correctas.
+- npm run build final: correcto; manifest y bundle actualizados juntos.
+- php -l y Pint focalizado: correctos.
+- Suite general: 1432/1432 tests, 13131 aserciones correctas, 375,622 s.
+  PHP Herd 8.4 -d max_execution_time=0 vendor/bin/pest --compact; SQLite
+  :memory: y APP_KEY sintética solo en proceso, sin modificar .env.
+- git diff --check: correcto en revisión documental inicial; repetir final.
+
+La revisión documental fue delegada a report_docs_maintainer, con diff completo,
+base y alcance Campañas/Detalle/Campañas a revisar. Se contrastaron dataset,
+clientes/sincronizadores, persistencia, formateadores y pruebas. Guía/matriz
+esqueleto/validador del checkout principal se leyeron como referencia ajena;
+no se incorporan esos cambios por copia. La validación externa requiere refs
+finales y root explícito del checkout aislado, y no debe declararse exitosa si
+falla por guía o estructura general ausente en esta base.
+
+### Acciones manuales y riesgos
+
+No desplegar ni fusionar automáticamente. Publicar fuentes, manifest y bundle
+juntos mediante procedimiento autorizado; comprobar asset servido y QA visual
+de columnas, preferencias, exclusiones, tooltips y filtros. Sin variables de
+entorno nuevas, migraciones, syncs o invalidación de snapshots. Rollback:
+release anterior con assets o revertir código y recompilar, sin operaciones de
+base de datos. La caché usa namespace de código; no manipular cierres.
+
+Pendientes: aprobación de Fase B, QA real de navegador, auditoría integral de
+trazabilidad KPI y estados de campañas de producción. Desaparición visual no
+implica pérdida de filas en API/CSV. No presentar como actuales los estados
+históricos ni certificar integraciones remotas desde pruebas simuladas.
+
+
+Revisión documental ejecutada: Python del runtime con -B -m unittest discover
+-s C:/Users/Usuario/Herd/informes-app-hrmotor/tests/documentation -p test_*.py:
+27/27 correctas, 4,379 s. Es la suite externa de infraestructura documental,
+no certificación integral de la matriz. Comprobación de enlaces Markdown
+locales de los seis documentos: cero destinos inexistentes; git diff --check
+correcto. La guía y validador no se copiaron desde el checkout principal.
+
+
+La nueva matriz incorpora el esquema contractual de 23 campos y el índice de
+los seis informes/pestañas de Comisiones como pendientes, para permitir control
+estructural posterior. No son fichas auditadas ni traslado de reglas de otros
+informes. Solo Campañas incluye evidencia focalizada de esta tarea.
+
+
+Validación documental integral realmente ejecutada mediante módulo externo
+scripts/check_documentation_integrity.py del checkout principal (solo lectura),
+Python runtime -B: changes_between(base=01d3aa8ad428ad413f184741d9a4f2314696f1fe,
+head=HEAD local de Fase A, root=checkout aislado), seguida
+de validate(changes, cuerpo CAMPAIGN_PHASE_A_REVIEW.md, root=checkout aislado).
+Resultado: FAIL sobre 13 rutas, único error: Falta referencia documental
+obligatoria: docs/guia-mantenimiento-documental.md. La guía existe únicamente
+como cambio ajeno del checkout principal y no se copia ni se incorpora aquí.
+validate_matrix(root=checkout aislado) devuelve cero errores. No se declara
+superado el validador integral ni se confunde con los 27 tests externos que sí
+pasaron. El agente principal repitió la validación tras incorporar esta
+evidencia: mismo único bloqueo por guía ausente; el código funcional no cambia.
+
+## 2026-10-23 — Reconciliación documental de PR #85 con main
+
+Revisión documental delegada a `report_docs_maintainer` en el checkout aislado
+de PR #85. Referencias contrastadas: Fase A
+`6fe686ad5dda65664af1defb20164dcbc41d2345` y main
+`e314c8d48e8deb091206bd8a3aadb3dff910929e`. Este trabajo resuelve la colisión
+add/add de la matriz; no incorpora la implementación posterior de Fase B.
+
+Se conserva el contrato general de 23 campos, las secciones de los seis informes,
+las seis pestañas de Comisiones y todos los estados pendientes de auditoría de
+main. Dentro de Campañas se incorpora el registro focal de Fase A, subordinado
+al encabezado del informe; no se transforma en una ficha KPI verificada.
+Se conservan referencias funcionales y la propuesta de estado actual como
+propuesta no implementada en esta rama. La evidencia sintética no acredita
+datos productivos ni estado remoto vigente.
+
+Contraste semántico: el diff funcional de Fase A limita la modificación PHP a
+elegibilidad de `reviewCampaigns()` antes del benchmark y a namespace de caché.
+La fórmula `cost_per_purchase`, `divide()` con divisor nulo/cero y redondeo de
+cuatro decimales permanecen intactos. La selección visual de filas y columnas
+no elimina datos de API/CSV; el histórico de estados conserva su limitación de
+vigencia. Se contrastaron helpers JavaScript y regresiones de campañas/CSV,
+snapshots y atribuciones. No se consultaron bases de datos ni proveedores.
+
+Archivos de esta revisión: `docs/matriz-trazabilidad-kpi.md` y este HANDOFF.
+Sin migraciones, configuración funcional ni cambios de seguridad o rendimiento.
+La matriz íntegra de main y el registro focal son complementarios: el primero
+define el contrato pendiente y el segundo documenta solo el alcance contrastado
+de Fase A. El fallo histórico del validador por guía ausente documentado arriba
+corresponde a la base antigua; el resultado de esta reconciliación y sus pruebas
+debe registrarse por separado tras la validación local final.
+
+Pendientes de cierre por el agente principal: resultados de tests documentales,
+validador integral con descripción de PR y pruebas funcionales afectadas;
+revisión final de diff y publicación mediante push normal. No se declara una
+suite general ejecutada en esta resolución. No fusionar ni desplegar el PR.
+
+Verificación estructural ejecutada durante la revisión: al retirar únicamente
+el registro focal añadido, el texto restante coincide literalmente con la
+matriz de `origin/main`; 23 campos, seis encabezados de informes y seis filas de
+pestañas de Comisiones. Los 21 destinos Markdown locales de la matriz existen,
+incluida la propuesta. Sin marcadores de conflicto en la matriz;
+`git diff --check` correcto. No sustituye al validador integral ni a los tests.
+
+Cierre local del principal: tests PHP de CampaignDashboardTest50/50,519
+aserciones,2m57,697s; JS FaseA15/15; tests documentales36ejecutados,35correctos
+y1skip por privilegios Windows de symlink. El primer intento documental dio
+5fallos por el destino propuesta ausente únicamente en la fixture; se añadió
+su archivo sintético y una regresión que exige error al retirarlo, sin relajar
+el script. Guía y tests se revisan juntos conforme al contrato de controles.
+Archivos propios de resolución: matriz, HANDOFF, guía y fixture/test documental;
+el resto de infraestructura entra intacta desde main mediante merge. No cambia
+PHP/JS de aplicación, configuración funcional, seguridad, DB ni rendimiento.
+
+Enlaces locales de matriz/informe/propuesta comprobados; código y assets de A
+idénticos a6fe686a; manifest apunta campaigns-dashboard-C4UL5FZw.js y existen
+todos sus destinos. Ninguna prueba eliminada ni marcador o conflicto pendiente.
+FaseB conserva refs/heads/feat/campaign-current-status-and-number-format en
+59e822b8d05f64fab03816c35885d6f52dad7963; su checkout queda intacto. La suite
+general no se ejecutó en esta resolución. No se ejecutan migraciones,
+sincronizaciones, despliegues ni fusión del PR; solo merge de main hacia su rama.
+Descripción de PR preparada con Docs-Impact:updated y Docs-Matrix-Impact:updated.
+Validación integral del SHA de merge y push normal quedan como pasos finales;
+si aparece concurrencia remota, detenerse sin force. CI remota pendiente.
+
+Validación posterior al merge e913f08bfd8cc1df083c2adbf05fa7dfe3ac0941:
+PASS integral sobre15rutas contra main e314c8d con descripción realista de PR.
+Padres del merge:6fe686a y e314c8d, sin reescritura de historia. Revisados diff
+final, enlaces, ausencia de conflictos y conservación de FaseB. Publicación
+autorizada mediante push normal a la rama remota de PR85, sin fusionar la PR;
+los resultados de GitHub Actions deberán comprobarse tras la publicación.

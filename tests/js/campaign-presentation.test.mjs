@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { historicalStatusPresentation, activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
+import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, historicalStatusPresentation, activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
 
 const money = (value) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
 
@@ -34,7 +34,7 @@ test('costs distinguish zero, positive, zero denominator, unknown source and not
 const source = fs.readFileSync(new URL('../../resources/js/reports/campaigns-dashboard.js', import.meta.url), 'utf8');
 const root = { innerHTML: '' };
 const sandbox = {
-    Intl, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
+    Intl, advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
     localStorage: { getItem: () => null },
     document: { addEventListener() {}, getElementById: () => null },
     window: { reportUserCanExport: true, reportUserCanAudit: true },
@@ -46,16 +46,16 @@ test('real detail rendering preserves shared rows, hides empty rows and escapes 
     sandbox.document.getElementById = (id) => id === 'campaignTables' ? root : null;
     vm.runInContext('renderColumnsPopover = () => {}; applyColumnVisibility = () => {}; syncCampaignTableScrollWidth = () => {};', sandbox);
     sandbox.rows = [
-        { campaign_name: 'EMPTY', spend: 0 },
-        { campaign_name: '<script>paused</script>', campaign_status_label: 'Inactiva', spend: 100, cost_per_result: null, result_count: 0 },
-        { campaign_name: 'ZERO-COST', spend: 0, sales: 1, cost_per_result: 0, result_count: 1 },
+        { platform: 'meta', campaign_name: 'EMPTY', spend: 0 },
+        { platform: 'meta', campaign_name: '<script>paused</script>', campaign_status_label: 'Inactiva', spend: 100, cost_per_result: null, result_count: 0 },
+        { platform: 'google_ads', campaign_name: 'ZERO-COST', spend: 0.001, purchases: 100, cost_per_purchase: 0 },
     ];
     const before = JSON.stringify(sandbox.rows);
     vm.runInContext('renderCampaignTables(rows)', sandbox);
     assert.ok(!root.innerHTML.includes('EMPTY'));
     assert.ok(root.innerHTML.includes('&lt;script&gt;paused&lt;/script&gt;'));
     assert.ok(root.innerHTML.includes('Estado no disponible'));
-    assert.ok(root.innerHTML.includes('No calculable'));
+    assert.ok(root.innerHTML.includes('>—</td>'));
     assert.ok(root.innerHTML.includes(money(0)));
     assert.ok(root.innerHTML.includes('/informes/campanas/export/campaigns.csv'));
     assert.equal(JSON.stringify(sandbox.rows), before);
@@ -73,7 +73,7 @@ test('sorting, context columns and incomplete monthly costs retain their contrac
     assert.ok(!originChart.includes('class="grafana-point-dot '));
     assert.equal(vm.runInContext("columnAllowedInContext('cost_per_result', 'venta')", sandbox), false);
     assert.equal(vm.runInContext("columnAllowedInContext('cost_per_result', 'tasacion')", sandbox), false);
-    assert.equal(vm.runInContext("columnAllowedInContext('cost_per_result', 'all')", sandbox), true);
+    assert.equal(vm.runInContext("columnAllowedInContext('cost_per_result', 'all')", sandbox), false);
     assert.equal(vm.runInContext('monthlyCostPerResultForRow({ spend: 100, sales: 0, purchases: 0 })', sandbox), null);
     assert.equal(vm.runInContext('monthlyCostPerResultForRow({ spend: 0, sales: 1, purchases: 0 })', sandbox), 0);
     assert.equal(vm.runInContext("sortedCampaignRows([{spend: 1}, {spend: 2}], 'all')[0].spend", sandbox), 2);
@@ -190,4 +190,94 @@ test('historical state selector is explicit without changing option values', () 
     assert.ok(blade.includes('value="active" selected>Activas según criterio histórico'));
     assert.ok(blade.includes('value="inactive">Inactivas según criterio histórico'));
     assert.ok(blade.includes('no verifica el estado actual'));
+});
+
+
+test('advertising eligibility requires verified positive spend and never infers it from commerce', () => {
+    for (const platform of ['meta', 'google_ads']) {
+        for (const spend of [1, 0.01, '2.50', '1e2']) assert.equal(advertisingEligibility({platform, spend}).eligible, true);
+        for (const spend of [0, -1, null, undefined, '', ' ', 'bad', '0x10', NaN, Infinity, true, {}, []]) {
+            assert.equal(advertisingEligibility({platform, spend, sales: 4, leads_salesforce: 20}).eligible, false);
+        }
+    }
+    assert.equal(advertisingEligibility({platform: 'salesforce', spend: 100}).eligible, false);
+    assert.equal(advertisingEligibility({platform: 'meta', campaign_source_type: 'salesforce_origin', spend: 100}).eligible, false);
+    const source = [{platform: 'meta', spend: 10}, {platform: 'meta', spend: 0}, {platform: 'google_ads', spend: -1}, {platform: 'salesforce', spend: 100}];
+    const before = JSON.stringify(source);
+    const detail = advertisingDetailRows(source);
+    assert.equal(detail.rows.length, 1);
+    assert.equal(detail.excludedTotal, 3);
+    assert.deepEqual(detail.excludedByReason, {zero_spend: 1, negative_spend: 1, other_platform: 1});
+    assert.equal(JSON.stringify(source), before);
+});
+
+test('detail columns remove functional results, use purchase costs and migrate only their own preferences', () => {
+    const memory = new Map([['hrmotor_campaign_columns_v5', JSON.stringify(['campaign', 'result_count', 'cost_per_result', 'sales'])], ['unrelated', 'keep']]);
+    sandbox.localStorage = {getItem: (key) => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value)};
+    const migrated = Array.from(vm.runInContext('loadVisibleColumns()', sandbox));
+    assert.deepEqual(migrated, ['campaign', 'sales', 'cost_per_purchase']);
+    assert.equal(memory.get('unrelated'), 'keep');
+    assert.ok(memory.has('hrmotor_campaign_columns_v5'));
+    memory.set('hrmotor_campaign_columns_v6', JSON.stringify(['campaign']));
+    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign']);
+    for (const context of ['all', 'tasacion', 'otros']) {
+        assert.equal(vm.runInContext(`columnAllowedInContext('cost_per_purchase', '${context}')`, sandbox), true);
+    }
+    const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [{spend: 10, purchases: 2, cost_per_purchase: 5}])", sandbox);
+    assert.ok(!html.includes('data-column="result_count"'));
+    assert.ok(!html.includes('data-column="cost_per_result"'));
+    assert.equal((html.match(/Coste por compra/g) || []).length, 1);
+});
+
+test('only detail monetary cells use a dash while preserving reasons, valid zeros and negatives', () => {
+    assert.equal(detailMoneyPresentation(0, {spend: 0, purchases: 1}, 'cost_per_purchase', money).text, money(0));
+    assert.equal(detailMoneyPresentation(-5, {spend: -10, purchases: 2}, 'cost_per_purchase', money).text, money(-5));
+    for (const row of [{spend: 10, purchases: 0}, {spend: 10}, {spend: null}, {campaign_source_type: 'salesforce_origin'}, {campaign_source_type: 'salesforce_campaign_without_spend'}]) {
+        const display = detailMoneyPresentation(null, row, 'cost_per_purchase', money);
+        assert.equal(display.text, '—');
+        assert.ok(display.tooltip.length > 0);
+    }
+    assert.equal(detailMoneyPresentation(null, {}, 'sale_amount', money).text, '—');
+    assert.equal(costDisplay(null, {spend: 10, purchases: 0}, 'cost_per_purchase', money), 'No calculable');
+});
+
+test('review cards exclude Salesforce and zero spend before limiting to eight', () => {
+    const reviewRoot = {innerHTML: ''};
+    sandbox.document.getElementById = (id) => id === 'reviewCampaigns' ? reviewRoot : null;
+    sandbox.reviewRows = [
+        ...Array.from({length: 8}, () => ({platform: 'salesforce', campaign: 'SF-EXCLUDED', spend: 1000})),
+        {platform: 'meta', campaign: '<b>paid</b>', spend: 100},
+        {platform: 'google_ads', campaign: 'NO-SPEND', spend: 0},
+    ];
+    const before = JSON.stringify(sandbox.reviewRows);
+    vm.runInContext('renderReviewCampaigns(reviewRows)', sandbox);
+    assert.ok(!reviewRoot.innerHTML.includes('SF-EXCLUDED'));
+    assert.ok(!reviewRoot.innerHTML.includes('NO-SPEND'));
+    assert.ok(reviewRoot.innerHTML.includes('&lt;b&gt;paid&lt;/b&gt;'));
+    assert.equal((reviewRoot.innerHTML.match(/class="review-card"/g) || []).length, 1);
+    assert.equal(JSON.stringify(sandbox.reviewRows), before);
+});
+
+
+test('real advertising detail keeps positive spend without conversions and reports exclusions', () => {
+    const detailRoot = {innerHTML: ''};
+    sandbox.document.getElementById = (id) => id === 'campaignTables' ? detailRoot : null;
+    sandbox.detailRows = [
+        {platform: 'meta', campaign_name: 'SPEND-NO-CONVERSIONS', spend: 20, sales: 0, purchases: 0},
+        {platform: 'google_ads', campaign_name: 'PARTIAL', spend: 10, cost_per_purchase: null},
+        {platform: 'salesforce', campaign_name: 'SF-HIDDEN', spend: 30},
+        {platform: 'meta', campaign_name: 'COMMERCIAL-WITHOUT-SPEND', spend: 0, sales: 4, leads_salesforce: 9},
+        {platform: 'meta', campaign_name: 'NEGATIVE', spend: -2},
+        {platform: 'google_ads', campaign_name: 'UNKNOWN', spend: null},
+    ];
+    const before = JSON.stringify(sandbox.detailRows);
+    vm.runInContext('renderCampaignTables(detailRows)', sandbox);
+    for (const name of ['SPEND-NO-CONVERSIONS', 'PARTIAL']) assert.ok(detailRoot.innerHTML.includes(name));
+    for (const name of ['SF-HIDDEN', 'COMMERCIAL-WITHOUT-SPEND', 'NEGATIVE', 'UNKNOWN']) assert.ok(!detailRoot.innerHTML.includes(name));
+    assert.ok(detailRoot.innerHTML.includes('Filas excluidas del detalle publicitario: 4'));
+    assert.ok(detailRoot.innerHTML.includes('inversión negativa: 1'));
+    assert.equal(JSON.stringify(sandbox.detailRows), before);
+    for (const value of [true, '0x10', [], {}]) {
+        assert.equal(detailMoneyPresentation(value, {spend: 10, purchases: 2}, 'cost_per_purchase', money).text, '—');
+    }
 });

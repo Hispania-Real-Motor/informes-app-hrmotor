@@ -94,3 +94,52 @@ export function contiguousChartSegments(coordinates) {
     if (current.length) segments.push(current);
     return segments;
 }
+
+
+function finiteAdvertisingNumber(value) {
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())) return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+export function advertisingEligibility(row) {
+    if (!['meta', 'google_ads'].includes(row.platform)) return { eligible: false, reason: 'other_platform' };
+    if (['salesforce_campaign_without_spend', 'salesforce_origin'].includes(row.campaign_source_type)) return { eligible: false, reason: 'unverifiable_source' };
+    if (row.spend === null || row.spend === undefined) return { eligible: false, reason: 'unknown_spend' };
+    const spend = finiteAdvertisingNumber(row.spend);
+    if (spend === null) return { eligible: false, reason: 'invalid_spend' };
+    if (spend <= 0) return { eligible: false, reason: spend < 0 ? 'negative_spend' : 'zero_spend' };
+    return { eligible: true, reason: null };
+}
+
+export function advertisingDetailRows(rows) {
+    const result = { rows: [], excludedTotal: 0, excludedByReason: {} };
+    for (const row of rows) {
+        const eligibility = advertisingEligibility(row);
+        if (eligibility.eligible) result.rows.push(row);
+        else {
+            result.excludedTotal++;
+            result.excludedByReason[eligibility.reason] = (result.excludedByReason[eligibility.reason] || 0) + 1;
+        }
+    }
+    return result;
+}
+
+// Scoped to the advertising detail; cards/charts retain their existing format.
+export function detailMoneyPresentation(value, row, key, formatMoney) {
+    if (costDenominators[key]) {
+        const cost = costPresentation(value, row, key, formatMoney);
+        if (cost.value !== undefined && finiteAdvertisingNumber(row[costDenominators[key]]) === null) {
+            return { text: '—', tooltip: 'Denominador de resultados no disponible o inválido.' };
+        }
+        if (cost.value !== undefined && finiteAdvertisingNumber(value) === null) {
+            return { text: '—', tooltip: 'Valor del coste no disponible o inválido.' };
+        }
+        return { ...cost, text: cost.value === undefined ? '—' : cost.text };
+    }
+    const number = finiteAdvertisingNumber(value);
+    return number === null
+        ? { text: '—', tooltip: 'Importe no disponible en los datos recibidos.' }
+        : { text: formatMoney(number), tooltip: formatMoney(number) };
+}

@@ -20,6 +20,7 @@ def fixture_root(root: Path) -> None:
     for path in (checker.GENERAL, checker.GUIDE, *checker.DOCS.values(),
                  "docs/informe-comisiones-financieras.md",
                  "docs/Calculo_comisiones_comerciales.txt",
+                 "docs/ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md",
                  "docs/decisiones-negocio-pendientes.md"):
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -153,6 +154,14 @@ class IntegrityTests(unittest.TestCase):
         matrix = self.root / checker.MATRIX
         matrix.write_text(matrix.read_text(encoding="utf-8") + "\n[rota](inexistente.md)\n", encoding="utf-8")
         self.assertIn("referencia inexistente", " ".join(checker.validate_matrix(self.root)))
+
+    def test_campaign_proposal_reference_is_required_when_linked(self) -> None:
+        proposal = self.root / "docs/ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md"
+        self.assertTrue(proposal.is_file())
+        self.assertEqual([], checker.validate_matrix(self.root))
+        proposal.unlink()
+        self.assertIn("ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md",
+                      " ".join(checker.validate_matrix(self.root)))
 
     def test_complete_merge_base_diff_across_commits_and_stale_branch(self) -> None:
         def run(*args: str) -> str:

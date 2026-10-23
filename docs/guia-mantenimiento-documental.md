@@ -181,6 +181,12 @@ documentales en el diff. No se aplica esta regla al resto de archivos de
 
 ## Límites
 
+Las fixtures de pruebas deben incluir los destinos locales enlazados desde la
+matriz vigente. La reconciliación del PR #85 conserva la propuesta de estado
+actual de Campañas como documento pendiente: su fixture existe para verificar
+el enlace, sin implementar Fase B. Una regresión comprueba que retirar ese
+destino sigue produciendo un error de referencia inexistente.
+
 El mapa por rutas es deliberadamente conservador: cambios en rutas compartidas
 pueden pedir documentos de varios informes. Una ruta ejecutable sin mapa debe
 mapearse o justificarse expresamente como ajena. No se infiere la semántica del
