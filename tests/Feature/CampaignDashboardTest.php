@@ -2453,7 +2453,7 @@ class CampaignDashboardTest extends TestCase
             'impressions' => 9999, 'clicks' => 1234,
         ]));
         DB::table('campaign_lead_attributions')->insert($this->attributionRow([
-            'campaign_id' => '12345', 'interest_id' => 'synthetic-current-status',
+            'campaign_id' => '12345', 'interest_id' => 'sf-current-status',
         ]));
         $this->postJson('/informes/campanas/investment-closure', ['month' => '2026-05-01'])->assertOk();
         $query = $this->campaignQuery().'&campaign_status=';

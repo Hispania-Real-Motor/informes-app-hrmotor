@@ -18,10 +18,11 @@ return new class extends Migration
             $table->string('configured_status', 64)->nullable();
             $table->string('last_valid_raw_status', 64)->nullable();
             $table->string('last_valid_configured_status', 64)->nullable();
-            $table->timestamp('last_observed_at')->nullable();
-            $table->timestamp('last_verified_at')->nullable();
+            // UTC civil values: DATETIME avoids MariaDB session-timezone conversion.
+            $table->dateTime('last_observed_at')->nullable();
+            $table->dateTime('last_verified_at')->nullable();
             $table->foreignId('report_sync_run_id')->nullable()->constrained('report_sync_runs')->nullOnDelete();
-            $table->timestamps();
+            $table->datetimes();
             $table->unique(['platform', 'account_id', 'campaign_id'], 'campaign_current_status_identity');
         });
     }

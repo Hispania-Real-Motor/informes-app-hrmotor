@@ -1,12 +1,93 @@
 # Fase B de Campañas — revisión, evidencia y despliegue
 
-> Registro incremental: las cifras y hashes intermedios se conservan como historial. El cierre final al pie prevalece para el resultado de entrega.
+> La sección Integración limpia es el estado de esta entrega. El resto se conserva como historial de la rama original: sus bases, resultados intermedios y limitaciones anteriores no sustituyen la validación actual.
 
 Docs-Impact: updated
 Docs-Matrix-Impact: updated
 Docs-Outside-Paths: ["app/Services/Operations/OperationalTaskCatalog.php", "app/Services/Operations/OperationalTaskHealthService.php", "app/Services/Operations/OperationalTaskService.php", "routes/console.php"]
 Docs-Outside-Reason: Estas rutas coordinan catálogo, habilitación, reservas y supervisión del motor operacional central; el nuevo inventario de Campañas y su presentación se documentan mediante las rutas campaigns mapeadas. Los trabajos previos mantienen sus contratos.
 Docs-Outside-Evidence: app/Services/Operations/OperationalTaskService.php
+
+## Integración limpia sobre main tras PR #85
+
+Base `89282a32b79060fca671adee4bc49741c954308f`, rama `feat/campaign-current-status-ready`, worktree aislado. Grafo contrastado por el principal: los commits exclusivos `29ab39f`, `ff9e005`, `59e822b` se trasladan con `cherry-pick -x` como `b8f0a20`, `5ff5a43`, `2fdc3a7`. No se traslada `2f3791e`: Fase A y la reconciliación de su matriz ya están en main. Se conserva la matriz general, los 23 campos, seis informes, pestañas de Comisiones, fichas pendientes y el registro focal de Fase A. La rama B original y sus commits permanecen intactos.
+
+La única corrección funcional adicional de integración es DATETIME UTC para last_observed_at/last_verified_at y created_at/updated_at de la tabla nueva, evitando conversión implícita de zona de sesión MariaDB. Se añade una prueba opt-in de integración; no cambian fórmulas, filtros, contratos económicos, sincronizadores históricos o fuentes Salesforce. La tarea sigue deshabilitada y las APIs publicitarias se simulan.
+
+Resultados comunicados hasta esta revisión documental:
+
+- `DashboardMetricPercentStyleTest`: correcto aislado (1 prueba/6 aserciones) y en runner paralelo de dos workers (1/6). El fallo previo era `WorkerCrashedException`, causado por límite de ejecución de 120 s en Container durante reutilización de worker, sin fallo de aserción de formato. Servicios legacy reactivan set_time_limit(120); no se modifican ni se elimina la prueba.
+- Primer intento completo PHP serial terminó: **1458 pruebas/13447 aserciones, 0 errores y 2 fallos**, 1269,583 s. Fallan únicamente umbrales de rendimiento: StockRecommendationCandidatePaginationTest::test_calcula_un_volumen_equivalente_a_produccion_sin_agotar_el_tiempo_de_peticion mide 33,468168 s frente a <20 s; CallsEndpointDoesNotTimeoutTest::test_summary_responde_con_volumen_razonable mide 5,683645 s frente a <5 s. DashboardMetricPercentStyleTest pasa. Estos archivos y servicios Stock/Calls son idénticos a main. Hubo otras tareas concurrentes durante el intento, pero no se atribuye causalidad sin aislamiento. Tras detener MariaDB y sin cambiar umbrales, ambas clases aisladas pasan: **3 pruebas/16 aserciones en 16,258 s**. La segunda ejecución completa serial, sin DB, builds ni tests concurrentes, **terminó correctamente: 1458 pruebas/13447 aserciones, 0 errores, 0 fallos y 0 omitidas; exit 0; 494,710877 s (8 min 14,71 s)**. Evidencia JUnit externa: phaseb-final-full-suite.xml. No se deduce causalidad definitiva del primer intento solo a partir de esta repetición. Runner CLI externo PHP -n y subscriber de pruebas restablecen límite ilimitado entre pruebas; no se cambian umbrales, tests ni aplicación para conseguir verde.
+- MariaDB 11.4.13 real, portátil local, instancia/base nuevas aisladas: migraciones completas correctas. Integración final **4 pruebas/22 aserciones correctas**, incluido EXPLAIN del índice único, upserts concurrentes y created_at UTC tras SET time_zone=+02:00. Batería focal B **67 pruebas/844 aserciones correctas**: estados 25/160, operaciones 41/664 y regresión económica B 1/20. Las cuatro Integration se ejecutan por separado, no se suman a la suite general configurada.
+- JavaScript: 20/20. Build Vite correcto (20,38 s), bundle `campaigns-dashboard-DisEWXqJ.js` idéntico y manifest conjunto. Se conserva CSS compartido `app-DYzMdch_` y bundles previos: no hay cambio CSS fuente ni de otros informes.
+- Pint focal aplicado. Pruebas documentales ejecutadas por el agente documental: 37 en 57,455 s, correctas con una omitida por symlink Windows (36 correctas). Enlaces locales de los siete documentos modificados comprobados; matriz original de main preservada literalmente como prefijo del documento ampliado; git diff --check correcto. Validador integral y resultados definitivos: pendientes del cierre del principal sobre el commit final.
+- Experimento focal MariaDB de 117 pruebas: estados 25/160 y operaciones 41/664 correctos; Dashboard tuvo 20 errores SQL, sin fallos de aserción. Incluyen ISO8601 con offset en DATETIME legacy interest_sync_cutoff_at e IDs sintéticos de más de 18 caracteres. La fixture nueva B se acorta a sf-current-status (17), sin alterar datos económicos. Comparación baseline terminada: main 89282a3, en otro worktree y otra base MariaDB nueva, ejecutó 50 pruebas de Dashboard/326 aserciones: 31 correctas y 19 errores, sin fallos de aserción. Coinciden los 19 nombres de prueba, SQLSTATE y columnas tras normalizar únicamente el nombre del esquema: 8 errores 22007 por ISO8601+offset en interest_sync_cutoff_at y 11 errores 22001 por IDs sintéticos interest_id/salesforce_id de más de 18 caracteres. El vigésimo error del experimento B era la fixture nueva ya corregida y validada. La comparación sanitizada externa no contiene SQL, datos ni secretos. Esta batería amplia MariaDB no es verde; los 19 casos de main requieren revisión separada de compatibilidad/fixtures, sin inferir fallos en datos productivos.
+
+La regresión económica compara KPIs, filas legacy, CSV y seis tablas protegidas con fixtures. La regresión B pasó sobre MariaDB con 20 aserciones; la ejecución general SQLite se registra al cierre: no certifica datos ni cuentas productivas. No se realiza despliegue, activación, migración productiva ni llamada real a proveedores.
+
+### Diagnóstico del límite de ejecución y prueba porcentual
+
+El error observado fue un worker abortado por tiempo, no un desacuerdo de valores esperado/real. La [documentación oficial de PHP set_time_limit](https://www.php.net/manual/en/function.set-time-limit.php) indica que 0 elimina el límite, que una nueva llamada reinicia el contador y que en Windows se mide tiempo real. Los servicios legacy pueden restablecer 120 s dentro de un worker reutilizado; por ello el runner serial externo restablece 0 al preparar y terminar cada prueba. No se modifica aplicación, php.ini ni el test para ocultar el error. El test porcentual pasa aisladamente y en dos workers; esto no demuestra que toda la suite paralela carezca de otros fallos. Un primer comando paralelo mal escapado con comillas literales alrededor de -n fue un error de invocación, corregido antes del resultado paralelo correcto.
+
+La prueba MariaDB se invoca explícitamente como `php vendor/bin/phpunit tests/Integration/CampaignCurrentStatusMariaDbTest.php` con `CAMPAIGN_MARIADB_TEST=1` y configuración de proceso dirigida a una base nueva local con prefijo `hrmotor_phase_b_test_`, entorno testing y driver mariadb. El principal usa runner PHP limpio equivalente por compatibilidad del entorno Windows. No se publican contraseñas ni instrucciones dirigidas a bases existentes. `phpunit.xml` no incluye Integration en las suites ordinarias.
+
+Comparación Git de integración: `git diff 59e822b -- app resources config routes` vacío, comprobado por el agente documental. Respecto a B original, cambios adicionales de código acotados a cuatro tipos temporales en la migración nueva, fixture B de interés de 17 caracteres y nueva prueba Integration; no se cambian servicios económicos. PHP -l de 15 archivos correcto comunicado por el principal; Pint --test final y PHP -l de los 15 archivos correctos. El contraste baseline MariaDB ha terminado con los 19 errores preexistentes reproducidos; la repetición completa serial SQLite pasó con 1458 pruebas/13447 aserciones, sin errores ni fallos.
+
+### Límite de identidad de la fila económica legacy
+
+`CampaignDashboardDatasetService::metricRows()` agrupa métricas incluyendo cuenta, pero `mergeRows()` usa `rowKey()`, que para `platform_campaign` omite account_id deliberadamente para unir métricas con atribuciones sin cuenta. Si dos cuentas comparten plataforma, Campaign ID y nombre normalizado, la fila económica legacy puede combinarse y conservar la cuenta de su fila inicial. Fase B no modifica esta regla, sus filtros ni su universo económico. El DTO actual verifica exclusivamente la tupla plataforma/cuenta/ID que informa la fila: no representa automáticamente el estado de varias cuentas potencialmente combinadas. No se infiere identidad por nombre. La persistencia de estados sí distingue cuentas con Campaign IDs iguales, como cubren las pruebas. Antes de activar, revisar la correspondencia de identidades del informe y esta condición legacy; no se afirma que se haya corregido la agrupación por cuenta ni que exista el caso en producción.
+
+### Resultado general definitivo de esta integración
+
+La segunda suite completa configurada (Unit y Feature, SQLite) pasa: **1458 pruebas, 13447 aserciones, cero errores/fallos/omitidas**, exit 0 en 494,710877 s. El primer intento fallido se conserva arriba; no se borran ni relajan tests. En el JUnit final, la duración total del caso Stock es 14,812110 s (3 aserciones), Calls 2,699829 s (3) y DashboardMetricPercentStyleTest 1,521623 s (6). Son duraciones de los casos completos, no las mediciones internas de cálculo/petición usadas por sus umbrales. Las cuatro pruebas MariaDB Integration permanecen separadas de esta suite configurada.
+
+La validación amplia Dashboard/MariaDB conserva la limitación de 19 errores reproducidos también en main; el éxito SQLite no la elimina. Pint --test y sintaxis finales correctos (15 archivos); pruebas documentales finales 37, con 36 correctas y una omitida por symlink Windows. El validador integral se ejecuta sobre el commit final, sin activar la tarea.
+
+### Archivos exclusivos de esta integración frente a main
+
+- `app/Console/Commands/SyncCampaignCurrentStatus.php`
+- `app/Services/Campaigns/CampaignCurrentStatusService.php`
+- `app/Services/Campaigns/CampaignDashboardDatasetService.php`
+- `app/Services/Campaigns/GoogleAdsClient.php`
+- `app/Services/Campaigns/MetaAdsClient.php`
+- `app/Services/Operations/OperationalTaskCatalog.php`
+- `app/Services/Operations/OperationalTaskHealthService.php`
+- `app/Services/Operations/OperationalTaskService.php`
+- `config/campaign_current_status.php`
+- `database/migrations/2026_10_23_120000_create_campaign_current_statuses_table.php`
+- `docs/ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md`
+- `docs/ai/CAMPAIGN_PHASE_B_VALIDATION.md`
+- `docs/ai/DECISIONS.md`
+- `docs/ai/HANDOFF.md`
+- `docs/ai/PROJECT_CONTEXT.md`
+- `docs/decisiones-negocio-pendientes.md`
+- `docs/guia-mantenimiento-documental.md`
+- `docs/informe-campanas.md`
+- `docs/matriz-trazabilidad-kpi.md`
+- `docs/operaciones-produccion.md`
+- `public/build/assets/campaigns-dashboard-DisEWXqJ.js`
+- `public/build/assets/campaigns-dashboard-DlRi4wRD.js`
+- `public/build/manifest.json`
+- `resources/js/reports/campaign-presentation.js`
+- `resources/js/reports/campaigns-dashboard.js`
+- `routes/console.php`
+- `scripts/check_documentation_integrity.py`
+- `tests/Concerns/AssertsOperationalSchedule.php`
+- `tests/Feature/CampaignCurrentStatusTest.php`
+- `tests/Feature/CampaignDashboardTest.php`
+- `tests/Integration/CampaignCurrentStatusMariaDbTest.php`
+- `tests/documentation/test_check_documentation_integrity.py`
+- `tests/js/campaign-presentation.test.mjs`
+
+### Comandos de validación documental de la entrega actual
+
+```text
+python -B scripts/check_documentation_integrity.py --base 89282a32b79060fca671adee4bc49741c954308f --head <SHA_FINAL_COMPLETO> --pr-body-file docs/ai/CAMPAIGN_PHASE_B_VALIDATION.md
+python -B -m unittest discover -s tests/documentation -p test_*.py
+git diff --check
+```
+
+## Historial de validación de la rama original
 
 ## Base y alcance
 
