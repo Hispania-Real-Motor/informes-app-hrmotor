@@ -78,8 +78,12 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringContainsString('id="campaignType"', $html);
         $this->assertStringContainsString('id="leadType"', $html);
         $this->assertStringContainsString('Tipo de interés', $html);
-        $this->assertStringContainsString('Clasifica la campaña; no filtra el tipo del interés.', $html);
-        $this->assertStringContainsString('Filtra por el tipo normalizado del interés.', $html);
+        $this->assertStringNotContainsString('Clasifica la campaña; no filtra el tipo del interés.', $html);
+        $this->assertStringNotContainsString('Filtra por el tipo normalizado del interés.', $html);
+        $this->assertStringNotContainsString('id="campaignStatusHelp"', $html);
+        $this->assertStringNotContainsString('id="salesforceReconciliation"', $html);
+        $this->assertLessThan(strpos($html, 'id="advancedFiltersDrawer"'), strpos($html, 'id="platformComparisonPanel"'));
+        $this->assertLessThan(strpos($html, 'id="summaryKpis"'), strpos($html, 'id="platformComparisonPanel"'));
         $this->assertStringContainsString('id="saleSubcategory"', $html);
         $this->assertStringContainsString('data-context="venta"', $html);
         $this->assertStringContainsString('data-context="tasacion"', $html);
@@ -204,6 +208,66 @@ class CampaignDashboardTest extends TestCase
         $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.opportunities', 1);
+    }
+
+    public function test_sync_diagnostic_uses_live_operational_evidence_without_changing_economics_or_csv(): void
+    {
+        Http::preventStrayRequests();
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'account_id' => '1234567890', 'campaign_id' => '12345',
+            'spend' => 200, 'synced_at' => '2026-05-10 09:00:00',
+        ]));
+        $query = $this->campaignQuery().'&campaign_status=';
+        $before = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $csvBefore = $this->get('/informes/campanas/export/campaigns.csv?'.$query)->assertOk()->streamedContent();
+        $this->assertNull($before['diagnostics']['google_sync_operation']['verified_at']);
+        $this->assertNull($before['diagnostics']['meta_sync_operation']['verified_at']);
+        $this->assertSame('2026-05-10 09:00:00', $before['diagnostics']['last_google_sync']);
+
+        $sequence = 0;
+        $record = function (string $task, string $status) use (&$sequence): int {
+            $sequence++;
+            $timestamp = now('UTC')->subMinutes(5)->toDateTimeString();
+
+            return DB::table('operational_task_runs')->insertGetId([
+                'task_key' => $task, 'origin' => 'scheduler',
+                'correlation_id' => '00000000-0000-4000-8000-'.str_pad((string) $sequence, 12, '0', STR_PAD_LEFT),
+                'status' => $status, 'attempt' => 1, 'arguments' => '{}',
+                'queued_at' => $timestamp, 'started_at' => $timestamp, 'finished_at' => $timestamp,
+                'exit_code' => $status === 'success' ? 0 : 1,
+                'created_at' => $timestamp, 'updated_at' => $timestamp,
+            ]);
+        };
+        $googleSuccess = $record('campaigns-sync-google', 'success');
+        DB::table('operational_task_states')->updateOrInsert(['task_key' => 'campaigns-sync-google'], [
+            'last_run_id' => $googleSuccess, 'last_success_id' => $googleSuccess,
+            'created_at' => now('UTC'), 'updated_at' => now('UTC'),
+        ]);
+        $after = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertSame($before['kpis'], $after['kpis']);
+        $this->assertSame($before['campaigns'], $after['campaigns']);
+        $this->assertSame($before['source_reconciliation'], $after['source_reconciliation']);
+        $this->assertSame($before['diagnostics']['last_google_sync'], $after['diagnostics']['last_google_sync']);
+        $this->assertNotNull($after['diagnostics']['google_sync_operation']['verified_at']);
+        $this->assertSame('success', $after['diagnostics']['google_sync_operation']['last_attempt_status']);
+
+        $googleFailure = $record('campaigns-sync-google', 'failed');
+        DB::table('operational_task_states')->where('task_key', 'campaigns-sync-google')
+            ->update(['last_run_id' => $googleFailure, 'updated_at' => now('UTC')]);
+        $failed = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertSame($after['diagnostics']['google_sync_operation']['verified_at'], $failed['diagnostics']['google_sync_operation']['verified_at']);
+        $this->assertSame('failed', $failed['diagnostics']['google_sync_operation']['last_attempt_status']);
+        $this->assertNull($failed['diagnostics']['meta_sync_operation']['verified_at']);
+        $this->assertSame($csvBefore, $this->get('/informes/campanas/export/campaigns.csv?'.$query)->assertOk()->streamedContent());
+
+        $metaSuccess = $record('campaigns-sync-meta', 'success');
+        DB::table('operational_task_states')->updateOrInsert(['task_key' => 'campaigns-sync-meta'], [
+            'last_run_id' => $metaSuccess, 'last_success_id' => $metaSuccess,
+            'created_at' => now('UTC'), 'updated_at' => now('UTC'),
+        ]);
+        $both = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertNotNull($both['diagnostics']['meta_sync_operation']['verified_at']);
+        $this->assertSame($before['kpis'], $both['kpis']);
     }
 
     public function test_admin_ve_diagnostico_y_puede_exportar_pero_viewer_no(): void

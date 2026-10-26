@@ -8,7 +8,6 @@
         window.reportUserRole = @json($reportUserRole ?? 'viewer');
         window.reportUserCanExport = @json($reportUserCanExport ?? false);
         window.reportUserCanAudit = @json($reportUserCanAudit ?? false);
-        window.reportUserCanSeeSourceReconciliation = @json($reportUserCanSeeSourceReconciliation ?? false);
     </script>
     </x-slot:head>
 <div class="wrap">
@@ -31,7 +30,6 @@
         </div>
         <div class="filter-group">
             <label for="campaignType">Tipo de campaña</label>
-            <div class="small">Clasifica la campaña; no filtra el tipo del interés.</div>
             <select id="campaignType">
                 <option value="all" selected>Todos</option>
                 <option value="venta">Venta</option>
@@ -40,7 +38,6 @@
         </div>
         <div class="filter-group">
             <label for="leadType">Tipo de interés</label>
-            <div class="small">Filtra por el tipo normalizado del interés.</div>
             <select id="leadType"><option value="">Todos</option></select>
         </div>
         <div class="filter-group" id="saleSubcategoryGroup">
@@ -55,12 +52,11 @@
         </div>
         <div class="filter-group">
             <label for="campaignStatus">Estado histórico (filtro)</label>
-            <select id="campaignStatus" aria-describedby="campaignStatusHelp">
+            <select id="campaignStatus">
                 <option value="">Todas</option>
                 <option value="active" selected>Activas según criterio histórico</option>
                 <option value="inactive">Inactivas según criterio histórico</option>
             </select>
-            <div class="small" id="campaignStatusHelp">Filtro histórico conservado; no verifica el estado actual en Meta o Google.</div>
         </div>
         <div class="filter-group campaign-search">
             <label for="campaignSearch">Buscar campaña</label>
@@ -72,13 +68,22 @@
         </div>
     </section>
 
+    <section class="card panel is-hidden" id="platformComparisonPanel">
+        <div class="panel-title">
+            <div>
+                <h2>Comparativa por plataforma</h2>
+                <div class="small">Google Ads frente a Meta Ads en el contexto seleccionado</div>
+            </div>
+        </div>
+        <div class="campaign-bar-list platform-comparison-grid" id="platformComparison"></div>
+    </section>
+
     <aside class="campaign-drawer" id="advancedFiltersDrawer" aria-hidden="true">
         <div class="campaign-drawer-backdrop" id="advancedFiltersCloseBackdrop"></div>
         <section class="campaign-drawer-panel card" aria-label="Filtros avanzados">
             <div class="panel-title">
                 <div>
                     <h2>Filtros avanzados</h2>
-                    <div class="small">Segmenta campañas reales por campaña, resultado y clasificación</div>
                 </div>
                 <button type="button" class="main-tab" id="advancedFiltersClose">Cerrar</button>
             </div>
@@ -147,7 +152,6 @@
             <div class="notice" id="loadingMessage">Cargando datos de campañas...</div>
             <div class="notice is-hidden" id="emptyMessage">No hay campañas de plataforma para el periodo seleccionado.</div>
             <div id="warnings"></div>
-            <section class="card panel is-hidden" id="salesforceReconciliation"></section>
             <div class="campaign-legacy-context" aria-hidden="true">
                 <span id="periodLabel"></span>
                 <span id="pivotLabel"></span>
@@ -170,16 +174,6 @@
 
             <section class="kpis dashboard-kpis" id="summaryKpis"></section>
             <p class="small" id="investmentClosureStatus" aria-live="polite"></p>
-
-            <section class="card panel is-hidden" id="platformComparisonPanel">
-                <div class="panel-title">
-                    <div>
-                        <h2>Comparativa por plataforma</h2>
-                        <div class="small">Google Ads frente a Meta Ads en el contexto seleccionado</div>
-                    </div>
-                </div>
-                <div class="campaign-bar-list platform-comparison-grid" id="platformComparison"></div>
-            </section>
 
             <section class="campaign-charts-grid" id="campaignCharts"></section>
 

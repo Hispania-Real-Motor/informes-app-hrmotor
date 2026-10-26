@@ -34,7 +34,7 @@ test('costs distinguish zero, positive, zero denominator, unknown source and not
 const source = fs.readFileSync(new URL('../../resources/js/reports/campaigns-dashboard.js', import.meta.url), 'utf8');
 const root = { innerHTML: '' };
 const sandbox = {
-    Intl, advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
+    Intl, URLSearchParams, advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
     localStorage: { getItem: () => null },
     document: { addEventListener() {}, getElementById: () => null, querySelectorAll: () => [] },
     window: { reportUserCanExport: true, reportUserCanAudit: true, clearTimeout() {}, setTimeout: () => 0 },
@@ -190,7 +190,7 @@ test('historical state selector is explicit without changing option values', () 
     assert.ok(blade.includes('Estado histórico (filtro)'));
     assert.ok(blade.includes('value="active" selected>Activas según criterio histórico'));
     assert.ok(blade.includes('value="inactive">Inactivas según criterio histórico'));
-    assert.ok(blade.includes('no verifica el estado actual'));
+    assert.ok(!blade.includes('id="campaignStatusHelp"'));
 });
 
 
@@ -305,11 +305,11 @@ test('current status uses independent metadata, expires at 24 hours and never fa
 });
 
 test('real dashboard formatters group four digits, preserve precision, negatives and numeric sorting', () => {
-    for (const [value, expected] of [[0, '0'], [9, '9'], [999, '999'], [1000, '1.000'], [1234, '1.234'], [9999, '9.999'], [10000, '10.000'], [1234567, '1.234.567'], [-1234.5, '-1.234,5']]) {
+    for (const [value, expected] of [[0, '0'], [9, '9'], [22, '22'], [999, '999'], [1000, '1.000'], [1234, '1.234'], [4959, '4.959'], [5040, '5.040'], [9999, '9.999'], [10000, '10.000'], [301331, '301.331'], [1234567, '1.234.567'], [-1234.5, '-1.234,5']]) {
         assert.equal(vm.runInContext(`formatNumber(${value})`, sandbox), expected);
         assert.equal(vm.runInContext(`formatAxisValue(${value})`, sandbox), expected);
     }
-    for (const [value, expected] of [[0, '0,00'], [1000, '1.000,00'], [1234.56, '1.234,56'], [-1234.5, '-1.234,50'], [1000000, '1.000.000,00']]) {
+    for (const [value, expected] of [[0.14, '0,14'], [0, '0,00'], [1000, '1.000,00'], [1234.56, '1.234,56'], [43286.42, '43.286,42'], [-1234.5, '-1.234,50'], [1000000, '1.000.000,00']]) {
         const formatted = vm.runInContext(`formatMoney(${value})`, sandbox);
         assert.equal(formatted.replace(/\s/g, ' '), expected + ' €');
         assert.equal(vm.runInContext(`formatCompactAxisValue(${value}, true)`, sandbox), formatted);
@@ -322,6 +322,58 @@ test('real dashboard formatters group four digits, preserve precision, negatives
     vm.runInContext("tableSort.all = {key: 'spend', direction: 'asc'}", sandbox);
     assert.deepEqual(Array.from(vm.runInContext("sortedCampaignRows(numericRows, 'all').map(row => row.spend)", sandbox)), [-1234, 1000, 9999]);
     assert.equal(sandbox.numericRows[0].spend, 9999);
+});
+
+test('KPI audit action stays in the heading and grouped values reach real cards', () => {
+    const kpis = {innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; }};
+    sandbox.document.getElementById = (id) => id === 'summaryKpis' ? kpis : null;
+    sandbox.window.reportUserCanAudit = true;
+    vm.runInContext('renderKpis({spend: 43286.42, impressions: 4959, clicks: 5040, leads_salesforce: 301331})', sandbox);
+    assert.match(kpis.innerHTML, /43\.286,42/);
+    assert.match(kpis.innerHTML, /4\.959/);
+    assert.match(kpis.innerHTML, /5\.040/);
+    assert.match(kpis.innerHTML, /301\.331/);
+    assert.match(kpis.innerHTML, /campaign-kpi-heading[\s\S]*kpi-actions[\s\S]*kpi-value/);
+    sandbox.window.reportUserCanAudit = false;
+    vm.runInContext('renderKpis({spend: 4959})', sandbox);
+    assert.ok(!kpis.innerHTML.includes('kpi-audit-link'));
+    assert.ok(kpis.innerHTML.includes('4.959'));
+    sandbox.window.reportUserCanAudit = true;
+});
+
+test('platform comparison uses restrained identities and never fabricates an absent provider', () => {
+    const panel = {classList: {remove() {}}};
+    const root = {innerHTML: ''};
+    sandbox.document.getElementById = (id) => id === 'platformComparisonPanel' ? panel : id === 'platformComparison' ? root : null;
+    vm.runInContext("currentContext = 'all'; renderPlatformComparison([{platform:'meta',spend:43286.42,leads_salesforce:4959,opportunities:5040,result_count:22}])", sandbox);
+    assert.equal((root.innerHTML.match(/platform-comparison-card--meta/g) || []).length, 1);
+    assert.ok(!root.innerHTML.includes('platform-comparison-card--google'));
+    assert.ok(root.innerHTML.includes('43.286,42'));
+    assert.ok(root.innerHTML.includes('4.959'));
+    vm.runInContext("renderPlatformComparison([{platform:'google_ads',spend:4959,result_count:0}])", sandbox);
+    assert.ok(root.innerHTML.includes('platform-comparison-card--google'));
+    assert.ok(!root.innerHTML.includes('platform-comparison-card--meta'));
+});
+
+test('sync diagnostic distinguishes operational success from old metrics and failed attempts', () => {
+    const root = {innerHTML: ''};
+    sandbox.document.getElementById = (id) => id === 'campaignDiagnostics' ? root : null;
+    const checked = vm.runInContext("syncOperationPresentation({verified_at:'2026-10-26T10:00:00+00:00',last_attempt_status:'success'}, '2026-05-10 09:00:00', Date.parse('2026-10-26T12:00:00Z'))", sandbox);
+    assert.ok(checked.value.includes('11:00'));
+    assert.ok(checked.detail.includes('11:00'));
+    assert.ok(checked.detail.includes('correcto'));
+    const failed = vm.runInContext("syncOperationPresentation({verified_at:'2026-10-20T10:00:00+00:00',last_attempt_status:'failed'}, null, Date.parse('2026-10-26T12:00:00Z'))", sandbox);
+    assert.ok(failed.value.includes('Antigua'));
+    assert.ok(failed.detail.includes('fallido'));
+    const unknown = vm.runInContext("syncOperationPresentation({last_attempt_status:'unknown'}, null)", sandbox);
+    assert.equal(unknown.value, 'Sin ejecución verificada');
+    assert.ok(unknown.detail.includes('no concluyente'));
+    sandbox.diagnostics = {meta_sync_operation:{verified_at:null,last_attempt_status:null},google_sync_operation:{verified_at:'2026-10-26T10:00:00+00:00',last_attempt_status:'failed'},last_google_sync:'2026-05-10 09:00:00',meta_metric_rows:0,google_metric_rows:4959};
+    vm.runInContext('renderDiagnostics(diagnostics)', sandbox);
+    assert.ok(root.innerHTML.includes('Sin ejecución verificada'));
+    assert.ok(root.innerHTML.includes('4.959'));
+    assert.ok(root.innerHTML.includes('fallido'));
+    assert.ok(root.innerHTML.includes('Último dato de métricas'));
 });
 
 test('current status is rendered and escaped, legacy columns migrate without altering identifiers', () => {
@@ -367,4 +419,21 @@ test('ambiguous economic identity never confirms an individual account status', 
     const result = currentStatusPresentation({ platform: 'meta', current_status: { identity_ambiguous: true, availability: 'fresh', label: 'Activa', verified_at: new Date().toISOString() } });
     assert.equal(result.text, 'Estado no disponible');
     assert.match(result.tooltip, /Identidad de cuenta ambigua/);
+});
+
+test('opening diagnostics again fetches fresh operational evidence for unchanged filters', async () => {
+    const diagnosticRoot = {innerHTML: ''};
+    sandbox.document.getElementById = (id) => id === 'campaignDiagnostics' ? diagnosticRoot : null;
+    sandbox.AbortController = AbortController;
+    sandbox.currentFilters = () => 'period=2026-10';
+    const calls = [];
+    sandbox.fetchJson = async (url, message, options) => {
+        calls.push({url, options});
+        return {diagnostics: {meta_sync_operation: {verified_at: null, last_attempt_status: 'failed'}}};
+    };
+    await vm.runInContext('loadDiagnostics()', sandbox);
+    await vm.runInContext('loadDiagnostics()', sandbox);
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every(({options}) => options.cache === 'no-store'));
+    assert.ok(calls.every(({url}) => url.includes('include_diagnostics=1')));
 });

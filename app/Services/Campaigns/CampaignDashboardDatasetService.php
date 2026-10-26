@@ -47,6 +47,9 @@ class CampaignDashboardDatasetService
             unset($summary['diagnostics']);
         } elseif (! $includeDiagnostics) {
             unset($summary['diagnostics']);
+        } else {
+            // Operational evidence must not inherit the economic dataset cache lifetime.
+            $summary['diagnostics'] = array_merge($summary['diagnostics'] ?? [], $this->campaignSyncOperations());
         }
 
         return $summary;
@@ -2965,6 +2968,35 @@ class CampaignDashboardDatasetService
             'salesforce_only_by_campaign' => (clone $legacyAttributionBase)->where('campaign_source_type', 'salesforce_campaign_without_spend')->count(),
             'salesforce_only_by_origin' => (clone $legacyAttributionBase)->where('campaign_source_type', 'salesforce_origin')->count(),
         ];
+    }
+
+    /** Last verified operational runs for diagnostics; no provider calls or per-campaign reads. */
+    private function campaignSyncOperations(): array
+    {
+        $tasks = ['meta' => 'campaigns-sync-meta', 'google' => 'campaigns-sync-google'];
+        $states = DB::table('operational_task_states as state')
+            ->leftJoin('operational_task_runs as success', 'success.id', '=', 'state.last_success_id')
+            ->leftJoin('operational_task_runs as latest', 'latest.id', '=', 'state.last_run_id')
+            ->whereIn('state.task_key', array_values($tasks))
+            ->select('state.task_key', 'success.task_key as success_task', 'success.status as success_status',
+                'success.exit_code as success_exit_code', 'success.finished_at as success_finished_at',
+                'latest.task_key as latest_task', 'latest.status as latest_status')
+            ->get()->keyBy('task_key');
+        $result = [];
+
+        foreach ($tasks as $platform => $task) {
+            $state = $states->get($task);
+            $verified = $state?->success_task === $task && $state?->success_status === 'success'
+                && (int) $state?->success_exit_code === 0 && $state?->success_finished_at !== null;
+            $result[$platform.'_sync_operation'] = [
+                'verified_at' => $verified ? CarbonImmutable::parse($state->success_finished_at, 'UTC')->toIso8601String() : null,
+                'last_attempt_status' => $state?->latest_task === $task
+                    && in_array($state?->latest_status, ['success', 'failed', 'queued', 'running', 'skipped', 'unknown'], true)
+                        ? $state->latest_status : null,
+            ];
+        }
+
+        return $result;
     }
 
     private function opportunityAmountFieldStatus(string $column): string
