@@ -81,6 +81,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('Clasifica la campaña; no filtra el tipo del interés.', $html);
         $this->assertStringNotContainsString('Filtra por el tipo normalizado del interés.', $html);
         $this->assertStringNotContainsString('id="campaignStatusHelp"', $html);
+        $this->assertStringContainsString('<label for="campaignStatus">Estado</label>', $html);
         $this->assertStringNotContainsString('id="salesforceReconciliation"', $html);
         $this->assertLessThan(strpos($html, 'id="advancedFiltersDrawer"'), strpos($html, 'id="platformComparisonPanel"'));
         $this->assertLessThan(strpos($html, 'id="summaryKpis"'), strpos($html, 'id="platformComparisonPanel"'));
@@ -481,6 +482,14 @@ class CampaignDashboardTest extends TestCase
             'classification' => 'test',
             'reason' => 'Campana de prueba confirmada por Marketing.',
         ])->assertOk();
+
+        $this->withSession($session)->postJson('/informes/campanas/classifications', [
+            'platform' => 'salesforce',
+            'campaign_id' => 'artificial-origin',
+            'classification' => 'real',
+            'reason' => 'No debe registrarse como campana publicitaria.',
+        ])->assertUnprocessable();
+        $this->assertSame(1, DB::table('campaign_operational_classifications')->count());
 
         $after = $this->withSession($session)
             ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&campaign_status=')
@@ -1143,7 +1152,7 @@ class CampaignDashboardTest extends TestCase
             ->assertJsonPath('kpis.purchases', 0);
     }
 
-    public function test_salesforce_campaign_without_platform_entra_en_kpis_y_tabla_como_campaigna_valida(): void
+    public function test_salesforce_origin_remains_attributed_but_is_not_a_campaign_entity(): void
     {
         SalesforceLead::query()->create([
             'salesforce_id' => '00Q-sf-only',
@@ -1183,17 +1192,38 @@ class CampaignDashboardTest extends TestCase
 
         $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
             ->assertOk()
-            ->assertJsonPath('total', 1)
-            ->assertJsonPath('items.0.campaign_name', 'Campana solo Salesforce')
-            ->assertJsonPath('items.0.platform', 'salesforce');
+            ->assertJsonPath('total', 0)
+            ->assertJsonPath('items', []);
 
         $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
+            ->assertJsonPath('campaigns', [])
+            ->assertJsonPath('campaign_universes.salesforce_only', [])
+            ->assertJsonPath('rankings.top_leads_salesforce', [])
             ->assertJsonPath('kpis.leads_salesforce', 1)
             ->assertJsonPath('source_reconciliation.leads.platform', 0)
             ->assertJsonPath('source_reconciliation.leads.salesforce_only', 1)
             ->assertJsonPath('source_reconciliation.leads.total_distinct', 1)
             ->assertJsonPath('diagnostics.salesforce_only_by_campaign', 1);
+
+        $csv = $this->get('/informes/campanas/export/campaigns.csv?'.$this->campaignQuery())
+            ->assertOk()->streamedContent();
+        $this->assertStringNotContainsString('Campana solo Salesforce', $csv);
+        $this->assertDatabaseHas('campaign_attributions', ['interest_id' => '00Q-sf-only', 'platform' => 'salesforce']);
+        $this->assertDatabaseHas('campaign_lead_attributions', ['interest_id' => '00Q-sf-only', 'platform' => 'salesforce']);
+
+        $filters = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
+            ->assertOk()->json('filters');
+        $this->assertNotContains('Campana solo Salesforce', $filters['campaign_names']);
+        $this->assertNotContains('salesforce_campaign_without_spend', array_column($filters['source_types'], 'value'));
+
+        app(CampaignAttributionBuilderService::class)->build(
+            CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01')
+        );
+        Cache::flush();
+        $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery())
+            ->assertOk()->assertJsonPath('items', []);
+        $this->assertDatabaseHas('campaign_lead_attributions', ['interest_id' => '00Q-sf-only', 'platform' => 'salesforce']);
     }
 
     public function test_salesforce_only_omits_commercial_and_economic_metrics(): void
@@ -1215,9 +1245,10 @@ class CampaignDashboardTest extends TestCase
             ]));
         }
 
-        $item = $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery().'&campaign_status=')
-            ->assertOk()
-            ->json('items.0');
+        $request = Request::create('/', 'GET', [
+            'start_date' => '2026-05-01', 'end_date' => '2026-05-31', 'campaign_status' => '',
+        ]);
+        $item = app(CampaignDashboardDatasetService::class)->payload($request, false, false)['campaigns'][0];
 
         $this->assertSame(10, $item['leads_salesforce']);
         $this->assertSame(4, $item['opportunities']);
@@ -1225,6 +1256,9 @@ class CampaignDashboardTest extends TestCase
         foreach (['reservations', 'live_reservations', 'fallen_reservations', 'sales', 'purchases', 'sale_amount', 'appraisal_amount', 'spend', 'cpc', 'cost_per_lead', 'cost_per_opportunity', 'cost_per_reservation', 'cost_per_sale', 'cost_per_purchase', 'roas', 'estimated_roi'] as $key) {
             $this->assertNull($item[$key], $key);
         }
+
+        $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery().'&campaign_status=')
+            ->assertOk()->assertJsonPath('total', 0)->assertJsonPath('items', []);
 
         $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&campaign_status=')
             ->assertOk()

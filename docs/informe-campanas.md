@@ -302,3 +302,50 @@ La consulta operacional se efectúa solo al solicitar diagnósticos con el permi
 Cada apertura del panel solicita nuevamente el diagnóstico con caché HTTP deshabilitada; solo se comparte una petición aún en curso. De este modo, repetir la consulta con los mismos filtros no conserva indefinidamente un éxito o fallo anterior en el navegador.
 
 Pruebas sintéticas: `CampaignDashboardTest::test_sync_diagnostic_uses_live_operational_evidence_without_changing_economics_or_csv` comprueba éxito Google, intento fallido posterior, ausencia Meta, caché económica, KPIs, campañas, `source_reconciliation` y CSV; `campaign-presentation.test.mjs` cubre casos de fecha antigua/ausente/fallo, agrupación numérica y tarjetas. Los resultados finales están en [HANDOFF](ai/HANDOFF.md). Despliegue futuro: publicar código, bundle Vite y manifest del mismo build; no se requieren migraciones, variables nuevas, activación ni reconstrucción histórica. Rollback: restaurar el release anterior completo con sus assets; reaparecerá la presentación previa del diagnóstico. Verificar escritorio/móvil y la fuente operacional con datos autorizados antes de interpretar el desfase de Google.
+
+## Fase C — entidades publicitarias y procedencias comerciales (2026-10-26)
+
+El catálogo expuesto como **campañas** se limita ahora a `meta` y `google_ads`.
+`CampaignDashboardDatasetService::campaignEntityRows()` aplica esta condición
+también a `summary.campaigns`, `data/campaigns`, CSV de campañas, rankings y
+universos de entidades. Excluye además los tipos de procedencia
+`salesforce_campaign_without_spend` y `salesforce_origin`. La clave
+`campaign_universes.salesforce_only` se conserva por compatibilidad como lista
+vacía; no debe interpretarse como ausencia de intereses de origen Salesforce.
+Las opciones de nombre e ID de campaña se leen de
+`campaign_platform_daily_metrics` para Meta/Google. La clasificación operativa
+de nuevas entidades solo admite esas dos plataformas. La caché económica y de
+opciones usa versiones `v7` y `v3`, respectivamente, para no reutilizar
+catálogos anteriores. El snapshot **nuevo** de `reports:refresh-campaigns
+--store` filtra su campo JSON `campaigns` por la misma elegibilidad; su resumen
+y rankings siguen sus contratos propios. Los snapshots antiguos no se
+reescriben ni se certifica que estén libres de identidades Salesforce.
+
+El builder todavía persiste atribuciones de intereses sin plataforma real con
+`platform=salesforce` y método `salesforce_only`. Esas filas son evidencia
+comercial, no un catálogo físico de campañas. Se mantienen en
+`campaign_attributions` y `campaign_lead_attributions`, así como en KPIs,
+auditorías y `source_reconciliation`. No se borran ni se recalculan por esta
+iteración. Los tests sintéticos comprueban que un interés Salesforce-only sigue
+en ambas tablas y en los totales aunque no aparezca en API/CSV de entidades;
+una reconstrucción de atribuciones no lo vuelve a mostrar como campaña. La
+[propuesta de saneamiento](ai/CAMPAIGN_SALESFORCE_CLEANUP_PROPOSAL.md) separa
+estas identidades legítimas de posibles clasificaciones y snapshots antiguos;
+no hay limpieza física autorizada ni ejecutada.
+
+La etiqueta visible del selector `campaignStatus` es **Estado**. Sus opciones
+`active` e `inactive` siguen diciendo «según criterio histórico» y conservan
+exactamente su filtro previo; la columna **Estado actual** usa únicamente
+`current_status` y su frescura de 24 horas. El encabezado de cada tarjeta de
+comparativa muestra solo Meta Ads o Google Ads, sin subtítulo lateral; permanece
+el subtítulo general de la sección. El enlace «Auditar KPI» conserva permiso y
+destino, con `min-height:10px`, `padding:0 9px` y `line-height:22px` para
+alinear las cifras sin perder foco visible. La comprobación visual real en
+escritorio/móvil queda pendiente del despliegue autorizado.
+
+`Estado no disponible` es una respuesta correcta cuando no hay lectura local
+verificable, el estado es desconocido, la identidad es ambigua o falta el run
+válido; no acredita un fallo concreto de Meta/Google. La tarea de estado
+actual está deshabilitada por defecto (`CAMPAIGN_CURRENT_STATUS_ENABLED=false`).
+Esta iteración no inspecciona producción ni consulta proveedores; seguir el
+[procedimiento operativo de diagnóstico](operaciones-produccion.md#fase-c--diagnóstico-y-saneamiento-controlado-de-campañas) antes de atribuir una causa o autorizar una primera lectura. Ninguna etiqueta histórica sustituye un estado remoto actual.

@@ -35,6 +35,7 @@ class RefreshCampaignsReportCommand extends Command
             ]);
 
             $payload = $dataset->payload($request);
+            $campaigns = $dataset->campaignEntityRows($payload['campaigns']);
 
             foreach ($payload['summary']['warnings'] ?? [] as $warning) {
                 $this->warn($warning);
@@ -46,7 +47,7 @@ class RefreshCampaignsReportCommand extends Command
                     'period_end' => $end->toDateString(),
                     'filters_hash' => md5(json_encode($request->query())),
                     'summary' => $payload['summary'],
-                    'campaigns' => $payload['campaigns'],
+                    'campaigns' => $campaigns,
                     'rankings' => $payload['rankings'],
                     'warnings' => $payload['summary']['warnings'] ?? [],
                 ]);
@@ -55,7 +56,7 @@ class RefreshCampaignsReportCommand extends Command
             }
 
             $kpis = $payload['summary']['kpis'];
-            $this->line('Campanas: '.count($payload['campaigns']));
+            $this->line('Campanas: '.count($campaigns));
             $this->line('Inversion total: '.$kpis['spend']);
             $this->line('Leads Salesforce: '.$kpis['leads_salesforce']);
             $this->line('Reservas: '.$kpis['reservations']);

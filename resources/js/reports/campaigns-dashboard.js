@@ -1627,7 +1627,6 @@ function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, m
         <article class="card platform-comparison-card platform-comparison-card--${row.platform === 'meta' ? 'meta' : 'google'}">
             <div class="platform-comparison-head">
                 <strong>${escapeHtml(formatPlatform(row.platform))}</strong>
-                <span>${escapeHtml(platformComparisonSubtitleForContext(context))}</span>
             </div>
             <div class="platform-comparison-metrics">
                 ${platformMetricItemHtml('Inversión', row.spend, formatMoney)}
@@ -1647,22 +1646,6 @@ function platformMetricItemHtml(label, value, formatter) {
             <strong>${escapeHtml(formatter(value))}</strong>
         </div>
     `;
-}
-
-function platformComparisonSubtitleForContext(context) {
-    switch (context) {
-        case 'tasacion':
-            return 'Google Ads y Meta Ads con foco en compras';
-        case 'exposicion':
-            return 'Google Ads y Meta Ads con foco en oportunidades';
-        case 'branding':
-            return 'Google Ads y Meta Ads con foco en intereses';
-        case 'all':
-            return 'Google Ads y Meta Ads con ventas y compras agregadas';
-        case 'otros':
-        default:
-            return 'Google Ads y Meta Ads con resultados agregados';
-    }
 }
 
 function platformResultLabelForContext(context) {

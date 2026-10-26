@@ -185,9 +185,9 @@ test('real charts split at gaps while preserving zero, negatives and terminal nu
     assert.deepEqual(contiguousChartSegments(coordinates).map((segment) => segment.map((p) => p.value)), [[-1, 0], [2]]);
 });
 
-test('historical state selector is explicit without changing option values', () => {
+test('state selector has compact label while retaining historical option values', () => {
     const blade = fs.readFileSync(new URL('../../resources/views/reports/campaigns/index.blade.php', import.meta.url), 'utf8');
-    assert.ok(blade.includes('Estado histórico (filtro)'));
+    assert.ok(blade.includes('<label for="campaignStatus">Estado</label>'));
     assert.ok(blade.includes('value="active" selected>Activas según criterio histórico'));
     assert.ok(blade.includes('value="inactive">Inactivas según criterio histórico'));
     assert.ok(!blade.includes('id="campaignStatusHelp"'));
@@ -325,6 +325,8 @@ test('real dashboard formatters group four digits, preserve precision, negatives
 });
 
 test('KPI audit action stays in the heading and grouped values reach real cards', () => {
+    const css = fs.readFileSync(new URL('../../resources/css/reports/leads-dashboard.css', import.meta.url), 'utf8');
+    assert.match(css, /\.campaigns-report \.campaign-kpi-heading \.kpi-audit-link\s*\{[^}]*min-height:\s*10px;[^}]*padding:\s*0 9px;[^}]*line-height:\s*22px;/);
     const kpis = {innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; }};
     sandbox.document.getElementById = (id) => id === 'summaryKpis' ? kpis : null;
     sandbox.window.reportUserCanAudit = true;
@@ -353,6 +355,7 @@ test('platform comparison uses restrained identities and never fabricates an abs
     vm.runInContext("renderPlatformComparison([{platform:'google_ads',spend:4959,result_count:0}])", sandbox);
     assert.ok(root.innerHTML.includes('platform-comparison-card--google'));
     assert.ok(!root.innerHTML.includes('platform-comparison-card--meta'));
+    assert.ok(!root.innerHTML.includes('Google Ads y Meta Ads con'));
 });
 
 test('sync diagnostic distinguishes operational success from old metrics and failed attempts', () => {

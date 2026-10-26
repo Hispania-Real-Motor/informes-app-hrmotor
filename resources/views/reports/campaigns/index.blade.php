@@ -51,7 +51,7 @@
             </select>
         </div>
         <div class="filter-group">
-            <label for="campaignStatus">Estado histórico (filtro)</label>
+            <label for="campaignStatus">Estado</label>
             <select id="campaignStatus">
                 <option value="">Todas</option>
                 <option value="active" selected>Activas según criterio histórico</option>

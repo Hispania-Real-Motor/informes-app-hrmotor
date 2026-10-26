@@ -859,6 +859,39 @@ class CampaignCommandsTest extends TestCase
         $this->assertDatabaseCount('campaign_report_snapshots', 1);
     }
 
+    public function test_refresh_snapshot_keeps_salesforce_attribution_without_storing_it_as_campaign(): void
+    {
+        CarbonImmutable::setTestNow('2026-05-11 12:00:00');
+        try {
+            SalesforceLead::query()->create([
+                'salesforce_id' => '00Q-snapshot-origin',
+                'name' => 'Lead origen',
+                'created_date' => '2026-05-10 10:00:00',
+                'status' => 'Potencial',
+                'record_type_name' => 'Venta',
+                'owner_id' => '005-real',
+                'owner_name' => 'Comercial Real',
+                'campaign_acquired' => 'Origen sin campana publicitaria',
+            ]);
+            app(CampaignAttributionBuilderService::class)->build(
+                CarbonImmutable::parse('2026-05-09'), CarbonImmutable::parse('2026-05-12')
+            );
+
+            $this->artisan('reports:refresh-campaigns', ['--days' => 3, '--store' => true])
+                ->assertExitCode(0);
+
+            $snapshot = DB::table('campaign_report_snapshots')->first();
+            $this->assertNotNull($snapshot);
+            $this->assertSame([], json_decode($snapshot->campaigns, true));
+            $this->assertSame(1, data_get(json_decode($snapshot->summary, true), 'kpis.leads_salesforce'));
+            $this->assertDatabaseHas('campaign_lead_attributions', [
+                'interest_id' => '00Q-snapshot-origin', 'platform' => 'salesforce',
+            ]);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
     private function campaignInterest(string $salesforceId, ?string $campaign): SalesforceInterest
     {
         return SalesforceInterest::query()->create([

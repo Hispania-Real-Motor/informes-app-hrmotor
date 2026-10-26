@@ -39,7 +39,7 @@ class CampaignDashboardDatasetService
         $includeDiagnostics = ReportUserAccess::isAdmin($request) && $request->boolean('include_diagnostics', true);
         $payload = $this->payload($request, $includeDiagnostics, true);
         $summary = $payload['summary'];
-        $summary['campaigns'] = app(CampaignCurrentStatusService::class)->decorate($payload['campaigns']);
+        $summary['campaigns'] = app(CampaignCurrentStatusService::class)->decorate($this->campaignEntityRows($payload['campaigns']));
         $summary['rankings'] = $payload['rankings'];
 
         if (! ReportUserAccess::isAdmin($request)) {
@@ -58,11 +58,12 @@ class CampaignDashboardDatasetService
     public function campaignRows(Request $request): array
     {
         $payload = $this->payload($request, false, false);
+        $campaigns = $this->campaignEntityRows($payload['campaigns']);
 
         return [
             'ok' => true,
-            'items' => app(CampaignCurrentStatusService::class)->decorate($payload['campaigns']),
-            'total' => count($payload['campaigns']),
+            'items' => app(CampaignCurrentStatusService::class)->decorate($campaigns),
+            'total' => count($campaigns),
         ];
     }
 
@@ -80,7 +81,7 @@ class CampaignDashboardDatasetService
             unset($row['current_status']);
 
             return $row;
-        }, $this->payload($request, false, false)['campaigns']);
+        }, $this->campaignEntityRows($this->payload($request, false, false)['campaigns']));
     }
 
     public function attributionAuditRows(Request $request): array
@@ -257,7 +258,7 @@ class CampaignDashboardDatasetService
         $period = $this->period($filters);
 
         return Cache::remember(
-            'campaign-dashboard-v6:'.md5(json_encode([
+            'campaign-dashboard-v7:'.md5(json_encode([
                 'filters' => $filters,
                 'period' => $period,
                 'include_diagnostics' => $includeDiagnostics,
@@ -350,15 +351,16 @@ class CampaignDashboardDatasetService
         $attributionAnalytics = $this->attributionAnalytics($executiveCampaigns, $filters, $period);
         $summary = $this->summaryFromRows($executiveCampaigns, $allCampaigns, $filters, $period, $attributionAnalytics, $includeDiagnostics, $includeFilters);
         $summary['investment_closure'] = $this->investmentClosures->status($period['start']);
+        $entityCampaigns = $this->campaignEntityRows($campaigns);
         $summary['campaign_universes'] = [
-            'paid' => array_values(array_filter($campaigns, fn (array $row): bool => in_array($row['platform'] ?? null, ['google_ads', 'meta'], true) && ($row['operational_classification'] ?? null) !== 'test')),
-            'salesforce_only' => array_values(array_filter($campaigns, fn (array $row): bool => ($row['platform'] ?? null) === 'salesforce')),
-            'test' => array_values(array_filter($campaigns, fn (array $row): bool => ($row['operational_classification'] ?? null) === 'test')),
-            'pending_review' => array_values(array_filter($campaigns, fn (array $row): bool => ($row['operational_classification'] ?? null) === 'pending_review')),
-            'ambiguous' => array_values(array_filter($campaigns, fn (array $row): bool => str_contains(mb_strtolower((string) ($row['match_status'] ?? '')), 'ambigu'))),
-            'unattributed' => array_values(array_filter($campaigns, fn (array $row): bool => blank($row['campaign_id'] ?? null) && blank($row['campaign_name'] ?? null))),
+            'paid' => array_values(array_filter($entityCampaigns, fn (array $row): bool => ($row['operational_classification'] ?? null) !== 'test')),
+            'salesforce_only' => [], // Deprecated campaign-entity universe; commercial attribution remains in its audit contract.
+            'test' => array_values(array_filter($entityCampaigns, fn (array $row): bool => ($row['operational_classification'] ?? null) === 'test')),
+            'pending_review' => array_values(array_filter($entityCampaigns, fn (array $row): bool => ($row['operational_classification'] ?? null) === 'pending_review')),
+            'ambiguous' => array_values(array_filter($entityCampaigns, fn (array $row): bool => str_contains(mb_strtolower((string) ($row['match_status'] ?? '')), 'ambigu'))),
+            'unattributed' => array_values(array_filter($entityCampaigns, fn (array $row): bool => blank($row['campaign_id'] ?? null) && blank($row['campaign_name'] ?? null))),
         ];
-        $rankings = $this->rankingsFromRows($executiveCampaigns, $filters);
+        $rankings = $this->rankingsFromRows($this->campaignEntityRows($executiveCampaigns), $filters);
 
         return [
             'summary' => $summary,
@@ -1389,6 +1391,12 @@ class CampaignDashboardDatasetService
     private function platformRows(array $rows): array
     {
         return array_values(array_filter($rows, fn (array $row): bool => in_array(($row['platform'] ?? null), ['google_ads', 'meta'], true)));
+    }
+
+    public function campaignEntityRows(array $rows): array
+    {
+        return array_values(array_filter($rows, fn (array $row): bool => in_array(($row['platform'] ?? null), ['google_ads', 'meta'], true)
+            && ! in_array(($row['campaign_source_type'] ?? null), ['salesforce_campaign_without_spend', 'salesforce_origin'], true)));
     }
 
     private function summaryFromRows(array $rows, array $allRows, array $filters, array $period, array $attributionAnalytics, bool $includeDiagnostics = true, bool $includeFilters = true): array
@@ -3340,7 +3348,6 @@ class CampaignDashboardDatasetService
                 ->all(),
             'source_types' => [
                 ['value' => 'platform_campaign', 'label' => 'Campana plataforma'],
-                ['value' => 'salesforce_campaign_without_spend', 'label' => 'Campana Salesforce sin inversion'],
             ],
             'classifications' => ['Potenciar', 'Revisar', 'Parar', 'Revisar tracking', 'Sin datos suficientes'],
             'campaign_statuses' => [
@@ -3358,8 +3365,8 @@ class CampaignDashboardDatasetService
             'sources' => $this->distinct('campaign_lead_attributions', 'source_acquired'),
             'mediums' => $this->distinct('campaign_lead_attributions', 'medium_acquired'),
             'campaigns_acquired' => $this->distinct('campaign_lead_attributions', 'campaign_acquired'),
-            'campaign_ids' => $this->distinctFromBoth('campaign_id'),
-            'campaign_names' => $this->distinctFromBoth('campaign_name'),
+            'campaign_ids' => $this->distinctAdvertisingCampaignField('campaign_id'),
+            'campaign_names' => $this->distinctAdvertisingCampaignField('campaign_name'),
             'delegations' => $this->distinct('campaign_lead_attributions', 'interest_origin_delegation'),
             'zones' => $this->distinct('campaign_lead_attributions', 'interest_origin_zone'),
             'interest_statuses' => $this->distinct('campaign_lead_attributions', 'interest_status'),
@@ -3380,7 +3387,7 @@ class CampaignDashboardDatasetService
     private function filterOptionsCached(): array
     {
         return Cache::remember(
-            'campaign-dashboard-filter-options-v2:'.md5(json_encode($this->filterOptionsVersion())),
+            'campaign-dashboard-filter-options-v3:'.md5(json_encode($this->filterOptionsVersion())),
             now()->addMinutes(self::CACHE_TTL_MINUTES),
             fn () => $this->filterOptions()
         );
@@ -3526,6 +3533,18 @@ class CampaignDashboardDatasetService
     private function distinct(string $table, string $column): array
     {
         return DB::table($table)
+            ->whereNotNull($column)
+            ->where($column, '<>', '')
+            ->distinct()
+            ->orderBy($column)
+            ->pluck($column)
+            ->all();
+    }
+
+    private function distinctAdvertisingCampaignField(string $column): array
+    {
+        return DB::table('campaign_platform_daily_metrics')
+            ->whereIn('platform', ['meta', 'google_ads'])
             ->whereNotNull($column)
             ->where($column, '<>', '')
             ->distinct()
