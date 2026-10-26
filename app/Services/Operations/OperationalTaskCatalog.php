@@ -10,6 +10,16 @@ final class OperationalTaskCatalog
     public function all(): array
     {
         return [
+            'campaigns-sync-current-status' => [
+                'label' => 'estado actual de campañas', 'module' => 'campaigns',
+                'command' => 'campaigns:sync-current-status', 'arguments' => [],
+                'cron' => '37 */6 * * *', 'timezone' => 'Europe/Madrid',
+                'window_minutes' => 240, 'grace_minutes' => 60,
+                'enabled' => (bool) config('campaign_current_status.enabled', false),
+                'manual_allowed' => (bool) config('campaign_current_status.enabled', false), 'risk' => 'moderate',
+                'overlap_policy' => 'exclusive-persistent',
+                'policy' => 'Metadatos independientes. Requiere activación explícita; no reconstruye métricas.',
+            ],
             'reports-prune-transversal-data' => [
                 'label' => 'retención transversal', 'module' => 'reports',
                 'command' => 'reports:prune-transversal-data',

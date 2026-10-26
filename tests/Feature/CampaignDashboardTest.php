@@ -9,6 +9,7 @@ use App\Models\SalesforceInterest;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
+use App\Services\Campaigns\CampaignCurrentStatusService;
 use App\Services\Campaigns\CampaignDashboardDatasetService;
 use App\Services\Campaigns\CampaignSaleAmountResolver;
 use App\Services\Campaigns\GoogleAdsClient;
@@ -77,8 +78,12 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringContainsString('id="campaignType"', $html);
         $this->assertStringContainsString('id="leadType"', $html);
         $this->assertStringContainsString('Tipo de interés', $html);
-        $this->assertStringContainsString('Clasifica la campaña; no filtra el tipo del interés.', $html);
-        $this->assertStringContainsString('Filtra por el tipo normalizado del interés.', $html);
+        $this->assertStringNotContainsString('Clasifica la campaña; no filtra el tipo del interés.', $html);
+        $this->assertStringNotContainsString('Filtra por el tipo normalizado del interés.', $html);
+        $this->assertStringNotContainsString('id="campaignStatusHelp"', $html);
+        $this->assertStringNotContainsString('id="salesforceReconciliation"', $html);
+        $this->assertLessThan(strpos($html, 'id="advancedFiltersDrawer"'), strpos($html, 'id="platformComparisonPanel"'));
+        $this->assertLessThan(strpos($html, 'id="summaryKpis"'), strpos($html, 'id="platformComparisonPanel"'));
         $this->assertStringContainsString('id="saleSubcategory"', $html);
         $this->assertStringContainsString('data-context="venta"', $html);
         $this->assertStringContainsString('data-context="tasacion"', $html);
@@ -203,6 +208,66 @@ class CampaignDashboardTest extends TestCase
         $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()
             ->assertJsonPath('kpis.opportunities', 1);
+    }
+
+    public function test_sync_diagnostic_uses_live_operational_evidence_without_changing_economics_or_csv(): void
+    {
+        Http::preventStrayRequests();
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'account_id' => '1234567890', 'campaign_id' => '12345',
+            'spend' => 200, 'synced_at' => '2026-05-10 09:00:00',
+        ]));
+        $query = $this->campaignQuery().'&campaign_status=';
+        $before = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $csvBefore = $this->get('/informes/campanas/export/campaigns.csv?'.$query)->assertOk()->streamedContent();
+        $this->assertNull($before['diagnostics']['google_sync_operation']['verified_at']);
+        $this->assertNull($before['diagnostics']['meta_sync_operation']['verified_at']);
+        $this->assertSame('2026-05-10 09:00:00', $before['diagnostics']['last_google_sync']);
+
+        $sequence = 0;
+        $record = function (string $task, string $status) use (&$sequence): int {
+            $sequence++;
+            $timestamp = now('UTC')->subMinutes(5)->toDateTimeString();
+
+            return DB::table('operational_task_runs')->insertGetId([
+                'task_key' => $task, 'origin' => 'scheduler',
+                'correlation_id' => '00000000-0000-4000-8000-'.str_pad((string) $sequence, 12, '0', STR_PAD_LEFT),
+                'status' => $status, 'attempt' => 1, 'arguments' => '{}',
+                'queued_at' => $timestamp, 'started_at' => $timestamp, 'finished_at' => $timestamp,
+                'exit_code' => $status === 'success' ? 0 : 1,
+                'created_at' => $timestamp, 'updated_at' => $timestamp,
+            ]);
+        };
+        $googleSuccess = $record('campaigns-sync-google', 'success');
+        DB::table('operational_task_states')->updateOrInsert(['task_key' => 'campaigns-sync-google'], [
+            'last_run_id' => $googleSuccess, 'last_success_id' => $googleSuccess,
+            'created_at' => now('UTC'), 'updated_at' => now('UTC'),
+        ]);
+        $after = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertSame($before['kpis'], $after['kpis']);
+        $this->assertSame($before['campaigns'], $after['campaigns']);
+        $this->assertSame($before['source_reconciliation'], $after['source_reconciliation']);
+        $this->assertSame($before['diagnostics']['last_google_sync'], $after['diagnostics']['last_google_sync']);
+        $this->assertNotNull($after['diagnostics']['google_sync_operation']['verified_at']);
+        $this->assertSame('success', $after['diagnostics']['google_sync_operation']['last_attempt_status']);
+
+        $googleFailure = $record('campaigns-sync-google', 'failed');
+        DB::table('operational_task_states')->where('task_key', 'campaigns-sync-google')
+            ->update(['last_run_id' => $googleFailure, 'updated_at' => now('UTC')]);
+        $failed = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertSame($after['diagnostics']['google_sync_operation']['verified_at'], $failed['diagnostics']['google_sync_operation']['verified_at']);
+        $this->assertSame('failed', $failed['diagnostics']['google_sync_operation']['last_attempt_status']);
+        $this->assertNull($failed['diagnostics']['meta_sync_operation']['verified_at']);
+        $this->assertSame($csvBefore, $this->get('/informes/campanas/export/campaigns.csv?'.$query)->assertOk()->streamedContent());
+
+        $metaSuccess = $record('campaigns-sync-meta', 'success');
+        DB::table('operational_task_states')->updateOrInsert(['task_key' => 'campaigns-sync-meta'], [
+            'last_run_id' => $metaSuccess, 'last_success_id' => $metaSuccess,
+            'created_at' => now('UTC'), 'updated_at' => now('UTC'),
+        ]);
+        $both = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertNotNull($both['diagnostics']['meta_sync_operation']['verified_at']);
+        $this->assertSame($before['kpis'], $both['kpis']);
     }
 
     public function test_admin_ve_diagnostico_y_puede_exportar_pero_viewer_no(): void
@@ -2434,13 +2499,117 @@ class CampaignDashboardTest extends TestCase
             'start_date' => '2026-05-01', 'end_date' => '2026-05-31', 'campaign_status' => '',
         ]);
         $rows = $dataset->campaignRows($request)['items'];
-        $this->assertSame($rows, $dataset->exportRows($request));
+        $this->assertSame(array_map(fn (array $row): array => array_diff_key($row, ['current_status' => true]), $rows), $dataset->exportRows($request));
         $this->assertContains('integrity-empty', array_column($rows, 'campaign_id'));
         foreach (['', '&context=venta', '&context=tasacion', '&campaign_status=active', '&campaign_status=inactive'] as $suffix) {
             $this->getJson('/informes/campanas/data/summary?'.$query.$suffix)->assertOk();
         }
         foreach ($tables as $table) {
             $this->assertSame($before[$table], DB::table($table)->orderBy('id')->get()->toJson(), $table);
+        }
+    }
+
+    public function test_current_status_sync_changes_only_additive_metadata_outside_economic_cache_and_csv(): void
+    {
+        Http::preventStrayRequests();
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'campaign_id' => '12345', 'account_id' => 'act_1', 'spend' => 1234.56,
+            'impressions' => 9999, 'clicks' => 1234,
+        ]));
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'campaign_id' => '12345', 'interest_id' => 'sf-current-status',
+        ]));
+        $this->postJson('/informes/campanas/investment-closure', ['month' => '2026-05-01'])->assertOk();
+        $query = $this->campaignQuery().'&campaign_status=';
+        $before = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $csvBefore = $this->get('/informes/campanas/export/campaigns.csv?'.$query)->assertOk()->streamedContent();
+        $tables = ['campaign_platform_daily_metrics', 'campaign_attributions', 'campaign_lead_attributions',
+            'campaign_investment_closures', 'campaign_investment_closure_snapshots', 'campaign_investment_closure_events'];
+        $databaseBefore = [];
+        foreach ($tables as $table) {
+            $databaseBefore[$table] = DB::table($table)->orderBy('id')->get()->toJson();
+        }
+        config(['campaign_current_status.enabled' => true, 'services.meta_ads.access_token' => 'synthetic',
+            'services.meta_ads.ad_account_ids' => ['act_1'], 'services.google_ads.customer_ids' => []]);
+        Http::fake(['graph.facebook.com/*' => Http::response(['data' => [[
+            'id' => '12345', 'account_id' => '1', 'status' => 'PAUSED', 'effective_status' => 'PAUSED',
+        ]]])]);
+        $this->artisan('operations:run', ['task' => CampaignCurrentStatusService::TASK])->assertSuccessful();
+        $sentAfterSync = Http::recorded()->count();
+        // Same warm economic cache; metadata must nevertheless change immediately.
+        $after = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertSame($before['kpis'], $after['kpis']);
+        $strip = fn (array $row): array => array_diff_key($row, ['current_status' => true]);
+        $this->assertSame(array_map($strip, $before['campaigns']), array_map($strip, $after['campaigns']));
+        $this->assertSame('Activa', $after['campaigns'][0]['campaign_status_label']);
+        $this->assertSame('Pausada', $after['campaigns'][0]['current_status']['label']);
+        $this->assertSame($csvBefore, $this->get('/informes/campanas/export/campaigns.csv?'.$query)->assertOk()->streamedContent());
+        foreach ($tables as $table) {
+            $this->assertSame($databaseBefore[$table], DB::table($table)->orderBy('id')->get()->toJson(), $table);
+        }
+        $this->travel(24)->hours();
+        $stale = $this->getJson('/informes/campanas/data/campaigns?'.$query)->assertOk()->json('items.0.current_status');
+        $this->assertSame('stale', $stale['availability']);
+        $this->assertSame($sentAfterSync, Http::recorded()->count());
+        $this->travelBack();
+    }
+
+    public function test_current_status_is_neutral_for_merged_accounts_without_changing_economics(): void
+    {
+        Http::preventStrayRequests();
+        foreach ([['act_1', 'Campana Compartida', 120], ['act_2', ' CAMPANA COMPARTIDA ', 230]] as [$account, $name, $spend]) {
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'campaign_id' => '12345', 'account_id' => $account, 'campaign_name' => $name, 'spend' => $spend,
+            ]));
+        }
+        $query = $this->campaignQuery().'&campaign_status=';
+        $before = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $csvBefore = $this->get('/informes/campanas/export/campaigns.csv?'.$query)->assertOk()->streamedContent();
+        $metricsBefore = DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson();
+        $this->assertCount(1, $before['campaigns']);
+        $this->assertEquals(350, $before['campaigns'][0]['spend']);
+        config(['campaign_current_status.enabled' => true, 'services.meta_ads.access_token' => 'synthetic',
+            'services.meta_ads.ad_account_ids' => ['act_1', 'act_2'], 'services.google_ads.customer_ids' => []]);
+        Http::fake([
+            '*act_1/campaigns*' => Http::response(['data' => [['id' => '12345', 'account_id' => '1', 'status' => 'ACTIVE', 'effective_status' => 'ACTIVE']]]),
+            '*act_2/campaigns*' => Http::response(['data' => [['id' => '12345', 'account_id' => '2', 'status' => 'PAUSED', 'effective_status' => 'PAUSED']]]),
+        ]);
+        $this->artisan('operations:run', ['task' => CampaignCurrentStatusService::TASK])->assertSuccessful();
+        $after = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $detail = $this->getJson('/informes/campanas/data/campaigns?'.$query)->assertOk()->json('items');
+        $this->assertSame($before['kpis'], $after['kpis']);
+        $this->assertSame($before['campaigns'], $after['campaigns']);
+        $this->assertSame($after['campaigns'][0]['current_status'], $detail[0]['current_status']);
+        $this->assertSame('Estado no disponible', $detail[0]['current_status']['label']);
+        $this->assertSame('ambiguous_account_identity', $detail[0]['current_status']['reason']);
+        $this->assertNull($detail[0]['current_status']['account_id']);
+        $this->assertNull($detail[0]['current_status']['raw_status']);
+        $this->assertSame($csvBefore, $this->get('/informes/campanas/export/campaigns.csv?'.$query)->assertOk()->streamedContent());
+        $this->assertSame($metricsBefore, DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson());
+        $request = Request::create('/informes/campanas/data/campaigns?'.$query);
+        foreach (app(CampaignDashboardDatasetService::class)->exportRows($request) as $row) {
+            $this->assertArrayNotHasKey('current_status', $row);
+        }
+        // Account filtering still selects the same historical economic universe.
+        $single = $this->getJson('/informes/campanas/data/campaigns?'.$query.'&account_id=act_2')->assertOk()->json('items');
+        $this->assertCount(1, $single);
+        $this->assertEquals(230, $single[0]['spend']);
+        $this->assertSame('Pausada', $single[0]['current_status']['label']);
+    }
+
+    public function test_same_campaign_id_with_different_names_keeps_independent_account_identity(): void
+    {
+        foreach ([['act_1', 'Una campana', 120], ['act_2', 'Otra campana', 230], [null, 'Sin cuenta', 40]] as [$account, $name, $spend]) {
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'campaign_id' => '12345', 'account_id' => $account, 'campaign_name' => $name, 'spend' => $spend,
+            ]));
+        }
+        $rows = $this->getJson('/informes/campanas/data/campaigns?'.$this->campaignQuery().'&campaign_status=')->assertOk()->json('items');
+        $this->assertCount(3, $rows);
+        $this->assertEquals(390, array_sum(array_column($rows, 'spend')));
+        foreach ($rows as $row) {
+            $this->assertFalse($row['current_status']['identity_ambiguous'] ?? false);
+            $this->assertSame('unavailable', $row['current_status']['availability']);
         }
     }
 
@@ -2483,7 +2652,7 @@ class CampaignDashboardTest extends TestCase
             'start_date' => '2026-05-01', 'end_date' => '2026-05-31', 'campaign_status' => '',
         ]);
         $rows = $dataset->campaignRows($request)['items'];
-        $this->assertSame($rows, $dataset->exportRows($request));
+        $this->assertSame(array_map(fn (array $row): array => array_diff_key($row, ['current_status' => true]), $rows), $dataset->exportRows($request));
         $byId = collect($rows)->keyBy('campaign_id');
         $isActive = new \ReflectionMethod($dataset, 'campaignIsActive');
         $mainRows = new \ReflectionMethod($dataset, 'mainCampaignRows');
@@ -2528,7 +2697,7 @@ class CampaignDashboardTest extends TestCase
             'start_date' => '2026-05-01', 'end_date' => '2026-05-31', 'campaign_status' => '',
         ]);
         $rows = $dataset->campaignRows($request)['items'];
-        $this->assertSame($rows, $dataset->exportRows($request));
+        $this->assertSame(array_map(fn (array $row): array => array_diff_key($row, ['current_status' => true]), $rows), $dataset->exportRows($request));
         $byId = collect($rows)->keyBy('campaign_id');
         $this->assertSame('Inactiva', $byId['status-late-interest']['campaign_status_label']);
         $this->assertNull($byId['status-only-interest']['campaign_status_label']);

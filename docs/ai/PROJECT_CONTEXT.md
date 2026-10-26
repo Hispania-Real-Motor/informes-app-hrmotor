@@ -768,3 +768,9 @@ permisos o UX; certificación de host/reinicio/timeout largo sigue pendiente.
 ## Aprobadores por scope de Comisiones (2026-10-19)
 
 La asignación administrativa vive en commercial_commission_approvers (seis filas únicas) y sus cambios en commercial_commission_approver_events. ReportUserAccess::commissionApprovalScopes / canApproveCommissionClosure centralizan la resolución por request. configured_at nulo conserva legacy; asignación explícita con usuario ausente/inactivo bloquea. Esta identidad administrativa es independiente del rol mínimo del informe y de los permisos de gestión económica. El partial closure-approval permite aprobar snapshots desde la vista normal y la del auditor, sin conceder detalles adicionales.
+
+## 2026-10-23 — Metadatos operativos actuales de Campañas (Fase B)
+
+Una tabla independiente `campaign_current_statuses` mantiene estado publicitario por plataforma/cuenta/Campaign ID textual. `CampaignCurrentStatusService` comparte clientes Meta/Google, reutiliza `report_sync_runs` para auditoría por cuenta y el catálogo operacional para reservas/ejecuciones. `campaigns-sync-current-status` queda deshabilitada salvo activación explícita de `CAMPAIGN_CURRENT_STATUS_ENABLED`.
+
+La metadata `current_status` se une por lote después de la caché económica en summary.campaigns/items; no entra en CSV ni sustituye campos históricos. TTL de 24 horas con degradación conservadora ante intentos posteriores o códigos desconocidos. La sincronización escribe solo inventario operativo y su auditoría; métricas, atribuciones y cierres están aislados. Los detalles y límites están en [informe](../informe-campanas.md) y [runbook](../operaciones-produccion.md). Los formateadores numéricos de Campañas se agrupan explícitamente, sin modificar convenciones de otros informes.

@@ -21,6 +21,9 @@ class OperationalTaskHealthService
         $now = CarbonImmutable::now('Europe/Madrid');
         $rows = [];
         foreach ($this->catalog->all() as $key => $task) {
+            if (! ($task['enabled'] ?? true)) {
+                continue;
+            }
             $state = $states->get($key);
             $last = $runs->get($state?->last_run_id);
             $success = $runs->get($state?->last_success_id);

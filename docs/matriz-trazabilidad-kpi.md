@@ -140,3 +140,31 @@ comprobar implementación, fuentes y tests.
 Consultar [decisiones de negocio pendientes](decisiones-negocio-pendientes.md).
 Las discrepancias nuevas se registrarán aquí con evidencia y responsable de
 resolución, sin alterar retrospectivamente reglas históricas.
+
+## Impacto focal Fase B — metadatos y presentación de Campañas
+
+No se audita aquí una nueva fórmula económica ni se promueven fichas KPI a verificadas. Cambia la fuente de la **columna no KPI Estado actual** y el formato visual de números; inversión, intereses, oportunidades, reservas, ventas, compras, importes, costes, ROAS y ROI conservan universo, fecha pivote, denominadores y valores. Las reglas de elegibilidad de Fase A siguen acotadas a Detalle/Campañas a revisar.
+
+| Campo del contrato | Evidencia focal comprobada |
+| --- | --- |
+| Informe / sección | Campañas / Detalle de campañas, columna Estado actual; formatos compartidos por tarjetas, rankings, gráficos, revisión y auxiliares del mismo informe. |
+| Identificador / nombre / significado | `current_status` / Estado actual / observación operativa local verificable, no KPI ni estado histórico. |
+| Fuente externa / campo Salesforce | Meta Campaign `id,account_id,status,effective_status`; Google `customer.id,campaign.id,campaign.status`. Salesforce: no aplica, no se consulta para estado publicitario. |
+| Persistencia / sincronizador | `campaign_current_statuses` raw/configured/last_valid/last_observed_at/last_verified_at; `CampaignCurrentStatusService::sync`, clientes `currentStatusPages`. Auditoría `report_sync_runs` dataset `campaign_current_status`, source plataforma:cuenta. |
+| Fecha pivote / zona | Tiempo real de consulta satisfactoria en DATETIME civil UTC; las cuatro fechas nuevas usan DATETIME, sin conversión por zona de sesión MariaDB; tooltip Europe/Madrid. No usa fecha de inversión ni `functional_created_at` de Interest. |
+| Universo / filtros / exclusiones | Cuentas configuradas Meta/Google, lectura sin período ni métricas. Códigos explícitos; identificadores ausentes/malformados y Salesforce neutrales. Filtros históricos intactos. Identidad no inferida por nombre ni intereses. |
+| Deduplicación / identidad | Única plataforma + cuenta canónica + Campaign ID textual; duplicado de campaña en inventario invalida cuenta. No modifica deduplicación económica. |
+| Fórmula / umbral / redondeo | No aplica fórmula económica. Fresco si edad UTC desde último válido >=0 y <86400 s, código reconocido y referencias no nulas de fila/último run de cuenta coincidentes, con último run completed. Ausencia de auditoría o run fallido: stale. A 24h: stale. Sin redondeo de edad. |
+| Nulos | Desconocido/nunca verificado/fecha futura: unavailable; antiguo o intento posterior: stale. No fallback histórico ni conversión a cero. |
+| Configuración | `config/campaign_current_status.php`, `CAMPAIGN_CURRENT_STATUS_ENABLED=false`; catálogo central cada seis horas minuto37. No activa al desplegar. |
+| PHP / pruebas | `CampaignCurrentStatusService::{sync,decorate,identifier}`, `CampaignDashboardDatasetService::{summary,campaignRows}`; `CampaignCurrentStatusTest`, regresión `test_current_status_sync_changes_only_additive_metadata_outside_economic_cache_and_csv` y JS real del dashboard. |
+| Exportación / auditoría | Metadata solo en summary.campaigns/items; CSV no se amplía. Última observación y último válido separados en tabla; auditoría por cuenta existente reutilizada. |
+| Estado / referencia | Verificación focal de implementación y tests sintéticos; auditoría integral KPI y acceso real pendientes. Integración limpia sobre main 89282a32b79060fca671adee4bc49741c954308f (Fase A/PR #85 ya incorporados), rama feat/campaign-current-status-ready; solo commits B, sin repetir dependencia 2f3791e. Pruebas MariaDB locales aisladas adicionales; SHA y resultados finales en HANDOFF, sin promover auditoría KPI. |
+
+Formato: `campaigns-dashboard.js` NumberFormat es-ES con agrupación explícita, moneda dos decimales, porcentajes uno y multiplicadores dos. Los ejes muestran miles completos en vez de k/M; null y guiones mantienen el contrato visual de Fase A. JSON, IDs y ordenación numérica intactos. Evidencia: pruebas JS ejecutan formateadores y renderizadores reales, no solo un auxiliar aislado. [Contrato vigente](informe-campanas.md); evidencia de ejecución en docs/ai/HANDOFF.md.
+
+### Protección focal posterior a 46f283f — identidad de Estado actual
+
+Columna no KPI del Detalle de campañas: `CampaignDashboardDatasetService::mergeRows()` registra cuentas normalizadas de contribuciones métricas por la misma clave económica; `rowKey()` no cambia. Varias cuentas (incluida desconocida junto con conocida) producen `current_status.identity_ambiguous:true`. `CampaignCurrentStatusService::decorate()` omite la consulta de esa identidad y devuelve unavailable/reason `ambiguous_account_identity`, sin cuenta, estado bruto o fechas operativas. Tooltip neutral en `currentStatusPresentation()`. Las filas inequívocas mantienen su contrato; Salesforce no acredita estado publicitario.
+
+No cambian fuentes, fechas pivote, universos, deduplicación, atribución, denominadores, importes, redondeos ni fórmulas de KPIs. Payload v6 evita reutilizar filas v5 sin marca; `exportRows()` excluye metadata y preserva CSV. Evidencia focal: `CampaignDashboardTest::test_current_status_is_neutral_for_merged_accounts_without_changing_economics`, `test_same_campaign_id_with_different_names_keeps_independent_account_identity`, `CampaignCurrentStatusTest::test_ambiguous_identity_does_not_query_an_arbitrary_account` y prueba JS de tooltip ambiguo. No se promueve ninguna ficha a auditoría integral; datos productivos no consultados.

@@ -9,6 +9,51 @@ use RuntimeException;
 
 class GoogleAdsClient
 {
+    /** Attribute-only GAQL: includes removed campaigns, without dates or metrics. */
+    public function currentStatusPages(string $customerId): \Generator
+    {
+        $customerId = CampaignCurrentStatusService::identifier($customerId, 'google_ads', true);
+        $token = $this->accessToken();
+        $url = sprintf('https://googleads.googleapis.com/%s/customers/%s/googleAds:search', config('services.google_ads.api_version', 'v22'), $customerId);
+        $headers = ['Authorization' => 'Bearer '.$token, 'developer-token' => config('services.google_ads.developer_token')];
+        if (filled(config('services.google_ads.login_customer_id'))) {
+            $headers['login-customer-id'] = CampaignCurrentStatusService::identifier((string) config('services.google_ads.login_customer_id'), 'google_ads', true);
+        }
+        $params = ['query' => "SELECT customer.id, campaign.id, campaign.name, campaign.status FROM campaign WHERE campaign.status IN ('ENABLED', 'PAUSED', 'REMOVED')"];
+        $seen = [];
+        $started = microtime(true);
+        for ($page = 0; $page < 100; $page++) {
+            if (microtime(true) - $started > 540) {
+                throw new RuntimeException('Tiempo máximo de inventario superado.');
+            }
+            $response = Http::withHeaders($headers)->connectTimeout(5)->timeout(30)->retry(2, 250, throw: false)->post($url, $params);
+            $payload = $response->json();
+            if (! $response->successful() || ! is_array($payload) || isset($payload['error'])
+                || (! isset($payload['results']) && ! is_string($payload['fieldMask'] ?? null))
+                || (isset($payload['results']) && (! is_array($payload['results']) || ! array_is_list($payload['results'])))) {
+                throw new RuntimeException('No se pudo leer el inventario de Google Ads.');
+            }
+            $rows = [];
+            foreach ($payload['results'] ?? [] as $result) {
+                if (! is_array($result['campaign'] ?? null) || ! array_key_exists('status', $result['campaign'])) {
+                    throw new RuntimeException('Faltan atributos del inventario de Google Ads.');
+                }
+                $rows[] = ['id' => $result['campaign']['id'] ?? null, 'account_id' => $result['customer']['id'] ?? null, 'status' => $result['campaign']['status'] ?? null];
+            }
+            yield $rows;
+            $cursor = $payload['nextPageToken'] ?? null;
+            if ($cursor === null || $cursor === '') {
+                return;
+            }
+            if (! is_string($cursor) || strlen($cursor) > 4096 || isset($seen[$cursor])) {
+                throw new RuntimeException('Paginación de Google Ads incompleta.');
+            }
+            $seen[$cursor] = true;
+            $params['pageToken'] = $cursor;
+        }
+        throw new RuntimeException('Límite de paginación de Google Ads superado.');
+    }
+
     public function configured(): bool
     {
         return filled(config('services.google_ads.developer_token'))

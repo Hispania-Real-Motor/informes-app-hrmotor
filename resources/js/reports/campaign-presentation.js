@@ -3,6 +3,25 @@
 // Unknown/new provider values stay neutral until explicitly reviewed.
 const metaHistoricalStates = new Set(['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']);
 const googleHistoricalStates = new Set(['ENABLED', 'PAUSED', 'REMOVED']);
+const statusDateFormatter = new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'Europe/Madrid', dateStyle: 'short', timeStyle: 'short',
+});
+
+export function currentStatusPresentation(row, now = Date.now()) {
+    const status = row.current_status;
+    const platform = { meta: 'Meta Ads', google_ads: 'Google Ads' }[row.platform];
+    if (!status || !platform) return { text: 'Estado no disponible', tooltip: 'Sin consulta operativa verificable. No se utiliza el estado histórico como respaldo.' };
+    if (status.identity_ambiguous === true) return { text: 'Estado no disponible', tooltip: 'Identidad de cuenta ambigua: la fila económica combina varias cuentas publicitarias. No se confirma el estado de una cuenta individual.' };
+    const verified = Date.parse(status.verified_at);
+    const age = now - verified;
+    const stale = Number.isFinite(verified) && age >= 0 && (status.availability === 'stale' || (status.availability === 'fresh' && age >= 86400000));
+    const fresh = status.availability === 'fresh' && typeof status.label === 'string' && Number.isFinite(verified) && age >= 0 && age < 86400000;
+    const text = stale ? 'Estado no actualizado' : fresh ? status.label : 'Estado no disponible';
+    const date = Number.isFinite(verified) ? statusDateFormatter.format(verified) : 'sin verificación satisfactoria';
+    const observed = Date.parse(status.observed_at);
+    const observation = Number.isFinite(observed) ? `Última lectura completa: ${statusDateFormatter.format(observed)} (Europe/Madrid). ` : '';
+    return { text, expiresAt: fresh ? verified + 86400000 : null, tooltip: `${platform}. Estado observado: ${status.raw_status || 'no disponible'}. ${observation}Última verificación válida: ${date} (Europe/Madrid). ${stale ? 'Dato obsoleto; no confirma el estado vigente.' : fresh ? 'Consulta independiente del histórico económico.' : 'Estado actual no verificable.'} El filtro conserva su clasificación histórica.` };
+}
 
 export function historicalStatusPresentation(row) {
     const unavailable = {

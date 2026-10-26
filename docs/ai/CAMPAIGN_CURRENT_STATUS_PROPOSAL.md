@@ -1,6 +1,6 @@
 # Propuesta de Fase B: estado publicitario actual
 
-Fecha: 2026-10-23. Estado: pendiente de aprobación humana explícita. No implementada.
+Fecha: 2026-10-23. Propuesta histórica de Fase A; implementación autorizada por el encargo posterior de Fase B. Véase la resolución al final: los apartados propuestos se conservan como antecedente, no como contrato vigente.
 Base inspeccionada: 01d3aa8ad428ad413f184741d9a4f2314696f1fe y diff de Fase A.
 
 ## Evidencia y necesidad
@@ -112,3 +112,22 @@ Se solicita revisión humana de persistencia, contrato aditivo, frescura,
 operación programada, permisos y límites antes de implementar. Este documento
 es una propuesta, no autorización ni registro de decisión arquitectónica
 adoptada. No requiere migraciones ni acciones de infraestructura en Fase A.
+
+## Resolución de la propuesta en Fase B (2026-10-23)
+
+Los apartados anteriores son la propuesta histórica de Fase A, entonces no autorizada. El encargo posterior **Fase B: estado actual de campañas y unificación del formato numérico** autoriza la implementación aditiva; siguen sin autorizarse despliegue, migración productiva, activación ni sincronizaciones reales.
+
+El diseño implementado sustituye las dos tablas propuestas por una sola `campaign_current_statuses`: la auditoría por cuenta ya cabe en `report_sync_runs` y la coordinación en el catálogo operacional. No se persiste nombre ni etiqueta normalizada: esta se deriva del código mediante un mapa explícito del servicio. Identidad textual única plataforma/cuenta/ID, índice `sync_source` y FK nullable al run. Se conserva el último código válido aparte de la última observación. No hay tablas ni escrituras económicas nuevas.
+
+Se añaden métodos independientes `currentStatusPages()` a los dos clientes, sin cambiar sincronizadores históricos. Paginación con límite de 100 páginas/50.000 campañas por cuenta; escrituras de 500; 30 s por intento y dos intentos por página. Se rechaza iniciar otra página tras 540 s: una página en curso puede agotar aproximadamente 600 s; OAuth Google previo tiene su timeout existente de 60 s. No es un plazo duro de 600 s incluyendo OAuth. Límite operacional de diez cuentas por plataforma. Reserva persistente y lock global de cuatro horas, no bloqueo independiente por cuenta. El fallo parcial se registra por cuenta y hace fallar la tarea agregada, sin borrar éxitos de otras cuentas.
+
+La tarea `campaigns-sync-current-status` se registra cada seis horas, minuto 37 Europe/Madrid, deshabilitada por defecto. JSON aditivo y lectura local posterior a caché económica ya implementados; sin fallback histórico. Véanse el [contrato funcional vigente](../informe-campanas.md), [decisión arquitectónica](DECISIONS.md) y [validación y límites](CAMPAIGN_PHASE_B_VALIDATION.md). Las pruebas simuladas no demuestran acceso a cuentas reales ni el estado de una campaña productiva.
+
+
+### Integración sobre main posterior a PR #85
+
+La rama `feat/campaign-current-status-ready` parte de 89282a32b79060fca671adee4bc49741c954308f y traslada solo los commits B; la dependencia Fase A ya existe en main. La persistencia implementada sigue siendo una única tabla y la tarea continúa deshabilitada. Se precisan DATETIME UTC para las cuatro fechas nuevas, incluidas created_at/updated_at mediante datetimes(), con prueba MariaDB local de independencia de la zona de sesión; no se amplía la propuesta a una segunda tabla ni se autoriza activación. Los resultados definitivos de la nueva validación se recogen en CAMPAIGN_PHASE_B_VALIDATION.md.
+
+### Protección posterior de identidad de la proyección
+
+La agrupación económica legacy omite cuenta y no se modifica. El ajuste posterior a 46f283f rastrea cuentas de las contribuciones publicitarias durante `mergeRows()`: si varias cuentas confluyen en una fila, `decorate()` no consulta una cuenta arbitraria y presenta estado no disponible con `identity_ambiguous:true` y `reason:ambiguous_account_identity`, sin cuenta, código ni fecha operativa. Una cuenta desconocida junto con una conocida se trata conservadoramente como ambigua. La atribución Salesforce sin métricas no añade una cuenta. El contrato JSON sigue aditivo; exportRows retira metadata y el CSV económico se conserva. La clave de payload pasa a v6 para eliminar el uso de filas cacheadas sin marca. No hay nueva tabla, migración, cambio de sincronización, fórmula o agrupación económica. Este control reemplaza la limitación anterior de proyectar el estado de la cuenta inicial; no acredita la corrección integral de identidades históricas ni acceso productivo.

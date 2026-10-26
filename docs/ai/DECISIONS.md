@@ -1171,3 +1171,14 @@ Los errores de persistencia/reconciliación final se propagan fuera del servicio
 - Denegación por defecto para filas de scope ausentes o incoherentes: legacy exige explícitamente una fila inicial con usuario/configured_at nulos. El permiso exige asimismo autenticación activa y acceso vigente al informe.
 - Se conserva la misma frontera transaccional HTTP: configuración -> usuarios ordenados por ID -> cierre económico. Edición agrupa las lecturas bloqueadas de usuarios y revalida al administrador dentro de la transacción. Tres intentos completos ante deadlocks; sin efectos externos dentro del bloque reintentable. El servicio conserva su bloqueo del cierre y sus validaciones sin cambios.
 - El administrador utiliza el resumen de snapshots para aprobar y la tabla administrativa para preparar/reabrir. Se evita duplicar formularios económicos. No cambian los permisos de reapertura.
+
+## 2026-10-23 — Estado operativo independiente, una tabla y auditoría reutilizada
+
+El nuevo encargo Fase B autoriza implementar el estado actual, separándolo del histórico económico. Se adopta `campaign_current_statuses` con identidad única textual plataforma/cuenta/ID. Se descarta la segunda tabla de intentos de la propuesta inicial: `report_sync_runs` ya registra dataset/source, estado, timestamps y errores sanitizados por cuenta. El último intento de la cuenta condiciona la frescura de cada campaña; una ausencia no acredita eliminación.
+
+La lectura se une fuera de la caché de economía y solo amplía JSON, manteniendo CSV y filtros históricos. Así una actualización operativa no reconstruye métricas ni snapshots y una caché antigua no prolonga la vigencia. No se utiliza el estado histórico como fallback. La programación centralizada permanece deshabilitada por defecto y exige reserva persistente más lock, conservando permisos operacionales existentes. El coste asumido es una consulta local por lote en endpoints de filas y una tabla operativa adicional; no hay llamadas remotas durante peticiones humanas. Véase [contrato y límites](CAMPAIGN_PHASE_B_VALIDATION.md).
+
+
+### Integración limpia y evidencia temporal MariaDB
+
+La base de revisión pasa a main 89282a32b79060fca671adee4bc49741c954308f tras PR #85. Se trasladan exclusivamente los tres commits B con cherry-pick -x, conservando la rama original; la dependencia A ya está fusionada. Los campos last_observed_at/last_verified_at y created_at/updated_at de la migración nueva usan DATETIME civil UTC (estos últimos mediante datetimes() de Laravel), escrito por el servicio explícitamente en UTC, frente a TIMESTAMP sujeto a conversión por zona de sesión MariaDB. Esta decisión preserva el instante usado para frescura sin modificar la configuración global ni tablas históricas. Una prueba opt-in verifica el mismo valor con sesiones +00:00/+02:00 y los límites de 24 h/fecha futura, además de created_at sin desplazamiento.

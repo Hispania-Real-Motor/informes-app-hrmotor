@@ -179,7 +179,8 @@ class ReportAccessManagementTest extends TestCase
         $this->withSession($session)
             ->get('/informes/campanas')
             ->assertOk()
-            ->assertSee('window.reportUserCanSeeSourceReconciliation = false', false);
+            ->assertDontSee('id="salesforceReconciliation"', false)
+            ->assertDontSee('window.reportUserCanSeeSourceReconciliation', false);
     }
 
     public function test_area_manager_accede_a_informes_operativos_y_solo_ve_su_area_en_comisiones(): void

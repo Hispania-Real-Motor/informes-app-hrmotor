@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Reports\Campaigns;
 
 use App\Http\Controllers\Controller;
-use App\Support\ReportUserAccess;
 use App\Models\CampaignOperationalClassification;
-use Illuminate\Support\Facades\Cache;
+use App\Support\ReportUserAccess;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class CampaignDashboardController extends Controller
 {
@@ -20,7 +20,6 @@ class CampaignDashboardController extends Controller
             'reportUserRole' => ReportUserAccess::role($request),
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'campaigns'),
             'reportUserCanAudit' => ReportUserAccess::canAuditReport($request, 'campaigns'),
-            'reportUserCanSeeSourceReconciliation' => ReportUserAccess::isAdmin($request),
         ]);
     }
 

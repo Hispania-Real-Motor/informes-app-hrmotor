@@ -5,6 +5,7 @@ namespace App\Services\Operations;
 use App\Jobs\Operations\ExecuteOperationalTask;
 use App\Models\OperationalTaskRun;
 use App\Models\ReportUser;
+use App\Services\Campaigns\CampaignCurrentStatusService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -48,6 +49,7 @@ class OperationalTaskService
     public function claim(string $key, string $origin, ?int $actor = null): OperationalTaskRun
     {
         $task = $this->catalog->get($key);
+        abort_unless($task['enabled'] ?? true, 403, 'Tarea deshabilitada.');
         if (! in_array($origin, ['scheduler', 'manual'], true)) {
             throw new \InvalidArgumentException('Invalid operational origin.');
         }
@@ -92,6 +94,11 @@ class OperationalTaskService
             if ((int) $state->active_run_id !== $run->id || $run->status !== 'queued') {
                 return false;
             }
+            if (! ($task['enabled'] ?? true)) {
+                $this->finish($run, false, null, 'Tarea deshabilitada antes de iniciar.');
+
+                return false;
+            }
             // A delayed or duplicate delivery can never revive an expired request.
             if ($run->origin === 'manual' && ($run->queued_at->lt(now()->subMinutes(15))
                 || ! ReportUser::query()->whereKey($run->report_user_id)->where('is_active', true)->where('role', ReportUser::ROLE_ADMIN)->exists())) {
@@ -111,7 +118,11 @@ class OperationalTaskService
             // No output capture: providers may emit PII or credentials to stdout.
             // Only the fixed catalog is executable, never persisted/request options.
             $output = new OperationalTaskOutput($run->task_key);
-            $exit = Artisan::call($task['command'], $task['arguments'], $output);
+            $arguments = $task['arguments'];
+            if ($run->task_key === CampaignCurrentStatusService::TASK) {
+                $arguments['--operational-run'] = (string) $run->id;
+            }
+            $exit = Artisan::call($task['command'], $arguments, $output);
             $skipped = $output->skipped || ($task['command'] === 'stock:sync-daily' && $exit === 2);
             $healthIncidents = $run->task_key === OperationalTaskCatalog::HEALTH_TASK_KEY && $exit === OperationalTaskExitCode::Unhealthy->value;
             $success = $exit === 0 && ! $skipped && ! $output->partialFailure;

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, historicalStatusPresentation, activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
+import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
 
 const money = (value) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
 
@@ -34,10 +34,10 @@ test('costs distinguish zero, positive, zero denominator, unknown source and not
 const source = fs.readFileSync(new URL('../../resources/js/reports/campaigns-dashboard.js', import.meta.url), 'utf8');
 const root = { innerHTML: '' };
 const sandbox = {
-    Intl, advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
+    Intl, URLSearchParams, advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
     localStorage: { getItem: () => null },
-    document: { addEventListener() {}, getElementById: () => null },
-    window: { reportUserCanExport: true, reportUserCanAudit: true },
+    document: { addEventListener() {}, getElementById: () => null, querySelectorAll: () => [] },
+    window: { reportUserCanExport: true, reportUserCanAudit: true, clearTimeout() {}, setTimeout: () => 0 },
 };
 vm.createContext(sandbox);
 vm.runInContext(source.replace(/^import .*;\r?\n/, ''), sandbox);
@@ -91,8 +91,9 @@ test('historical labels are presented only with platform evidence, without infer
         sandbox.statusRow = { campaign_name: 'SYNTHETIC', platform, [field]: state, campaign_status_label: label };
         const before = JSON.stringify(sandbox.statusRow);
         const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [statusRow])", sandbox);
-        assert.ok(html.includes(expected));
-        assert.ok(html.includes('No representa una consulta actual'));
+        assert.equal(historicalStatusPresentation(sandbox.statusRow).text, expected);
+        assert.ok(html.includes('Estado no disponible'));
+        assert.ok(!html.includes('(histórico)</td>'));
         assert.equal(JSON.stringify(sandbox.statusRow), before);
     }
     for (const row of [
@@ -189,7 +190,7 @@ test('historical state selector is explicit without changing option values', () 
     assert.ok(blade.includes('Estado histórico (filtro)'));
     assert.ok(blade.includes('value="active" selected>Activas según criterio histórico'));
     assert.ok(blade.includes('value="inactive">Inactivas según criterio histórico'));
-    assert.ok(blade.includes('no verifica el estado actual'));
+    assert.ok(!blade.includes('id="campaignStatusHelp"'));
 });
 
 
@@ -218,7 +219,7 @@ test('detail columns remove functional results, use purchase costs and migrate o
     assert.deepEqual(migrated, ['campaign', 'sales', 'cost_per_purchase']);
     assert.equal(memory.get('unrelated'), 'keep');
     assert.ok(memory.has('hrmotor_campaign_columns_v5'));
-    memory.set('hrmotor_campaign_columns_v6', JSON.stringify(['campaign']));
+    memory.set('hrmotor_campaign_columns_v7', JSON.stringify(['campaign']));
     assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign']);
     for (const context of ['all', 'tasacion', 'otros']) {
         assert.equal(vm.runInContext(`columnAllowedInContext('cost_per_purchase', '${context}')`, sandbox), true);
@@ -280,4 +281,159 @@ test('real advertising detail keeps positive spend without conversions and repor
     for (const value of [true, '0x10', [], {}]) {
         assert.equal(detailMoneyPresentation(value, {spend: 10, purchases: 2}, 'cost_per_purchase', money).text, '—');
     }
+});
+
+
+test('current status uses independent metadata, expires at 24 hours and never falls back to history', () => {
+    const now = Date.parse('2026-10-25T12:00:00Z');
+    const row = { platform: 'meta', campaign_status_label: 'Activa', current_status: {
+        availability: 'fresh', label: 'Pausada', raw_status: 'PAUSED', verified_at: '2026-10-24T12:00:01Z',
+    }};
+    assert.equal(currentStatusPresentation(row, now).text, 'Pausada');
+    assert.match(currentStatusPresentation(row, now).tooltip, /Europe\/Madrid/);
+    assert.match(currentStatusPresentation(row, now).tooltip, /filtro conserva/);
+    assert.equal(currentStatusPresentation(row, now + 1000).text, 'Estado no actualizado');
+    row.current_status.availability = 'unavailable';
+    assert.equal(currentStatusPresentation(row, now).text, 'Estado no disponible');
+    row.current_status.availability = 'stale';
+    assert.equal(currentStatusPresentation(row, now).text, 'Estado no actualizado');
+    assert.equal(currentStatusPresentation({platform: 'meta', campaign_status_label: 'Activa'}, now).text, 'Estado no disponible');
+    assert.equal(currentStatusPresentation({platform: 'salesforce'}, now).text, 'Estado no disponible');
+    row.current_status.availability = 'fresh';
+    row.current_status.verified_at = '2026-10-26T12:00:00Z';
+    assert.equal(currentStatusPresentation(row, now).text, 'Estado no disponible');
+});
+
+test('real dashboard formatters group four digits, preserve precision, negatives and numeric sorting', () => {
+    for (const [value, expected] of [[0, '0'], [9, '9'], [22, '22'], [999, '999'], [1000, '1.000'], [1234, '1.234'], [4959, '4.959'], [5040, '5.040'], [9999, '9.999'], [10000, '10.000'], [301331, '301.331'], [1234567, '1.234.567'], [-1234.5, '-1.234,5']]) {
+        assert.equal(vm.runInContext(`formatNumber(${value})`, sandbox), expected);
+        assert.equal(vm.runInContext(`formatAxisValue(${value})`, sandbox), expected);
+    }
+    for (const [value, expected] of [[0.14, '0,14'], [0, '0,00'], [1000, '1.000,00'], [1234.56, '1.234,56'], [43286.42, '43.286,42'], [-1234.5, '-1.234,50'], [1000000, '1.000.000,00']]) {
+        const formatted = vm.runInContext(`formatMoney(${value})`, sandbox);
+        assert.equal(formatted.replace(/\s/g, ' '), expected + ' €');
+        assert.equal(vm.runInContext(`formatCompactAxisValue(${value}, true)`, sandbox), formatted);
+    }
+    assert.equal(vm.runInContext('formatPercentRatio(12.345)', sandbox), '1.234,5%');
+    assert.equal(vm.runInContext('formatMultiplier(1234.5)', sandbox), '1.234,50');
+    assert.equal(vm.runInContext('formatMoney(null)', sandbox), 'Sin datos');
+    assert.equal(vm.runInContext('formatReviewValue({value: "1234 / 9999"})', sandbox), '1.234 / 9.999');
+    sandbox.numericRows = [{spend: 9999}, {spend: 1000}, {spend: -1234}];
+    vm.runInContext("tableSort.all = {key: 'spend', direction: 'asc'}", sandbox);
+    assert.deepEqual(Array.from(vm.runInContext("sortedCampaignRows(numericRows, 'all').map(row => row.spend)", sandbox)), [-1234, 1000, 9999]);
+    assert.equal(sandbox.numericRows[0].spend, 9999);
+});
+
+test('KPI audit action stays in the heading and grouped values reach real cards', () => {
+    const kpis = {innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; }};
+    sandbox.document.getElementById = (id) => id === 'summaryKpis' ? kpis : null;
+    sandbox.window.reportUserCanAudit = true;
+    vm.runInContext('renderKpis({spend: 43286.42, impressions: 4959, clicks: 5040, leads_salesforce: 301331})', sandbox);
+    assert.match(kpis.innerHTML, /43\.286,42/);
+    assert.match(kpis.innerHTML, /4\.959/);
+    assert.match(kpis.innerHTML, /5\.040/);
+    assert.match(kpis.innerHTML, /301\.331/);
+    assert.match(kpis.innerHTML, /campaign-kpi-heading[\s\S]*kpi-actions[\s\S]*kpi-value/);
+    sandbox.window.reportUserCanAudit = false;
+    vm.runInContext('renderKpis({spend: 4959})', sandbox);
+    assert.ok(!kpis.innerHTML.includes('kpi-audit-link'));
+    assert.ok(kpis.innerHTML.includes('4.959'));
+    sandbox.window.reportUserCanAudit = true;
+});
+
+test('platform comparison uses restrained identities and never fabricates an absent provider', () => {
+    const panel = {classList: {remove() {}}};
+    const root = {innerHTML: ''};
+    sandbox.document.getElementById = (id) => id === 'platformComparisonPanel' ? panel : id === 'platformComparison' ? root : null;
+    vm.runInContext("currentContext = 'all'; renderPlatformComparison([{platform:'meta',spend:43286.42,leads_salesforce:4959,opportunities:5040,result_count:22}])", sandbox);
+    assert.equal((root.innerHTML.match(/platform-comparison-card--meta/g) || []).length, 1);
+    assert.ok(!root.innerHTML.includes('platform-comparison-card--google'));
+    assert.ok(root.innerHTML.includes('43.286,42'));
+    assert.ok(root.innerHTML.includes('4.959'));
+    vm.runInContext("renderPlatformComparison([{platform:'google_ads',spend:4959,result_count:0}])", sandbox);
+    assert.ok(root.innerHTML.includes('platform-comparison-card--google'));
+    assert.ok(!root.innerHTML.includes('platform-comparison-card--meta'));
+});
+
+test('sync diagnostic distinguishes operational success from old metrics and failed attempts', () => {
+    const root = {innerHTML: ''};
+    sandbox.document.getElementById = (id) => id === 'campaignDiagnostics' ? root : null;
+    const checked = vm.runInContext("syncOperationPresentation({verified_at:'2026-10-26T10:00:00+00:00',last_attempt_status:'success'}, '2026-05-10 09:00:00', Date.parse('2026-10-26T12:00:00Z'))", sandbox);
+    assert.ok(checked.value.includes('11:00'));
+    assert.ok(checked.detail.includes('11:00'));
+    assert.ok(checked.detail.includes('correcto'));
+    const failed = vm.runInContext("syncOperationPresentation({verified_at:'2026-10-20T10:00:00+00:00',last_attempt_status:'failed'}, null, Date.parse('2026-10-26T12:00:00Z'))", sandbox);
+    assert.ok(failed.value.includes('Antigua'));
+    assert.ok(failed.detail.includes('fallido'));
+    const unknown = vm.runInContext("syncOperationPresentation({last_attempt_status:'unknown'}, null)", sandbox);
+    assert.equal(unknown.value, 'Sin ejecución verificada');
+    assert.ok(unknown.detail.includes('no concluyente'));
+    sandbox.diagnostics = {meta_sync_operation:{verified_at:null,last_attempt_status:null},google_sync_operation:{verified_at:'2026-10-26T10:00:00+00:00',last_attempt_status:'failed'},last_google_sync:'2026-05-10 09:00:00',meta_metric_rows:0,google_metric_rows:4959};
+    vm.runInContext('renderDiagnostics(diagnostics)', sandbox);
+    assert.ok(root.innerHTML.includes('Sin ejecución verificada'));
+    assert.ok(root.innerHTML.includes('4.959'));
+    assert.ok(root.innerHTML.includes('fallido'));
+    assert.ok(root.innerHTML.includes('Último dato de métricas'));
+});
+
+test('current status is rendered and escaped, legacy columns migrate without altering identifiers', () => {
+    const memory = new Map([['hrmotor_campaign_columns_v6', JSON.stringify(['campaign', 'campaign_status_label', 'spend'])]]);
+    sandbox.localStorage = {getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value)};
+    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'current_status', 'spend']);
+    sandbox.currentRow = {platform: 'meta', campaign_id: '9007199254740993', spend: 1234.56, campaign_name: '<b>name</b>', current_status: {availability: 'fresh', verified_at: new Date().toISOString(), raw_status: 'PAUSED', label: '<img src=x>'}};
+    const before = JSON.stringify(sandbox.currentRow);
+    const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [currentRow])", sandbox);
+    assert.ok(html.includes('Estado actual'));
+    assert.ok(html.includes('&lt;img src=x&gt;'));
+    assert.ok(html.includes('1.234,56'));
+    assert.equal(sandbox.currentRow.campaign_id, '9007199254740993');
+    assert.ok(!html.includes('<img src=x>'));
+    assert.equal(JSON.stringify(sandbox.currentRow), before);
+});
+
+
+test('open page expires only state cells without fetching or rebuilding the table', () => {
+    const cell = { dataset: {statusExpiresAt: String(Date.now() - 1)}, textContent: 'Activa', title: 'Verificación previa.' };
+    sandbox.document.querySelectorAll = () => [cell];
+    const before = root.innerHTML;
+    vm.runInContext('scheduleCurrentStatusExpiry()', sandbox);
+    assert.equal(cell.textContent, 'Estado no actualizado');
+    assert.match(cell.title, /24 horas/);
+    assert.equal(cell.dataset.statusExpiresAt, undefined);
+    assert.equal(root.innerHTML, before);
+    sandbox.document.querySelectorAll = () => [];
+});
+
+
+test('real numeric table tooltips use the same grouped text without losing cost explanations', () => {
+    sandbox.tooltipRow = {platform: 'meta', campaign_name: 'Synthetic', spend: 1234.56, clicks: 1234, purchases: 0, cost_per_purchase: null};
+    const before = JSON.stringify(sandbox.tooltipRow);
+    const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [tooltipRow])", sandbox);
+    assert.ok(html.includes('data-column="clicks" title="1.234">1.234</td>'));
+    assert.ok(!html.includes('title="1234"'));
+    assert.ok(html.includes('Divisor cero: no hay resultados para calcular el coste.'));
+    assert.equal(JSON.stringify(sandbox.tooltipRow), before);
+});
+
+test('ambiguous economic identity never confirms an individual account status', () => {
+    const result = currentStatusPresentation({ platform: 'meta', current_status: { identity_ambiguous: true, availability: 'fresh', label: 'Activa', verified_at: new Date().toISOString() } });
+    assert.equal(result.text, 'Estado no disponible');
+    assert.match(result.tooltip, /Identidad de cuenta ambigua/);
+});
+
+test('opening diagnostics again fetches fresh operational evidence for unchanged filters', async () => {
+    const diagnosticRoot = {innerHTML: ''};
+    sandbox.document.getElementById = (id) => id === 'campaignDiagnostics' ? diagnosticRoot : null;
+    sandbox.AbortController = AbortController;
+    sandbox.currentFilters = () => 'period=2026-10';
+    const calls = [];
+    sandbox.fetchJson = async (url, message, options) => {
+        calls.push({url, options});
+        return {diagnostics: {meta_sync_operation: {verified_at: null, last_attempt_status: 'failed'}}};
+    };
+    await vm.runInContext('loadDiagnostics()', sandbox);
+    await vm.runInContext('loadDiagnostics()', sandbox);
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every(({options}) => options.cache === 'no-store'));
+    assert.ok(calls.every(({url}) => url.includes('include_diagnostics=1')));
 });

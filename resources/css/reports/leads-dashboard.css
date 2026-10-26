@@ -2989,7 +2989,17 @@ th.num {
 }
 
 .campaigns-report .filters.card {
-    padding: 18px;
+    padding: 14px 18px;
+}
+
+.campaigns-report .campaigns-filter-bar .filter-group {
+    gap: 4px;
+}
+
+.campaigns-report .campaigns-filter-bar .filter-group input,
+.campaigns-report .campaigns-filter-bar .filter-group select {
+    min-height: 42px;
+    padding-block: 8px;
 }
 
 .campaigns-report .filter-group label,
@@ -3112,9 +3122,38 @@ th.num {
 }
 
 .campaigns-report .campaign-kpi {
-    min-height: 132px;
-    padding: 22px;
+    min-height: 120px;
+    padding: 18px;
     border-radius: 28px;
+}
+
+.campaigns-report .campaign-kpi .kpi-copy {
+    width: 100%;
+}
+
+.campaigns-report .campaign-kpi-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-bottom: 8px;
+}
+
+.campaigns-report .campaign-kpi-heading .kpi-label {
+    min-width: 0;
+    flex: 1 1 130px;
+}
+
+.campaigns-report .campaign-kpi-heading .kpi-actions {
+    flex: 0 0 auto;
+    margin-top: 0;
+}
+
+.campaigns-report .campaign-kpi-heading .kpi-audit-link {
+    min-height: 28px;
+    padding: 5px 9px;
+    white-space: nowrap;
 }
 
 .campaigns-report .campaign-kpi .kpi-label {
@@ -3123,6 +3162,10 @@ th.num {
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .01em;
+}
+
+.campaigns-report .campaign-kpi-heading .kpi-label {
+    margin-bottom: 0;
 }
 
 .campaigns-report .campaign-kpi .kpi-value {
@@ -3173,6 +3216,16 @@ th.num {
 .campaigns-report .platform-comparison-card {
     border-radius: 28px;
     padding: 22px;
+}
+
+.campaigns-report .platform-comparison-card--meta {
+    border-left: 5px solid #1877b9;
+    background: linear-gradient(110deg, rgba(24, 119, 185, .055), rgba(255, 255, 255, .96) 34%);
+}
+
+.campaigns-report .platform-comparison-card--google {
+    border-left: 5px solid #b77c13;
+    background: linear-gradient(110deg, rgba(183, 124, 19, .065), rgba(255, 255, 255, .96) 34%);
 }
 
 .campaigns-report .platform-comparison-head strong,

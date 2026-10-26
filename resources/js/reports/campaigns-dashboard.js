@@ -1,9 +1,11 @@
-import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, historicalStatusPresentation, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
+import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
 
-const numberFormatter = new Intl.NumberFormat('es-ES');
-const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
-const columnsStorageKey = 'hrmotor_campaign_columns_v6';
-const legacyColumnsStorageKey = 'hrmotor_campaign_columns_v5';
+const numberFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true });
+const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', useGrouping: true });
+const percentFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const multiplierFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const columnsStorageKey = 'hrmotor_campaign_columns_v7';
+const legacyColumnsStorageKey = 'hrmotor_campaign_columns_v6';
 const rankingsStorageKey = 'campaigns.visibleRankings.v7';
 const campaignContextStorageKey = 'campaigns.selectedContext.v1';
 const dailySeriesStorageKey = 'campaigns.dailyChart.visibleSeries';
@@ -19,6 +21,7 @@ const campaignPeriodMinDate = '2026-01-01';
 const campaignPeriodMaxDate = '2026-12-31';
 
 let campaignRows = [];
+let currentStatusExpiryTimer = null;
 let tableSort = {
     all: { key: 'spend', direction: 'desc' },
     venta: { key: 'sales', direction: 'desc' },
@@ -112,7 +115,7 @@ const rankingDefinitions = [
 const columnDefinitions = [
     { key: 'campaign', label: 'Campaña', visible: true, formatter: (_value, row) => campaignLabel(row) },
     { key: 'platform', label: 'Plataforma', visible: true, formatter: formatPlatform },
-    { key: 'campaign_status_label', label: 'Estado histórico', visible: true },
+    { key: 'current_status', label: 'Estado actual', visible: true },
     { key: 'spend', label: 'Inversión', visible: true, numeric: true, formatter: formatMoney },
     { key: 'impressions', label: 'Impresiones', visible: true, numeric: true, formatter: formatNumber },
     { key: 'clicks', label: 'Clicks', visible: true, numeric: true, formatter: formatNumber },
@@ -162,6 +165,7 @@ let visibleColumns = loadVisibleColumns();
 let visibleRankings = loadVisibleRankings(currentContext);
 
 document.addEventListener('DOMContentLoaded', async () => {
+    document.addEventListener('visibilitychange', scheduleCurrentStatusExpiry);
     populatePeriodPreset();
     applyCampaignDateBounds();
     setDefaultDates();
@@ -713,12 +717,6 @@ async function loadDiagnostics() {
     const root = document.getElementById('campaignDiagnostics');
     const query = currentFilters();
 
-    if (currentDiagnosticsKey === query && Object.keys(currentDiagnostics).length > 0) {
-        renderDiagnostics(currentDiagnostics);
-
-        return currentDiagnostics;
-    }
-
     if (root) {
         root.innerHTML = '<div class="empty-state">Cargando diagnóstico...</div>';
     }
@@ -737,7 +735,7 @@ async function loadDiagnostics() {
     diagnosticsLoadingPromise = fetchJson(
         `/informes/campanas/data/summary?${params.toString()}`,
         'Error al cargar diagnóstico de campañas.',
-        { signal: diagnosticsLoadingController.signal },
+        { signal: diagnosticsLoadingController.signal, cache: 'no-store' },
     )
         .then((summary) => {
             currentDiagnostics = (summary && summary.diagnostics) || {};
@@ -791,7 +789,6 @@ function renderSummary(data) {
     renderCharts(data.charts || {});
     renderPlatformComparison(data.platform_comparison || []);
     renderReviewCampaigns(data.review_campaigns || []);
-    renderSourceReconciliation(data.source_reconciliation || {});
     renderDiagnostics(data.diagnostics || {});
 }
 
@@ -806,42 +803,6 @@ function renderInvestmentClosure(closure) {
 
     const investment = closure.investment_status === 'closed' ? 'Cerrada' : 'Abierta';
     root.textContent = `Inversión: ${investment}. Resultados comerciales: Abiertos.`;
-}
-
-function renderSourceReconciliation(reconciliation) {
-    const root = document.getElementById('salesforceReconciliation');
-    if (!root) return;
-
-    if (!window.reportUserCanSeeSourceReconciliation) {
-        root.classList.add('is-hidden');
-        root.innerHTML = '';
-        return;
-    }
-
-    const definitions = [
-        ['Intereses', reconciliation.leads],
-        ['Oportunidades', reconciliation.opportunities],
-        ['Resultados', reconciliation.results],
-    ].filter(([, row]) => row);
-
-    root.classList.toggle('is-hidden', definitions.length === 0);
-    root.innerHTML = definitions.length ? `
-        <div class="panel-title">
-            <div>
-                <h2>Conciliacion por origen</h2>
-                <div class="small">Plataformas + Salesforce-only = total distinto; los solapamientos se muestran aparte.</div>
-            </div>
-        </div>
-        <div class="campaign-diagnostics">
-            ${definitions.map(([label, row]) => `
-                <div class="diagnostic-item">
-                    <span>${escapeHtml(label)}</span>
-                    <strong>${formatNumber(row.platform)} + ${formatNumber(row.salesforce_only)} = ${formatNumber(row.total_distinct)}</strong>
-                    <small>Solapamientos: ${formatNumber(row.overlap)}</small>
-                </div>
-            `).join('')}
-        </div>
-    ` : '';
 }
 
 function renderWarnings(warnings) {
@@ -866,10 +827,12 @@ function renderKpis(kpis, context = 'all') {
         root.insertAdjacentHTML('beforeend', `
             <div class="card kpi campaign-kpi">
                 <div class="kpi-copy">
-                    <div class="kpi-label">${escapeHtml(card.label)}</div>
+                    <div class="campaign-kpi-heading">
+                        <div class="kpi-label">${escapeHtml(card.label)}</div>
+                        ${campaignKpiAuditLinkHtml(card.metric, card.label)}
+                    </div>
                     <div class="kpi-value">${escapeHtml(card.value)}</div>
                     <div class="kpi-hint">${escapeHtml(card.hint || '')}</div>
-                    ${campaignKpiAuditLinkHtml(card.metric, card.label)}
                 </div>
             </div>
         `);
@@ -1427,23 +1390,7 @@ function formatGrafanaAxisValue(value, definition) {
 }
 
 function formatCompactAxisValue(value, useCurrency = false) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) {
-        return '0';
-    }
-
-    const abs = Math.abs(number);
-    let formatted;
-
-    if (abs >= 1000000) {
-        formatted = `${trimTrailingZero((number / 1000000).toFixed(abs >= 10000000 ? 0 : 1))}M`;
-    } else if (abs >= 1000) {
-        formatted = `${trimTrailingZero((number / 1000).toFixed(abs >= 10000 ? 0 : 1))}k`;
-    } else {
-        formatted = String(Math.round(number));
-    }
-
-    return useCurrency ? `${formatted} €` : formatted;
+    return useCurrency ? formatMoney(value) : formatNumber(value);
 }
 
 function trimTrailingZero(value) {
@@ -1649,10 +1596,9 @@ function renderPlatformComparison(rows, emptyMessage = '') {
         return;
     }
 
-    const ordered = ['google_ads', 'meta'].map((platform) => {
-        const match = (rows || []).find((row) => row.platform === platform);
-        return match || emptyPlatformComparisonRow(platform);
-    });
+    const ordered = ['google_ads', 'meta']
+        .map((platform) => rows.find((row) => row.platform === platform))
+        .filter(Boolean);
 
     const maxSpend = Math.max(...ordered.map((row) => Number(row.spend || 0)), 0);
     const maxLeads = Math.max(...ordered.map((row) => Number(row.leads_salesforce || 0)), 0);
@@ -1661,24 +1607,6 @@ function renderPlatformComparison(rows, emptyMessage = '') {
 
     panel.classList.remove('is-hidden');
     root.innerHTML = ordered.map((row) => platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, maxResult)).join('');
-}
-
-function emptyPlatformComparisonRow(platform) {
-    return {
-        platform,
-        spend: 0,
-        leads_salesforce: 0,
-        opportunities: 0,
-        reservations: 0,
-        sales: 0,
-        purchases: 0,
-        result_count: 0,
-        cost_per_lead: null,
-        cost_per_opportunity: null,
-        cost_per_purchase: null,
-        cost_per_sale: null,
-        cost_per_result: null,
-    };
 }
 
 function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, maxResult) {
@@ -1696,7 +1624,7 @@ function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, m
     }[context] || 'Coste por resultado';
 
     return `
-        <article class="card platform-comparison-card">
+        <article class="card platform-comparison-card platform-comparison-card--${row.platform === 'meta' ? 'meta' : 'google'}">
             <div class="platform-comparison-head">
                 <strong>${escapeHtml(formatPlatform(row.platform))}</strong>
                 <span>${escapeHtml(platformComparisonSubtitleForContext(context))}</span>
@@ -2189,7 +2117,7 @@ function campaignKpiAuditLinkHtml(metric, label) {
         return '';
     }
 
-    return `<div class="kpi-actions"><a class="kpi-audit-link" href="${escapeHtml(buildCampaignKpiAuditUrl(metric))}" title="Auditar ${escapeHtml(label)}">Auditar KPI</a></div>`;
+    return `<div class="kpi-actions"><a class="kpi-audit-link" href="${escapeHtml(buildCampaignKpiAuditUrl(metric))}" title="Auditar ${escapeHtml(label)}" aria-label="Auditar KPI: ${escapeHtml(label)}">Auditar KPI</a></div>`;
 }
 
 function persistMonthlySelection() {
@@ -2431,18 +2359,7 @@ function monthlyAxisFormatter(definitions) {
 }
 
 function formatAxisValue(value) {
-    const numeric = Number(value || 0);
-    const absolute = Math.abs(numeric);
-
-    if (absolute >= 1000000) {
-        return `${(numeric / 1000000).toFixed(1)}M`;
-    }
-
-    if (absolute >= 1000) {
-        return `${(numeric / 1000).toFixed(1)}k`;
-    }
-
-    return formatNumber(numeric);
+    return formatNumber(value);
 }
 
 function lineGridHtml(chartHeight) {
@@ -2771,6 +2688,7 @@ async function fetchJson(url, fallbackMessage = `Error cargando ${url}`, options
     const response = await fetch(url, {
         headers: { Accept: 'application/json' },
         signal: options.signal,
+        cache: options.cache,
     });
     const contentType = response.headers.get('content-type') || '';
     const isJson = contentType.includes('application/json');
@@ -2894,12 +2812,16 @@ function formatShortDate(value) {
 }
 
 function formatDateTime(value) {
-    const date = new Date(value);
-    if (!value || Number.isNaN(date.getTime())) {
-        return value || 'Sin datos';
+    // SQL DATETIME values in this diagnostic are stored in UTC without an offset.
+    const timestamp = typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+        ? `${value.replace(' ', 'T')}Z` : value;
+    const date = timestamp ? new Date(timestamp) : null;
+    if (!date || Number.isNaN(date.getTime())) {
+        return 'Sin datos';
     }
 
     return new Intl.DateTimeFormat('es-ES', {
+        timeZone: 'Europe/Madrid',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -2929,7 +2851,7 @@ function formatPercentRatio(value) {
         return 'Sin datos';
     }
 
-    return `${(Number(value) * 100).toFixed(1)}%`;
+    return `${percentFormatter.format(Number(value) * 100)}%`;
 }
 
 function formatMultiplier(value) {
@@ -2937,7 +2859,7 @@ function formatMultiplier(value) {
         return 'Sin datos';
     }
 
-    return Number(value).toFixed(2);
+    return multiplierFormatter.format(Number(value));
 }
 
 function formatPlatform(value) {
@@ -2949,6 +2871,7 @@ function formatPlatform(value) {
 }
 
 function formatReviewValue(row) {
+    if (typeof row.value === 'string' && /^\d+ \/ \d+$/.test(row.value)) return row.value.split(' / ').map(formatNumber).join(' / ');
     return row.value !== null && row.value !== undefined ? (Number.isFinite(Number(row.value)) ? formatNumber(row.value) : String(row.value)) : 'Sin datos';
 }
 
@@ -2961,13 +2884,31 @@ function escapeHtml(value) {
         .replaceAll("'", '&#039;');
 }
 
-function cellHtml([value, numeric, rawValue, columnKey]) {
+function cellHtml([value, numeric, rawValue, columnKey, expiresAt]) {
     const classes = ['table-cell'];
     if (numeric) {
         classes.push('num');
     }
 
-    return `<td class="${classes.join(' ')}" data-column="${escapeHtml(columnKey)}" title="${escapeHtml(rawValue ?? '')}">${escapeHtml(value)}</td>`;
+    const expiry = Number.isFinite(expiresAt) ? ` data-status-expires-at="${expiresAt}"` : '';
+    const tooltip = numeric && rawValue !== null && rawValue !== undefined && rawValue !== '' && Number.isFinite(Number(rawValue)) ? value : rawValue;
+    return `<td class="${classes.join(' ')}" data-column="${escapeHtml(columnKey)}"${expiry} title="${escapeHtml(tooltip ?? '')}">${escapeHtml(value)}</td>`;
+}
+
+// Expire only status cells: no requests, economic work, table rebuild or scroll reset.
+function scheduleCurrentStatusExpiry() {
+    window.clearTimeout(currentStatusExpiryTimer);
+    const now = Date.now();
+    let next = Infinity;
+    document.querySelectorAll('[data-status-expires-at]').forEach((cell) => {
+        const expiry = Number(cell.dataset.statusExpiresAt);
+        if (expiry <= now) {
+            cell.textContent = 'Estado no actualizado';
+            cell.title += ' Verificación caducada: han transcurrido al menos 24 horas.';
+            delete cell.dataset.statusExpiresAt;
+        } else if (Number.isFinite(expiry)) next = Math.min(next, expiry);
+    });
+    if (Number.isFinite(next)) currentStatusExpiryTimer = window.setTimeout(scheduleCurrentStatusExpiry, Math.max(1, next - now));
 }
 
 function sortedCampaignRows(rows, tableType) {
@@ -2975,8 +2916,8 @@ function sortedCampaignRows(rows, tableType) {
     const direction = sortState.direction === 'asc' ? 1 : -1;
 
     return [...(rows || [])].sort((a, b) => {
-        const left = a[sortState.key];
-        const right = b[sortState.key];
+        const left = sortState.key === 'current_status' ? currentStatusPresentation(a).text : a[sortState.key];
+        const right = sortState.key === 'current_status' ? currentStatusPresentation(b).text : b[sortState.key];
 
         if (left === null || left === undefined || left === '') {
             return 1;
@@ -3117,24 +3058,43 @@ function renderDiagnostics(diagnostics) {
         return;
     }
 
+    const meta = syncOperationPresentation(diagnostics.meta_sync_operation, diagnostics.last_meta_sync);
+    const google = syncOperationPresentation(diagnostics.google_sync_operation, diagnostics.last_google_sync);
     const entries = [
-        ['Última sync Meta', formatDateTime(diagnostics.last_meta_sync)],
-        ['Última sync Google Ads', formatDateTime(diagnostics.last_google_sync)],
+        ['Meta Ads · última ejecución correcta', meta.value, meta.detail],
+        ['Google Ads · última ejecución correcta', google.value, google.detail],
         ['Filas Meta', formatNumber(diagnostics.meta_metric_rows)],
         ['Filas Google Ads', formatNumber(diagnostics.google_metric_rows)],
     ];
 
-    if (entries.every(([, value]) => value === 'Sin datos')) {
+    if (!diagnostics || Object.keys(diagnostics).length === 0) {
         root.innerHTML = '<div class="empty-state">Sin diagnóstico disponible</div>';
         return;
     }
 
-    root.innerHTML = entries.map(([label, value]) => `
+    root.innerHTML = entries.map(([label, value, detail]) => `
         <div class="diagnostic-item">
             <span>${escapeHtml(label)}</span>
             <strong>${escapeHtml(value)}</strong>
+            ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
         </div>
     `).join('');
+}
+
+function syncOperationPresentation(operation, metricSyncedAt, now = Date.now()) {
+    const verifiedAt = operation?.verified_at;
+    const verifiedTime = typeof verifiedAt === 'string' ? Date.parse(verifiedAt) : NaN;
+    const verified = Number.isFinite(verifiedTime) && verifiedTime <= now;
+    const old = verified && now - verifiedTime > 36 * 60 * 60 * 1000;
+    const status = {
+        success: 'correcto', failed: 'fallido', queued: 'en cola', running: 'en curso',
+        skipped: 'omitido', unknown: 'no concluyente',
+    }[operation?.last_attempt_status] || 'sin registro operacional';
+
+    return {
+        value: verified ? `${formatDateTime(verifiedAt)}${old ? ' · Antigua' : ''}` : 'Sin ejecución verificada',
+        detail: `Último intento: ${status}. Último dato de métricas: ${formatDateTime(metricSyncedAt)}.`,
+    };
 }
 
 function renderCampaignTables(rows, emptyMessage = null) {
@@ -3156,9 +3116,10 @@ function renderCampaignTables(rows, emptyMessage = null) {
 
     const detail = advertisingDetailRows(rows || []);
     const reasons = { other_platform: 'otra plataforma', unverifiable_source: 'procedencia sin inversión verificable', unknown_spend: 'inversión desconocida', invalid_spend: 'inversión inválida', negative_spend: 'inversión negativa', zero_spend: 'inversión cero' };
-    const counts = Object.entries(detail.excludedByReason).map(([reason, count]) => `${reasons[reason]}: ${count}`).join(' · ');
-    root.innerHTML = `<div class="small" title="${escapeHtml(counts)}">Filas excluidas del detalle publicitario: ${detail.excludedTotal}${counts ? ` (${escapeHtml(counts)})` : ''}</div>`
+    const counts = Object.entries(detail.excludedByReason).map(([reason, count]) => `${reasons[reason]}: ${formatNumber(count)}`).join(' · ');
+    root.innerHTML = `<div class="small" title="${escapeHtml(counts)}">Filas excluidas del detalle publicitario: ${formatNumber(detail.excludedTotal)}${counts ? ` (${escapeHtml(counts)})` : ''}</div>`
         + renderCampaignTable(context, title, subtitle, detail.rows, emptyMessage);
+    scheduleCurrentStatusExpiry();
     renderColumnsPopover();
     applyColumnVisibility();
     syncCampaignTableScrollWidth();
@@ -3178,7 +3139,7 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
             <tr>
                 ${columns.map((column) => {
                     const formatter = column.formatter || ((value) => value);
-                    const status = column.key === 'campaign_status_label' ? historicalStatusPresentation(row) : null;
+                    const status = column.key === 'current_status' ? currentStatusPresentation(row) : null;
                     const cost = column.formatter === formatMoney
                         ? detailMoneyPresentation(row[column.key], row, column.key, formatMoney) : null;
                     return cellHtml([
@@ -3194,6 +3155,7 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
                                 ? cost.tooltip
                                 : row[column.key],
                         column.key,
+                        status?.expiresAt,
                     ]);
                 }).join('')}
             </tr>
@@ -3240,11 +3202,11 @@ function loadVisibleColumns() {
     const defaults = columnDefinitions.filter((column) => column.visible).map((column) => column.key);
     try {
         const current = localStorage.getItem(columnsStorageKey);
-        const legacy = current === null ? localStorage.getItem(legacyColumnsStorageKey) : null;
+        const legacy = current === null ? (localStorage.getItem(legacyColumnsStorageKey) ?? localStorage.getItem('hrmotor_campaign_columns_v5')) : null;
         const saved = JSON.parse(current ?? legacy ?? 'null');
         if (!Array.isArray(saved) || !saved.length) return defaults;
-        const known = [...new Set(saved.filter((key) => columnDefinitions.some((column) => column.key === key)))];
-        if (legacy !== null && !known.includes('cost_per_purchase')) known.push('cost_per_purchase');
+        const known = [...new Set(saved.map((key) => key === 'campaign_status_label' ? 'current_status' : key).filter((key) => columnDefinitions.some((column) => column.key === key)))];
+        if (legacy !== null && localStorage.getItem(legacyColumnsStorageKey) === null && !known.includes('cost_per_purchase')) known.push('cost_per_purchase');
         const migrated = known.length ? known : defaults;
         if (legacy !== null) {
             try { localStorage.setItem(columnsStorageKey, JSON.stringify(migrated)); } catch { /* Storage may be unavailable. */ }
