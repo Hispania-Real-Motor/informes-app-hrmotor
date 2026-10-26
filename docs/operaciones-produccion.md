@@ -1048,6 +1048,60 @@ El índice único cubre VARCHAR(16/30/30) plataforma/cuenta/campaña; los IDs so
 
 Límite de esta evidencia MariaDB: la batería amplia Dashboard reproduce 19 errores también en main 89282a3 (fechas con offset en DATETIME legacy y longitud de IDs de fixtures). Los focales B y la migración aislada pasan; esto no convierte toda la suite MariaDB en correcta ni permite extrapolar capacidad o compatibilidad de datos productivos. La revisión de esos casos corresponde a trabajo separado, sin cambios de históricos ni activación en esta entrega.
 
+## Fase C — diagnóstico y saneamiento controlado de campañas
+
+La publicación de Fase C cambia las **entidades campaña** expuestas por JSON,
+CSV, rankings, filtros y snapshots nuevos a Meta/Google. No requiere migración,
+reconstrucción, limpieza física ni sincronización para ese contrato. Desplegar
+PHP y `public/build/manifest.json` junto con los assets Vite del mismo build;
+comprobar con permisos normales que el catálogo excluye Salesforce y que los
+KPI/CSV de atribuciones aún incluyen intereses legítimos. El filtro visible
+«Estado» sigue siendo histórico. El rollback restaura código y assets del
+release previo; no revierte ni reescribe tablas económicas.
+
+### Diagnóstico de «Estado no disponible» — solo lectura
+
+La tabla operativa esperada es `campaign_current_statuses`. Antes de atribuir
+una causa a Meta/Google, un operador autorizado debe comprobar, sin publicar
+IDs, respuestas ni secretos: existencia de la tabla y recuento por plataforma;
+valor **efectivo** de `campaign_current_status.enabled` y su caché de
+configuración; últimas ejecuciones de `operational_task_runs` para
+`campaigns-sync-current-status`; registros `report_sync_runs` del dataset
+`campaign_current_status` por plataforma/cuenta con `status` y fecha; y
+coincidencia canónica de plataforma, cuenta y Campaign ID entre métricas
+publicitarias y estados. Comparar además `last_verified_at` en UTC con el
+instante de consulta (umbral 24 h), códigos reconocidos, timestamps futuros,
+errores parciales por cuenta e identidades ambiguas en filas agregadas. Las
+consultas deben ser agregadas o limitadas y de solo lectura; no mostrar
+identificadores de cuenta ni texto bruto de errores en informes compartidos.
+La ausencia de filas con la tarea deshabilitada es compatible con el diseño;
+no demuestra un defecto del frontend. El estado histórico no sirve de respaldo.
+
+La configuración predeterminada es `CAMPAIGN_CURRENT_STATUS_ENABLED=false`.
+Una primera lectura requiere autorización **separada**: verificar credenciales
+y cuentas en el gestor autorizado sin imprimirlas; confirmar migración, permisos,
+cuotas y conectividad; aprobar un run manual por el catálogo operacional ya
+existente; activar temporalmente la tarea y refrescar configuración/procesos;
+ejecutar `php artisan operations:run campaigns-sync-current-status` bajo la
+reserva y permisos existentes; revisar resultados y fallos parciales por
+plataforma/cuenta, filas válidas y frescura; decidir posteriormente, con otra
+autorización, si permanece activa la cadencia de seis horas. No añadir la orden
+a hooks de despliegue ni llamar clientes durante HTTP. No se ha realizado esa
+verificación en producción en esta entrega.
+
+### Limpieza histórica propuesta, no autorizada
+
+No existe una tabla física independiente de catálogo de campañas. Las filas
+`platform=salesforce` de `campaign_attributions` y
+`campaign_lead_attributions` sostienen intereses, oportunidades y KPIs: **no
+borrarlas**. `campaign_report_snapshots.campaigns` antiguos pueden incluir
+entidades Salesforce; son evidencia histórica y no se reescriben. Las
+clasificaciones operativas previas en `campaign_operational_classifications`
+requieren inventario y revisión individual. El [plan de saneamiento](ai/CAMPAIGN_SALESFORCE_CLEANUP_PROPOSAL.md)
+define recuentos de solo lectura y la puerta de aprobación. No hay comando de
+`--apply` autorizado ni se ha ejecutado borrado; una segunda ejecución del
+despliegue solo genera snapshots nuevos conforme al contrato actual.
+
 ### Lectura del diagnóstico de sincronización histórica de Campañas (2026-10-26)
 
 El panel administrativo distingue ahora la **última ejecución correcta registrada** de `campaigns-sync-meta` y `campaigns-sync-google` en `operational_task_states`/`operational_task_runs` de la **última fila de métricas escrita** (`MAX(synced_at)` en `campaign_platform_daily_metrics`). Una ejecución correcta sin filas nuevas puede conservar antiguo el segundo valor; no reemplazarlo por la hora del run. Se muestra además el estado del último intento, aunque haya fallado después de una ejecución correcta, y la fecha operacional se marca «Antigua» si supera 36 horas. Sin run de éxito acreditado se muestra «Sin ejecución verificada». Son campos de diagnóstico aditivos; no corresponden a la tarea separada `campaigns-sync-current-status` ni modifican su umbral de frescura de 24 horas.

@@ -27,7 +27,7 @@ class CampaignDashboardController extends Controller
     {
         abort_unless(ReportUserAccess::isAdmin($request) || ReportUserAccess::isDirector($request), 403);
         $data = $request->validate([
-            'platform' => ['required', 'string', 'max:50'],
+            'platform' => ['required', 'in:meta,google_ads'],
             'account_id' => ['nullable', 'string', 'max:255'],
             'campaign_id' => ['required', 'string', 'max:255'],
             'classification' => ['required', 'in:real,test,pending_review'],

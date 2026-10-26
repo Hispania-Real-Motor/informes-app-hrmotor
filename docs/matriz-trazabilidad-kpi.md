@@ -168,3 +168,42 @@ Formato: `campaigns-dashboard.js` NumberFormat es-ES con agrupación explícita,
 Columna no KPI del Detalle de campañas: `CampaignDashboardDatasetService::mergeRows()` registra cuentas normalizadas de contribuciones métricas por la misma clave económica; `rowKey()` no cambia. Varias cuentas (incluida desconocida junto con conocida) producen `current_status.identity_ambiguous:true`. `CampaignCurrentStatusService::decorate()` omite la consulta de esa identidad y devuelve unavailable/reason `ambiguous_account_identity`, sin cuenta, estado bruto o fechas operativas. Tooltip neutral en `currentStatusPresentation()`. Las filas inequívocas mantienen su contrato; Salesforce no acredita estado publicitario.
 
 No cambian fuentes, fechas pivote, universos, deduplicación, atribución, denominadores, importes, redondeos ni fórmulas de KPIs. Payload v6 evita reutilizar filas v5 sin marca; `exportRows()` excluye metadata y preserva CSV. Evidencia focal: `CampaignDashboardTest::test_current_status_is_neutral_for_merged_accounts_without_changing_economics`, `test_same_campaign_id_with_different_names_keeps_independent_account_identity`, `CampaignCurrentStatusTest::test_ambiguous_identity_does_not_query_an_arbitrary_account` y prueba JS de tooltip ambiguo. No se promueve ninguna ficha a auditoría integral; datos productivos no consultados.
+
+### Impacto focal Fase C — universo de entidades de campaña
+
+El registro de Fase A anterior describe su contrato en aquel momento. En el
+contrato nuevo, `CampaignDashboardDatasetService::campaignEntityRows()` restringe
+**entidades campaña** a Meta/Google y descarta procedencias Salesforce. Afecta
+`summary.campaigns`, `data/campaigns`, exportación de campañas, rankings y
+universos de entidades; `campaign_universes.salesforce_only` queda vacío por
+compatibilidad. El snapshot nuevo de `reports:refresh-campaigns --store`
+filtra su arreglo `campaigns`, sin modificar snapshots anteriores. Las opciones
+de ID/nombre salen de `campaign_platform_daily_metrics` de Meta/Google;
+`CampaignDashboardController::classify()` impide nuevas clasificaciones
+operativas Salesforce. Versiones de caché `campaign-dashboard-v7` y
+`campaign-dashboard-filter-options-v3` separan el catálogo anterior.
+
+Esto **sí cambia el universo de filas de entidades, rankings y CSV de campañas**;
+no debe describirse como un ajuste meramente visual ni como un CSV idéntico.
+Los KPI agregados y auditorías de atribución siguen tomando los registros
+comerciales legítimos de `campaign_attributions` y
+`campaign_lead_attributions`, incluidos `platform=salesforce` y los aliases
+históricos `leads_salesforce` que significan Interest. `source_reconciliation`
+permanece en JSON. No cambia fuente CRM `Interes__c`, sincronizador F2, fecha
+funcional UTC, ventana, first touch, deduplicación, fórmulas, nulos,
+redondeos, cierres ni importes por esta regla de elegibilidad. La identidad de
+campaña real continúa siendo plataforma/cuenta/ID, con agregación económica
+`rowKey()` sin cambios. Evidencia sintética:
+`CampaignDashboardTest::test_salesforce_origin_remains_attributed_but_is_not_a_campaign_entity`
+y `CampaignCommandsTest::test_refresh_snapshot_keeps_salesforce_attribution_without_storing_it_as_campaign`.
+No hay contraste productivo ni auditoría integral de esos KPI; las fichas
+pendientes conservan su estado. [Contrato funcional](informe-campanas.md);
+propuesta de saneamiento pendiente: `docs/ai/CAMPAIGN_SALESFORCE_CLEANUP_PROPOSAL.md`.
+
+La etiqueta del filtro pasa a **Estado**, pero los valores `active`/`inactive`,
+el universo económico y el criterio histórico son los mismos. La columna
+independiente `current_status` no cambia ni gana cobertura real por esta
+iteración. Retirar el subtítulo local de cada tarjeta y ajustar el botón de
+auditoría tampoco modifican fuentes ni cálculos. Esas afirmaciones se apoyan
+en la vista, el renderizador y los tests PHP/JS de Fase C, no en una consulta
+a cuentas publicitarias.
