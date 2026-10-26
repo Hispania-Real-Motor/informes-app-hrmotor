@@ -17,6 +17,7 @@ use App\Services\Operations\OperationalTaskOutput;
 use App\Services\Operations\OperationalTaskService;
 use App\Services\Reports\CommercialCommissions\Sync\SalesforceReviewSyncService;
 use Carbon\CarbonImmutable;
+use Cron\CronExpression;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -233,6 +234,10 @@ class OperationalTasksTest extends TestCase
 
     public function test_cadences_never_executed_stale_and_madrid_dst(): void
     {
+        // RefreshDatabase migrates at real time; activation must precede the simulated DST day.
+        DB::table('operational_task_states')->update([
+            'monitoring_started_at' => CarbonImmutable::parse('2026-10-24 00:00:00', 'Europe/Madrid')->utc(),
+        ]);
         $this->travelTo(CarbonImmutable::parse('2026-10-25 06:40:00', 'Europe/Madrid'));
         $health = app(OperationalTaskHealthService::class);
         $snapshot = $health->snapshot();
@@ -246,6 +251,50 @@ class OperationalTasksTest extends TestCase
         $run->update(['status' => 'running', 'started_at' => now()->subHours(2)]);
         $this->tasks()->finish($run, true, 0);
         $this->assertSame('stale', $health->snapshot()['salesforce-sync-monthly-commercial']['status']);
+    }
+
+    public function test_repeated_madrid_hour_keeps_distinct_scheduled_instants(): void
+    {
+        $task = app(OperationalTaskCatalog::class)->get(self::KEY);
+        $cron = new CronExpression($task['cron']);
+        // Explicit UTC instants retain both folds of 02:00, unlike a local time-travel string.
+        $firstHour = CarbonImmutable::parse('2026-10-25T00:15:00Z')->setTimezone($task['timezone']);
+        $secondHour = CarbonImmutable::parse('2026-10-25T01:15:00Z')->setTimezone($task['timezone']);
+        $firstNext = CarbonImmutable::instance($cron->getNextRunDate($firstHour->toDateTimeImmutable(), 0, false, $task['timezone']));
+        $secondNext = CarbonImmutable::instance($cron->getNextRunDate($secondHour->toDateTimeImmutable(), 0, false, $task['timezone']));
+        $firstAfter = CarbonImmutable::parse('2026-10-25T00:30:00Z')->setTimezone($task['timezone']);
+        $secondAfter = CarbonImmutable::parse('2026-10-25T01:30:00Z')->setTimezone($task['timezone']);
+        $firstDue = CarbonImmutable::instance($cron->getPreviousRunDate($firstAfter->toDateTimeImmutable(), 0, true, $task['timezone']));
+        $secondDue = CarbonImmutable::instance($cron->getPreviousRunDate($secondAfter->toDateTimeImmutable(), 0, true, $task['timezone']));
+
+        $this->assertSame('2026-10-25 00:20', $firstNext->utc()->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-25 01:20', $secondNext->utc()->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-25 00:20', $firstDue->utc()->format('Y-m-d H:i'));
+        $this->assertSame('2026-10-25 01:20', $secondDue->utc()->format('Y-m-d H:i'));
+        $this->assertSame('Europe/Madrid', $firstNext->timezoneName);
+        $this->assertSame('Europe/Madrid', $secondNext->timezoneName);
+    }
+
+    public function test_never_executed_task_waits_for_first_schedule_then_becomes_stale(): void
+    {
+        config()->set('campaign_current_status.enabled', false);
+        DB::table('operational_task_states')->where('task_key', self::KEY)->update([
+            'monitoring_started_at' => CarbonImmutable::parse('2026-10-25T01:15:00Z'),
+        ]);
+        $health = app(OperationalTaskHealthService::class);
+        $this->travelTo(CarbonImmutable::parse('2026-10-25T01:15:00Z'));
+        $pending = $health->snapshot();
+        $this->assertArrayNotHasKey('campaigns-sync-current-status', $pending);
+        $this->assertSame('never', $pending[self::KEY]['status']);
+        $this->assertNull($pending[self::KEY]['due']);
+        $this->assertTrue($pending[self::KEY]['awaitingFirstSchedule']);
+        $this->assertFalse($pending[self::KEY]['stale']);
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-25T03:30:00Z'));
+        $overdue = $health->snapshot()[self::KEY];
+        $this->assertSame('never', $overdue['status']);
+        $this->assertNotNull($overdue['due']);
+        $this->assertTrue($overdue['stale']);
     }
 
     public function test_panel_reads_are_bounded_and_never_run_commands(): void
