@@ -166,6 +166,125 @@ El scheduler usa `Europe/Madrid`:
 - atribución Campañas: 08:30;
 - snapshot del informe: 09:00.
 
+No cambia la cadencia ordinaria de las fuentes ni de la atribución/refresco.
+`campaigns-reconcile-publication` comprueba cada hora de 09:20 a 23:20
+(`Europe/Madrid`) qué dependencia impide publicar. En cada pasada puede iniciar
+**una sola** tarea pendiente, por orden de fuentes Meta, Google, F2 y
+Opportunities, snapshot directo Opportunity→Interest, atribución y refresco.
+La tarea hija se reserva mediante `OperationalTaskService` con su clave y
+bloqueo persistente existentes; no se crea otro canal de escritura ni se
+ejecutan varios proveedores en una pasada. Cuenta los intentos no omitidos
+con origen `scheduler` desde el comienzo del día civil de Madrid y permite
+como máximo **tres por tarea y día**, incluidas las ejecuciones ordinarias del
+catálogo. Las ejecuciones manuales autorizadas no entran en ese contador. Una
+reserva ocupada, un límite agotado o una dependencia sin tramo abierto
+recuperable se omiten; un fallo deja pendiente la siguiente pasada. El ciclo
+acaba a las 23:20 y puede no completar toda la cadena ese día.
+
+### Protección de escritura y evidencia de actualización (iteración 2026-10-27)
+
+Los comandos económicos programados conservan su ventana solicitada de 120
+días, pero `CampaignOpenInvestmentWindow::start()` consulta
+`campaign_investment_closures` en la conexión de escritura y acota el comienzo
+al primer día posterior al **último mes cerrado anterior al fin del rango**.
+La regla también rige las invocaciones manuales de Meta, Google y del builder
+de atribuciones. Un rango totalmente cerrado no consulta al proveedor ni
+reemplaza métricas: deja un `report_sync_runs` con estado `skipped` y motivo
+`closed_period`. El builder en modo escritura lo rechaza, mientras
+`--dry-run` permite leer y comparar históricos sin publicar cambios. Cerrar o
+reabrir un mes y escribir métricas/atribuciones comparten un bloqueo asesor
+MariaDB/MySQL y el comienzo se revalida dentro de la transacción antes de
+reemplazar filas. La ventana efectiva se informa en la salida CLI y, para
+sincronizaciones iniciadas, en `report_sync_runs.stats`. Este límite protege
+las escrituras ordinarias de métricas y atribución; no sustituye la revisión
+económica previa a un cierre ni reescribe snapshots existentes.
+
+Si hay cierres no consecutivos, una solicitud ordinaria que alcance un mes
+cerrado posterior comienza **después del último cierre**; no cruza hacia un
+mes anterior reabierto. Ese mes reabierto solo puede procesarse mediante un
+rango aislado que termine antes del siguiente cierre, con autorización
+económica expresa. Reabrir una fila no reconstruye datos automáticamente.
+
+Meta valida la paginación de `insights` y rechaza una respuesta incompleta
+antes del reemplazo; Google conserva la validación estructural de
+`searchStream`. Ambos sincronizadores validan `metric_date`/`date_start` como
+día real dentro de la ventana y sustituyen por cuenta en transacción. Un fallo
+de proveedor o inventario queda advertido sin renovar la ejecución como
+completa; una fecha inválida revierte la cuenta. Una respuesta vacía **válida**
+mantiene la semántica anterior de intervalo sin filas, por lo que el operador
+debe contrastar su alcance antes de recuperar octubre. No se han consultado
+proveedores ni datos productivos para este cambio.
+
+El aviso de Interest posterior a la atribución deja de depender solo de la
+hora de ejecución F2: exige una modificación persistida posterior a la
+atribución en `salesforce_interests`, bien de un Interest actualmente dentro
+del período o de uno previamente atribuido a él que haya cambiado de fecha
+funcional. Un run horario sin cambios materiales no genera el aviso ni oculta
+un cambio anterior todavía pendiente. La caché del
+dashboard versiona el último run F2 y el estado operacional de Meta/Google;
+no debe reciclar una marca de actualización verificada después de un fallo.
+
+`CampaignPublicationReadiness` reúne los últimos runs persistidos y completos
+de Meta, Google, F2 Interests y Opportunities en `report_sync_runs`, más el
+snapshot directo Opportunity–Interest completo. Una ejecución manual válida
+cuenta igual que una programada; un intento posterior fallido no acredita la
+fuente. Los runs Meta/Google deben cubrir el tramo económico abierto del
+rango solicitado; el día corriente puede ser parcial y no se presume
+cobertura futura. La atribución automática usa `--require-ready`: exige esas fuentes,
+reconstruye solo si cambia la evidencia material o falta cobertura del rango,
+y registra en `report_sync_runs` la identidad de los runs fuente y el rango
+efectivo. Un F2 posterior sin cambios persistidos y una sync de Opportunities
+con `material_changed=0` y sin bajas no obligan por sí solos a reconstruir;
+el snapshot directo compara su huella de referencias, no solo su ID/fecha.
+Un run sin estadísticas suficientes queda conservadoramente pendiente.
+
+`reports:refresh-campaigns --store` solo publica si encuentra fuentes
+completas, una atribución vigente que cubre el rango abierto solicitado y el
+mismo linaje antes/después del cálculo. Persiste el snapshot y su run de
+publicación en una transacción; la ejecución fallida no acredita un dataset
+nuevo. Si la publicación del contexto predeterminado ya es vigente, el comando
+omite un snapshot duplicado. Guarda en `campaign_report_snapshots.filters_hash`
+una huella SHA-256 de los filtros normalizados por
+`CampaignDashboardDatasetService::filters()`, excluyendo `start_date` y
+`end_date`; las fechas se comprueban por cobertura separada. Este cambio no
+altera los filtros aplicados, las cifras ni el contenido económico del JSON o
+CSV. `dataset_cutoff_at` y la etiqueta «Datos actualizados» derivan del
+último **snapshot publicado** con linaje de fuentes y atribución verificable,
+no de la hora de renderizado ni de `MAX(synced_at)`. Si falta evidencia, el
+campo es nulo, `dataset_freshness_reason` expone un motivo genérico y la UI
+muestra «Actualización del informe no verificada». La fecha usa el mínimo de
+los cutoffs fuente del linaje válido. El snapshot debe cubrir además el
+período seleccionado; para un período totalmente cerrado esta marca de
+actualidad operativa queda no verificada sin impedir consultar el histórico
+cerrado. Los campos de diagnóstico individuales
+pueden conservar fechas anteriores. Esto acredita la publicación local y sus
+dependencias registradas; la integridad real de datos productivos y el cero
+Google Venta requieren contraste operacional separado.
+
+La consulta del dashboard solo acredita esa marca cuando los filtros
+normalizados coinciden con la huella del snapshot y el período seleccionado
+está cubierto por el snapshot **y** la atribución vigente. Un subperíodo con el
+mismo contexto puede aprovechar la publicación; otro contexto o un rango fuera
+de cobertura queda neutral. No se reutiliza una publicación general para
+certificar una selección filtrada que no se publicó. Los snapshots antiguos con
+otra huella no se reescriben: permanecen consultables pero no certifican la
+marca nueva.
+
+La retención transversal existente elimina runs `completed` con más de un mes
+y `failed`/`unverified` con más de 14 días. Si desaparece un run necesario
+para acreditar el linaje, la marca de frescura se neutraliza o el builder
+requiere una reconstrucción conservadora; no se amplía la retención en esta
+iteración. Conservar evidencia de auditoría bajo el procedimiento autorizado
+antes de cualquier purga que afecte una investigación.
+
+La inversión Google positiva y los resultados comerciales cero en Venta no
+autorizan una atribución nueva por nombre o por importe. El resultado depende
+de la evidencia `utm_id`/`utm_content`/`utm_campaign` del Interest, el
+inventario publicitario, la resolución de ambigüedades, el enlace
+Opportunity–Interest y los filtros de período y tipo. Sin consulta productiva
+autorizada no puede localizarse el paso en que se pierden registros ni afirmar
+que el cero sea incorrecto. Seguir el [diagnóstico agregado de solo lectura](operaciones-produccion.md#diagnóstico-de-google-ads-venta-con-inversión-y-cero-resultados) antes de proponer cambios de matching o KPI.
+
 Comandos locales del pipeline ROT-4:
 
 ```bash

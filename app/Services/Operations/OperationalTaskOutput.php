@@ -27,12 +27,16 @@ final class OperationalTaskOutput extends Output
             $this->skipped = true;
         }
         if (in_array($this->taskKey, ['campaigns-sync-meta', 'campaigns-sync-google'], true)) {
-            if (str_contains($message, 'Ads configurado: no')) {
+            if (str_contains($message, 'Ads configurado: no') || str_contains($message, 'Intervalo omitido:')) {
                 $this->skipped = true;
             }
             if (str_contains($message, 'No se ha podido actualizar')) {
                 $this->partialFailure = true;
             }
+        }
+        if (in_array($this->taskKey, ['campaigns-build-attribution', 'reports-refresh-campaigns', 'campaigns-reconcile-publication'], true)
+            && str_starts_with(trim($message), 'SKIPPED:')) {
+            $this->skipped = true;
         }
     }
 }

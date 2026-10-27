@@ -72,6 +72,7 @@ SOURCE_PREFIXES = (
     ("resources/views/reports/summary/", ALL),
 )
 EXACT = {
+    "app/Console/Commands/SalesforceSyncOpportunitiesCommand.php": {"reservations", "campaigns", "commissions", "stock"},
     "config/campaign_current_status.php": {"campaigns"},
     "config/commercial_commissions.php": {"commissions"},
     "config/stock.php": {"stock"},

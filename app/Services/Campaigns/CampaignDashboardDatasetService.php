@@ -1442,7 +1442,7 @@ class CampaignDashboardDatasetService
         );
         $charts = $this->charts($rows, $filters, $period, $totals, $attributionAnalytics);
         $publicWarnings = $this->publicWarnings($totals);
-        $datasetMetadata = $this->campaignDatasetMetadata($period);
+        $datasetMetadata = $this->campaignDatasetMetadata($period, $filters);
 
         return [
             'ok' => count($rows) > 0,
@@ -1461,6 +1461,7 @@ class CampaignDashboardDatasetService
             'attribution_built_at' => $datasetMetadata['attribution_built_at'],
             'dataset_generated_at' => $datasetMetadata['dataset_generated_at'],
             'dataset_cutoff_at' => $datasetMetadata['dataset_cutoff_at'],
+            'dataset_freshness_reason' => $datasetMetadata['dataset_freshness_reason'],
             'dataset_timezone' => self::REPORT_TIMEZONE,
             'kpis' => $totals,
             'warnings' => $this->warnings($rows, $totals, $period, $filters),
@@ -2830,17 +2831,37 @@ class CampaignDashboardDatasetService
             $warnings[] = 'Las metricas publicitarias son posteriores a la atribucion. Ejecuta campaigns:build-attribution antes de validar el panel.';
         }
 
-        $lastInterestSync = ReportSyncRun::query()
+        $lastInterestRun = ReportSyncRun::query()
             ->where('dataset', SalesforceInterestSyncService::DATASET)
             ->where('source', SalesforceInterestSyncService::SOURCE)
             ->where('status', 'completed')
             ->orderByDesc('id')
-            ->value('completed_at');
-        if ($lastAttributionBuild && $lastInterestSync && CarbonImmutable::parse($lastAttributionBuild)->lessThan(CarbonImmutable::parse($lastInterestSync))) {
+            ->first();
+        if ($lastAttributionBuild && $lastInterestRun?->completed_at
+            && CarbonImmutable::parse($lastAttributionBuild)->lessThan($lastInterestRun->completed_at)
+            && $this->interestHasMaterialChangesSinceAttribution($period, $lastAttributionBuild)) {
             $warnings[] = 'Salesforce Interests se sincronizó después de la atribución. Reconstruye atribuciones para propagar cambios y lifecycle.';
         }
 
         return array_values(array_unique($warnings));
+    }
+
+    private function interestHasMaterialChangesSinceAttribution(array $period, string $lastAttributionBuild): bool
+    {
+        if (DB::table('salesforce_interests')
+            ->where('functional_created_at', '>=', $period['start_at'])
+            ->where('functional_created_at', '<', $period['end_at'])
+            ->where('updated_at', '>', $lastAttributionBuild)
+            ->exists()) {
+            return true;
+        }
+
+        return DB::table('campaign_attributions as attribution')
+            ->join('salesforce_interests as interest', 'interest.salesforce_id', '=', 'attribution.interest_id')
+            ->where('attribution.interest_functional_created_at', '>=', $period['start_at'])
+            ->where('attribution.interest_functional_created_at', '<', $period['end_at'])
+            ->where('interest.updated_at', '>', $lastAttributionBuild)
+            ->exists();
     }
 
     private function saleAmountWarning(array $period, array $filters): ?string
@@ -3726,22 +3747,19 @@ class CampaignDashboardDatasetService
         return $syncedAt ? CarbonImmutable::parse($syncedAt) : null;
     }
 
-    private function campaignDatasetMetadata(array $period): array
+    private function campaignDatasetMetadata(array $period, array $filters): array
     {
         $interestRun = ReportSyncRun::query()
             ->where('dataset', SalesforceInterestSyncService::DATASET)
             ->where('source', SalesforceInterestSyncService::SOURCE)
             ->orderByDesc('id')
             ->first();
-        $interestSync = $interestRun?->source_cutoff_at;
+        $interestSync = $interestRun?->status === 'completed' ? $interestRun->source_cutoff_at : null;
         $metaSync = CampaignPlatformDailyMetric::query()->where('platform', 'meta')->max('synced_at');
         $googleSync = CampaignPlatformDailyMetric::query()->where('platform', 'google_ads')->max('synced_at');
         $attributionBuild = DB::table('campaign_lead_attributions')->max('updated_at');
-        $cutoff = collect([$interestSync, $metaSync, $googleSync, $attributionBuild])
-            ->filter()
-            ->map(fn ($value) => CarbonImmutable::parse($value))
-            ->sortBy(fn (CarbonImmutable $value) => $value->getTimestamp())
-            ->first();
+        $publication = app(CampaignPublicationReadiness::class)->published($period['start_at'], $period['end_at'], $filters);
+        $cutoff = $publication['cutoff'];
 
         return [
             'salesforce_interests_synced_at' => $this->reportDateTime($interestSync)?->toIso8601String(),
@@ -3751,16 +3769,29 @@ class CampaignDashboardDatasetService
             'attribution_built_at' => $this->reportDateTime($attributionBuild)?->toDateTimeString(),
             'dataset_generated_at' => CarbonImmutable::now(self::REPORT_TIMEZONE)->toDateTimeString(),
             'dataset_cutoff_at' => $cutoff?->setTimezone(self::REPORT_TIMEZONE)->toDateTimeString(),
+            'dataset_freshness_reason' => $publication['reason'],
         ];
     }
 
     private function dataVersion(): array
     {
+        $interestRun = ReportSyncRun::query()
+            ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->where('source', SalesforceInterestSyncService::SOURCE)
+            ->orderByDesc('id')->first(['id', 'status', 'completed_at', 'source_cutoff_at']);
+
         return [
             'attributions_updated_at' => DB::table('campaign_lead_attributions')->max('updated_at'),
             'metrics_updated_at' => CampaignPlatformDailyMetric::query()->max('updated_at'),
             'opportunity_interest_context' => $this->opportunityInterestAttribution->capture(),
             'dashboard_cache_version' => Cache::get('campaign_dashboard_cache_version', 1),
+            'interest_sync_run' => $interestRun?->toArray(),
+            'campaign_sync_operations_updated_at' => DB::table('operational_task_states')
+                ->whereIn('task_key', ['campaigns-sync-meta', 'campaigns-sync-google'])->max('updated_at'),
+            'campaign_pipeline_latest_run' => DB::table('report_sync_runs')
+                ->whereIn('dataset', ['campaign_platform_daily_metrics', 'salesforce_interests', 'salesforce_opportunities',
+                    CampaignPublicationReadiness::ATTRIBUTION_DATASET, CampaignPublicationReadiness::PUBLICATION_DATASET])
+                ->orderByDesc('id')->first(['id', 'status', 'updated_at']),
         ];
     }
 

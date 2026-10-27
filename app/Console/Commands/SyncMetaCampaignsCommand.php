@@ -36,6 +36,9 @@ class SyncMetaCampaignsCommand extends Command
         $this->line('Meta Ads configurado: '.($result['configured'] ? 'si' : 'no'));
         $this->line('Filas procesadas: '.$result['processed']);
         $this->line('Filas guardadas: '.$result['saved']);
+        if (isset($result['range_start'], $result['range_end_exclusive'])) {
+            $this->line('Intervalo efectivo: '.$result['range_start'].' a '.$result['range_end_exclusive'].' (exclusivo)');
+        }
 
         return self::SUCCESS;
     }
@@ -45,7 +48,7 @@ class SyncMetaCampaignsCommand extends Command
         $from = $this->option('from');
 
         if (filled($from)) {
-            return CarbonImmutable::parse($from)->startOfDay();
+            return CarbonImmutable::parse($from, 'Europe/Madrid')->startOfDay();
         }
 
         $months = $this->option('months');
@@ -62,9 +65,9 @@ class SyncMetaCampaignsCommand extends Command
         $to = $this->option('to');
 
         if (filled($to)) {
-            return CarbonImmutable::parse($to)->startOfDay();
+            return CarbonImmutable::parse($to, 'Europe/Madrid')->startOfDay();
         }
 
-        return CarbonImmutable::now();
+        return CarbonImmutable::now('Europe/Madrid');
     }
 }

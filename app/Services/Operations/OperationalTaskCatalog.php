@@ -95,7 +95,7 @@ final class OperationalTaskCatalog
             'campaigns-build-attribution' => [
                 'label' => 'construcción de atribución de campañas', 'module' => 'campaigns',
                 'command' => 'campaigns:build-attribution',
-                'arguments' => ['--days' => '120'],
+                'arguments' => ['--days' => '120', '--require-ready' => true],
                 'cron' => '30 8 * * *', 'timezone' => 'Europe/Madrid',
                 'window_minutes' => 240, 'grace_minutes' => 240,
                 'manual_allowed' => true, 'risk' => 'moderate',
@@ -109,6 +109,15 @@ final class OperationalTaskCatalog
                 'window_minutes' => 120, 'grace_minutes' => 120,
                 'manual_allowed' => true, 'risk' => 'moderate',
                 'overlap_policy' => 'exclusive-persistent', 'policy' => 'Ventana ordinaria fija del scheduler.',
+            ],
+            'campaigns-reconcile-publication' => [
+                'label' => 'recuperación condicionada de publicación de campañas', 'module' => 'campaigns',
+                'command' => 'campaigns:reconcile-publication', 'arguments' => [],
+                'cron' => '20 9-23 * * *', 'timezone' => 'Europe/Madrid',
+                'window_minutes' => 240, 'grace_minutes' => 60,
+                'manual_allowed' => false, 'risk' => 'moderate',
+                'overlap_policy' => 'exclusive-persistent',
+                'policy' => 'Una dependencia pendiente por hora; máximo tres intentos diarios por tarea, incluidos los ordinarios.',
             ],
             'salesforce-sync-opportunities' => [
                 'label' => 'sincronización incremental de Opportunities e historial de Stage', 'module' => 'salesforce',

@@ -112,8 +112,14 @@ class MetaAdsClient
 
         $rows = [];
         $after = null;
+        $seen = [];
+        $started = microtime(true);
+        $page = 0;
 
         do {
+            if (++$page > 100 || microtime(true) - $started > 540) {
+                throw new RuntimeException('Paginación de inversión Meta Ads incompleta.');
+            }
             $params = $baseParams;
 
             if (filled($after)) {
@@ -129,7 +135,6 @@ class MetaAdsClient
                 Log::error('Meta Ads response error', [
                     'integration' => 'meta_ads',
                     'status' => $response->status(),
-                    'account_resolved' => $account,
                     'level' => $params['level'] ?? null,
                     'error_type' => 'remote_http_error',
                 ]);
@@ -142,11 +147,25 @@ class MetaAdsClient
             }
 
             $payload = $response->json();
-
-            $rows = array_merge($rows, $payload['data'] ?? []);
+            if (! is_array($payload) || isset($payload['error']) || ! isset($payload['data'])
+                || ! is_array($payload['data']) || ! array_is_list($payload['data'])) {
+                throw new RuntimeException('Respuesta de inversión Meta Ads incompleta.');
+            }
+            foreach ($payload['data'] as $row) {
+                if (! is_array($row)) {
+                    throw new RuntimeException('Respuesta de inversión Meta Ads incompleta.');
+                }
+                $rows[] = $row;
+            }
 
             $after = data_get($payload, 'paging.cursors.after');
-            $hasNextPage = filled(data_get($payload, 'paging.next')) && filled($after);
+            $hasNextPage = filled(data_get($payload, 'paging.next'));
+            if ($hasNextPage) {
+                if (! is_string($after) || $after === '' || strlen($after) > 4096 || isset($seen[$after])) {
+                    throw new RuntimeException('Paginación de inversión Meta Ads incompleta.');
+                }
+                $seen[$after] = true;
+            }
         } while ($hasNextPage);
 
         return $rows;

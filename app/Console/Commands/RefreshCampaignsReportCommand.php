@@ -4,10 +4,13 @@ namespace App\Console\Commands;
 
 use App\Models\CampaignReportSnapshot;
 use App\Services\Campaigns\CampaignDashboardDatasetService;
+use App\Services\Campaigns\CampaignPublicationReadiness;
+use App\Services\Reports\ReportSyncRunService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class RefreshCampaignsReportCommand extends Command
@@ -21,18 +24,39 @@ class RefreshCampaignsReportCommand extends Command
 
     protected $description = 'Calcula el informe de campanas y opcionalmente guarda un snapshot.';
 
-    public function handle(CampaignDashboardDatasetService $dataset): int
-    {
-        $end = CarbonImmutable::now()->endOfDay();
+    public function handle(
+        CampaignDashboardDatasetService $dataset,
+        CampaignPublicationReadiness $readiness,
+        ReportSyncRunService $syncRuns,
+    ): int {
+        $end = CarbonImmutable::now('Europe/Madrid')->endOfDay();
         $start = $this->periodStart($end);
+        $store = (bool) $this->option('store');
+        $request = Request::create('/informes/campanas/data/summary', 'GET', [
+            'start_date' => $start->toDateString(),
+            'end_date' => $end->toDateString(),
+        ]);
+        $filters = $dataset->filters($request);
+        if ($store && $readiness->published($start, $end->addDay()->startOfDay(), $filters)['ready']) {
+            $this->line('SKIPPED: el contexto ya dispone de publicación vigente.');
+
+            return self::SUCCESS;
+        }
+        $run = $store ? $syncRuns->start(CampaignPublicationReadiness::PUBLICATION_DATASET, 'campaigns', $start, $end) : null;
 
         try {
-            $this->invalidateCache();
+            $sources = $readiness->sources($start, $end);
+            $build = $sources['ready'] ? $readiness->attributionReady($sources['ids']) : null;
+            if ($build !== null && ! $readiness->attributionCovers($build, $start, $end)) {
+                $build = null;
+            }
+            if ($store && $build === null) {
+                $syncRuns->fail($run, 'La publicación requiere fuentes completas y una atribución posterior.');
+                $this->error('Informe no publicado: faltan dependencias verificadas.');
 
-            $request = Request::create('/informes/campanas/data/summary', 'GET', [
-                'start_date' => $start->toDateString(),
-                'end_date' => $end->toDateString(),
-            ]);
+                return self::FAILURE;
+            }
+            $this->invalidateCache();
 
             $payload = $dataset->payload($request);
             $campaigns = $dataset->campaignEntityRows($payload['campaigns']);
@@ -41,16 +65,33 @@ class RefreshCampaignsReportCommand extends Command
                 $this->warn($warning);
             }
 
-            if ($this->option('store')) {
-                $snapshot = CampaignReportSnapshot::query()->create([
-                    'period_start' => $start->toDateString(),
-                    'period_end' => $end->toDateString(),
-                    'filters_hash' => md5(json_encode($request->query())),
-                    'summary' => $payload['summary'],
-                    'campaigns' => $campaigns,
-                    'rankings' => $payload['rankings'],
-                    'warnings' => $payload['summary']['warnings'] ?? [],
-                ]);
+            if ($store) {
+                $current = $readiness->sources($start, $end);
+                if (! $current['ready'] || $current['ids'] !== $sources['ids']
+                    || $readiness->attributionReady($current['ids'])?->id !== $build->id) {
+                    $syncRuns->fail($run, 'Una dependencia cambió durante el cálculo del informe.');
+                    $this->error('Informe no publicado: cambió una dependencia durante el cálculo.');
+
+                    return self::FAILURE;
+                }
+                $snapshot = DB::transaction(function () use ($start, $end, $filters, $payload, $campaigns, $syncRuns, $run, $sources, $build): CampaignReportSnapshot {
+                    $snapshot = CampaignReportSnapshot::query()->create([
+                        'period_start' => $start->toDateString(),
+                        'period_end' => $end->toDateString(),
+                        'filters_hash' => CampaignPublicationReadiness::filtersHash($filters),
+                        'summary' => $payload['summary'],
+                        'campaigns' => $campaigns,
+                        'rankings' => $payload['rankings'],
+                        'warnings' => $payload['summary']['warnings'] ?? [],
+                    ]);
+                    $syncRuns->complete($run, $sources['cutoff'], [
+                        'snapshot_id' => $snapshot->id,
+                        'attribution_run_id' => $build->id,
+                        'source_ids' => $sources['ids'],
+                    ]);
+
+                    return $snapshot;
+                });
 
                 $this->line('Snapshot id: '.$snapshot->id);
             }
@@ -64,8 +105,10 @@ class RefreshCampaignsReportCommand extends Command
 
             return self::SUCCESS;
         } catch (Throwable $exception) {
+            if ($run !== null && $run->status === 'running') {
+                $syncRuns->fail($run, $exception);
+            }
             $this->error('Error refrescando informe de campanas.');
-            $this->line($exception->getMessage());
 
             return self::FAILURE;
         }

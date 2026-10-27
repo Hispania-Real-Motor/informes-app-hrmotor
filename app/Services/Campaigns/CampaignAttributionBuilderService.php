@@ -37,9 +37,31 @@ class CampaignAttributionBuilderService
         private readonly LeadRecordTypeNormalizer $leadRecordTypeNormalizer,
         private readonly LeadDelegationNormalizer $delegationNormalizer,
         private readonly OpportunityInterestAttributionService $opportunityInterestAttribution,
+        private readonly CampaignOpenInvestmentWindow $openWindow,
     ) {}
 
     public function build(CarbonInterface $start, CarbonInterface $end, bool $dryRun = false): array
+    {
+        if ($dryRun) {
+            return $this->buildRange($start, $end, true);
+        }
+
+        return $this->openWindow->synchronized(function () use ($start, $end): array {
+            $openStart = $this->openWindow->start($start, $end);
+            if ($openStart === null) {
+                throw new \LogicException('El rango de atribución no contiene períodos económicos abiertos.');
+            }
+
+            $result = $this->buildRange($openStart, $end, false);
+            if ($openStart->greaterThan($start)) {
+                $result['warnings'][] = 'Atribuciones acotadas al primer día posterior al último cierre de inversión.';
+            }
+
+            return $result;
+        });
+    }
+
+    private function buildRange(CarbonInterface $start, CarbonInterface $end, bool $dryRun): array
     {
         $startedAt = microtime(true);
         $start = CarbonImmutable::parse($start)->setTimezone('Europe/Madrid')->startOfDay();

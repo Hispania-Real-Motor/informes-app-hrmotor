@@ -51,7 +51,8 @@ class OperationalTasksTest extends TestCase
             }
             $this->assertNotNull(Artisan::all()[$task['command']] ?? null);
         }
-        foreach (['reports-prune-transversal-data', 'stock-sync-daily', 'seo-send-executive-daily-email', 'operations-health'] as $key) {
+        foreach (['reports-prune-transversal-data', 'stock-sync-daily', 'seo-send-executive-daily-email',
+            'campaigns-reconcile-publication', 'operations-health'] as $key) {
             $this->assertFalse($tasks[$key]['manual_allowed']);
         }
     }
@@ -402,6 +403,9 @@ class OperationalTasksTest extends TestCase
             $this->assertTrue($output->partialFailure);
             $this->assertTrue($output->skipped);
             $this->assertStringNotContainsString('secret', json_encode($output));
+            $closedOutput = new OperationalTaskOutput($key);
+            $closedOutput->writeln('Intervalo omitido: no contiene días de inversión abiertos.');
+            $this->assertTrue($closedOutput->skipped);
         }
         Artisan::shouldReceive('call')->once()->andReturnUsing(function ($command, $args, $output) {
             $output->writeln('No se ha podido actualizar la inversion de Meta Ads.');
@@ -422,6 +426,24 @@ class OperationalTasksTest extends TestCase
         $this->tasks()->execute($googleRun->id);
         $this->assertSame('failed', $googleRun->fresh()->status);
         $this->assertSame(0, $googleRun->fresh()->exit_code);
+    }
+
+    public function test_unchanged_campaign_attribution_is_an_operational_skip(): void
+    {
+        $output = new OperationalTaskOutput('campaigns-build-attribution');
+        $output->writeln('SKIPPED: las fuentes no tienen cambios materiales pendientes de atribución.');
+        $this->assertTrue($output->skipped);
+        $this->assertFalse($output->partialFailure);
+    }
+
+    public function test_verified_campaign_publication_is_an_operational_skip(): void
+    {
+        foreach (['reports-refresh-campaigns', 'campaigns-reconcile-publication'] as $key) {
+            $output = new OperationalTaskOutput($key);
+            $output->writeln('SKIPPED: la publicación diaria ya está verificada.');
+            $this->assertTrue($output->skipped);
+            $this->assertFalse($output->partialFailure);
+        }
     }
 
     public function test_http_conflict_while_scheduler_is_running_never_dispatches(): void

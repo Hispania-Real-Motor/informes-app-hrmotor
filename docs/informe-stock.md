@@ -176,6 +176,12 @@ Exportación: `/informes/stock/exportar/calidad-dato.xlsx`.
 
 ## Operación
 
+El sincronizador compartido del snapshot directo Opportunity→Interest registra
+ahora `reference_fingerprint` en las estadísticas de su ejecución completada.
+Esta evidencia se utiliza para la publicación de Campañas y no modifica las
+filas de Opportunity o venta usadas por Stock, sus snapshots, universo,
+deduplicación, fechas, fórmulas ni exportaciones.
+
 ```bash
 php artisan stock:sync-salesforce-catalog
 php artisan stock:sync-daily --sales-days=180 --logistics-days=365

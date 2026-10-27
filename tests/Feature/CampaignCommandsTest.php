@@ -8,7 +8,9 @@ use App\Models\SalesforceInterest;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
+use App\Services\Campaigns\CampaignDashboardDatasetService;
 use App\Services\Campaigns\CampaignLeadSyncService;
+use App\Services\Campaigns\CampaignPublicationReadiness;
 use App\Services\Campaigns\GoogleCampaignSyncService;
 use App\Services\Campaigns\MetaCampaignSyncService;
 use App\Services\Reports\MonthlyCommercial\Sync\SalesforceMonthlyUsersSyncService;
@@ -17,6 +19,7 @@ use App\Services\Reports\ReservationsSales\Sync\SalesforceOpportunitySyncService
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Mockery\MockInterface;
@@ -338,8 +341,8 @@ class CampaignCommandsTest extends TestCase
             $mock->shouldReceive('sync')
                 ->once()
                 ->withArgs(function ($start, $end): bool {
-                    return $start->equalTo(CarbonImmutable::parse('2026-01-01')->startOfDay())
-                        && $end->equalTo(CarbonImmutable::parse('2026-02-01')->startOfDay());
+                    return $start->equalTo(CarbonImmutable::parse('2026-01-01', 'Europe/Madrid')->startOfDay())
+                        && $end->equalTo(CarbonImmutable::parse('2026-02-01', 'Europe/Madrid')->startOfDay());
                 })
                 ->andReturn([
                     'configured' => true,
@@ -353,8 +356,8 @@ class CampaignCommandsTest extends TestCase
             $mock->shouldReceive('sync')
                 ->once()
                 ->withArgs(function ($start, $end): bool {
-                    return $start->equalTo(CarbonImmutable::parse('2026-01-01')->startOfDay())
-                        && $end->equalTo(CarbonImmutable::parse('2026-02-01')->startOfDay());
+                    return $start->equalTo(CarbonImmutable::parse('2026-01-01', 'Europe/Madrid')->startOfDay())
+                        && $end->equalTo(CarbonImmutable::parse('2026-02-01', 'Europe/Madrid')->startOfDay());
                 })
                 ->andReturn([
                     'configured' => true,
@@ -852,11 +855,38 @@ class CampaignCommandsTest extends TestCase
 
     public function test_refresh_campaigns_store_crea_snapshot(): void
     {
+        $this->recordCompletedCampaignDependencies(3);
         $this->artisan('reports:refresh-campaigns', ['--days' => 1, '--store' => true])
             ->expectsOutputToContain('Snapshot id:')
             ->assertExitCode(0);
 
         $this->assertDatabaseCount('campaign_report_snapshots', 1);
+        $end = CarbonImmutable::now('Europe/Madrid')->endOfDay();
+        $start = $end->subDay()->startOfDay();
+        $filters = app(CampaignDashboardDatasetService::class)->filters(Request::create('/informes/campanas/data/summary', 'GET', [
+            'start_date' => $start->toDateString(), 'end_date' => $end->toDateString(),
+        ]));
+        $this->assertSame(CampaignPublicationReadiness::filtersHash($filters), DB::table('campaign_report_snapshots')->value('filters_hash'));
+        $readiness = app(CampaignPublicationReadiness::class);
+        $sources = $readiness->sources($start, $end->addDay()->startOfDay());
+        $this->assertTrue($sources['ready'], $sources['reason'] ?? '');
+        $build = $readiness->attributionReady($sources['ids']);
+        $this->assertNotNull($build);
+        $this->assertTrue($readiness->attributionCovers($build, $start, $end->addDay()->startOfDay()));
+        $publicationStats = json_decode(DB::table('report_sync_runs')->where('dataset', 'campaign_report_snapshots')
+            ->orderByDesc('id')->value('stats'), true);
+        $this->assertSame($build->id, $publicationStats['attribution_run_id']);
+        $this->assertSame($sources['ids'], $publicationStats['source_ids']);
+        $snapshot = DB::table('campaign_report_snapshots')->first();
+        $this->assertLessThanOrEqual($start->toDateString(), CarbonImmutable::parse($snapshot->period_start)->toDateString());
+        $this->assertGreaterThanOrEqual($end->toDateString(), CarbonImmutable::parse($snapshot->period_end)->toDateString());
+        $published = app(CampaignPublicationReadiness::class)->published($start, $end->addDay()->startOfDay(), $filters);
+        $this->assertTrue($published['ready'], $published['reason'] ?? '');
+        $this->artisan('reports:refresh-campaigns', ['--days' => 1, '--store' => true])
+            ->expectsOutputToContain('SKIPPED:')
+            ->assertExitCode(0);
+        $this->assertDatabaseCount('campaign_report_snapshots', 1);
+        $this->assertSame(1, DB::table('report_sync_runs')->where('dataset', 'campaign_report_snapshots')->count());
     }
 
     public function test_refresh_snapshot_keeps_salesforce_attribution_without_storing_it_as_campaign(): void
@@ -876,6 +906,8 @@ class CampaignCommandsTest extends TestCase
             app(CampaignAttributionBuilderService::class)->build(
                 CarbonImmutable::parse('2026-05-09'), CarbonImmutable::parse('2026-05-12')
             );
+
+            $this->recordCompletedCampaignDependencies(4);
 
             $this->artisan('reports:refresh-campaigns', ['--days' => 3, '--store' => true])
                 ->assertExitCode(0);
@@ -901,6 +933,43 @@ class CampaignCommandsTest extends TestCase
             'type' => 'Venta',
             'utm_campaign' => $campaign,
             'is_deleted' => false,
+        ]);
+    }
+
+    private function recordCompletedCampaignDependencies(int $days): void
+    {
+        $now = CarbonImmutable::now('UTC');
+        DB::table('report_sync_runs')->where('id', $this->rot4InterestRunId)->update([
+            'status' => 'completed', 'source_cutoff_at' => $now->subMinutes(30),
+            'completed_at' => $now->subMinutes(30),
+            'stats' => json_encode(['inserted' => 0, 'updated' => 0, 'reactivated' => 0]),
+        ]);
+        DB::table('salesforce_opportunity_interest_direct_runs')->where('id', $this->rot4DirectRunId)->update([
+            'status' => 'completed', 'source_cutoff_at' => $now->subMinutes(10),
+            'completed_at' => $now->subMinutes(10),
+            'stats' => json_encode(['reference_fingerprint' => str_repeat('b', 64)]),
+        ]);
+        $ids = ['interests' => $this->rot4InterestRunId, 'direct' => $this->rot4DirectRunId,
+            'direct_fingerprint' => str_repeat('b', 64)];
+        foreach ([['meta', 'meta'], ['google', 'google_ads'], ['opportunities', 'salesforce']] as [$key, $source]) {
+            $ids[$key] = DB::table('report_sync_runs')->insertGetId([
+                'dataset' => $key === 'opportunities' ? 'salesforce_opportunities' : 'campaign_platform_daily_metrics',
+                'source' => $source, 'status' => 'completed',
+                'period_start_at' => $now->setTimezone('Europe/Madrid')->subDays($days + 1)->startOfDay(),
+                'period_end_at' => $now->setTimezone('Europe/Madrid')->addDay()->startOfDay(),
+                'started_at' => $now->subMinutes(25), 'completed_at' => $now->subMinutes(20),
+                'source_cutoff_at' => $now->subMinutes(20), 'timezone' => 'Europe/Madrid',
+                'created_at' => $now->subMinutes(25), 'updated_at' => $now->subMinutes(20),
+            ]);
+        }
+        DB::table('report_sync_runs')->insert([
+            'dataset' => 'campaign_attributions', 'source' => 'campaigns', 'status' => 'completed',
+            'started_at' => $now->subMinutes(5), 'completed_at' => $now->subMinutes(5),
+            'source_cutoff_at' => $now->subMinutes(5), 'timezone' => 'Europe/Madrid',
+            'stats' => json_encode(['source_ids' => $ids,
+                'range_start' => $now->setTimezone('Europe/Madrid')->subDays($days)->startOfDay()->toDateString(),
+                'range_end_exclusive' => $now->setTimezone('Europe/Madrid')->toDateString()]),
+            'created_at' => $now->subMinutes(5), 'updated_at' => $now->subMinutes(5),
         ]);
     }
 }

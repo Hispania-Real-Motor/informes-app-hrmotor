@@ -59,9 +59,11 @@ class SalesforceOpportunityInterestDirectSyncService
                     'stats' => $stats,
                 ]);
 
-                $this->syncPages($run, $cutoff, $stats);
+                $fingerprint = str_repeat("\0", 32);
+                $this->syncPages($run, $cutoff, $stats, $fingerprint);
                 $this->afterSnapshotBuilt($run, $stats);
                 $this->assertSnapshotComplete($run, $stats);
+                $stats['reference_fingerprint'] = bin2hex($fingerprint);
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
 
                 $run->update([
@@ -121,6 +123,7 @@ class SalesforceOpportunityInterestDirectSyncService
         SalesforceOpportunityInterestDirectRun $run,
         CarbonImmutable $cutoff,
         array &$stats,
+        string &$fingerprint,
     ): void {
         foreach ($this->client->queryPages($this->soql($cutoff), true) as $records) {
             $stats['pages']++;
@@ -136,6 +139,10 @@ class SalesforceOpportunityInterestDirectSyncService
                 $stats['persisted'] += count($chunk);
                 $stats['chunks']++;
                 foreach ($chunk as $row) {
+                    $fingerprint ^= hash('sha256', json_encode([
+                        $row['opportunity_salesforce_id'], $row['interest_salesforce_id'],
+                        $row['reference_status'], $row['opportunity_is_deleted'],
+                    ], JSON_THROW_ON_ERROR), true);
                     $stats[$row['opportunity_is_deleted'] ? 'deleted' : 'active']++;
                     $stats[$row['reference_status'] === 'valid' ? 'valid_references' : 'invalid_references']++;
                 }

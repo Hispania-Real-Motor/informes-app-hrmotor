@@ -11,6 +11,7 @@ use App\Models\SalesforceOpportunity;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
 use App\Services\Campaigns\CampaignCurrentStatusService;
 use App\Services\Campaigns\CampaignDashboardDatasetService;
+use App\Services\Campaigns\CampaignPublicationReadiness;
 use App\Services\Campaigns\CampaignSaleAmountResolver;
 use App\Services\Campaigns\GoogleAdsClient;
 use App\Services\Campaigns\GoogleCampaignSyncService;
@@ -50,6 +51,164 @@ class CampaignDashboardTest extends TestCase
         $this->get('/informes/leads')
             ->assertOk()
             ->assertSee('/informes/campanas', false);
+    }
+
+    public function test_data_updated_date_requires_successful_dependencies_and_does_not_advance_after_google_failure(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow(['spend' => 25]));
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'updated_at' => '2026-10-27 11:00:00', 'created_at' => '2026-10-27 11:00:00',
+        ]));
+        DB::table('report_sync_runs')->where('id', $this->rot4InterestRunId)->update([
+            'status' => 'completed', 'source_cutoff_at' => '2026-10-26 08:00:00',
+            'completed_at' => '2026-10-26 08:00:00',
+            'stats' => json_encode(['inserted' => 0, 'updated' => 0, 'deleted' => 0, 'reactivated' => 0]),
+        ]);
+        foreach (['campaigns-sync-meta' => 1, 'campaigns-sync-google' => 2] as $task => $suffix) {
+            $finished = $suffix === 1 ? '2026-10-27 09:00:00' : '2026-10-27 10:00:00';
+            $id = DB::table('operational_task_runs')->insertGetId([
+                'correlation_id' => '00000000-0000-4000-8000-00000000000'.$suffix,
+                'task_key' => $task, 'origin' => 'scheduler', 'status' => 'success',
+                'arguments' => '{}', 'queued_at' => $finished, 'finished_at' => $finished,
+                'exit_code' => 0, 'created_at' => $finished, 'updated_at' => $finished,
+            ]);
+            DB::table('operational_task_states')->updateOrInsert(['task_key' => $task], [
+                'last_run_id' => $id, 'last_success_id' => $id,
+                'created_at' => $finished, 'updated_at' => $finished,
+            ]);
+        }
+
+        $sourceIds = ['interests' => $this->rot4InterestRunId, 'direct' => $this->rot4DirectRunId,
+            'direct_fingerprint' => str_repeat('a', 64)];
+        foreach ([
+            ['meta', '2026-10-27 09:00:00'], ['google_ads', '2026-10-27 10:00:00'],
+        ] as [$source, $completed]) {
+            $sourceIds[$source === 'meta' ? 'meta' : 'google'] = DB::table('report_sync_runs')->insertGetId([
+                'dataset' => 'campaign_platform_daily_metrics', 'source' => $source, 'status' => 'completed',
+                'period_start_at' => '2026-05-01 00:00:00', 'period_end_at' => '2026-06-01 00:00:00',
+                'started_at' => $completed, 'completed_at' => $completed, 'source_cutoff_at' => $completed,
+                'timezone' => 'Europe/Madrid', 'created_at' => $completed, 'updated_at' => $completed,
+            ]);
+        }
+        $sourceIds['opportunities'] = DB::table('report_sync_runs')->insertGetId([
+            'dataset' => 'salesforce_opportunities', 'source' => 'salesforce', 'status' => 'completed',
+            'started_at' => '2026-10-27 10:15:00', 'completed_at' => '2026-10-27 10:15:00',
+            'source_cutoff_at' => '2026-10-27 10:15:00', 'timezone' => 'Europe/Madrid',
+            'created_at' => '2026-10-27 10:15:00', 'updated_at' => '2026-10-27 10:15:00',
+        ]);
+        DB::table('salesforce_opportunity_interest_direct_runs')->where('id', $this->rot4DirectRunId)->update([
+            'source_cutoff_at' => '2026-10-27 10:30:00', 'completed_at' => '2026-10-27 10:30:00',
+            'stats' => json_encode(['reference_fingerprint' => $sourceIds['direct_fingerprint']]),
+        ]);
+        $buildId = DB::table('report_sync_runs')->insertGetId([
+            'dataset' => 'campaign_attributions', 'source' => 'campaigns', 'status' => 'completed',
+            'started_at' => '2026-10-27 11:00:00', 'completed_at' => '2026-10-27 11:00:00',
+            'source_cutoff_at' => '2026-10-27 11:00:00', 'timezone' => 'Europe/Madrid',
+            'stats' => json_encode(['source_ids' => $sourceIds,
+                'range_start' => '2026-05-01', 'range_end_exclusive' => '2026-06-01']),
+            'created_at' => '2026-10-27 11:00:00', 'updated_at' => '2026-10-27 11:00:00',
+        ]);
+        $snapshotId = DB::table('campaign_report_snapshots')->insertGetId([
+            'period_start' => '2026-05-01', 'period_end' => '2026-05-31',
+            'filters_hash' => CampaignPublicationReadiness::filtersHash(app(CampaignDashboardDatasetService::class)
+                ->filters(Request::create('/informes/campanas/data/summary', 'GET', [
+                    'start_date' => '2026-05-01', 'end_date' => '2026-05-31',
+                ]))),
+            'summary' => '{}', 'campaigns' => '[]', 'rankings' => '[]', 'warnings' => '[]',
+            'created_at' => '2026-10-27 11:30:00', 'updated_at' => '2026-10-27 11:30:00',
+        ]);
+        DB::table('report_sync_runs')->insert([
+            'dataset' => 'campaign_report_snapshots', 'source' => 'campaigns', 'status' => 'completed',
+            'started_at' => '2026-10-27 11:30:00', 'completed_at' => '2026-10-27 11:30:00',
+            'source_cutoff_at' => '2026-10-26 08:00:00', 'timezone' => 'Europe/Madrid',
+            'stats' => json_encode(['snapshot_id' => $snapshotId, 'attribution_run_id' => $buildId, 'source_ids' => $sourceIds]),
+            'created_at' => '2026-10-27 11:30:00', 'updated_at' => '2026-10-27 11:30:00',
+        ]);
+
+        $query = '/informes/campanas/data/summary?'.$this->campaignQuery();
+        $before = $this->getJson($query)->assertOk()->json();
+        $this->assertNotNull($before['datos_actualizados']);
+        $this->assertNull($this->getJson($query.'&platform=meta')->assertOk()->json('datos_actualizados'));
+        $this->assertNotNull($this->getJson('/informes/campanas/data/summary?start_date=2026-05-02&end_date=2026-05-31')
+            ->assertOk()->json('datos_actualizados'));
+        $this->assertNull($this->getJson('/informes/campanas/data/summary?start_date=2026-04-30&end_date=2026-05-31')
+            ->assertOk()->json('datos_actualizados'));
+        $failure = DB::table('operational_task_runs')->insertGetId([
+            'correlation_id' => '00000000-0000-4000-8000-000000000003',
+            'task_key' => 'campaigns-sync-google', 'origin' => 'scheduler', 'status' => 'failed',
+            'arguments' => '{}', 'queued_at' => '2026-10-27 12:00:00',
+            'finished_at' => '2026-10-27 12:00:00', 'exit_code' => 1,
+            'created_at' => '2026-10-27 12:00:00', 'updated_at' => '2026-10-27 12:00:00',
+        ]);
+        DB::table('operational_task_states')->where('task_key', 'campaigns-sync-google')->update([
+            'last_run_id' => $failure, 'last_failure_id' => $failure,
+            'updated_at' => '2026-10-27 12:00:00',
+        ]);
+
+        $after = $this->getJson($query)->assertOk()->json();
+        $this->assertNull($after['datos_actualizados']);
+        $this->assertSame($before['kpis'], $after['kpis']);
+    }
+
+    public function test_interest_sync_without_material_changes_does_not_warn_about_attribution(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow(['spend' => 25]));
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'updated_at' => '2026-10-25 10:00:00', 'created_at' => '2026-10-25 10:00:00',
+        ]));
+        DB::table('salesforce_interests')->insert([
+            'salesforce_id' => '00Q-material-check', 'salesforce_created_at' => '2026-05-10 10:00:00',
+            'salesforce_last_modified_at' => '2026-05-10 10:00:00',
+            'functional_created_at' => '2026-05-10 10:00:00',
+            'created_at' => '2026-10-24 10:00:00', 'updated_at' => '2026-10-24 10:00:00',
+        ]);
+        DB::table('report_sync_runs')->where('id', $this->rot4InterestRunId)->update([
+            'completed_at' => '2026-10-27 10:00:00',
+            'stats' => json_encode(['inserted' => 0, 'updated' => 0, 'deleted' => 0, 'reactivated' => 0]),
+        ]);
+        $query = '/informes/campanas/data/summary?'.$this->campaignQuery();
+        $unchanged = $this->getJson($query)->assertOk()->json('warnings');
+        $this->assertStringNotContainsString('Salesforce Interests se sincronizó después de la atribución', implode(' ', $unchanged));
+
+        DB::table('salesforce_interests')->where('salesforce_id', '00Q-material-check')
+            ->update(['updated_at' => '2026-10-26 10:00:00']);
+        Cache::flush();
+        $changed = $this->getJson($query)->assertOk()->json('warnings');
+        $this->assertStringContainsString('Salesforce Interests se sincronizó después de la atribución', implode(' ', $changed));
+
+        // A later no-change hourly run must not hide an earlier pending material update.
+        DB::table('report_sync_runs')->where('id', $this->rot4InterestRunId)
+            ->update(['stats' => json_encode(['inserted' => 0, 'updated' => 0, 'deleted' => 0, 'reactivated' => 0])]);
+        Cache::flush();
+        $stillPending = $this->getJson($query)->assertOk()->json('warnings');
+        $this->assertStringContainsString('Salesforce Interests se sincronizó después de la atribución', implode(' ', $stillPending));
+    }
+
+    public function test_interest_moved_out_of_period_still_warns_from_its_previous_attribution(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow(['spend' => 25]));
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'updated_at' => '2026-10-25 10:00:00', 'created_at' => '2026-10-25 10:00:00',
+        ]));
+        DB::table('campaign_attributions')->insert([
+            'interest_id' => '00Q-moved-out',
+            'interest_functional_created_at' => '2026-05-10 10:00:00',
+            'created_at' => '2026-10-25 10:00:00', 'updated_at' => '2026-10-25 10:00:00',
+        ]);
+        DB::table('salesforce_interests')->insert([
+            'salesforce_id' => '00Q-moved-out', 'salesforce_created_at' => '2026-05-10 10:00:00',
+            'salesforce_last_modified_at' => '2026-10-26 10:00:00',
+            'functional_created_at' => '2025-05-10 10:00:00',
+            'created_at' => '2026-10-24 10:00:00', 'updated_at' => '2026-10-26 10:00:00',
+        ]);
+        DB::table('report_sync_runs')->where('id', $this->rot4InterestRunId)->update([
+            'completed_at' => '2026-10-27 10:00:00',
+            'stats' => json_encode(['inserted' => 0, 'updated' => 0, 'deleted' => 0, 'reactivated' => 0]),
+        ]);
+
+        $warnings = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
+            ->assertOk()->json('warnings');
+        $this->assertStringContainsString('Salesforce Interests se sincronizó después de la atribución', implode(' ', $warnings));
     }
 
     public function test_el_menu_oculta_campanas_en_area_manager_y_lo_muestra_en_director(): void

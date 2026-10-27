@@ -1,5 +1,60 @@
 # Decisiones técnicas
 
+## 2026-10-27 — Reconciliación de Campañas mediante reservas operacionales existentes
+
+- La recuperación horaria se incorpora a `OperationalTaskCatalog` y ejecuta
+  como máximo una dependencia pendiente por pasada. Cada tarea hija conserva
+  su propia reserva persistente, auditoría y política de exclusión; se evita
+  un cron paralelo o una segunda ruta de escritura económica.
+- El límite es de tres intentos no omitidos por tarea y día civil de Madrid
+  con origen `scheduler`, contando la ejecución ordinaria. La cadencia
+  09:20–23:20 y el límite acotan reintentos automáticos, pero no garantizan
+  publicar todas las dependencias el mismo día; la intervención manual sigue
+  su autorización operacional independiente.
+- La marca «Datos actualizados» se vincula al contexto normalizado de filtros
+  por huella SHA-256 sin fechas; el período se acredita por cobertura del
+  snapshot y la atribución. Se conserva una marca neutral para filtros o
+  fechas no cubiertos, sin crear snapshots nuevos por cada consulta HTTP ni
+  alterar los KPI o el contrato económico del informe.
+
+## 2026-10-27 — Cierre mensual como límite de escritura económica de Campañas
+
+- `campaign_investment_closures` es la fuente local de verdad para determinar
+  el primer día escribible de Meta, Google y atribuciones. Una ventana que
+  atraviesa el cierre se acota al día posterior al último mes `closed` antes
+  del fin solicitado; una ventana completamente cerrada no se escribe. Las
+  lecturas históricas y `--dry-run` continúan disponibles.
+- Cierre/reapertura y escritores comparten un bloqueo asesor en la conexión
+  MariaDB/MySQL; cada reemplazo por cuenta revalida el límite dentro de su
+  transacción. La espera de bloqueo es limitada y falla sin omitir la guarda.
+  Se prefiere esta serialización frente a confiar solo en `--days` del
+  scheduler, que también puede ser usado en invocaciones manuales.
+- La protección no crea una tabla o scheduler nuevos, no modifica el método
+  económico ni los snapshots aprobados. El inventario de cierres debe
+  cotejarse operacionalmente antes de reactivar tareas: una ausencia de fila
+  `closed` no puede inferirse de la fecha calendario.
+- Con cierres no consecutivos, una solicitud ordinaria avanza hasta después
+  del último mes cerrado; un mes anterior reabierto exige rango aislado que
+  termine antes del cierre siguiente y aprobación económica expresa.
+
+## 2026-10-27 — Campañas publica solo snapshots con linaje persistente
+
+- Se reutilizan `report_sync_runs` de Meta, Google, F2 y Opportunities,
+  junto al run del snapshot directo Opportunity–Interest. El build guarda IDs
+  de fuentes y rango; la publicación guarda ID de snapshot, ID de atribución
+  y fuentes. No se añade esquema ni se interpreta la hora de una fila como
+  evidencia suficiente de completitud.
+- La ejecución automática de atribución exige fuentes completas. Runs F2 y
+  Opportunity posteriores sin cambios materiales no fuerzan reconstrucción;
+  el snapshot directo usa una huella de referencias para distinguir cambios
+  de contenido de cambios solo de hora. Evidencia ausente o fallida degrada
+  el build/publicación, sin fallback a un éxito anterior como estado vigente.
+- «Datos actualizados» solo se acredita mediante el último snapshot
+  persistido y su run de publicación del mismo linaje que la atribución y
+  las fuentes actuales. La fecha publicada es el mínimo de cutoffs fuente.
+  Una ejecución fallida deja el dato no verificado en vez de adelantar la
+  fecha. Esta regla no certifica por sí sola calidad de datos productivos.
+
 ## 2026-10-09 — ROT-5 desacopla SEO de Lead y de Salesforce remoto
 
 - La métrica Salesforce vigente de SEO se deriva únicamente del snapshot local

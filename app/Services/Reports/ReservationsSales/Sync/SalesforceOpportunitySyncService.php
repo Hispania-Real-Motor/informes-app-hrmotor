@@ -298,6 +298,7 @@ SOQL;
     private function emptyStats(): array
     {
         return [
+            'material_changed' => 0,
             'opportunity' => 0,
             'lead' => 0,
             'opportunity_source' => 0,
@@ -342,7 +343,7 @@ SOQL;
         $reservation = (bool) data_get($record, 'OPO_CAS_Reserva__c', false);
         $cvSigned = (bool) data_get($record, 'OPO_CAS_Contrato_CV_firmado__c', false);
 
-        SalesforceOpportunity::withoutGlobalScope(SalesforceOpportunity::ACTIVE_SCOPE)->updateOrCreate(
+        $opportunity = SalesforceOpportunity::withoutGlobalScope(SalesforceOpportunity::ACTIVE_SCOPE)->updateOrCreate(
             ['salesforce_id' => data_get($record, 'Id')],
             [
                 'name' => data_get($record, 'Name'),
@@ -419,6 +420,9 @@ SOQL;
             ]
         );
 
+        if ($opportunity->wasRecentlyCreated || $opportunity->wasChanged()) {
+            $stats['material_changed']++;
+        }
         $stats[$portal['source']]++;
         $stats['reservas_vivas'] += $reservation && ! $cvSigned && ! $isClosedLost ? 1 : 0;
         $stats['caidas'] += $isClosedLost ? 1 : 0;

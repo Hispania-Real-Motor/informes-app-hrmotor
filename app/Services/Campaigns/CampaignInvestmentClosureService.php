@@ -11,6 +11,8 @@ class CampaignInvestmentClosureService
 {
     public const RULE_VERSION = '2026-08-07.1';
 
+    public function __construct(private readonly CampaignOpenInvestmentWindow $openWindow) {}
+
     public function status(string $month): array
     {
         $monthKey = $this->month($month)->toDateString();
@@ -28,7 +30,7 @@ class CampaignInvestmentClosureService
 
     public function close(string $month, ReportUser $user): array
     {
-        return DB::transaction(function () use ($month, $user): array {
+        return $this->openWindow->synchronized(fn (): array => DB::transaction(function () use ($month, $user): array {
             $monthDate = $this->month($month);
             $closure = DB::table('campaign_investment_closures')->where('month', $monthDate->toDateString())->lockForUpdate()->first();
             if ($closure?->status === 'closed') {
@@ -67,7 +69,7 @@ class CampaignInvestmentClosureService
             $this->invalidateDashboardCache();
 
             return $this->status($monthDate->toDateString());
-        });
+        }));
     }
 
     public function reopen(string $month, string $reason, ReportUser $user): array
@@ -76,7 +78,7 @@ class CampaignInvestmentClosureService
             throw new \InvalidArgumentException('El motivo de reapertura debe tener al menos 10 caracteres.');
         }
 
-        return DB::transaction(function () use ($month, $reason, $user): array {
+        return $this->openWindow->synchronized(fn (): array => DB::transaction(function () use ($month, $reason, $user): array {
             $closure = DB::table('campaign_investment_closures')->where('month', $this->month($month)->toDateString())->lockForUpdate()->first();
             if (! $closure || $closure->status !== 'closed') {
                 throw new \LogicException('La inversión del mes no está cerrada.');
@@ -93,7 +95,7 @@ class CampaignInvestmentClosureService
             $this->invalidateDashboardCache();
 
             return $this->status($closure->month);
-        });
+        }));
     }
 
     private function economicRows(CarbonImmutable $month): array

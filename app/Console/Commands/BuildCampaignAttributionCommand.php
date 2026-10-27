@@ -3,8 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Services\Campaigns\CampaignAttributionBuilderService;
+use App\Services\Campaigns\CampaignPublicationReadiness;
+use App\Services\Reports\ReportSyncRunService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Throwable;
 
 class BuildCampaignAttributionCommand extends Command
 {
@@ -14,13 +17,17 @@ class BuildCampaignAttributionCommand extends Command
         {--from= : Fecha inicial explicita en formato Y-m-d}
         {--to= : Fecha final exclusiva en formato Y-m-d; por defecto ahora}
         {--dry-run : Simula la reconstruccion sin escribir atribuciones}
+        {--require-ready : Exige fuentes completas para la ejecución automática}
         {--reason= : Motivo auditable para una reconstruccion historica en modo escritura}
         {--window= : Opcion legacy sin efecto; mantener solo por compatibilidad}';
 
     protected $description = 'Construye la atribución Interest -> oportunidad -> reserva -> venta por campaña.';
 
-    public function handle(CampaignAttributionBuilderService $builder): int
-    {
+    public function handle(
+        CampaignAttributionBuilderService $builder,
+        CampaignPublicationReadiness $readiness,
+        ReportSyncRunService $syncRuns,
+    ): int {
         $end = $this->periodEnd();
         $start = $this->periodStart($end);
         $dryRun = (bool) $this->option('dry-run');
@@ -31,7 +38,45 @@ class BuildCampaignAttributionCommand extends Command
             return self::FAILURE;
         }
 
-        $result = $builder->build($start, $end, $dryRun);
+        $sources = $dryRun ? null : $readiness->sources($start, $end);
+        if (! $dryRun && ! $sources['ready'] && $this->option('require-ready')) {
+            $this->error($sources['reason']);
+
+            return self::FAILURE;
+        }
+        $previousBuild = $dryRun ? null : $readiness->latestAttribution();
+        if (! $dryRun && blank($this->option('from')) && $sources['ready'] && ! $readiness->needsAttribution($sources['ids'])
+            && $previousBuild !== null && $readiness->attributionCovers($previousBuild, $start, $end)) {
+            $this->line('SKIPPED: las fuentes no tienen cambios materiales pendientes de atribución.');
+
+            return self::SUCCESS;
+        }
+
+        $run = $dryRun ? null : $syncRuns->start(CampaignPublicationReadiness::ATTRIBUTION_DATASET, 'campaigns', $start, $end);
+        try {
+            $result = $builder->build($start, $end, $dryRun);
+            if ($run !== null) {
+                $verified = $sources['ready'] && $readiness->sources($start, $end)['ids'] === $sources['ids'];
+                if ($verified) {
+                    $syncRuns->complete($run, now(), ['source_ids' => $sources['ids'], 'range_start' => $result['range_start'],
+                        'range_end_exclusive' => $result['range_end_exclusive']]);
+                } else {
+                    $run->update(['status' => 'unverified', 'completed_at' => now(), 'stats' => ['reason' => 'source_evidence_missing_or_changed']]);
+                    if ($this->option('require-ready')) {
+                        $this->error('Las fuentes cambiaron durante la atribución; la publicación queda pendiente.');
+
+                        return self::FAILURE;
+                    }
+                }
+            }
+        } catch (Throwable $exception) {
+            if ($run !== null) {
+                $syncRuns->fail($run, $exception);
+            }
+            $this->error('Falló la reconstrucción de atribuciones; no se certificará el informe.');
+
+            return self::FAILURE;
+        }
 
         foreach ($result['warnings'] ?? [] as $warning) {
             $this->warn($warning);

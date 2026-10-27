@@ -1154,3 +1154,221 @@ lo que la sincronización económica Google volvería a fallar hasta una soluci�
 compatible. Cualquier dato escrito por una ejecución productiva posterior no
 se revierte automáticamente al volver el código; requiere evaluación separada
 del responsable económico.
+
+## Campañas — protección de cierres y recuperación abierta (2026-10-27)
+
+`CampaignOpenInvestmentWindow` usa los meses `closed` de
+`campaign_investment_closures` como límite de escritura. La solicitud
+programada de 120 días se acota al primer día posterior al último cierre
+anterior al fin solicitado; no autoriza reescribir meses cerrados. Los
+comandos manuales Meta/Google aplican el mismo límite, informan el intervalo
+efectivo `[inicio, fin)` y registran estadísticas del intento en
+`report_sync_runs`. Un intervalo totalmente cerrado se omite sin petición al
+proveedor; `report_sync_runs` conserva `skipped` y motivo `closed_period`.
+El builder de atribución solo lee históricos en `--dry-run`; su
+modo de escritura rechaza un intervalo cerrado y acota uno mixto. Cierre,
+reapertura y escrituras económicas comparten bloqueo asesor MariaDB/MySQL;
+el comienzo se revalida dentro de la transacción antes de reemplazar filas.
+El refresco puede leer snapshots aprobados, pero este cambio no los regenera.
+
+Los cierres **no consecutivos** requieren atención especial: el rango
+ordinario que abarque un cierre posterior comienza después del último mes
+`closed`, aunque un mes anterior esté reabierto. Procesar un mes reabierto
+anterior exige autorización económica para un **rango aislado** que termine
+antes del cierre siguiente; no usar `--days=120` esperando que lo incluya.
+La reapertura no dispara una reconstrucción por sí misma. La prueba aislada
+MariaDB de dos procesos comprueba la serialización del escritor y el cierre;
+no sustituye una validación de concurrencia/carga productiva.
+
+### Linaje de atribución y publicación
+
+El control `CampaignPublicationReadiness` lee el último `report_sync_runs`
+de Meta (`campaign_platform_daily_metrics/meta`), Google
+(`campaign_platform_daily_metrics/google_ads`), F2
+(`salesforce_interests/salesforce`) y Opportunities
+(`salesforce_opportunities/salesforce`). Cada uno debe estar `completed` y
+tener cutoff; el snapshot directo Opportunity–Interest también debe estar
+completo y ser posterior a la sync de Opportunities. Una ejecución manual
+completa cuenta igual que una programada; un intento posterior fallido o
+incompleto impide certificar la fuente. Los runs Meta/Google deben cubrir el
+tramo abierto del rango solicitado; el día corriente puede ser parcial, pero
+no se presume cobertura futura. Para las plataformas se cotejan
+también intentos operacionales posteriores fallidos. No usar solo la fecha
+de la última fila como prueba de éxito.
+
+El builder automático del catálogo usa `--require-ready`. Antes de escribir
+exige fuentes completas; registra en `report_sync_runs` un run
+`campaign_attributions/campaigns` con IDs de fuentes y rango efectivo. Si
+desde el último build solo hubo F2 u Opportunity sin cambios materiales y
+el rango sigue cubierto, emite `SKIPPED:` y la operación queda omitida, no
+fallida. Una nueva referencia del snapshot directo invalida la atribución
+cuando cambia su `reference_fingerprint`, aunque cambie únicamente el
+contenido de las relaciones. Estadísticas ausentes o un run intermedio
+fallido se tratan conservadoramente como cambio. Los manuales sin
+`--require-ready` conservan la opción de reconstruir, pero quedan
+`unverified` si falta o cambia evidencia y **no** acreditan publicación.
+
+`reports:refresh-campaigns --store` exige atribución vigente del mismo linaje
+y cobertura del rango económico abierto. Vuelve a comprobar las fuentes
+antes de guardar y persiste juntos `campaign_report_snapshots` y el run
+`campaign_report_snapshots/campaigns`, con `snapshot_id`,
+`attribution_run_id` y `source_ids`. Omite una nueva publicación si el contexto
+predeterminado ya tiene snapshot vigente. `filters_hash` es SHA-256 de los
+filtros normalizados por el dataset, sin fechas; la cobertura temporal se
+verifica por separado. Una ejecución fallida o un snapshot sin
+run de publicación coherente deja `dataset_cutoff_at=NULL`; el informe
+muestra «Actualización del informe no verificada» y un motivo genérico en
+`dataset_freshness_reason`. Cuando la publicación sigue válida, «Datos
+actualizados» muestra el cutoff mínimo de las fuentes verificadas, no la
+hora de renderizado. El snapshot publicado y la atribución deben cubrir el
+período consultado y la huella debe coincidir con los filtros actuales; un
+contexto filtrado distinto, un snapshot antiguo con otra huella o un rango
+fuera de cobertura no reciben la marca de frescura.
+En un período totalmente cerrado la marca operativa queda no verificable,
+sin impedir la lectura del snapshot económico aprobado. La caché económica versiona los runs relevantes para
+no reciclar esa etiqueta tras un cambio de estado. No se introducen llamadas
+a Salesforce, Meta o Google durante HTTP.
+
+### Reconciliación horaria de la publicación
+
+`campaigns-reconcile-publication` se programa a las `09:20` y luego cada hora
+hasta las `23:20` en `Europe/Madrid`. Evalúa las fuentes Meta, Google, F2,
+Opportunities y el snapshot directo; después, la cobertura de la atribución y
+la publicación del contexto predeterminado. En cada pasada reserva y ejecuta
+**una sola** dependencia pendiente mediante `OperationalTaskService`, usando
+la misma clave, exclusión persistente y auditoría de la tarea hija ordinaria.
+Los horarios ordinarios de esas fuentes, atribución y refresco permanecen
+iguales; el reconciliador solo añade oportunidades condicionadas de reintento.
+El propio reconciliador también usa reserva persistente y no admite disparo
+manual desde la interfaz operacional. No hay cron paralelo ni nuevas llamadas
+de proveedor durante las peticiones HTTP.
+
+Antes de reservar una tarea hija cuenta sus `operational_task_runs` de origen
+`scheduler`, no omitidos, desde el inicio del día civil de Madrid: el máximo
+son tres intentos diarios **por tarea**, incluyendo el run ordinario. Una
+reserva ya activa, un límite agotado o ausencia de tramo económico abierto se
+registran como omisión, sin forzar escrituras; un fallo de la hija se registra
+en su propio run y el reconciliador devuelve fallo para supervisión. La pasada
+siguiente reevalúa el linaje. No asumir que todas las dependencias se recuperan
+en una hora ni que quedarán publicadas antes de las 23:20; si persiste la
+incidencia, revisar los runs y autorizar la actuación manual por el proceso
+existente. La reconciliación puede volver a llamar a proveedores dentro de
+los límites del catálogo: revisar carga, cuotas y cierres antes de habilitar
+el scheduler en producción. Tras las comprobaciones y la autorización para
+reactivarlo, confirmar que el nuevo task figure habilitado en el catálogo y
+que cada pasada genere a lo sumo una reserva hija.
+
+La purga transversal vigente retiene runs `completed` aproximadamente un
+mes y `failed`/`unverified` durante 14 días; no se amplía aquí. La pérdida
+de un run exigido por el linaje debe degradar la frescura o forzar una
+reconstrucción conservadora, nunca sustituirse por fechas inferidas. Si se
+investiga una anomalía, preservar los registros de auditoría mediante el
+proceso autorizado antes de su vencimiento; no bloquear ni alterar la purga
+productiva desde el informe.
+
+Antes de reactivar tareas, comprobar **en lectura** que septiembre de 2026 y
+todos los meses anteriores que la organización considera cerrados tienen
+fila `closed` en `campaign_investment_closures`. La guarda depende de ese
+inventario persistido: una ausencia o reapertura autorizada cambia el límite.
+Revisar también procesos ya reservados: el despliegue no detiene un worker
+antiguo sin la guarda. Mantener el scheduler detenido hasta cerrar la revisión
+económica y operativa.
+
+Despliegue y recuperación, solo tras autorización humana:
+
+1. Guardar recuentos y huellas de solo lectura de cierres, snapshots, métricas
+   y atribuciones cerradas; retener los resultados sensibles en el canal
+   autorizado, no en tickets compartidos.
+2. Publicar PHP, JS, bundle Vite y manifest del mismo release y reiniciar
+   procesos persistentes. No hay migración ni variable nueva. No incluir una
+   sincronización en los hooks de despliegue.
+3. Con el scheduler aún parado, comprobar lecturas, permisos, últimos runs
+   Meta, Google, F2, Opportunities, snapshot directo, atribución y publicación.
+   Contrastar sus IDs, cutoff, rango y resultado; `MAX(synced_at)` reciente no
+   acredita un run completo.
+4. Autorizar por separado la recuperación **solo del período abierto**.
+   Confirmar límites civiles Europe/Madrid y fechas efectivas reportadas;
+   ejecutar por el mecanismo operacional existente, comparar inversión,
+   impresiones, clics y conversiones por cuenta/día con el estado anterior,
+   reconstruir atribuciones abiertas solo si cambió evidencia material o
+   falta cobertura, y publicar el snapshot. Una respuesta vacía válida
+   necesita contraste de alcance antes de aceptarse como cero.
+5. Repetir huellas y KPI históricos cerrados antes de mantener el scheduler
+   activo; observar fallos parciales, advertencias y dependencias pendientes.
+
+Rollback: detener nuevas reservas, gestionar jobs en curso y restaurar código
+y assets previos como unidad. **Mantener inactivos los escritores económicos
+con el release anterior**, que carece de la guarda. No revertir cierres,
+snapshots ni datos históricos. Una escritura autorizada de octubre no se
+deshace al restaurar código. Si el bloqueo asesor supera su timeout, la
+operación falla antes que escribir sin protección. Las pruebas sintéticas
+SQLite no equivalen a validar contención real MariaDB ni datos productivos.
+
+### Diagnóstico de Google Ads Venta con inversión y cero resultados
+
+La captura comunicada no fija con certeza período ni filtros y no demuestra
+que el cero sea erróneo. Usar credenciales **solo lectura**, parámetros
+vinculados y el mismo período/filtros de la API. No consultar Salesforce ni
+ejecutar sincronizaciones para este diagnóstico; conservar IDs y datos
+comerciales solo en un anexo de acceso restringido.
+
+1. Guardar los parámetros de `/informes/campanas/data/summary` (intervalo,
+   `google_ads`, Venta, subcontexto y demás filtros) y los agregados devueltos.
+   La tarjeta Google no equivale necesariamente a todo octubre.
+2. Agrupar `campaign_platform_daily_metrics` del intervalo por
+   `(account_id,campaign_id)` con `platform='google_ads'`; contar filas,
+   sumar `spend` y obtener mínimo/máximo `metric_date`. Comparar pares y
+   nombres con `campaign_platform_identifiers`; revisar el último run Google
+   y si los identificadores o fechas faltan.
+3. Convertir el intervalo Europe/Madrid a límites UTC. Contar Interests
+   activos en `salesforce_interests` por `functional_created_at` y presencia
+   de `utm_id`, `utm_content` y `utm_campaign`, sin devolver valores ni PII.
+   Una igualdad literal UTM/ID solo es pista: el builder aplica normalización,
+   precedencia y rechazo de ambigüedad. Su `--dry-run`, bajo acceso autorizado,
+   da recuentos de métodos y `excluded_by_reason` sin escribir; no copiar
+   muestras de Interest ID a tickets compartidos.
+4. Contar en `campaign_attributions` por plataforma/cuenta/Campaign ID los
+   `interest_id`, `opportunity_id`, estados de matching y flags de venta;
+   cotejar `campaign_lead_attributions` y la relación
+   `opportunity_relationship_status`. Distinguir: sin Interest, Salesforce-only,
+   exclusión, ambigüedad, Opportunity ausente o Opportunity sin Venta.
+5. Repetir con la clasificación Venta y los filtros efectivos de la petición.
+   Localizar si la pérdida ocurre en ingestión, matching, clasificación,
+   agregado, caché o presentación. Solo corregir código cuando exista un
+   registro válido perdido de forma reproducible; no ampliar matching ni
+   alterar una fórmula para fabricar resultados.
+
+Ejemplos de consultas preparadas con `:cuenta` y `:campana` vinculados como
+**cadenas**, límites diarios `:inicio_dia`/`:fin_dia` y UTC
+`:inicio_utc`/`:fin_utc`:
+
+```sql
+SELECT COUNT(*) AS filas, SUM(spend) AS inversion,
+       MIN(metric_date) AS primer_dia, MAX(metric_date) AS ultimo_dia
+FROM campaign_platform_daily_metrics
+WHERE platform = 'google_ads' AND account_id = :cuenta
+  AND campaign_id = :campana
+  AND metric_date >= :inicio_dia AND metric_date < :fin_dia;
+
+SELECT COUNT(*) AS intereses_activos,
+       SUM(CASE WHEN NULLIF(TRIM(utm_id), '') IS NOT NULL THEN 1 ELSE 0 END) AS con_utm_id,
+       SUM(CASE WHEN NULLIF(TRIM(utm_content), '') IS NOT NULL THEN 1 ELSE 0 END) AS con_utm_content,
+       SUM(CASE WHEN NULLIF(TRIM(utm_campaign), '') IS NOT NULL THEN 1 ELSE 0 END) AS con_utm_campaign
+FROM salesforce_interests
+WHERE functional_created_at >= :inicio_utc
+  AND functional_created_at < :fin_utc AND is_deleted = 0;
+
+SELECT COUNT(DISTINCT interest_id) AS intereses_atribuidos,
+       COUNT(DISTINCT opportunity_id) AS oportunidades_enlazadas,
+       SUM(CASE WHEN has_sale = 1 THEN 1 ELSE 0 END) AS filas_con_venta
+FROM campaign_attributions
+WHERE platform = 'google_ads' AND account_id = :cuenta
+  AND campaign_id = :campana
+  AND interest_functional_created_at >= :inicio_utc
+  AND interest_functional_created_at < :fin_utc;
+```
+
+Estos recuentos no replican la deduplicación, los universos ni los filtros del
+dataset: solo ubican un posible tramo de pérdida y se contrastan con builder
+y API. No se declara correcto ni incorrecto el cero observado hasta completar
+esa comparación; el hallazgo tampoco autoriza reabrir un período cerrado.
