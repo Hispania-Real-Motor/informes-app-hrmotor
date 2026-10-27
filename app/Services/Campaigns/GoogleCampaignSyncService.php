@@ -7,6 +7,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 class GoogleCampaignSyncService
@@ -71,8 +72,8 @@ class GoogleCampaignSyncService
                         'campaign_id' => (string) data_get($row, 'campaign.id'),
                         'campaign_name' => data_get($row, 'campaign.name'),
                         'campaign_status' => data_get($row, 'campaign.status'),
-                        'campaign_start_date' => data_get($row, 'campaign.startDate'),
-                        'campaign_end_date' => data_get($row, 'campaign.endDate'),
+                        'campaign_start_date' => $this->campaignDate(data_get($row, 'campaign.startDateTime')),
+                        'campaign_end_date' => $this->campaignDate(data_get($row, 'campaign.endDateTime')),
                         'advertising_channel_type' => data_get($row, 'campaign.advertisingChannelType'),
                         'advertising_channel_sub_type' => data_get($row, 'campaign.advertisingChannelSubType'),
                         'ad_group_id' => null,
@@ -101,6 +102,20 @@ class GoogleCampaignSyncService
     private function invalidateCache(): void
     {
         Cache::forever('campaign_dashboard_cache_version', ((int) Cache::get('campaign_dashboard_cache_version', 1)) + 1);
+    }
+
+    private function campaignDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (! is_string($value) || ! preg_match('/\A(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\z/D', $value, $parts)
+            || ! checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])
+            || (int) $parts[4] > 23 || (int) $parts[5] > 59 || (int) $parts[6] > 59) {
+            throw new RuntimeException('Fecha de campaña Google Ads no válida.');
+        }
+
+        return substr($value, 0, 10);
     }
 
     private function replaceIdentifiers(string $customerId, array $rows): void

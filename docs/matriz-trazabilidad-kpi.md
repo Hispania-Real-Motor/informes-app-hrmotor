@@ -169,6 +169,32 @@ Este cambio afecta a la adquisición de metadatos operativos y al endpoint de le
 
 `config/services.php` cambia el valor **predeterminado** de `GOOGLE_ADS_API_VERSION` de `v22` a `v25`; `GoogleAdsClient::currentStatusPages()` usa `googleAds:search` sin métricas ni fecha y `GoogleAdsClient::search()` usa la misma versión para `googleAds:searchStream`, tanto en métricas diarias como en identificadores de atribución. Una configuración explícita prevalece sobre el predeterminado. `CampaignCurrentStatusTest` y `CampaignDashboardTest` prueban URLs, GAQL, respuesta vacía y preservación textual de Campaign ID/costMicros con HTTP simulado; no certifican la compatibilidad de los datos económicos reales con `v25`. No se modifican normalización económica, fecha `segments.date`, esquema ni semántica de `campaign_platform_daily_metrics`, universo, deduplicación, fórmulas, redondeos, API/CSV ni exportación. La sincronización económica programada existente sí puede escribir las métricas del intervalo autorizado después del despliegue; este cambio no autoriza reconstruir períodos cerrados. El error `UNSUPPORTED_VERSION` simulado produce advertencia sanitizada y cero escrituras económicas; el resultado operacional fallido con código de comando cero ya se interpreta mediante `OperationalTaskOutput` y ahora tiene prueba específica. La fuente, tabla y método de cada KPI permanecen como estaban; no se promueven sus fichas a auditadas.
 
+### Corrección focal posterior: fechas GAQL económicas Google Ads v25 (2026-10-27)
+
+La incompatibilidad adicional comunicada de producción fue `UNRECOGNIZED_FIELD`
+en `campaign.start_date` y `campaign.end_date` para la consulta económica
+completa. `GoogleAdsClient::gaql()` pide ahora
+`campaign.start_date_time`/`campaign.end_date_time`; el JSON usa
+`campaign.startDateTime`/`campaign.endDateTime`. El sincronizador
+`GoogleCampaignSyncService::campaignDate()` valida fecha y hora civil de la
+cuenta y conserva solo `YYYY-MM-DD` en las columnas DATE
+`campaign_platform_daily_metrics.campaign_start_date`/`campaign_end_date`.
+Ausencia de fecha produce `NULL`, no una fecha inferida. `segments.date` sigue
+siendo el pivote diario; `metrics.cost_micros`, impresiones, clics,
+`all_conversions` y fallback a `conversions` conservan los campos y fórmulas
+anteriores. La identidad textual de Campaign ID y la tabla de identificadores
+de atribución tampoco cambian. `GoogleAdsClient::search()` rechaza bloques HTTP
+200 incompletos antes de sustituir datos; una fecha inválida revierte la
+transacción por cuenta. La respuesta vacía válida mantiene el contrato de cero
+filas del intervalo autorizado.
+
+Evidencia: `GoogleAdsClient::{gaql,search}`, `GoogleCampaignSyncService::{sync,campaignDate}`
+y `CampaignDashboardTest::{test_google_ads_query_usa_campaign_para_incluir_performance_max,test_google_v25_economic_dates_keep_provider_day_and_existing_metric_semantics,test_google_invalid_v25_datetime_rolls_back_existing_metrics,test_google_incomplete_success_response_preserves_previous_investment,test_google_valid_empty_stream_saves_no_metrics}`.
+La verificación es sintética con HTTP simulado. No hay cambio de fuente de KPI,
+universo, deduplicación, denominador, redondeo, API/CSV ni cierres; las fichas
+económicas completas siguen pendientes. La consulta real v25 completa y la
+comparación productiva anterior/posterior requieren autorización operacional.
+
 ### Protección focal posterior a 46f283f — identidad de Estado actual
 
 Columna no KPI del Detalle de campañas: `CampaignDashboardDatasetService::mergeRows()` registra cuentas normalizadas de contribuciones métricas por la misma clave económica; `rowKey()` no cambia. Varias cuentas (incluida desconocida junto con conocida) producen `current_status.identity_ambiguous:true`. `CampaignCurrentStatusService::decorate()` omite la consulta de esa identidad y devuelve unavailable/reason `ambiguous_account_identity`, sin cuenta, estado bruto o fechas operativas. Tooltip neutral en `currentStatusPresentation()`. Las filas inequívocas mantienen su contrato; Salesforce no acredita estado publicitario.

@@ -1,6 +1,6 @@
 # Informe de Campañas
 
-Actualizado: 2026-10-23. URL: `/informes/campanas`.
+Actualizado: 2026-10-27. URL: `/informes/campanas`.
 
 ## Contrato funcional ROT-4
 
@@ -12,6 +12,30 @@ límites de negocio `Europe/Madrid` a UTC antes de consultar.
 Google Ads y Meta Ads siguen aportando inversión, impresiones, clics y métricas
 diarias. Opportunity continúa aportando reservas, ventas, compras e importes.
 No se consulta Salesforce durante una petición HTTP ni durante el builder.
+
+### Fechas de campaña en la sincronización económica Google Ads v25
+
+`GoogleAdsClient::searchDailyMetrics()` consulta `campaign.start_date_time` y
+`campaign.end_date_time` junto a `segments.date` y las mismas métricas de
+`googleAds:searchStream`. Google Ads devuelve esas fechas y horas en la zona
+horaria de la cuenta cliente; el sincronizador valida el formato
+`YYYY-MM-DD HH:MM:SS` y el día/hora real, y guarda solo la fecha civil en los
+campos DATE contractuales `campaign_platform_daily_metrics.campaign_start_date`
+y `campaign_end_date`. No convierte la zona horaria ni modifica la fecha diaria
+`segments.date`. Un valor ausente o vacío queda `NULL`; un valor malformado
+aborta el reemplazo transaccional de métricas de esa cuenta e intervalo.
+
+La respuesta `searchStream` debe contener bloques estructuralmente válidos;
+una respuesta HTTP 200 incompleta se rechaza con error genérico y conserva las
+métricas anteriores. Una respuesta válida sin resultados sigue representando
+cero filas para el intervalo consultado. `costMicros`, impresiones, clics y
+conversiones mantienen su procesamiento anterior; tampoco cambian las
+atribuciones, fórmulas, API, CSV, cierres ni snapshots. Las pruebas usan HTTP
+simulado: la recuperación efectiva de la sincronización económica en cuentas
+reales y la integridad de un intervalo productivo quedan pendientes de una
+verificación operacional autorizada. No se autoriza por ello reprocesar meses
+cerrados. La [referencia oficial de campos de Campaign v25](https://developers.google.com/google-ads/api/fields/v25/campaign)
+documenta los campos y el formato horario del proveedor.
 
 Los campos de adquisición proceden exclusivamente del Interest:
 

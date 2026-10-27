@@ -134,10 +134,28 @@ GAQL);
             ));
         }
 
-        return collect($response->json())
-            ->flatMap(fn (array $chunk) => $chunk['results'] ?? [])
-            ->values()
-            ->all();
+        $payload = $response->json();
+        if (! is_array($payload) || ! array_is_list($payload)) {
+            throw new RuntimeException('Respuesta incompleta de Google Ads.');
+        }
+
+        $rows = [];
+        foreach ($payload as $chunk) {
+            $hasResults = is_array($chunk) && array_key_exists('results', $chunk);
+            if (! is_array($chunk) || isset($chunk['error'])
+                || (! $hasResults && ! is_string($chunk['fieldMask'] ?? null))
+                || ($hasResults && (! is_array($chunk['results']) || ! array_is_list($chunk['results'])))) {
+                throw new RuntimeException('Respuesta incompleta de Google Ads.');
+            }
+            foreach ($chunk['results'] ?? [] as $row) {
+                if (! is_array($row)) {
+                    throw new RuntimeException('Respuesta incompleta de Google Ads.');
+                }
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
     }
 
     private function accessToken(): string
@@ -177,8 +195,8 @@ SELECT
   campaign.id,
   campaign.name,
   campaign.status,
-  campaign.start_date,
-  campaign.end_date,
+  campaign.start_date_time,
+  campaign.end_date_time,
   campaign.advertising_channel_type,
   campaign.advertising_channel_sub_type,
   metrics.impressions,
