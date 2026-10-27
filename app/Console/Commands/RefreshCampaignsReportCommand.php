@@ -29,9 +29,19 @@ class RefreshCampaignsReportCommand extends Command
         CampaignPublicationReadiness $readiness,
         ReportSyncRunService $syncRuns,
     ): int {
-        $end = CarbonImmutable::now()->endOfDay();
+        $end = CarbonImmutable::now('Europe/Madrid')->endOfDay();
         $start = $this->periodStart($end);
         $store = (bool) $this->option('store');
+        $request = Request::create('/informes/campanas/data/summary', 'GET', [
+            'start_date' => $start->toDateString(),
+            'end_date' => $end->toDateString(),
+        ]);
+        $filters = $dataset->filters($request);
+        if ($store && $readiness->published($start, $end->addDay()->startOfDay(), $filters)['ready']) {
+            $this->line('SKIPPED: el contexto ya dispone de publicación vigente.');
+
+            return self::SUCCESS;
+        }
         $run = $store ? $syncRuns->start(CampaignPublicationReadiness::PUBLICATION_DATASET, 'campaigns', $start, $end) : null;
 
         try {
@@ -47,11 +57,6 @@ class RefreshCampaignsReportCommand extends Command
                 return self::FAILURE;
             }
             $this->invalidateCache();
-
-            $request = Request::create('/informes/campanas/data/summary', 'GET', [
-                'start_date' => $start->toDateString(),
-                'end_date' => $end->toDateString(),
-            ]);
 
             $payload = $dataset->payload($request);
             $campaigns = $dataset->campaignEntityRows($payload['campaigns']);
@@ -69,11 +74,11 @@ class RefreshCampaignsReportCommand extends Command
 
                     return self::FAILURE;
                 }
-                $snapshot = DB::transaction(function () use ($start, $end, $request, $payload, $campaigns, $syncRuns, $run, $sources, $build): CampaignReportSnapshot {
+                $snapshot = DB::transaction(function () use ($start, $end, $filters, $payload, $campaigns, $syncRuns, $run, $sources, $build): CampaignReportSnapshot {
                     $snapshot = CampaignReportSnapshot::query()->create([
                         'period_start' => $start->toDateString(),
                         'period_end' => $end->toDateString(),
-                        'filters_hash' => md5(json_encode($request->query())),
+                        'filters_hash' => CampaignPublicationReadiness::filtersHash($filters),
                         'summary' => $payload['summary'],
                         'campaigns' => $campaigns,
                         'rankings' => $payload['rankings'],

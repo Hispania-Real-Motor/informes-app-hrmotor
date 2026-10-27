@@ -51,7 +51,8 @@ class OperationalTasksTest extends TestCase
             }
             $this->assertNotNull(Artisan::all()[$task['command']] ?? null);
         }
-        foreach (['reports-prune-transversal-data', 'stock-sync-daily', 'seo-send-executive-daily-email', 'operations-health'] as $key) {
+        foreach (['reports-prune-transversal-data', 'stock-sync-daily', 'seo-send-executive-daily-email',
+            'campaigns-reconcile-publication', 'operations-health'] as $key) {
             $this->assertFalse($tasks[$key]['manual_allowed']);
         }
     }
@@ -433,6 +434,16 @@ class OperationalTasksTest extends TestCase
         $output->writeln('SKIPPED: las fuentes no tienen cambios materiales pendientes de atribución.');
         $this->assertTrue($output->skipped);
         $this->assertFalse($output->partialFailure);
+    }
+
+    public function test_verified_campaign_publication_is_an_operational_skip(): void
+    {
+        foreach (['reports-refresh-campaigns', 'campaigns-reconcile-publication'] as $key) {
+            $output = new OperationalTaskOutput($key);
+            $output->writeln('SKIPPED: la publicación diaria ya está verificada.');
+            $this->assertTrue($output->skipped);
+            $this->assertFalse($output->partialFailure);
+        }
     }
 
     public function test_http_conflict_while_scheduler_is_running_never_dispatches(): void

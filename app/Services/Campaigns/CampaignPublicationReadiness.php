@@ -27,36 +27,41 @@ class CampaignPublicationReadiness
 
     public function __construct(private readonly CampaignOpenInvestmentWindow $openWindow) {}
 
-    /** @return array{ready:bool, reason:?string, ids:array<string,int|string>, cutoff:?CarbonImmutable} */
+    /** @return array{ready:bool, reason:?string, retry_task:?string, ids:array<string,int|string>, cutoff:?CarbonImmutable} */
     public function sources(?CarbonInterface $start = null, ?CarbonInterface $end = null): array
     {
         $localStart = $start === null ? null : CarbonImmutable::parse($start)->setTimezone('Europe/Madrid');
         $localEnd = $end === null ? null : CarbonImmutable::parse($end)->setTimezone('Europe/Madrid');
         $openStart = $localStart !== null && $localEnd !== null ? $this->openWindow->start($localStart, $localEnd) : null;
         if ($start !== null && $end !== null && $openStart === null) {
-            return ['ready' => false, 'reason' => 'El período consultado no contiene inversión abierta verificable.', 'ids' => [], 'cutoff' => null];
+            return $this->blocked('El período consultado no contiene inversión abierta verificable.');
         }
         $ids = [];
         $cutoffs = [];
         foreach (self::INPUTS as $key => [$dataset, $source]) {
             $run = $this->latest($dataset, $source);
+            $task = match ($key) {
+                'meta' => 'campaigns-sync-meta',
+                'google' => 'campaigns-sync-google',
+                'interests' => 'salesforce-sync-interest-reporting',
+                'opportunities' => 'salesforce-sync-opportunities',
+            };
             if ($run?->status !== 'completed' || $run->completed_at === null || $run->source_cutoff_at === null) {
-                return ['ready' => false, 'reason' => 'La fuente '.$key.' no tiene una última ejecución completa.', 'ids' => [], 'cutoff' => null];
+                return $this->blocked('La fuente '.$key.' no tiene una última ejecución completa.', $task);
             }
             if ($openStart !== null && in_array($key, ['meta', 'google'], true)
                 && ($run->period_start_at === null || $run->period_end_at === null
                     || $run->period_start_at->setTimezone('Europe/Madrid')->toDateString() > $openStart->toDateString()
                     || $run->period_end_at->setTimezone('Europe/Madrid')->toDateString() < $this->requiredSourceEndDate($localEnd))) {
-                return ['ready' => false, 'reason' => 'La última ejecución publicitaria de '.$key.' no cubre el período abierto.', 'ids' => [], 'cutoff' => null];
+                return $this->blocked('La última ejecución publicitaria de '.$key.' no cubre el período abierto.', $task);
             }
             if (in_array($key, ['meta', 'google'], true)) {
-                $task = $key === 'meta' ? 'campaigns-sync-meta' : 'campaigns-sync-google';
                 $latestOperation = DB::table('operational_task_runs')->useWritePdo()
                     ->where('task_key', $task)->orderByDesc('id')->first();
                 if ($latestOperation !== null && $latestOperation->status !== 'success'
                     && $latestOperation->queued_at !== null
                     && CarbonImmutable::parse($latestOperation->queued_at)->greaterThan($run->completed_at)) {
-                    return ['ready' => false, 'reason' => 'La última operación de '.$key.' no terminó correctamente.', 'ids' => [], 'cutoff' => null];
+                    return $this->blocked('La última operación de '.$key.' no terminó correctamente.', $task);
                 }
             }
             $ids[$key] = (int) $run->id;
@@ -65,19 +70,21 @@ class CampaignPublicationReadiness
 
         $direct = SalesforceOpportunityInterestDirectRun::query()->useWritePdo()->orderByDesc('id')->first();
         if ($direct?->status !== 'completed' || $direct->completed_at === null || $direct->source_cutoff_at === null) {
-            return ['ready' => false, 'reason' => 'El snapshot directo Opportunity–Interest no está completo.', 'ids' => [], 'cutoff' => null];
+            return $this->blocked('El snapshot directo Opportunity–Interest no está completo.', 'salesforce-sync-opportunity-interest-direct');
         }
         $opportunities = $this->latest(...self::INPUTS['opportunities']);
         if ($direct->completed_at->lessThan($opportunities->completed_at)) {
-            return ['ready' => false, 'reason' => 'El snapshot directo precede a la última sincronización de Opportunities.', 'ids' => [], 'cutoff' => null];
+            return $this->blocked('El snapshot directo precede a la última sincronización de Opportunities.', 'salesforce-sync-opportunity-interest-direct');
         }
         $ids['direct'] = (int) $direct->id;
         $fingerprint = $direct->stats['reference_fingerprint'] ?? null;
-        $ids['direct_fingerprint'] = is_string($fingerprint) && preg_match('/^[a-f0-9]{64}$/', $fingerprint)
-            ? $fingerprint : '';
+        if (! is_string($fingerprint) || ! preg_match('/^[a-f0-9]{64}$/', $fingerprint)) {
+            return $this->blocked('El snapshot directo no tiene una huella verificable.', 'salesforce-sync-opportunity-interest-direct');
+        }
+        $ids['direct_fingerprint'] = $fingerprint;
         $cutoffs[] = CarbonImmutable::parse($direct->source_cutoff_at);
 
-        return ['ready' => true, 'reason' => null, 'ids' => $ids, 'cutoff' => collect($cutoffs)->sort()->first()];
+        return ['ready' => true, 'reason' => null, 'retry_task' => null, 'ids' => $ids, 'cutoff' => collect($cutoffs)->sort()->first()];
     }
 
     public function needsAttribution(array $ids): bool
@@ -114,7 +121,7 @@ class CampaignPublicationReadiness
     }
 
     /** @return array{ready:bool, cutoff:?CarbonImmutable, reason:?string} */
-    public function published(?CarbonInterface $start = null, ?CarbonInterface $end = null): array
+    public function published(?CarbonInterface $start = null, ?CarbonInterface $end = null, ?array $filters = null): array
     {
         $sources = $this->sources($start, $end);
         if (! $sources['ready']) {
@@ -129,15 +136,17 @@ class CampaignPublicationReadiness
             && (int) ($publishedIds['opportunities'] ?? 0) === $sources['ids']['opportunities']
             && ($publishedIds['direct_fingerprint'] ?? null) === $sources['ids']['direct_fingerprint'];
         $snapshot = $publication?->status === 'completed'
-            ? DB::table('campaign_report_snapshots')->useWritePdo()->where('id', $publication->stats['snapshot_id'] ?? 0)->first(['period_start', 'period_end'])
+            ? DB::table('campaign_report_snapshots')->useWritePdo()->where('id', $publication->stats['snapshot_id'] ?? 0)->first(['period_start', 'period_end', 'filters_hash'])
             : null;
         $snapshotCovers = $start === null || $end === null || ($snapshot !== null
-            && $snapshot->period_start <= CarbonImmutable::parse($start)->setTimezone('Europe/Madrid')->toDateString()
-            && $snapshot->period_end >= CarbonImmutable::parse($end)->setTimezone('Europe/Madrid')->subDay()->toDateString());
+            && CarbonImmutable::parse($snapshot->period_start)->toDateString() <= CarbonImmutable::parse($start)->setTimezone('Europe/Madrid')->toDateString()
+            && CarbonImmutable::parse($snapshot->period_end)->toDateString() >= CarbonImmutable::parse($end)->setTimezone('Europe/Madrid')->subDay()->toDateString());
         if ($build === null || $publication?->status !== 'completed'
             || (int) ($publication->stats['attribution_run_id'] ?? 0) !== (int) $build->id
             || ! $samePublishedSources
-            || $snapshot === null || ! $snapshotCovers) {
+            || $snapshot === null || ! $snapshotCovers
+            || ($filters !== null && ! hash_equals((string) $snapshot->filters_hash, self::filtersHash($filters)))
+            || ($start !== null && $end !== null && ! $this->attributionCovers($build, $start, $end))) {
             return ['ready' => false, 'cutoff' => null, 'reason' => 'La publicación no incorpora todas las dependencias verificadas.'];
         }
 
@@ -147,6 +156,13 @@ class CampaignPublicationReadiness
     public function latestAttribution(): ?ReportSyncRun
     {
         return $this->latest(self::ATTRIBUTION_DATASET, self::SOURCE);
+    }
+
+    public static function filtersHash(array $filters): string
+    {
+        unset($filters['start_date'], $filters['end_date']);
+
+        return hash('sha256', json_encode($filters, JSON_THROW_ON_ERROR));
     }
 
     public function attributionCovers(ReportSyncRun $build, CarbonInterface $start, CarbonInterface $end): bool
@@ -169,6 +185,12 @@ class CampaignPublicationReadiness
     private function latest(string $dataset, string $source): ?ReportSyncRun
     {
         return ReportSyncRun::query()->useWritePdo()->where('dataset', $dataset)->where('source', $source)->orderByDesc('id')->first();
+    }
+
+    /** @return array{ready:false, reason:string, retry_task:?string, ids:array{}, cutoff:null} */
+    private function blocked(string $reason, ?string $task = null): array
+    {
+        return ['ready' => false, 'reason' => $reason, 'retry_task' => $task, 'ids' => [], 'cutoff' => null];
     }
 
     private function interestsChangedSince(int $previousId, int $currentId): bool

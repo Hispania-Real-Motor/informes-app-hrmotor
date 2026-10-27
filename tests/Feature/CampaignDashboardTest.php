@@ -11,6 +11,7 @@ use App\Models\SalesforceOpportunity;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
 use App\Services\Campaigns\CampaignCurrentStatusService;
 use App\Services\Campaigns\CampaignDashboardDatasetService;
+use App\Services\Campaigns\CampaignPublicationReadiness;
 use App\Services\Campaigns\CampaignSaleAmountResolver;
 use App\Services\Campaigns\GoogleAdsClient;
 use App\Services\Campaigns\GoogleCampaignSyncService;
@@ -103,11 +104,16 @@ class CampaignDashboardTest extends TestCase
             'dataset' => 'campaign_attributions', 'source' => 'campaigns', 'status' => 'completed',
             'started_at' => '2026-10-27 11:00:00', 'completed_at' => '2026-10-27 11:00:00',
             'source_cutoff_at' => '2026-10-27 11:00:00', 'timezone' => 'Europe/Madrid',
-            'stats' => json_encode(['source_ids' => $sourceIds]),
+            'stats' => json_encode(['source_ids' => $sourceIds,
+                'range_start' => '2026-05-01', 'range_end_exclusive' => '2026-06-01']),
             'created_at' => '2026-10-27 11:00:00', 'updated_at' => '2026-10-27 11:00:00',
         ]);
         $snapshotId = DB::table('campaign_report_snapshots')->insertGetId([
-            'period_start' => '2026-05-01', 'period_end' => '2026-05-31', 'filters_hash' => 'test',
+            'period_start' => '2026-05-01', 'period_end' => '2026-05-31',
+            'filters_hash' => CampaignPublicationReadiness::filtersHash(app(CampaignDashboardDatasetService::class)
+                ->filters(Request::create('/informes/campanas/data/summary', 'GET', [
+                    'start_date' => '2026-05-01', 'end_date' => '2026-05-31',
+                ]))),
             'summary' => '{}', 'campaigns' => '[]', 'rankings' => '[]', 'warnings' => '[]',
             'created_at' => '2026-10-27 11:30:00', 'updated_at' => '2026-10-27 11:30:00',
         ]);
@@ -122,6 +128,11 @@ class CampaignDashboardTest extends TestCase
         $query = '/informes/campanas/data/summary?'.$this->campaignQuery();
         $before = $this->getJson($query)->assertOk()->json();
         $this->assertNotNull($before['datos_actualizados']);
+        $this->assertNull($this->getJson($query.'&platform=meta')->assertOk()->json('datos_actualizados'));
+        $this->assertNotNull($this->getJson('/informes/campanas/data/summary?start_date=2026-05-02&end_date=2026-05-31')
+            ->assertOk()->json('datos_actualizados'));
+        $this->assertNull($this->getJson('/informes/campanas/data/summary?start_date=2026-04-30&end_date=2026-05-31')
+            ->assertOk()->json('datos_actualizados'));
         $failure = DB::table('operational_task_runs')->insertGetId([
             'correlation_id' => '00000000-0000-4000-8000-000000000003',
             'task_key' => 'campaigns-sync-google', 'origin' => 'scheduler', 'status' => 'failed',

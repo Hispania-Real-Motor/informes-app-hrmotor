@@ -8,7 +8,9 @@ use App\Models\SalesforceInterest;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
+use App\Services\Campaigns\CampaignDashboardDatasetService;
 use App\Services\Campaigns\CampaignLeadSyncService;
+use App\Services\Campaigns\CampaignPublicationReadiness;
 use App\Services\Campaigns\GoogleCampaignSyncService;
 use App\Services\Campaigns\MetaCampaignSyncService;
 use App\Services\Reports\MonthlyCommercial\Sync\SalesforceMonthlyUsersSyncService;
@@ -17,6 +19,7 @@ use App\Services\Reports\ReservationsSales\Sync\SalesforceOpportunitySyncService
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Mockery\MockInterface;
@@ -858,6 +861,32 @@ class CampaignCommandsTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertDatabaseCount('campaign_report_snapshots', 1);
+        $end = CarbonImmutable::now('Europe/Madrid')->endOfDay();
+        $start = $end->subDay()->startOfDay();
+        $filters = app(CampaignDashboardDatasetService::class)->filters(Request::create('/informes/campanas/data/summary', 'GET', [
+            'start_date' => $start->toDateString(), 'end_date' => $end->toDateString(),
+        ]));
+        $this->assertSame(CampaignPublicationReadiness::filtersHash($filters), DB::table('campaign_report_snapshots')->value('filters_hash'));
+        $readiness = app(CampaignPublicationReadiness::class);
+        $sources = $readiness->sources($start, $end->addDay()->startOfDay());
+        $this->assertTrue($sources['ready'], $sources['reason'] ?? '');
+        $build = $readiness->attributionReady($sources['ids']);
+        $this->assertNotNull($build);
+        $this->assertTrue($readiness->attributionCovers($build, $start, $end->addDay()->startOfDay()));
+        $publicationStats = json_decode(DB::table('report_sync_runs')->where('dataset', 'campaign_report_snapshots')
+            ->orderByDesc('id')->value('stats'), true);
+        $this->assertSame($build->id, $publicationStats['attribution_run_id']);
+        $this->assertSame($sources['ids'], $publicationStats['source_ids']);
+        $snapshot = DB::table('campaign_report_snapshots')->first();
+        $this->assertLessThanOrEqual($start->toDateString(), CarbonImmutable::parse($snapshot->period_start)->toDateString());
+        $this->assertGreaterThanOrEqual($end->toDateString(), CarbonImmutable::parse($snapshot->period_end)->toDateString());
+        $published = app(CampaignPublicationReadiness::class)->published($start, $end->addDay()->startOfDay(), $filters);
+        $this->assertTrue($published['ready'], $published['reason'] ?? '');
+        $this->artisan('reports:refresh-campaigns', ['--days' => 1, '--store' => true])
+            ->expectsOutputToContain('SKIPPED:')
+            ->assertExitCode(0);
+        $this->assertDatabaseCount('campaign_report_snapshots', 1);
+        $this->assertSame(1, DB::table('report_sync_runs')->where('dataset', 'campaign_report_snapshots')->count());
     }
 
     public function test_refresh_snapshot_keeps_salesforce_attribution_without_storing_it_as_campaign(): void

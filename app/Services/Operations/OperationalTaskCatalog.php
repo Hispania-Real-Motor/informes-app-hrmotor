@@ -110,6 +110,15 @@ final class OperationalTaskCatalog
                 'manual_allowed' => true, 'risk' => 'moderate',
                 'overlap_policy' => 'exclusive-persistent', 'policy' => 'Ventana ordinaria fija del scheduler.',
             ],
+            'campaigns-reconcile-publication' => [
+                'label' => 'recuperación condicionada de publicación de campañas', 'module' => 'campaigns',
+                'command' => 'campaigns:reconcile-publication', 'arguments' => [],
+                'cron' => '20 9-23 * * *', 'timezone' => 'Europe/Madrid',
+                'window_minutes' => 240, 'grace_minutes' => 60,
+                'manual_allowed' => false, 'risk' => 'moderate',
+                'overlap_policy' => 'exclusive-persistent',
+                'policy' => 'Una dependencia pendiente por hora; máximo tres intentos diarios por tarea, incluidos los ordinarios.',
+            ],
             'salesforce-sync-opportunities' => [
                 'label' => 'sincronización incremental de Opportunities e historial de Stage', 'module' => 'salesforce',
                 'command' => 'salesforce:sync-opportunities',

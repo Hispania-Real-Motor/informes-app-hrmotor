@@ -266,7 +266,7 @@ No se elevan fichas KPI a `verificado`.
 | --- | --- | --- |
 | Runs de inversión Meta/Google | `report_sync_runs` registra resultado y estadísticas del intento iniciado (`range_start`, `range_end_exclusive`, `accounts`, `processed`, `saved`, `warnings`); una cuenta fallida no acredita run completo. Un rango totalmente cerrado queda como `skipped` con motivo `closed_period` y `OperationalTaskOutput` lo marca omitido. | No equivale a comparar datos productivos con el proveedor ni demuestra completitud de una respuesta vacía estructuralmente válida. |
 | Aviso Salesforce Interests posterior a atribución | `CampaignDashboardDatasetService::warnings()` exige un F2 completado posterior y evidencia persistida en `salesforce_interests.updated_at`, dentro del período o vinculada a una atribución anterior de ese período. Un F2 sin cambios no crea el aviso ni borra un cambio material previo pendiente. La fuente es `salesforce_interests`/`report_sync_runs`, no Lead legacy. | Cambios de Opportunity y del enlace directo tienen otra procedencia; esta comprobación aislada no certifica su frescura. |
-| «Datos actualizados» | `CampaignPublicationReadiness::published(start,end)` exige último snapshot persistido que cubra el período seleccionado, run de publicación `completed`, atribución vigente del mismo linaje y últimos Meta/Google con cobertura del tramo abierto, F2, Opportunities y snapshot directo. `campaignDatasetMetadata()` toma su cutoff o deja `dataset_cutoff_at` nulo y añade `dataset_freshness_reason`; la caché versiona los runs. | Un período totalmente cerrado no acredita actualidad operativa en esta marca, aunque sus snapshots históricos siguen consultables. La fecha tampoco certifica integridad externa/productiva ni corrección de Google Venta. |
+| «Datos actualizados» | `CampaignPublicationReadiness::published(start,end,filters)` exige último snapshot persistido que cubra el período seleccionado, huella SHA-256 de filtros normalizados coincidente (sin fechas), atribución vigente que también cubra ese período, run de publicación `completed` del mismo linaje y últimos Meta/Google con cobertura del tramo abierto, F2, Opportunities y snapshot directo. `campaignDatasetMetadata()` toma su cutoff o deja `dataset_cutoff_at` nulo y añade `dataset_freshness_reason`; la caché versiona los runs. `CampaignDashboardTest` comprueba subperíodo y contexto distinto; `CampaignPublicationReadinessTest` comprueba la huella. | Un período totalmente cerrado, un filtro ajeno al snapshot o un rango fuera de su cobertura no acreditan actualidad operativa en esta marca, aunque los datos históricos siguen consultables. La fecha tampoco certifica integridad externa/productiva ni corrección de Google Venta. |
 | Google Ads Venta con gasto y cero comerciales | La investigación debe seguir ID/cuenta publicitaria → UTM del Interest → método y ambigüedad de atribución → Opportunity → Venta → filtro/contexto. No hay cambio de matching, first touch, resultado ni coste por venta. | Sin consultas productivas autorizadas, la causa del cero y las cifras esperadas no están verificadas; véase el procedimiento de solo lectura en `docs/operaciones-produccion.md`. |
 
 La secuencia operacional sigue F2 horario, Meta/Google y Opportunities en
@@ -276,6 +276,15 @@ consultas del tablero no incorporan una fuente externa nueva ni consultan
 proveedores durante HTTP. Las fichas KPI de Campañas siguen pendientes de la
 auditoría completa de 23 campos, incluida comparación productiva antes y
 después del período abierto.
+
+La reconciliación añadida a `OperationalTaskCatalog` comprueba de 09:20 a
+23:20 en Madrid una dependencia por pasada y la reintenta con la reserva de su
+tarea original; máximo tres runs diarios por tarea con origen `scheduler` y
+estado no omitido, incluida la ejecución ordinaria. `CampaignPublicationRetryTest`
+y `OperationalTasksTest` prueban selección, límite, ocupación y estado de
+omisión. Es política de recuperación/publicación, no una nueva fuente, filtro,
+fórmula o universo económico. No garantiza que la cadena completa termine el
+mismo día ni acredita publicación de un contexto filtrado diferente.
 
 Linaje nuevo: `report_sync_runs` de métricas Meta/Google
 (`campaign_platform_daily_metrics`), F2 (`salesforce_interests`) y Opportunity

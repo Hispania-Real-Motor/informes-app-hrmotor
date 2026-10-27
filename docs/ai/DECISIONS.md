@@ -1,5 +1,22 @@
 # Decisiones técnicas
 
+## 2026-10-27 — Reconciliación de Campañas mediante reservas operacionales existentes
+
+- La recuperación horaria se incorpora a `OperationalTaskCatalog` y ejecuta
+  como máximo una dependencia pendiente por pasada. Cada tarea hija conserva
+  su propia reserva persistente, auditoría y política de exclusión; se evita
+  un cron paralelo o una segunda ruta de escritura económica.
+- El límite es de tres intentos no omitidos por tarea y día civil de Madrid
+  con origen `scheduler`, contando la ejecución ordinaria. La cadencia
+  09:20–23:20 y el límite acotan reintentos automáticos, pero no garantizan
+  publicar todas las dependencias el mismo día; la intervención manual sigue
+  su autorización operacional independiente.
+- La marca «Datos actualizados» se vincula al contexto normalizado de filtros
+  por huella SHA-256 sin fechas; el período se acredita por cobertura del
+  snapshot y la atribución. Se conserva una marca neutral para filtros o
+  fechas no cubiertos, sin crear snapshots nuevos por cada consulta HTTP ni
+  alterar los KPI o el contrato económico del informe.
+
 ## 2026-10-27 — Cierre mensual como límite de escritura económica de Campañas
 
 - `campaign_investment_closures` es la fuente local de verdad para determinar

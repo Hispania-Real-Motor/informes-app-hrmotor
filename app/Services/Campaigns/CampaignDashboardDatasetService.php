@@ -1442,7 +1442,7 @@ class CampaignDashboardDatasetService
         );
         $charts = $this->charts($rows, $filters, $period, $totals, $attributionAnalytics);
         $publicWarnings = $this->publicWarnings($totals);
-        $datasetMetadata = $this->campaignDatasetMetadata($period);
+        $datasetMetadata = $this->campaignDatasetMetadata($period, $filters);
 
         return [
             'ok' => count($rows) > 0,
@@ -3747,7 +3747,7 @@ class CampaignDashboardDatasetService
         return $syncedAt ? CarbonImmutable::parse($syncedAt) : null;
     }
 
-    private function campaignDatasetMetadata(array $period): array
+    private function campaignDatasetMetadata(array $period, array $filters): array
     {
         $interestRun = ReportSyncRun::query()
             ->where('dataset', SalesforceInterestSyncService::DATASET)
@@ -3758,7 +3758,7 @@ class CampaignDashboardDatasetService
         $metaSync = CampaignPlatformDailyMetric::query()->where('platform', 'meta')->max('synced_at');
         $googleSync = CampaignPlatformDailyMetric::query()->where('platform', 'google_ads')->max('synced_at');
         $attributionBuild = DB::table('campaign_lead_attributions')->max('updated_at');
-        $publication = app(CampaignPublicationReadiness::class)->published($period['start_at'], $period['end_at']);
+        $publication = app(CampaignPublicationReadiness::class)->published($period['start_at'], $period['end_at'], $filters);
         $cutoff = $publication['cutoff'];
 
         return [

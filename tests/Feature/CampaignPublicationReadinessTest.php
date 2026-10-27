@@ -22,6 +22,21 @@ class CampaignPublicationReadinessTest extends TestCase
         $this->setUpRot4CampaignContext();
     }
 
+    public function test_filter_fingerprint_uses_context_but_period_is_checked_separately(): void
+    {
+        $general = ['start_date' => '2026-10-01', 'end_date' => '2026-10-27',
+            'campaign_status' => 'active', 'platform' => ''];
+        $subperiod = ['start_date' => '2026-10-15', 'end_date' => '2026-10-27',
+            'campaign_status' => 'active', 'platform' => ''];
+        $metaOnly = ['start_date' => '2026-10-01', 'end_date' => '2026-10-27',
+            'campaign_status' => 'active', 'platform' => 'meta'];
+
+        $this->assertSame(CampaignPublicationReadiness::filtersHash($general),
+            CampaignPublicationReadiness::filtersHash($subperiod));
+        $this->assertNotSame(CampaignPublicationReadiness::filtersHash($general),
+            CampaignPublicationReadiness::filtersHash($metaOnly));
+    }
+
     public function test_unchanged_salesforce_syncs_do_not_rebuild_but_material_changes_do(): void
     {
         $readiness = app(CampaignPublicationReadiness::class);

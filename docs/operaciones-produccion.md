@@ -1212,16 +1212,51 @@ fallido se tratan conservadoramente como cambio. Los manuales sin
 y cobertura del rango económico abierto. Vuelve a comprobar las fuentes
 antes de guardar y persiste juntos `campaign_report_snapshots` y el run
 `campaign_report_snapshots/campaigns`, con `snapshot_id`,
-`attribution_run_id` y `source_ids`. Una ejecución fallida o un snapshot sin
+`attribution_run_id` y `source_ids`. Omite una nueva publicación si el contexto
+predeterminado ya tiene snapshot vigente. `filters_hash` es SHA-256 de los
+filtros normalizados por el dataset, sin fechas; la cobertura temporal se
+verifica por separado. Una ejecución fallida o un snapshot sin
 run de publicación coherente deja `dataset_cutoff_at=NULL`; el informe
 muestra «Actualización del informe no verificada» y un motivo genérico en
 `dataset_freshness_reason`. Cuando la publicación sigue válida, «Datos
 actualizados» muestra el cutoff mínimo de las fuentes verificadas, no la
-hora de renderizado. El snapshot publicado debe cubrir el período consultado.
+hora de renderizado. El snapshot publicado y la atribución deben cubrir el
+período consultado y la huella debe coincidir con los filtros actuales; un
+contexto filtrado distinto, un snapshot antiguo con otra huella o un rango
+fuera de cobertura no reciben la marca de frescura.
 En un período totalmente cerrado la marca operativa queda no verificable,
 sin impedir la lectura del snapshot económico aprobado. La caché económica versiona los runs relevantes para
 no reciclar esa etiqueta tras un cambio de estado. No se introducen llamadas
 a Salesforce, Meta o Google durante HTTP.
+
+### Reconciliación horaria de la publicación
+
+`campaigns-reconcile-publication` se programa a las `09:20` y luego cada hora
+hasta las `23:20` en `Europe/Madrid`. Evalúa las fuentes Meta, Google, F2,
+Opportunities y el snapshot directo; después, la cobertura de la atribución y
+la publicación del contexto predeterminado. En cada pasada reserva y ejecuta
+**una sola** dependencia pendiente mediante `OperationalTaskService`, usando
+la misma clave, exclusión persistente y auditoría de la tarea hija ordinaria.
+Los horarios ordinarios de esas fuentes, atribución y refresco permanecen
+iguales; el reconciliador solo añade oportunidades condicionadas de reintento.
+El propio reconciliador también usa reserva persistente y no admite disparo
+manual desde la interfaz operacional. No hay cron paralelo ni nuevas llamadas
+de proveedor durante las peticiones HTTP.
+
+Antes de reservar una tarea hija cuenta sus `operational_task_runs` de origen
+`scheduler`, no omitidos, desde el inicio del día civil de Madrid: el máximo
+son tres intentos diarios **por tarea**, incluyendo el run ordinario. Una
+reserva ya activa, un límite agotado o ausencia de tramo económico abierto se
+registran como omisión, sin forzar escrituras; un fallo de la hija se registra
+en su propio run y el reconciliador devuelve fallo para supervisión. La pasada
+siguiente reevalúa el linaje. No asumir que todas las dependencias se recuperan
+en una hora ni que quedarán publicadas antes de las 23:20; si persiste la
+incidencia, revisar los runs y autorizar la actuación manual por el proceso
+existente. La reconciliación puede volver a llamar a proveedores dentro de
+los límites del catálogo: revisar carga, cuotas y cierres antes de habilitar
+el scheduler en producción. Tras las comprobaciones y la autorización para
+reactivarlo, confirmar que el nuevo task figure habilitado en el catálogo y
+que cada pasada genere a lo sumo una reserva hija.
 
 La purga transversal vigente retiene runs `completed` aproximadamente un
 mes y `failed`/`unverified` durante 14 días; no se amplía aquí. La pérdida

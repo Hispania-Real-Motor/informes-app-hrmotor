@@ -34,7 +34,8 @@ final class OperationalTaskOutput extends Output
                 $this->partialFailure = true;
             }
         }
-        if ($this->taskKey === 'campaigns-build-attribution' && str_starts_with(trim($message), 'SKIPPED:')) {
+        if (in_array($this->taskKey, ['campaigns-build-attribution', 'reports-refresh-campaigns', 'campaigns-reconcile-publication'], true)
+            && str_starts_with(trim($message), 'SKIPPED:')) {
             $this->skipped = true;
         }
     }

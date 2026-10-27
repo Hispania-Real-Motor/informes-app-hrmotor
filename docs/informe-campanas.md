@@ -166,6 +166,21 @@ El scheduler usa `Europe/Madrid`:
 - atribución Campañas: 08:30;
 - snapshot del informe: 09:00.
 
+No cambia la cadencia ordinaria de las fuentes ni de la atribución/refresco.
+`campaigns-reconcile-publication` comprueba cada hora de 09:20 a 23:20
+(`Europe/Madrid`) qué dependencia impide publicar. En cada pasada puede iniciar
+**una sola** tarea pendiente, por orden de fuentes Meta, Google, F2 y
+Opportunities, snapshot directo Opportunity→Interest, atribución y refresco.
+La tarea hija se reserva mediante `OperationalTaskService` con su clave y
+bloqueo persistente existentes; no se crea otro canal de escritura ni se
+ejecutan varios proveedores en una pasada. Cuenta los intentos no omitidos
+con origen `scheduler` desde el comienzo del día civil de Madrid y permite
+como máximo **tres por tarea y día**, incluidas las ejecuciones ordinarias del
+catálogo. Las ejecuciones manuales autorizadas no entran en ese contador. Una
+reserva ocupada, un límite agotado o una dependencia sin tramo abierto
+recuperable se omiten; un fallo deja pendiente la siguiente pasada. El ciclo
+acaba a las 23:20 y puede no completar toda la cadena ese día.
+
 ### Protección de escritura y evidencia de actualización (iteración 2026-10-27)
 
 Los comandos económicos programados conservan su ventana solicitada de 120
@@ -227,7 +242,13 @@ Un run sin estadísticas suficientes queda conservadoramente pendiente.
 completas, una atribución vigente que cubre el rango abierto solicitado y el
 mismo linaje antes/después del cálculo. Persiste el snapshot y su run de
 publicación en una transacción; la ejecución fallida no acredita un dataset
-nuevo. `dataset_cutoff_at` y la etiqueta «Datos actualizados» derivan del
+nuevo. Si la publicación del contexto predeterminado ya es vigente, el comando
+omite un snapshot duplicado. Guarda en `campaign_report_snapshots.filters_hash`
+una huella SHA-256 de los filtros normalizados por
+`CampaignDashboardDatasetService::filters()`, excluyendo `start_date` y
+`end_date`; las fechas se comprueban por cobertura separada. Este cambio no
+altera los filtros aplicados, las cifras ni el contenido económico del JSON o
+CSV. `dataset_cutoff_at` y la etiqueta «Datos actualizados» derivan del
 último **snapshot publicado** con linaje de fuentes y atribución verificable,
 no de la hora de renderizado ni de `MAX(synced_at)`. Si falta evidencia, el
 campo es nulo, `dataset_freshness_reason` expone un motivo genérico y la UI
@@ -239,6 +260,15 @@ cerrado. Los campos de diagnóstico individuales
 pueden conservar fechas anteriores. Esto acredita la publicación local y sus
 dependencias registradas; la integridad real de datos productivos y el cero
 Google Venta requieren contraste operacional separado.
+
+La consulta del dashboard solo acredita esa marca cuando los filtros
+normalizados coinciden con la huella del snapshot y el período seleccionado
+está cubierto por el snapshot **y** la atribución vigente. Un subperíodo con el
+mismo contexto puede aprovechar la publicación; otro contexto o un rango fuera
+de cobertura queda neutral. No se reutiliza una publicación general para
+certificar una selección filtrada que no se publicó. Los snapshots antiguos con
+otra huella no se reescriben: permanecen consultables pero no certifican la
+marca nueva.
 
 La retención transversal existente elimina runs `completed` con más de un mes
 y `failed`/`unverified` con más de 14 días. Si desaparece un run necesario
