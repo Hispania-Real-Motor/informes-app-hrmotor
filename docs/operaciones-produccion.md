@@ -1119,3 +1119,38 @@ La sincronización económica Google existente puede volver a ejecutarse por su 
 La primera sincronización de **estados actuales** sigue siendo una decisión separada: validar cuentas/credenciales y permisos mediante el procedimiento existente de Fase B, autorizar la operación, habilitar temporalmente la tarea solo bajo control operacional, ejecutar `php artisan operations:run campaigns-sync-current-status`, revisar `operational_task_runs` y `report_sync_runs` por cuenta y comprobar frescura <24 h antes de presentar estados. La ejecución previa ID 4728 falló en ambas cuentas según la evidencia comunicada y no dejó estados verificados; desplegar este código por sí solo no hará aparecer estados actuales. No activar el scheduler de forma permanente sin autorización posterior. No realizar llamadas Meta/Google desde el informe HTTP.
 
 Rollback: restaurar el release anterior y su configuración efectiva coordinadamente; una reversión de código con `GOOGLE_ADS_API_VERSION=v25` explícito mantiene `v25`, mientras que volver a `v22` puede reproducir `UNSUPPORTED_VERSION`. Evaluar la reversión con el responsable operacional antes de cambiar la versión explícita. Refrescar caché de configuración y procesos tras el rollback; conservar tablas de estados, métricas, runs y cierres sin borrados ni reconstrucciones.
+
+### Corrección posterior de GAQL económico Google Ads v25 (2026-10-27)
+
+Tras el cambio de versión anterior, la evidencia productiva comunicada
+distinguió un `searchStream` mínimo HTTP 200 de la consulta económica completa
+HTTP 400 (`INVALID_ARGUMENT / UNRECOGNIZED_FIELD`). Los campos rechazados eran
+`campaign.start_date` y `campaign.end_date`; el cliente solicita ahora
+`campaign.start_date_time` y `campaign.end_date_time`. Las fechas civiles se
+validan sin convertir zona horaria y se guardan en las columnas DATE existentes;
+un fin no informado queda `NULL`. La respuesta HTTP 200 con estructura
+incompleta se rechaza antes de reemplazar métricas; una fecha inválida aborta
+la transacción de la cuenta. Los errores externos siguen comunicándose de
+forma genérica, sin tokens ni payload completo.
+
+Para un despliegue autorizado, publicar el código del release y comprobar que
+el valor efectivo `services.google_ads.api_version` es `v25` sin mostrar
+secretos. No hay migración, variable nueva, asset ni reconstrucción obligatoria.
+No lanzar sincronización como parte del despliegue: la tarea económica vigente
+podría ejecutarse después según su programación existente. Acordar previamente
+la ventana y el intervalo abierto permitido; no incluir períodos cerrados ni
+reconstruir cierres. Tras una ejecución **autorizada**, revisar el resultado
+`campaigns-sync-google` y `report_sync_runs`, las advertencias sanitizadas y
+una comparación por cuenta/día de inversión, impresiones, clics y conversiones
+frente a la fuente y al estado anterior. Una prueba simulada no acredita éxito
+productivo. Una respuesta válida sin filas conserva la semántica existente de
+reemplazo vacío para el intervalo solicitado: comprobar el alcance antes de
+autorizarla.
+
+Rollback de código: restaurar el release anterior conservando métricas,
+identificadores, runs, snapshots y cierres; no borrar datos ni ejecutar
+backfill. Ese rollback recuperaría el GAQL con campos rechazados en v25, por
+lo que la sincronización económica Google volvería a fallar hasta una solución
+compatible. Cualquier dato escrito por una ejecución productiva posterior no
+se revierte automáticamente al volver el código; requiere evaluación separada
+del responsable económico.

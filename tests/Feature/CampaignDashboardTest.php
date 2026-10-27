@@ -452,7 +452,150 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('FROM ad_group', $capturedQuery);
         $this->assertStringContainsString('campaign.advertising_channel_type', $capturedQuery);
         $this->assertStringContainsString('metrics.cost_micros', $capturedQuery);
+        $this->assertStringContainsString('campaign.start_date_time', $capturedQuery);
+        $this->assertStringContainsString('campaign.end_date_time', $capturedQuery);
+        $this->assertStringNotContainsString('campaign.start_date,', $capturedQuery);
+        $this->assertStringNotContainsString('campaign.end_date,', $capturedQuery);
         $this->assertStringNotContainsString('advertising_channel_type IN', $capturedQuery);
+    }
+
+    public function test_google_v25_economic_dates_keep_provider_day_and_existing_metric_semantics(): void
+    {
+        config()->set('services.google_ads.developer_token', 'synthetic');
+        config()->set('services.google_ads.client_id', 'synthetic');
+        config()->set('services.google_ads.client_secret', 'synthetic');
+        config()->set('services.google_ads.refresh_token', 'synthetic');
+        config()->set('services.google_ads.customer_ids', ['1234567890']);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'oauth2.googleapis.com/token')) {
+                return Http::response(['access_token' => 'synthetic']);
+            }
+            if (str_contains($request['query'], 'FROM ad_group_ad')) {
+                return Http::response([['results' => []]]);
+            }
+
+            return Http::response([['results' => [
+                ['segments' => ['date' => '2026-05-10'], 'campaign' => [
+                    'id' => '9007199254740993', 'name' => 'Inicio y fin', 'status' => 'ENABLED',
+                    'startDateTime' => '2026-05-01 00:00:00', 'endDateTime' => '2026-05-31 23:59:59',
+                ], 'metrics' => ['costMicros' => '123456789', 'impressions' => '1000', 'clicks' => '25',
+                    'conversions' => '1', 'allConversions' => '1.5']],
+                ['segments' => ['date' => '2026-05-10'], 'campaign' => [
+                    'id' => '9007199254740994', 'name' => 'Sin fin', 'status' => 'PAUSED',
+                    'startDateTime' => null,
+                ], 'metrics' => ['costMicros' => '0', 'impressions' => '0', 'clicks' => '0', 'conversions' => '2.5']],
+            ]]]);
+        });
+
+        $result = app(GoogleCampaignSyncService::class)->sync(
+            CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01')
+        );
+
+        $this->assertSame(2, $result['saved']);
+        $this->assertSame([], $result['warnings']);
+        $first = CampaignPlatformDailyMetric::query()->where('campaign_id', '9007199254740993')->firstOrFail();
+        $second = CampaignPlatformDailyMetric::query()->where('campaign_id', '9007199254740994')->firstOrFail();
+        $this->assertSame('2026-05-10', $first->metric_date->toDateString());
+        $this->assertSame('2026-05-01', $first->campaign_start_date->toDateString());
+        $this->assertSame('2026-05-31', $first->campaign_end_date->toDateString());
+        $this->assertEquals(123.46, $first->spend);
+        $this->assertSame(1000, $first->impressions);
+        $this->assertSame(25, $first->clicks);
+        $this->assertEquals(1.5, $first->platform_conversions);
+        $this->assertNull($second->campaign_start_date);
+        $this->assertNull($second->campaign_end_date);
+        $this->assertEquals(2.5, $second->platform_conversions);
+    }
+
+    public function test_google_invalid_v25_datetime_rolls_back_existing_metrics(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'account_id' => '1234567890', 'campaign_id' => '123',
+            'metric_date' => '2026-05-10', 'spend' => 42,
+        ]));
+        $before = DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson();
+        config()->set('services.google_ads.developer_token', 'synthetic');
+        config()->set('services.google_ads.client_id', 'synthetic');
+        config()->set('services.google_ads.client_secret', 'synthetic');
+        config()->set('services.google_ads.refresh_token', 'synthetic');
+        config()->set('services.google_ads.customer_ids', ['1234567890']);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'oauth2.googleapis.com/token')) {
+                return Http::response(['access_token' => 'synthetic']);
+            }
+            if (str_contains($request['query'], 'FROM ad_group_ad')) {
+                return Http::response([['results' => []]]);
+            }
+
+            return Http::response([['results' => [[
+                'segments' => ['date' => '2026-05-10'], 'campaign' => [
+                    'id' => '123', 'name' => 'Fecha inválida', 'status' => 'ENABLED',
+                    'startDateTime' => '2026-02-30 00:00:00', 'endDateTime' => '2026-05-31 24:00:00',
+                ], 'metrics' => ['costMicros' => '99999999'],
+            ]]]]);
+        });
+
+        try {
+            app(GoogleCampaignSyncService::class)->sync(
+                CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01')
+            );
+            $this->fail('La fecha inválida debe abortar la cuenta.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Fecha de campaña Google Ads no válida.', $exception->getMessage());
+        }
+        $this->assertSame($before, DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson());
+    }
+
+    public function test_google_incomplete_success_response_preserves_previous_investment(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'account_id' => '1234567890', 'campaign_id' => '123',
+            'metric_date' => '2026-05-10', 'spend' => 42,
+        ]));
+        $before = DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson();
+        config()->set('services.google_ads.developer_token', 'synthetic');
+        config()->set('services.google_ads.client_id', 'synthetic');
+        config()->set('services.google_ads.client_secret', 'synthetic');
+        config()->set('services.google_ads.refresh_token', 'synthetic');
+        config()->set('services.google_ads.customer_ids', ['1234567890']);
+        Http::preventStrayRequests();
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'synthetic']),
+            'googleads.googleapis.com/*' => Http::response([['unexpected' => 'missing results']], 200),
+        ]);
+
+        $result = app(GoogleCampaignSyncService::class)->sync(
+            CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01')
+        );
+
+        $this->assertSame(0, $result['saved']);
+        $this->assertCount(1, $result['warnings']);
+        $this->assertStringNotContainsString('missing results', json_encode($result));
+        $this->assertSame($before, DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson());
+    }
+
+    public function test_google_valid_empty_stream_saves_no_metrics(): void
+    {
+        config()->set('services.google_ads.developer_token', 'synthetic');
+        config()->set('services.google_ads.client_id', 'synthetic');
+        config()->set('services.google_ads.client_secret', 'synthetic');
+        config()->set('services.google_ads.refresh_token', 'synthetic');
+        config()->set('services.google_ads.customer_ids', ['1234567890']);
+        Http::preventStrayRequests();
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'synthetic']),
+            'googleads.googleapis.com/*' => Http::response([['results' => []]]),
+        ]);
+
+        $result = app(GoogleCampaignSyncService::class)->sync(
+            CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-06-01')
+        );
+
+        $this->assertSame(0, $result['saved']);
+        $this->assertSame([], $result['warnings']);
+        $this->assertDatabaseCount('campaign_platform_daily_metrics', 0);
     }
 
     public function test_google_unsupported_version_is_a_sanitized_sync_failure_without_economic_writes(): void
