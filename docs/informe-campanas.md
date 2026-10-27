@@ -285,6 +285,28 @@ Opportunity–Interest y los filtros de período y tipo. Sin consulta productiva
 autorizada no puede localizarse el paso en que se pierden registros ni afirmar
 que el cero sea incorrecto. Seguir el [diagnóstico agregado de solo lectura](operaciones-produccion.md#diagnóstico-de-google-ads-venta-con-inversión-y-cero-resultados) antes de proponer cambios de matching o KPI.
 
+**Corrección de presentación por contexto (2026-10-27).** En
+`CampaignDashboardDatasetService::attributionRows()`, el filtro funcional
+`applyCampaignContextFilter()` se aplica a cada registro de
+`campaign_lead_attributions` **antes** del `GROUP BY` por plataforma, Campaign
+ID y nombre. Anteriormente una campaña con Interests de Venta y Tasación
+podía quedar etiquetada por `MIN(campaign_type)` como Tasación y excluirse
+entera de la comparativa y del detalle Venta, aunque su gasto publicitario
+permaneciera visible y el KPI deduplicado sí contara la venta. El test
+sintético conserva el gasto Google y la atribución de Venta de esa campaña
+mixta; otro test mantiene en cero Google sin Interests y conserva Meta. Cambian
+las filas agregadas servidas a comparativa, detalle y exportación CSV de
+campañas para ese contexto; las columnas y autorización del CSV permanecen.
+No cambian matching, first touch, deduplicación, fórmulas, atribuciones e
+importes persistidos, snapshots, cierres ni filtros seleccionables. Los KPIs
+deduplicados usan su propio recorrido de atribuciones; los tests sintéticos
+verifican la coherencia del caso mixto, no invariancia de todos los valores
+productivos. Las claves de caché del payload y la auditoría KPI pasan
+respectivamente a `campaign-dashboard-v8` y `campaign-dashboard-kpi-audit-v2`
+para no servir resultados anteriores durante el TTL de diez minutos. **No se
+ha comprobado** que el caso mixto exista en octubre productivo ni que explique
+el cero comunicado.
+
 Comandos locales del pipeline ROT-4:
 
 ```bash

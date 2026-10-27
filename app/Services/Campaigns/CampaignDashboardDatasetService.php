@@ -236,7 +236,7 @@ class CampaignDashboardDatasetService
         $metric = $this->resolveAuditMetric($request->string('metric')->toString(), $filters['context']);
 
         return Cache::remember(
-            'campaign-dashboard-kpi-audit-v1:'.md5(json_encode([
+            'campaign-dashboard-kpi-audit-v2:'.md5(json_encode([
                 'filters' => $filters,
                 'period' => $period,
                 'metric' => $metric,
@@ -258,7 +258,7 @@ class CampaignDashboardDatasetService
         $period = $this->period($filters);
 
         return Cache::remember(
-            'campaign-dashboard-v7:'.md5(json_encode([
+            'campaign-dashboard-v8:'.md5(json_encode([
                 'filters' => $filters,
                 'period' => $period,
                 'include_diagnostics' => $includeDiagnostics,
@@ -663,6 +663,9 @@ class CampaignDashboardDatasetService
             });
 
         $this->applyLeadAttributionFilters($query, $filters, 'cla');
+        // Filter individual attributions before grouping: MIN(campaign_type)
+        // cannot represent a campaign with both sale and appraisal interests.
+        $this->applyCampaignContextFilter($query, $filters, 'cla');
 
         $reportableOpportunity = $this->reportableOpportunitySql('so');
 

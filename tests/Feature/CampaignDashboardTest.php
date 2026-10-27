@@ -1170,6 +1170,89 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('Lead Privado', $csv);
     }
 
+    public function test_comparativa_venta_conserva_atribuciones_google_de_tipo_mixto(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'account_id' => 'ads-google',
+            'campaign_id' => 'google-venta-1', 'campaign_name' => 'Google Venta',
+            'campaign_effective_status' => null, 'spend' => 125,
+        ]));
+
+        DB::table('campaign_lead_attributions')->insert([
+            $this->attributionRow([
+                'interest_id' => '00Q-google-tasacion', 'platform' => 'google_ads',
+                'campaign_id' => 'google-venta-1', 'campaign_name' => 'Google Venta',
+                'source_campaign_name' => 'Tasador Landing', 'campaign_type' => 'tasacion',
+                'has_opportunity' => false, 'sold_amount' => null, 'is_ambiguous' => false,
+            ]),
+            $this->attributionRow([
+                'interest_id' => '00Q-google-venta', 'platform' => 'google_ads',
+                'campaign_id' => 'google-venta-1', 'campaign_name' => 'Google Venta',
+                'source_campaign_name' => 'Google Venta', 'campaign_type' => 'venta',
+                'opportunity_id' => '006-google-venta', 'has_opportunity' => true,
+                'has_reservation' => true, 'has_sale' => true, 'sold_amount' => 5000,
+                'is_ambiguous' => false,
+            ]),
+        ]);
+        CampaignAttribution::query()->create([
+            'interest_id' => '00Q-google-venta', 'opportunity_id' => '006-google-venta',
+            'platform' => 'google_ads', 'campaign_id' => 'google-venta-1',
+            'campaign_name' => 'Google Venta', 'campaign_acquired' => 'Google Venta',
+            'campaign_source_type' => 'platform_campaign', 'attribution_method' => 'campaign_id_match',
+            'attribution_confidence' => 'high', 'match_status' => 'Cruzada por ID',
+            'interest_functional_created_at' => '2026-05-10 10:00:00',
+        ]);
+
+        $query = $this->campaignQuery().'&context=venta';
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $google = collect($summary['platform_comparison'])->firstWhere('platform', 'google_ads');
+        $detail = $this->getJson('/informes/campanas/data/campaigns?'.$query)->assertOk()->json('items.0');
+
+        $this->assertNotNull($google);
+        $this->assertEquals(125.0, $google['spend']);
+        $this->assertSame(1, $google['leads_salesforce']);
+        $this->assertSame(1, $google['opportunities']);
+        $this->assertSame(1, $google['sales']);
+        $this->assertSame(1, $summary['kpis']['leads_salesforce']);
+        $this->assertSame(1, $summary['kpis']['sales']);
+        $this->assertSame(1, $detail['leads_salesforce']);
+        $this->assertSame(1, $detail['sales']);
+    }
+
+    public function test_comparativa_no_inventa_intereses_google_y_conserva_meta(): void
+    {
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'account_id' => 'ads-google',
+            'campaign_id' => 'google-sin-intereses', 'campaign_name' => 'Google Venta',
+            'campaign_effective_status' => null, 'spend' => 90,
+        ]));
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'meta', 'campaign_id' => 'meta-con-venta',
+            'campaign_name' => 'Meta Venta', 'spend' => 60,
+        ]));
+        DB::table('campaign_lead_attributions')->insert($this->attributionRow([
+            'interest_id' => '00Q-meta-venta', 'platform' => 'meta',
+            'campaign_id' => 'meta-con-venta', 'campaign_name' => 'Meta Venta',
+            'source_campaign_name' => 'Meta Venta', 'is_ambiguous' => false,
+            'opportunity_id' => '006-meta-venta', 'has_opportunity' => true, 'has_sale' => true,
+        ]));
+
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&context=venta')
+            ->assertOk()->json();
+        $google = collect($summary['platform_comparison'])->firstWhere('platform', 'google_ads');
+        $meta = collect($summary['platform_comparison'])->firstWhere('platform', 'meta');
+
+        $this->assertNotNull($google);
+        $this->assertEquals(90.0, $google['spend']);
+        $this->assertSame(0, $google['leads_salesforce']);
+        $this->assertSame(0, $google['opportunities']);
+        $this->assertSame(0, $google['sales']);
+        $this->assertSame(1, $meta['leads_salesforce']);
+        $this->assertSame(1, $meta['sales']);
+        $this->assertSame(1, $summary['kpis']['leads_salesforce']);
+        $this->assertSame(1, $summary['kpis']['sales']);
+    }
+
     public function test_tasacion_usa_both_match_y_first_touch_account_sin_pii(): void
     {
         CampaignPlatformDailyMetric::query()->create($this->metricRow([
