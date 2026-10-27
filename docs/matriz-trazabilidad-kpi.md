@@ -258,13 +258,15 @@ aprobados mantienen su contrato. La evidencia son
 `CampaignClosedPeriodSyncTest` (intervalo mixto/cerrado, conservación de
 métrica y snapshot, fallo de paginación/fecha) y las pruebas de Campañas y
 comandos de la misma PR. La revisión de cierre económico y concurrencia real
-MariaDB sigue pendiente; no se elevan fichas KPI a `verificado`.
+MariaDB está cubierta solo por una prueba aislada de dos procesos; la
+verificación productiva y la auditoría económica integral siguen pendientes.
+No se elevan fichas KPI a `verificado`.
 
 | Contrato no económico o de auditoría | Cambio contrastado | Límite pendiente |
 | --- | --- | --- |
 | Runs de inversión Meta/Google | `report_sync_runs` registra resultado y estadísticas del intento iniciado (`range_start`, `range_end_exclusive`, `accounts`, `processed`, `saved`, `warnings`); una cuenta fallida no acredita run completo. Un rango totalmente cerrado queda como `skipped` con motivo `closed_period` y `OperationalTaskOutput` lo marca omitido. | No equivale a comparar datos productivos con el proveedor ni demuestra completitud de una respuesta vacía estructuralmente válida. |
 | Aviso Salesforce Interests posterior a atribución | `CampaignDashboardDatasetService::warnings()` exige un F2 completado posterior y evidencia persistida en `salesforce_interests.updated_at`, dentro del período o vinculada a una atribución anterior de ese período. Un F2 sin cambios no crea el aviso ni borra un cambio material previo pendiente. La fuente es `salesforce_interests`/`report_sync_runs`, no Lead legacy. | Cambios de Opportunity y del enlace directo tienen otra procedencia; esta comprobación aislada no certifica su frescura. |
-| «Datos actualizados» | `campaignDatasetMetadata()` deja `dataset_cutoff_at` nulo si falta éxito del último F2 o último intento operacional Meta/Google, o si la atribución comprobada es anterior. La UI muestra estado no verificado y la caché versiona runs/estado operacional. | No certifica el último refresco de snapshot ni todas las dependencias Opportunity/relación. No se interpreta como cierre de auditoría integral. |
+| «Datos actualizados» | `CampaignPublicationReadiness::published(start,end)` exige último snapshot persistido que cubra el período seleccionado, run de publicación `completed`, atribución vigente del mismo linaje y últimos Meta/Google con cobertura del tramo abierto, F2, Opportunities y snapshot directo. `campaignDatasetMetadata()` toma su cutoff o deja `dataset_cutoff_at` nulo y añade `dataset_freshness_reason`; la caché versiona los runs. | Un período totalmente cerrado no acredita actualidad operativa en esta marca, aunque sus snapshots históricos siguen consultables. La fecha tampoco certifica integridad externa/productiva ni corrección de Google Venta. |
 | Google Ads Venta con gasto y cero comerciales | La investigación debe seguir ID/cuenta publicitaria → UTM del Interest → método y ambigüedad de atribución → Opportunity → Venta → filtro/contexto. No hay cambio de matching, first touch, resultado ni coste por venta. | Sin consultas productivas autorizadas, la causa del cero y las cifras esperadas no están verificadas; véase el procedimiento de solo lectura en `docs/operaciones-produccion.md`. |
 
 La secuencia operacional sigue F2 horario, Meta/Google y Opportunities en
@@ -274,3 +276,20 @@ consultas del tablero no incorporan una fuente externa nueva ni consultan
 proveedores durante HTTP. Las fichas KPI de Campañas siguen pendientes de la
 auditoría completa de 23 campos, incluida comparación productiva antes y
 después del período abierto.
+
+Linaje nuevo: `report_sync_runs` de métricas Meta/Google
+(`campaign_platform_daily_metrics`), F2 (`salesforce_interests`) y Opportunity
+(`salesforce_opportunities`) conservan los últimos intentos; el snapshot
+directo añade `reference_fingerprint` a sus estadísticas. El run de builder
+`campaign_attributions/campaigns` registra `source_ids` y
+`range_start/range_end_exclusive`; el run de publicación
+`campaign_report_snapshots/campaigns` registra `snapshot_id`,
+`attribution_run_id` y `source_ids`. La sincronización F2 y la de Opportunity
+sin cambios materiales no invalidan por su hora una atribución previa; cambios
+de referencias directas sí lo hacen mediante huella. El comando automático
+exige fuentes listas y salta si el linaje material y la cobertura permanecen
+válidos. El refresco con `--store` falla sin cobertura publicitaria del tramo
+abierto y sin atribución vigente que cubra el rango; la fecha visible exige
+además cobertura del período consultado por el snapshot. Estos son contratos
+de publicación/auditoría, no cambios de la
+fuente API, fecha pivote, fórmula ni universo de los KPI históricos.

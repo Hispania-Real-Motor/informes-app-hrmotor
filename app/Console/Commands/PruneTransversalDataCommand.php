@@ -68,7 +68,7 @@ class PruneTransversalDataCommand extends Command
         );
         $metrics['sync_runs.failed'] = $this->deleteInChunks(
             DB::table('report_sync_runs')
-                ->where('status', 'failed')
+                ->whereIn('status', ['failed', 'unverified'])
                 ->where('completed_at', '<', $now->copy()->subDays(14)),
             'id',
             $chunkSize,

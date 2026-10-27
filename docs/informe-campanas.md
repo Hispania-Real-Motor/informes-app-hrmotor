@@ -184,6 +184,12 @@ sincronizaciones iniciadas, en `report_sync_runs.stats`. Este límite protege
 las escrituras ordinarias de métricas y atribución; no sustituye la revisión
 económica previa a un cierre ni reescribe snapshots existentes.
 
+Si hay cierres no consecutivos, una solicitud ordinaria que alcance un mes
+cerrado posterior comienza **después del último cierre**; no cruza hacia un
+mes anterior reabierto. Ese mes reabierto solo puede procesarse mediante un
+rango aislado que termine antes del siguiente cierre, con autorización
+económica expresa. Reabrir una fila no reconstruye datos automáticamente.
+
 Meta valida la paginación de `insights` y rechaza una respuesta incompleta
 antes del reemplazo; Google conserva la validación estructural de
 `searchStream`. Ambos sincronizadores validan `metric_date`/`date_start` como
@@ -203,17 +209,43 @@ un cambio anterior todavía pendiente. La caché del
 dashboard versiona el último run F2 y el estado operacional de Meta/Google;
 no debe reciclar una marca de actualización verificada después de un fallo.
 
-`dataset_cutoff_at` y la etiqueta «Datos actualizados» solo presentan fecha
-cuando el último F2 tiene cutoff y éxito, los últimos intentos operacionales
-Meta y Google terminaron bien, y la atribución persistida es posterior a las
-dependencias que el método comprueba. En otro caso la interfaz muestra
-«Actualización del informe no verificada». La fecha representa el mínimo de
-esas referencias verificadas, no la hora de renderizado ni la última fecha de
-inversión. Los campos de diagnóstico individuales pueden conservar fechas
-anteriores. **Límite pendiente:** esta comprobación no certifica por sí sola
-el éxito del último refresco de snapshot ni todos los cambios de
-Opportunity/relación Opportunity–Interest; no se debe interpretar como una
-garantía integral de actualidad comercial.
+`CampaignPublicationReadiness` reúne los últimos runs persistidos y completos
+de Meta, Google, F2 Interests y Opportunities en `report_sync_runs`, más el
+snapshot directo Opportunity–Interest completo. Una ejecución manual válida
+cuenta igual que una programada; un intento posterior fallido no acredita la
+fuente. Los runs Meta/Google deben cubrir el tramo económico abierto del
+rango solicitado; el día corriente puede ser parcial y no se presume
+cobertura futura. La atribución automática usa `--require-ready`: exige esas fuentes,
+reconstruye solo si cambia la evidencia material o falta cobertura del rango,
+y registra en `report_sync_runs` la identidad de los runs fuente y el rango
+efectivo. Un F2 posterior sin cambios persistidos y una sync de Opportunities
+con `material_changed=0` y sin bajas no obligan por sí solos a reconstruir;
+el snapshot directo compara su huella de referencias, no solo su ID/fecha.
+Un run sin estadísticas suficientes queda conservadoramente pendiente.
+
+`reports:refresh-campaigns --store` solo publica si encuentra fuentes
+completas, una atribución vigente que cubre el rango abierto solicitado y el
+mismo linaje antes/después del cálculo. Persiste el snapshot y su run de
+publicación en una transacción; la ejecución fallida no acredita un dataset
+nuevo. `dataset_cutoff_at` y la etiqueta «Datos actualizados» derivan del
+último **snapshot publicado** con linaje de fuentes y atribución verificable,
+no de la hora de renderizado ni de `MAX(synced_at)`. Si falta evidencia, el
+campo es nulo, `dataset_freshness_reason` expone un motivo genérico y la UI
+muestra «Actualización del informe no verificada». La fecha usa el mínimo de
+los cutoffs fuente del linaje válido. El snapshot debe cubrir además el
+período seleccionado; para un período totalmente cerrado esta marca de
+actualidad operativa queda no verificada sin impedir consultar el histórico
+cerrado. Los campos de diagnóstico individuales
+pueden conservar fechas anteriores. Esto acredita la publicación local y sus
+dependencias registradas; la integridad real de datos productivos y el cero
+Google Venta requieren contraste operacional separado.
+
+La retención transversal existente elimina runs `completed` con más de un mes
+y `failed`/`unverified` con más de 14 días. Si desaparece un run necesario
+para acreditar el linaje, la marca de frescura se neutraliza o el builder
+requiere una reconstrucción conservadora; no se amplía la retención en esta
+iteración. Conservar evidencia de auditoría bajo el procedimiento autorizado
+antes de cualquier purga que afecte una investigación.
 
 La inversión Google positiva y los resultados comerciales cero en Venta no
 autorizan una atribución nueva por nombre o por importe. El resultado depende

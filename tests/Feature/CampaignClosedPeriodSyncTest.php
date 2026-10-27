@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CampaignPlatformDailyMetric;
 use App\Services\Campaigns\CampaignAttributionBuilderService;
 use App\Services\Campaigns\CampaignMetricsRepository;
+use App\Services\Campaigns\CampaignOpenInvestmentWindow;
 use App\Services\Campaigns\GoogleAdsClient;
 use App\Services\Campaigns\GoogleCampaignSyncService;
 use App\Services\Campaigns\MetaAdsClient;
@@ -240,6 +241,29 @@ class CampaignClosedPeriodSyncTest extends TestCase
         $this->assertContains('Atribuciones acotadas al primer día posterior al último cierre de inversión.', $result['warnings']);
         $this->assertSame($before, DB::table('campaign_attributions')->orderBy('id')->get()->toJson());
         $this->assertSame($closedBefore, $this->closedEvidence());
+    }
+
+    public function test_nonconsecutive_closures_require_an_isolated_range_for_an_authorized_reopen(): void
+    {
+        $this->closedSeptember();
+        DB::table('campaign_investment_closures')->insert([
+            'month' => '2026-11-01', 'status' => 'closed', 'snapshot_version' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $window = app(CampaignOpenInvestmentWindow::class);
+        $this->assertSame('2026-12-01', $window->start(
+            CarbonImmutable::parse('2026-08-01'), CarbonImmutable::parse('2027-01-01')
+        )?->toDateString());
+
+        DB::table('campaign_investment_closures')->where('month', '2026-09-01')->update([
+            'status' => 'open', 'reopened_at' => now(), 'reopen_reason' => 'Reapertura autorizada de prueba',
+        ]);
+        $this->assertSame('2026-09-01', $window->start(
+            CarbonImmutable::parse('2026-09-01'), CarbonImmutable::parse('2026-10-01')
+        )?->toDateString());
+        $this->assertSame('2026-12-01', $window->start(
+            CarbonImmutable::parse('2026-08-01'), CarbonImmutable::parse('2027-01-01')
+        )?->toDateString());
     }
 
     private function closedSeptember(): void

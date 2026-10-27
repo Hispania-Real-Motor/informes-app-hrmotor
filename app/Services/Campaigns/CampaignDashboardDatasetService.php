@@ -1461,6 +1461,7 @@ class CampaignDashboardDatasetService
             'attribution_built_at' => $datasetMetadata['attribution_built_at'],
             'dataset_generated_at' => $datasetMetadata['dataset_generated_at'],
             'dataset_cutoff_at' => $datasetMetadata['dataset_cutoff_at'],
+            'dataset_freshness_reason' => $datasetMetadata['dataset_freshness_reason'],
             'dataset_timezone' => self::REPORT_TIMEZONE,
             'kpis' => $totals,
             'warnings' => $this->warnings($rows, $totals, $period, $filters),
@@ -3757,23 +3758,8 @@ class CampaignDashboardDatasetService
         $metaSync = CampaignPlatformDailyMetric::query()->where('platform', 'meta')->max('synced_at');
         $googleSync = CampaignPlatformDailyMetric::query()->where('platform', 'google_ads')->max('synced_at');
         $attributionBuild = DB::table('campaign_lead_attributions')->max('updated_at');
-        $operations = $this->campaignSyncOperations();
-        $metaOperation = $operations['meta_sync_operation'];
-        $googleOperation = $operations['google_sync_operation'];
-        $interestReady = $interestSync !== null && $interestRun?->completed_at !== null && $attributionBuild !== null
-            && ! $this->interestHasMaterialChangesSinceAttribution($period, $attributionBuild);
-        $platformsReady = $metaOperation['last_attempt_status'] === 'success'
-            && $googleOperation['last_attempt_status'] === 'success'
-            && $metaOperation['verified_at'] !== null && $googleOperation['verified_at'] !== null
-            && $attributionBuild !== null
-            && CarbonImmutable::parse($attributionBuild)->greaterThanOrEqualTo($metaOperation['verified_at'])
-            && CarbonImmutable::parse($attributionBuild)->greaterThanOrEqualTo($googleOperation['verified_at']);
-        $cutoff = $interestReady && $platformsReady
-            ? collect([$interestSync, $metaOperation['verified_at'], $googleOperation['verified_at'], $attributionBuild])
-                ->map(fn ($value) => CarbonImmutable::parse($value))
-                ->sortBy(fn (CarbonImmutable $value) => $value->getTimestamp())
-                ->first()
-            : null;
+        $publication = app(CampaignPublicationReadiness::class)->published($period['start_at'], $period['end_at']);
+        $cutoff = $publication['cutoff'];
 
         return [
             'salesforce_interests_synced_at' => $this->reportDateTime($interestSync)?->toIso8601String(),
@@ -3783,6 +3769,7 @@ class CampaignDashboardDatasetService
             'attribution_built_at' => $this->reportDateTime($attributionBuild)?->toDateTimeString(),
             'dataset_generated_at' => CarbonImmutable::now(self::REPORT_TIMEZONE)->toDateTimeString(),
             'dataset_cutoff_at' => $cutoff?->setTimezone(self::REPORT_TIMEZONE)->toDateTimeString(),
+            'dataset_freshness_reason' => $publication['reason'],
         ];
     }
 
@@ -3801,6 +3788,10 @@ class CampaignDashboardDatasetService
             'interest_sync_run' => $interestRun?->toArray(),
             'campaign_sync_operations_updated_at' => DB::table('operational_task_states')
                 ->whereIn('task_key', ['campaigns-sync-meta', 'campaigns-sync-google'])->max('updated_at'),
+            'campaign_pipeline_latest_run' => DB::table('report_sync_runs')
+                ->whereIn('dataset', ['campaign_platform_daily_metrics', 'salesforce_interests', 'salesforce_opportunities',
+                    CampaignPublicationReadiness::ATTRIBUTION_DATASET, CampaignPublicationReadiness::PUBLICATION_DATASET])
+                ->orderByDesc('id')->first(['id', 'status', 'updated_at']),
         ];
     }
 

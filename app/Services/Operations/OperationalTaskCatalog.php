@@ -95,7 +95,7 @@ final class OperationalTaskCatalog
             'campaigns-build-attribution' => [
                 'label' => 'construcción de atribución de campañas', 'module' => 'campaigns',
                 'command' => 'campaigns:build-attribution',
-                'arguments' => ['--days' => '120'],
+                'arguments' => ['--days' => '120', '--require-ready' => true],
                 'cron' => '30 8 * * *', 'timezone' => 'Europe/Madrid',
                 'window_minutes' => 240, 'grace_minutes' => 240,
                 'manual_allowed' => true, 'risk' => 'moderate',

@@ -16,6 +16,27 @@
   económico ni los snapshots aprobados. El inventario de cierres debe
   cotejarse operacionalmente antes de reactivar tareas: una ausencia de fila
   `closed` no puede inferirse de la fecha calendario.
+- Con cierres no consecutivos, una solicitud ordinaria avanza hasta después
+  del último mes cerrado; un mes anterior reabierto exige rango aislado que
+  termine antes del cierre siguiente y aprobación económica expresa.
+
+## 2026-10-27 — Campañas publica solo snapshots con linaje persistente
+
+- Se reutilizan `report_sync_runs` de Meta, Google, F2 y Opportunities,
+  junto al run del snapshot directo Opportunity–Interest. El build guarda IDs
+  de fuentes y rango; la publicación guarda ID de snapshot, ID de atribución
+  y fuentes. No se añade esquema ni se interpreta la hora de una fila como
+  evidencia suficiente de completitud.
+- La ejecución automática de atribución exige fuentes completas. Runs F2 y
+  Opportunity posteriores sin cambios materiales no fuerzan reconstrucción;
+  el snapshot directo usa una huella de referencias para distinguir cambios
+  de contenido de cambios solo de hora. Evidencia ausente o fallida degrada
+  el build/publicación, sin fallback a un éxito anterior como estado vigente.
+- «Datos actualizados» solo se acredita mediante el último snapshot
+  persistido y su run de publicación del mismo linaje que la atribución y
+  las fuentes actuales. La fecha publicada es el mínimo de cutoffs fuente.
+  Una ejecución fallida deja el dato no verificado en vez de adelantar la
+  fecha. Esta regla no certifica por sí sola calidad de datos productivos.
 
 ## 2026-10-09 — ROT-5 desacopla SEO de Lead y de Salesforce remoto
 

@@ -1,6 +1,26 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-14.
+Actualizado: 2026-10-27.
+
+## Publicación verificable y cierres de Campañas
+
+- `CampaignOpenInvestmentWindow` toma `campaign_investment_closures` como
+  límite de escritura para Meta, Google y atribución. Cierre/reapertura y
+  escritores comparten bloqueo asesor MariaDB/MySQL; las lecturas históricas
+  conservan snapshots aprobados. Un mes reabierto anterior a otro cerrado
+  requiere un rango aislado autorizado.
+- `CampaignPublicationReadiness` usa los `report_sync_runs` de Meta, Google,
+  F2 y Opportunities, y el run del snapshot directo con huella de referencias.
+  Los runs publicitarios deben cubrir el tramo abierto solicitado. El builder
+  automático guarda linaje y rango de atribución; F2/Opportunity sin cambios
+  materiales no fuerzan reconstrucción. Los manuales completos pueden servir
+  como fuente; un build sin evidencia queda `unverified`.
+- El refresco con `--store` solo publica un snapshot tras verificar fuentes,
+  atribución y cobertura. El run de publicación guarda ID del snapshot, ID
+  del build y fuentes. `dataset_cutoff_at` se acredita desde esa publicación
+  para el período consultado o queda nulo; no se infiere desde la última fila
+  de métricas. No hay consultas a proveedores en HTTP ni modificación de
+  fórmulas o cierres aprobados.
 
 ## ROT-4 — Campañas con Interest como entidad de adquisición
 

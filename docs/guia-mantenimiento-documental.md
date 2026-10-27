@@ -210,3 +210,16 @@ entrega; la revisión humana de la PR comprueba su presencia y exactitud.
 ### Mapeo añadido para configuración de estado actual de Campañas
 
 `config/campaign_current_status.php` se mapea explícitamente al informe `campaigns` en el validador y su prueba de regresión; pertenece al contrato de estado operativo del detalle, aunque no modifica KPIs económicos. Las modificaciones del motor central `OperationalTaskCatalog`, `OperationalTaskService`, `OperationalTaskHealthService` y `routes/console.php` requieren declarar las rutas exactas en `Docs-Outside-Paths` cuando su diff se limita a activación/reserva/supervisión de tareas, además de documentar Campañas por las rutas funcionales mapeadas. La excepción no elimina la revisión humana ni permite omitir cambios reales de informes.
+
+### Comando compartido de sincronización de Opportunities
+
+`app/Console/Commands/SalesforceSyncOpportunitiesCommand.php` se mapea
+explícitamente a `reservations`, `campaigns`, `commissions` y `stock`. El nombre
+plural del comando no coincidía con las reglas por prefijo del sincronizador y
+su cambio quedaba como ruta funcional sin mapa. El comando registra la ejecución
+de una fuente compartida: al cambiar sus estadísticas, cobertura o manejo de
+fallos, se revisan los cuatro documentos funcionales, aunque el diff no cambie
+las fórmulas o universos de todos ellos. La matriz solo se actualiza cuando la
+evidencia permita revisar trazabilidad o contratos KPI; una nota de no impacto
+debe explicar concretamente las reglas preservadas. La prueba del validador
+debe mantener este alcance para evitar que el comando vuelva a quedar sin mapa.

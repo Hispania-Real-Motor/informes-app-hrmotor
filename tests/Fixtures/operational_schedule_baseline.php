@@ -10,7 +10,7 @@ return [
     'salesforce-sync-tasaciones' => ['salesforce:sync-tasaciones', ['--days' => '120'], '0 1 * * *', 180],
     'campaigns-sync-meta' => ['campaigns:sync-meta', ['--days' => '120'], '30 1 * * *', 180],
     'campaigns-sync-google' => ['campaigns:sync-google', ['--days' => '120'], '45 1 * * *', 180],
-    'campaigns-build-attribution' => ['campaigns:build-attribution', ['--days' => '120'], '30 8 * * *', 240],
+    'campaigns-build-attribution' => ['campaigns:build-attribution', ['--days' => '120', '--require-ready' => true], '30 8 * * *', 240],
     'reports-refresh-campaigns' => ['reports:refresh-campaigns', ['--days' => '120', '--store' => true], '0 9 * * *', 120],
     'salesforce-sync-opportunities' => ['salesforce:sync-opportunities', ['--days' => '2', '--modified' => true], '10 7 * * *', 180],
     'salesforce-sync-opportunity-interest-direct' => ['salesforce:sync-opportunity-interest-direct', ['--reason' => 'Snapshot diario ROT-3 posterior al sync de Opportunities'], '35 7 * * *', 180],

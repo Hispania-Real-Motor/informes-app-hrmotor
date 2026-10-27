@@ -198,6 +198,16 @@ el resto del grupo no se elimina del CSV.
 
 ## Operación
 
+La sincronización compartida de Opportunities registra `material_changed` en
+las estadísticas de `report_sync_runs`: cuenta las filas locales creadas o
+modificadas por el `updateOrCreate` existente. El snapshot directo
+Opportunity→Interest añade `reference_fingerprint` a las estadísticas de su
+ejecución completada. Campañas usa ambas evidencias para decidir si necesita
+reconstruir su atribución; no cambian la consulta Salesforce, las columnas
+persistidas, el universo, las fechas pivote, las fórmulas ni las exportaciones
+de Reservas / Ventas. La huella no certifica por sí sola la actualidad de esta
+pestaña.
+
 ```bash
 php artisan salesforce:sync-opportunities --days=60
 php artisan salesforce:sync-opportunities --from=2026-07-01 --to=2026-08-01

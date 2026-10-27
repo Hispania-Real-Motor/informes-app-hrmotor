@@ -427,6 +427,14 @@ class OperationalTasksTest extends TestCase
         $this->assertSame(0, $googleRun->fresh()->exit_code);
     }
 
+    public function test_unchanged_campaign_attribution_is_an_operational_skip(): void
+    {
+        $output = new OperationalTaskOutput('campaigns-build-attribution');
+        $output->writeln('SKIPPED: las fuentes no tienen cambios materiales pendientes de atribución.');
+        $this->assertTrue($output->skipped);
+        $this->assertFalse($output->partialFailure);
+    }
+
     public function test_http_conflict_while_scheduler_is_running_never_dispatches(): void
     {
         Queue::fake();

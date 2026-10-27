@@ -77,6 +77,48 @@ class CampaignDashboardTest extends TestCase
             ]);
         }
 
+        $sourceIds = ['interests' => $this->rot4InterestRunId, 'direct' => $this->rot4DirectRunId,
+            'direct_fingerprint' => str_repeat('a', 64)];
+        foreach ([
+            ['meta', '2026-10-27 09:00:00'], ['google_ads', '2026-10-27 10:00:00'],
+        ] as [$source, $completed]) {
+            $sourceIds[$source === 'meta' ? 'meta' : 'google'] = DB::table('report_sync_runs')->insertGetId([
+                'dataset' => 'campaign_platform_daily_metrics', 'source' => $source, 'status' => 'completed',
+                'period_start_at' => '2026-05-01 00:00:00', 'period_end_at' => '2026-06-01 00:00:00',
+                'started_at' => $completed, 'completed_at' => $completed, 'source_cutoff_at' => $completed,
+                'timezone' => 'Europe/Madrid', 'created_at' => $completed, 'updated_at' => $completed,
+            ]);
+        }
+        $sourceIds['opportunities'] = DB::table('report_sync_runs')->insertGetId([
+            'dataset' => 'salesforce_opportunities', 'source' => 'salesforce', 'status' => 'completed',
+            'started_at' => '2026-10-27 10:15:00', 'completed_at' => '2026-10-27 10:15:00',
+            'source_cutoff_at' => '2026-10-27 10:15:00', 'timezone' => 'Europe/Madrid',
+            'created_at' => '2026-10-27 10:15:00', 'updated_at' => '2026-10-27 10:15:00',
+        ]);
+        DB::table('salesforce_opportunity_interest_direct_runs')->where('id', $this->rot4DirectRunId)->update([
+            'source_cutoff_at' => '2026-10-27 10:30:00', 'completed_at' => '2026-10-27 10:30:00',
+            'stats' => json_encode(['reference_fingerprint' => $sourceIds['direct_fingerprint']]),
+        ]);
+        $buildId = DB::table('report_sync_runs')->insertGetId([
+            'dataset' => 'campaign_attributions', 'source' => 'campaigns', 'status' => 'completed',
+            'started_at' => '2026-10-27 11:00:00', 'completed_at' => '2026-10-27 11:00:00',
+            'source_cutoff_at' => '2026-10-27 11:00:00', 'timezone' => 'Europe/Madrid',
+            'stats' => json_encode(['source_ids' => $sourceIds]),
+            'created_at' => '2026-10-27 11:00:00', 'updated_at' => '2026-10-27 11:00:00',
+        ]);
+        $snapshotId = DB::table('campaign_report_snapshots')->insertGetId([
+            'period_start' => '2026-05-01', 'period_end' => '2026-05-31', 'filters_hash' => 'test',
+            'summary' => '{}', 'campaigns' => '[]', 'rankings' => '[]', 'warnings' => '[]',
+            'created_at' => '2026-10-27 11:30:00', 'updated_at' => '2026-10-27 11:30:00',
+        ]);
+        DB::table('report_sync_runs')->insert([
+            'dataset' => 'campaign_report_snapshots', 'source' => 'campaigns', 'status' => 'completed',
+            'started_at' => '2026-10-27 11:30:00', 'completed_at' => '2026-10-27 11:30:00',
+            'source_cutoff_at' => '2026-10-26 08:00:00', 'timezone' => 'Europe/Madrid',
+            'stats' => json_encode(['snapshot_id' => $snapshotId, 'attribution_run_id' => $buildId, 'source_ids' => $sourceIds]),
+            'created_at' => '2026-10-27 11:30:00', 'updated_at' => '2026-10-27 11:30:00',
+        ]);
+
         $query = '/informes/campanas/data/summary?'.$this->campaignQuery();
         $before = $this->getJson($query)->assertOk()->json();
         $this->assertNotNull($before['datos_actualizados']);

@@ -201,6 +201,13 @@ forma silenciosa.
 
 ## Operación y auditoría
 
+El sincronizador compartido del snapshot directo Opportunity→Interest añade
+`reference_fingerprint` a las estadísticas de su ejecución completada para
+detectar cambios relevantes en la publicación de Campañas. No cambia las
+relaciones persistidas, el universo, los filtros, las fórmulas, los cierres ni
+las exportaciones de las pestañas de Comisiones; la huella no sustituye la
+evidencia propia de sus cierres económicos.
+
 - Dashboard: `/informes/comisiones-comerciales`.
 - XLSX: `/informes/comisiones-comerciales/export/comisiones.xlsx`.
 - CSV entregas: `/informes/comisiones-comerciales/export/delegation-deliveries.csv`.

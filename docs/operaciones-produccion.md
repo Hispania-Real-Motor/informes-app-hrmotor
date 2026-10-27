@@ -1171,6 +1171,66 @@ reapertura y escrituras económicas comparten bloqueo asesor MariaDB/MySQL;
 el comienzo se revalida dentro de la transacción antes de reemplazar filas.
 El refresco puede leer snapshots aprobados, pero este cambio no los regenera.
 
+Los cierres **no consecutivos** requieren atención especial: el rango
+ordinario que abarque un cierre posterior comienza después del último mes
+`closed`, aunque un mes anterior esté reabierto. Procesar un mes reabierto
+anterior exige autorización económica para un **rango aislado** que termine
+antes del cierre siguiente; no usar `--days=120` esperando que lo incluya.
+La reapertura no dispara una reconstrucción por sí misma. La prueba aislada
+MariaDB de dos procesos comprueba la serialización del escritor y el cierre;
+no sustituye una validación de concurrencia/carga productiva.
+
+### Linaje de atribución y publicación
+
+El control `CampaignPublicationReadiness` lee el último `report_sync_runs`
+de Meta (`campaign_platform_daily_metrics/meta`), Google
+(`campaign_platform_daily_metrics/google_ads`), F2
+(`salesforce_interests/salesforce`) y Opportunities
+(`salesforce_opportunities/salesforce`). Cada uno debe estar `completed` y
+tener cutoff; el snapshot directo Opportunity–Interest también debe estar
+completo y ser posterior a la sync de Opportunities. Una ejecución manual
+completa cuenta igual que una programada; un intento posterior fallido o
+incompleto impide certificar la fuente. Los runs Meta/Google deben cubrir el
+tramo abierto del rango solicitado; el día corriente puede ser parcial, pero
+no se presume cobertura futura. Para las plataformas se cotejan
+también intentos operacionales posteriores fallidos. No usar solo la fecha
+de la última fila como prueba de éxito.
+
+El builder automático del catálogo usa `--require-ready`. Antes de escribir
+exige fuentes completas; registra en `report_sync_runs` un run
+`campaign_attributions/campaigns` con IDs de fuentes y rango efectivo. Si
+desde el último build solo hubo F2 u Opportunity sin cambios materiales y
+el rango sigue cubierto, emite `SKIPPED:` y la operación queda omitida, no
+fallida. Una nueva referencia del snapshot directo invalida la atribución
+cuando cambia su `reference_fingerprint`, aunque cambie únicamente el
+contenido de las relaciones. Estadísticas ausentes o un run intermedio
+fallido se tratan conservadoramente como cambio. Los manuales sin
+`--require-ready` conservan la opción de reconstruir, pero quedan
+`unverified` si falta o cambia evidencia y **no** acreditan publicación.
+
+`reports:refresh-campaigns --store` exige atribución vigente del mismo linaje
+y cobertura del rango económico abierto. Vuelve a comprobar las fuentes
+antes de guardar y persiste juntos `campaign_report_snapshots` y el run
+`campaign_report_snapshots/campaigns`, con `snapshot_id`,
+`attribution_run_id` y `source_ids`. Una ejecución fallida o un snapshot sin
+run de publicación coherente deja `dataset_cutoff_at=NULL`; el informe
+muestra «Actualización del informe no verificada» y un motivo genérico en
+`dataset_freshness_reason`. Cuando la publicación sigue válida, «Datos
+actualizados» muestra el cutoff mínimo de las fuentes verificadas, no la
+hora de renderizado. El snapshot publicado debe cubrir el período consultado.
+En un período totalmente cerrado la marca operativa queda no verificable,
+sin impedir la lectura del snapshot económico aprobado. La caché económica versiona los runs relevantes para
+no reciclar esa etiqueta tras un cambio de estado. No se introducen llamadas
+a Salesforce, Meta o Google durante HTTP.
+
+La purga transversal vigente retiene runs `completed` aproximadamente un
+mes y `failed`/`unverified` durante 14 días; no se amplía aquí. La pérdida
+de un run exigido por el linaje debe degradar la frescura o forzar una
+reconstrucción conservadora, nunca sustituirse por fechas inferidas. Si se
+investiga una anomalía, preservar los registros de auditoría mediante el
+proceso autorizado antes de su vencimiento; no bloquear ni alterar la purga
+productiva desde el informe.
+
 Antes de reactivar tareas, comprobar **en lectura** que septiembre de 2026 y
 todos los meses anteriores que la organización considera cerrados tienen
 fila `closed` en `campaign_investment_closures`. La guarda depende de ese
@@ -1187,15 +1247,17 @@ Despliegue y recuperación, solo tras autorización humana:
 2. Publicar PHP, JS, bundle Vite y manifest del mismo release y reiniciar
    procesos persistentes. No hay migración ni variable nueva. No incluir una
    sincronización en los hooks de despliegue.
-3. Con el scheduler aún parado, comprobar lecturas, permisos y el último
-   estado operacional de Meta, Google, F2 y atribución. Un `MAX(synced_at)`
-   reciente no acredita un run completo.
+3. Con el scheduler aún parado, comprobar lecturas, permisos, últimos runs
+   Meta, Google, F2, Opportunities, snapshot directo, atribución y publicación.
+   Contrastar sus IDs, cutoff, rango y resultado; `MAX(synced_at)` reciente no
+   acredita un run completo.
 4. Autorizar por separado la recuperación **solo del período abierto**.
    Confirmar límites civiles Europe/Madrid y fechas efectivas reportadas;
    ejecutar por el mecanismo operacional existente, comparar inversión,
    impresiones, clics y conversiones por cuenta/día con el estado anterior,
-   reconstruir atribuciones abiertas y refrescar el informe. Una respuesta
-   vacía válida necesita contraste de alcance antes de aceptarse como cero.
+   reconstruir atribuciones abiertas solo si cambió evidencia material o
+   falta cobertura, y publicar el snapshot. Una respuesta vacía válida
+   necesita contraste de alcance antes de aceptarse como cero.
 5. Repetir huellas y KPI históricos cerrados antes de mantener el scheduler
    activo; observar fallos parciales, advertencias y dependencias pendientes.
 

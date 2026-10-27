@@ -97,6 +97,7 @@ class SalesforceSyncOpportunitiesCommand extends Command
             $syncRuns->complete($syncRun, now(), [
                 'queried' => $result['queried'],
                 'saved' => $result['saved'],
+                'material_changed' => $stats['material_changed'] ?? $result['saved'],
                 'deleted_queried' => $result['deletions']['queried'],
                 'deleted_changed' => $result['deletions']['changed'],
                 'history_saved' => $history['saved'],

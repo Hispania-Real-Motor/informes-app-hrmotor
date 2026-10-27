@@ -852,6 +852,7 @@ class CampaignCommandsTest extends TestCase
 
     public function test_refresh_campaigns_store_crea_snapshot(): void
     {
+        $this->recordCompletedCampaignDependencies(3);
         $this->artisan('reports:refresh-campaigns', ['--days' => 1, '--store' => true])
             ->expectsOutputToContain('Snapshot id:')
             ->assertExitCode(0);
@@ -877,6 +878,8 @@ class CampaignCommandsTest extends TestCase
                 CarbonImmutable::parse('2026-05-09'), CarbonImmutable::parse('2026-05-12')
             );
 
+            $this->recordCompletedCampaignDependencies(4);
+
             $this->artisan('reports:refresh-campaigns', ['--days' => 3, '--store' => true])
                 ->assertExitCode(0);
 
@@ -901,6 +904,43 @@ class CampaignCommandsTest extends TestCase
             'type' => 'Venta',
             'utm_campaign' => $campaign,
             'is_deleted' => false,
+        ]);
+    }
+
+    private function recordCompletedCampaignDependencies(int $days): void
+    {
+        $now = CarbonImmutable::now('UTC');
+        DB::table('report_sync_runs')->where('id', $this->rot4InterestRunId)->update([
+            'status' => 'completed', 'source_cutoff_at' => $now->subMinutes(30),
+            'completed_at' => $now->subMinutes(30),
+            'stats' => json_encode(['inserted' => 0, 'updated' => 0, 'reactivated' => 0]),
+        ]);
+        DB::table('salesforce_opportunity_interest_direct_runs')->where('id', $this->rot4DirectRunId)->update([
+            'status' => 'completed', 'source_cutoff_at' => $now->subMinutes(10),
+            'completed_at' => $now->subMinutes(10),
+            'stats' => json_encode(['reference_fingerprint' => str_repeat('b', 64)]),
+        ]);
+        $ids = ['interests' => $this->rot4InterestRunId, 'direct' => $this->rot4DirectRunId,
+            'direct_fingerprint' => str_repeat('b', 64)];
+        foreach ([['meta', 'meta'], ['google', 'google_ads'], ['opportunities', 'salesforce']] as [$key, $source]) {
+            $ids[$key] = DB::table('report_sync_runs')->insertGetId([
+                'dataset' => $key === 'opportunities' ? 'salesforce_opportunities' : 'campaign_platform_daily_metrics',
+                'source' => $source, 'status' => 'completed',
+                'period_start_at' => $now->setTimezone('Europe/Madrid')->subDays($days + 1)->startOfDay(),
+                'period_end_at' => $now->setTimezone('Europe/Madrid')->addDay()->startOfDay(),
+                'started_at' => $now->subMinutes(25), 'completed_at' => $now->subMinutes(20),
+                'source_cutoff_at' => $now->subMinutes(20), 'timezone' => 'Europe/Madrid',
+                'created_at' => $now->subMinutes(25), 'updated_at' => $now->subMinutes(20),
+            ]);
+        }
+        DB::table('report_sync_runs')->insert([
+            'dataset' => 'campaign_attributions', 'source' => 'campaigns', 'status' => 'completed',
+            'started_at' => $now->subMinutes(5), 'completed_at' => $now->subMinutes(5),
+            'source_cutoff_at' => $now->subMinutes(5), 'timezone' => 'Europe/Madrid',
+            'stats' => json_encode(['source_ids' => $ids,
+                'range_start' => $now->setTimezone('Europe/Madrid')->subDays($days)->startOfDay()->toDateString(),
+                'range_end_exclusive' => $now->setTimezone('Europe/Madrid')->toDateString()]),
+            'created_at' => $now->subMinutes(5), 'updated_at' => $now->subMinutes(5),
         ]);
     }
 }

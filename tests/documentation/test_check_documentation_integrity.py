@@ -50,6 +50,12 @@ def no_impact(scope: str, evidence: str) -> str:
 
 
 class IntegrityTests(unittest.TestCase):
+    def test_salesforce_opportunities_command_maps_to_its_report_consumers(self) -> None:
+        self.assertEqual(
+            {"reservations", "campaigns", "commissions", "stock"},
+            checker.domains_for("app/Console/Commands/SalesforceSyncOpportunitiesCommand.php"),
+        )
+
     def test_current_campaign_status_configuration_maps_only_to_campaigns(self) -> None:
         self.assertEqual({"campaigns"}, checker.domains_for("config/campaign_current_status.php"))
 
