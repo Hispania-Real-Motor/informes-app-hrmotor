@@ -1,5 +1,22 @@
 # Decisiones técnicas
 
+## 2026-10-27 — Cierre mensual como límite de escritura económica de Campañas
+
+- `campaign_investment_closures` es la fuente local de verdad para determinar
+  el primer día escribible de Meta, Google y atribuciones. Una ventana que
+  atraviesa el cierre se acota al día posterior al último mes `closed` antes
+  del fin solicitado; una ventana completamente cerrada no se escribe. Las
+  lecturas históricas y `--dry-run` continúan disponibles.
+- Cierre/reapertura y escritores comparten un bloqueo asesor en la conexión
+  MariaDB/MySQL; cada reemplazo por cuenta revalida el límite dentro de su
+  transacción. La espera de bloqueo es limitada y falla sin omitir la guarda.
+  Se prefiere esta serialización frente a confiar solo en `--days` del
+  scheduler, que también puede ser usado en invocaciones manuales.
+- La protección no crea una tabla o scheduler nuevos, no modifica el método
+  económico ni los snapshots aprobados. El inventario de cierres debe
+  cotejarse operacionalmente antes de reactivar tareas: una ausencia de fila
+  `closed` no puede inferirse de la fecha calendario.
+
 ## 2026-10-09 — ROT-5 desacopla SEO de Lead y de Salesforce remoto
 
 - La métrica Salesforce vigente de SEO se deriva únicamente del snapshot local

@@ -166,6 +166,63 @@ El scheduler usa `Europe/Madrid`:
 - atribución Campañas: 08:30;
 - snapshot del informe: 09:00.
 
+### Protección de escritura y evidencia de actualización (iteración 2026-10-27)
+
+Los comandos económicos programados conservan su ventana solicitada de 120
+días, pero `CampaignOpenInvestmentWindow::start()` consulta
+`campaign_investment_closures` en la conexión de escritura y acota el comienzo
+al primer día posterior al **último mes cerrado anterior al fin del rango**.
+La regla también rige las invocaciones manuales de Meta, Google y del builder
+de atribuciones. Un rango totalmente cerrado no consulta al proveedor ni
+reemplaza métricas: deja un `report_sync_runs` con estado `skipped` y motivo
+`closed_period`. El builder en modo escritura lo rechaza, mientras
+`--dry-run` permite leer y comparar históricos sin publicar cambios. Cerrar o
+reabrir un mes y escribir métricas/atribuciones comparten un bloqueo asesor
+MariaDB/MySQL y el comienzo se revalida dentro de la transacción antes de
+reemplazar filas. La ventana efectiva se informa en la salida CLI y, para
+sincronizaciones iniciadas, en `report_sync_runs.stats`. Este límite protege
+las escrituras ordinarias de métricas y atribución; no sustituye la revisión
+económica previa a un cierre ni reescribe snapshots existentes.
+
+Meta valida la paginación de `insights` y rechaza una respuesta incompleta
+antes del reemplazo; Google conserva la validación estructural de
+`searchStream`. Ambos sincronizadores validan `metric_date`/`date_start` como
+día real dentro de la ventana y sustituyen por cuenta en transacción. Un fallo
+de proveedor o inventario queda advertido sin renovar la ejecución como
+completa; una fecha inválida revierte la cuenta. Una respuesta vacía **válida**
+mantiene la semántica anterior de intervalo sin filas, por lo que el operador
+debe contrastar su alcance antes de recuperar octubre. No se han consultado
+proveedores ni datos productivos para este cambio.
+
+El aviso de Interest posterior a la atribución deja de depender solo de la
+hora de ejecución F2: exige una modificación persistida posterior a la
+atribución en `salesforce_interests`, bien de un Interest actualmente dentro
+del período o de uno previamente atribuido a él que haya cambiado de fecha
+funcional. Un run horario sin cambios materiales no genera el aviso ni oculta
+un cambio anterior todavía pendiente. La caché del
+dashboard versiona el último run F2 y el estado operacional de Meta/Google;
+no debe reciclar una marca de actualización verificada después de un fallo.
+
+`dataset_cutoff_at` y la etiqueta «Datos actualizados» solo presentan fecha
+cuando el último F2 tiene cutoff y éxito, los últimos intentos operacionales
+Meta y Google terminaron bien, y la atribución persistida es posterior a las
+dependencias que el método comprueba. En otro caso la interfaz muestra
+«Actualización del informe no verificada». La fecha representa el mínimo de
+esas referencias verificadas, no la hora de renderizado ni la última fecha de
+inversión. Los campos de diagnóstico individuales pueden conservar fechas
+anteriores. **Límite pendiente:** esta comprobación no certifica por sí sola
+el éxito del último refresco de snapshot ni todos los cambios de
+Opportunity/relación Opportunity–Interest; no se debe interpretar como una
+garantía integral de actualidad comercial.
+
+La inversión Google positiva y los resultados comerciales cero en Venta no
+autorizan una atribución nueva por nombre o por importe. El resultado depende
+de la evidencia `utm_id`/`utm_content`/`utm_campaign` del Interest, el
+inventario publicitario, la resolución de ambigüedades, el enlace
+Opportunity–Interest y los filtros de período y tipo. Sin consulta productiva
+autorizada no puede localizarse el paso en que se pierden registros ni afirmar
+que el cero sea incorrecto. Seguir el [diagnóstico agregado de solo lectura](operaciones-produccion.md#diagnóstico-de-google-ads-venta-con-inversión-y-cero-resultados) antes de proponer cambios de matching o KPI.
+
 Comandos locales del pipeline ROT-4:
 
 ```bash

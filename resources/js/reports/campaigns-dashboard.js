@@ -2581,7 +2581,8 @@ function setUpdatedBadge(updatedAt = null, isLoading = false, metadata = {}) {
     if (!updatedAt) {
         badge.textContent = isLoading
             ? 'Cargando datos de Salesforce...'
-            : 'Sin fecha de actualizacion de Salesforce';
+            : 'Actualización del informe no verificada';
+        badge.title = isLoading ? '' : 'Falta una dependencia completada o la atribución es anterior a los datos de origen.';
         return;
     }
 

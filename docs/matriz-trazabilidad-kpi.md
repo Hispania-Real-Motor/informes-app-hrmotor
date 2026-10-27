@@ -239,3 +239,38 @@ iteración. Retirar el subtítulo local de cada tarjeta y ajustar el botón de
 auditoría tampoco modifican fuentes ni cálculos. Esas afirmaciones se apoyan
 en la vista, el renderizador y los tests PHP/JS de Fase C, no en una consulta
 a cuentas publicitarias.
+
+### Impacto focal: guarda de cierres y evidencia de actualización automática
+
+Base `493e6052ef499c74e56d563b937365f4b06f29a0`. La fuente y campos
+económicos siguen siendo Meta insights diarios y Google Ads
+`googleAds:searchStream` (`segments.date`, `metrics.costMicros`, impresiones,
+clics y conversiones), persistidos por `MetaCampaignSyncService` y
+`GoogleCampaignSyncService` en `campaign_platform_daily_metrics`. No cambian
+normalización de IDs, clasificación Venta/Tasación, fecha pivote diaria,
+deduplicación comercial, fórmulas, redondeos, nulos de coste ni exportación.
+La novedad es el **intervalo que los escritores pueden sustituir**: la última
+fila mensual `closed` anterior al fin en `campaign_investment_closures` fija
+el primer día escribible. `CampaignOpenInvestmentWindow` coordina el cierre
+con Meta, Google y `CampaignAttributionBuilderService` sin reescribir
+`campaign_investment_closure_snapshots`. Los filtros y lecturas de históricos
+aprobados mantienen su contrato. La evidencia son
+`CampaignClosedPeriodSyncTest` (intervalo mixto/cerrado, conservación de
+métrica y snapshot, fallo de paginación/fecha) y las pruebas de Campañas y
+comandos de la misma PR. La revisión de cierre económico y concurrencia real
+MariaDB sigue pendiente; no se elevan fichas KPI a `verificado`.
+
+| Contrato no económico o de auditoría | Cambio contrastado | Límite pendiente |
+| --- | --- | --- |
+| Runs de inversión Meta/Google | `report_sync_runs` registra resultado y estadísticas del intento iniciado (`range_start`, `range_end_exclusive`, `accounts`, `processed`, `saved`, `warnings`); una cuenta fallida no acredita run completo. Un rango totalmente cerrado queda como `skipped` con motivo `closed_period` y `OperationalTaskOutput` lo marca omitido. | No equivale a comparar datos productivos con el proveedor ni demuestra completitud de una respuesta vacía estructuralmente válida. |
+| Aviso Salesforce Interests posterior a atribución | `CampaignDashboardDatasetService::warnings()` exige un F2 completado posterior y evidencia persistida en `salesforce_interests.updated_at`, dentro del período o vinculada a una atribución anterior de ese período. Un F2 sin cambios no crea el aviso ni borra un cambio material previo pendiente. La fuente es `salesforce_interests`/`report_sync_runs`, no Lead legacy. | Cambios de Opportunity y del enlace directo tienen otra procedencia; esta comprobación aislada no certifica su frescura. |
+| «Datos actualizados» | `campaignDatasetMetadata()` deja `dataset_cutoff_at` nulo si falta éxito del último F2 o último intento operacional Meta/Google, o si la atribución comprobada es anterior. La UI muestra estado no verificado y la caché versiona runs/estado operacional. | No certifica el último refresco de snapshot ni todas las dependencias Opportunity/relación. No se interpreta como cierre de auditoría integral. |
+| Google Ads Venta con gasto y cero comerciales | La investigación debe seguir ID/cuenta publicitaria → UTM del Interest → método y ambigüedad de atribución → Opportunity → Venta → filtro/contexto. No hay cambio de matching, first touch, resultado ni coste por venta. | Sin consultas productivas autorizadas, la causa del cero y las cifras esperadas no están verificadas; véase el procedimiento de solo lectura en `docs/operaciones-produccion.md`. |
+
+La secuencia operacional sigue F2 horario, Meta/Google y Opportunities en
+sus horarios de catálogo, atribución y refresco; la guarda de cierres actúa
+también si el comando se invoca manualmente. Los estados, resultados y
+consultas del tablero no incorporan una fuente externa nueva ni consultan
+proveedores durante HTTP. Las fichas KPI de Campañas siguen pendientes de la
+auditoría completa de 23 campos, incluida comparación productiva antes y
+después del período abierto.

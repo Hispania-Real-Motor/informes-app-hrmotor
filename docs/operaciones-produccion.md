@@ -1154,3 +1154,124 @@ lo que la sincronización económica Google volvería a fallar hasta una soluci�
 compatible. Cualquier dato escrito por una ejecución productiva posterior no
 se revierte automáticamente al volver el código; requiere evaluación separada
 del responsable económico.
+
+## Campañas — protección de cierres y recuperación abierta (2026-10-27)
+
+`CampaignOpenInvestmentWindow` usa los meses `closed` de
+`campaign_investment_closures` como límite de escritura. La solicitud
+programada de 120 días se acota al primer día posterior al último cierre
+anterior al fin solicitado; no autoriza reescribir meses cerrados. Los
+comandos manuales Meta/Google aplican el mismo límite, informan el intervalo
+efectivo `[inicio, fin)` y registran estadísticas del intento en
+`report_sync_runs`. Un intervalo totalmente cerrado se omite sin petición al
+proveedor; `report_sync_runs` conserva `skipped` y motivo `closed_period`.
+El builder de atribución solo lee históricos en `--dry-run`; su
+modo de escritura rechaza un intervalo cerrado y acota uno mixto. Cierre,
+reapertura y escrituras económicas comparten bloqueo asesor MariaDB/MySQL;
+el comienzo se revalida dentro de la transacción antes de reemplazar filas.
+El refresco puede leer snapshots aprobados, pero este cambio no los regenera.
+
+Antes de reactivar tareas, comprobar **en lectura** que septiembre de 2026 y
+todos los meses anteriores que la organización considera cerrados tienen
+fila `closed` en `campaign_investment_closures`. La guarda depende de ese
+inventario persistido: una ausencia o reapertura autorizada cambia el límite.
+Revisar también procesos ya reservados: el despliegue no detiene un worker
+antiguo sin la guarda. Mantener el scheduler detenido hasta cerrar la revisión
+económica y operativa.
+
+Despliegue y recuperación, solo tras autorización humana:
+
+1. Guardar recuentos y huellas de solo lectura de cierres, snapshots, métricas
+   y atribuciones cerradas; retener los resultados sensibles en el canal
+   autorizado, no en tickets compartidos.
+2. Publicar PHP, JS, bundle Vite y manifest del mismo release y reiniciar
+   procesos persistentes. No hay migración ni variable nueva. No incluir una
+   sincronización en los hooks de despliegue.
+3. Con el scheduler aún parado, comprobar lecturas, permisos y el último
+   estado operacional de Meta, Google, F2 y atribución. Un `MAX(synced_at)`
+   reciente no acredita un run completo.
+4. Autorizar por separado la recuperación **solo del período abierto**.
+   Confirmar límites civiles Europe/Madrid y fechas efectivas reportadas;
+   ejecutar por el mecanismo operacional existente, comparar inversión,
+   impresiones, clics y conversiones por cuenta/día con el estado anterior,
+   reconstruir atribuciones abiertas y refrescar el informe. Una respuesta
+   vacía válida necesita contraste de alcance antes de aceptarse como cero.
+5. Repetir huellas y KPI históricos cerrados antes de mantener el scheduler
+   activo; observar fallos parciales, advertencias y dependencias pendientes.
+
+Rollback: detener nuevas reservas, gestionar jobs en curso y restaurar código
+y assets previos como unidad. **Mantener inactivos los escritores económicos
+con el release anterior**, que carece de la guarda. No revertir cierres,
+snapshots ni datos históricos. Una escritura autorizada de octubre no se
+deshace al restaurar código. Si el bloqueo asesor supera su timeout, la
+operación falla antes que escribir sin protección. Las pruebas sintéticas
+SQLite no equivalen a validar contención real MariaDB ni datos productivos.
+
+### Diagnóstico de Google Ads Venta con inversión y cero resultados
+
+La captura comunicada no fija con certeza período ni filtros y no demuestra
+que el cero sea erróneo. Usar credenciales **solo lectura**, parámetros
+vinculados y el mismo período/filtros de la API. No consultar Salesforce ni
+ejecutar sincronizaciones para este diagnóstico; conservar IDs y datos
+comerciales solo en un anexo de acceso restringido.
+
+1. Guardar los parámetros de `/informes/campanas/data/summary` (intervalo,
+   `google_ads`, Venta, subcontexto y demás filtros) y los agregados devueltos.
+   La tarjeta Google no equivale necesariamente a todo octubre.
+2. Agrupar `campaign_platform_daily_metrics` del intervalo por
+   `(account_id,campaign_id)` con `platform='google_ads'`; contar filas,
+   sumar `spend` y obtener mínimo/máximo `metric_date`. Comparar pares y
+   nombres con `campaign_platform_identifiers`; revisar el último run Google
+   y si los identificadores o fechas faltan.
+3. Convertir el intervalo Europe/Madrid a límites UTC. Contar Interests
+   activos en `salesforce_interests` por `functional_created_at` y presencia
+   de `utm_id`, `utm_content` y `utm_campaign`, sin devolver valores ni PII.
+   Una igualdad literal UTM/ID solo es pista: el builder aplica normalización,
+   precedencia y rechazo de ambigüedad. Su `--dry-run`, bajo acceso autorizado,
+   da recuentos de métodos y `excluded_by_reason` sin escribir; no copiar
+   muestras de Interest ID a tickets compartidos.
+4. Contar en `campaign_attributions` por plataforma/cuenta/Campaign ID los
+   `interest_id`, `opportunity_id`, estados de matching y flags de venta;
+   cotejar `campaign_lead_attributions` y la relación
+   `opportunity_relationship_status`. Distinguir: sin Interest, Salesforce-only,
+   exclusión, ambigüedad, Opportunity ausente o Opportunity sin Venta.
+5. Repetir con la clasificación Venta y los filtros efectivos de la petición.
+   Localizar si la pérdida ocurre en ingestión, matching, clasificación,
+   agregado, caché o presentación. Solo corregir código cuando exista un
+   registro válido perdido de forma reproducible; no ampliar matching ni
+   alterar una fórmula para fabricar resultados.
+
+Ejemplos de consultas preparadas con `:cuenta` y `:campana` vinculados como
+**cadenas**, límites diarios `:inicio_dia`/`:fin_dia` y UTC
+`:inicio_utc`/`:fin_utc`:
+
+```sql
+SELECT COUNT(*) AS filas, SUM(spend) AS inversion,
+       MIN(metric_date) AS primer_dia, MAX(metric_date) AS ultimo_dia
+FROM campaign_platform_daily_metrics
+WHERE platform = 'google_ads' AND account_id = :cuenta
+  AND campaign_id = :campana
+  AND metric_date >= :inicio_dia AND metric_date < :fin_dia;
+
+SELECT COUNT(*) AS intereses_activos,
+       SUM(CASE WHEN NULLIF(TRIM(utm_id), '') IS NOT NULL THEN 1 ELSE 0 END) AS con_utm_id,
+       SUM(CASE WHEN NULLIF(TRIM(utm_content), '') IS NOT NULL THEN 1 ELSE 0 END) AS con_utm_content,
+       SUM(CASE WHEN NULLIF(TRIM(utm_campaign), '') IS NOT NULL THEN 1 ELSE 0 END) AS con_utm_campaign
+FROM salesforce_interests
+WHERE functional_created_at >= :inicio_utc
+  AND functional_created_at < :fin_utc AND is_deleted = 0;
+
+SELECT COUNT(DISTINCT interest_id) AS intereses_atribuidos,
+       COUNT(DISTINCT opportunity_id) AS oportunidades_enlazadas,
+       SUM(CASE WHEN has_sale = 1 THEN 1 ELSE 0 END) AS filas_con_venta
+FROM campaign_attributions
+WHERE platform = 'google_ads' AND account_id = :cuenta
+  AND campaign_id = :campana
+  AND interest_functional_created_at >= :inicio_utc
+  AND interest_functional_created_at < :fin_utc;
+```
+
+Estos recuentos no replican la deduplicación, los universos ni los filtros del
+dataset: solo ubican un posible tramo de pérdida y se contrastan con builder
+y API. No se declara correcto ni incorrecto el cero observado hasta completar
+esa comparación; el hallazgo tampoco autoriza reabrir un período cerrado.

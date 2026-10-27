@@ -338,8 +338,8 @@ class CampaignCommandsTest extends TestCase
             $mock->shouldReceive('sync')
                 ->once()
                 ->withArgs(function ($start, $end): bool {
-                    return $start->equalTo(CarbonImmutable::parse('2026-01-01')->startOfDay())
-                        && $end->equalTo(CarbonImmutable::parse('2026-02-01')->startOfDay());
+                    return $start->equalTo(CarbonImmutable::parse('2026-01-01', 'Europe/Madrid')->startOfDay())
+                        && $end->equalTo(CarbonImmutable::parse('2026-02-01', 'Europe/Madrid')->startOfDay());
                 })
                 ->andReturn([
                     'configured' => true,
@@ -353,8 +353,8 @@ class CampaignCommandsTest extends TestCase
             $mock->shouldReceive('sync')
                 ->once()
                 ->withArgs(function ($start, $end): bool {
-                    return $start->equalTo(CarbonImmutable::parse('2026-01-01')->startOfDay())
-                        && $end->equalTo(CarbonImmutable::parse('2026-02-01')->startOfDay());
+                    return $start->equalTo(CarbonImmutable::parse('2026-01-01', 'Europe/Madrid')->startOfDay())
+                        && $end->equalTo(CarbonImmutable::parse('2026-02-01', 'Europe/Madrid')->startOfDay());
                 })
                 ->andReturn([
                     'configured' => true,
