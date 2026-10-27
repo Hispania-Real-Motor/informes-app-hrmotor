@@ -412,6 +412,16 @@ class OperationalTasksTest extends TestCase
         $this->tasks()->execute($run->id);
         $this->assertSame('failed', $run->fresh()->status);
         $this->assertSame(0, $run->fresh()->exit_code);
+
+        Artisan::shouldReceive('call')->once()->andReturnUsing(function ($command, $args, $output) {
+            $output->writeln('No se ha podido actualizar la inversion de Google Ads.');
+
+            return 0;
+        });
+        $googleRun = $this->tasks()->claim('campaigns-sync-google', 'scheduler');
+        $this->tasks()->execute($googleRun->id);
+        $this->assertSame('failed', $googleRun->fresh()->status);
+        $this->assertSame(0, $googleRun->fresh()->exit_code);
     }
 
     public function test_http_conflict_while_scheduler_is_running_never_dispatches(): void
