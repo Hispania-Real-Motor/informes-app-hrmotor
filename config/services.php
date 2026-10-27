@@ -50,7 +50,7 @@ return [
     ],
 
     'google_ads' => [
-        'api_version' => env('GOOGLE_ADS_API_VERSION', 'v22'),
+        'api_version' => env('GOOGLE_ADS_API_VERSION', 'v25'),
         'developer_token' => env('GOOGLE_ADS_DEVELOPER_TOKEN'),
         'client_id' => env('GOOGLE_ADS_CLIENT_ID'),
         'client_secret' => env('GOOGLE_ADS_CLIENT_SECRET'),

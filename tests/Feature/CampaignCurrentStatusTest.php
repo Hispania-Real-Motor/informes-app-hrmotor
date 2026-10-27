@@ -177,13 +177,38 @@ class CampaignCurrentStatusTest extends TestCase
         $service = app(CampaignCurrentStatusService::class);
         $this->assertSame(2, $service->sync($run)['campaigns']);
         Http::assertSent(fn ($request) => str_contains($request->url(), '/campaigns')
-            && json_decode($request['effective_status'], true) === ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'IN_PROCESS', 'WITH_ISSUES']
-            && ! isset($request['filtering']) && ! isset($request['time_range']));
+            && $request['fields'] === 'id,account_id,name,status,effective_status'
+            && ! isset($request['effective_status']) && ! isset($request['filtering']) && ! isset($request['time_range']));
+        $this->assertDatabaseHas('campaign_current_statuses', ['campaign_id' => '2', 'raw_status' => 'PAUSED']);
         $before = DB::table('campaign_current_statuses')->orderBy('id')->get()->toJson();
         $this->fake(['graph.facebook.com/*' => Http::response($this->inventory('PAUSED') + ['paging' => ['next' => 'not-followed']])]);
         $this->assertSame(1, $service->sync($run)['failed']);
         $this->assertSame($before, DB::table('campaign_current_statuses')->orderBy('id')->get()->toJson());
         $this->assertSame('stale', $service->decorate([$this->row()])[0]['current_status']['availability']);
+    }
+
+    public function test_meta_inventory_accepts_unprefixed_account_and_empty_response_without_filtering_status(): void
+    {
+        config(['services.meta_ads.ad_account_ids' => ['123']]);
+        $this->fake(['graph.facebook.com/*' => Http::response(['data' => []])]);
+
+        $stats = app(CampaignCurrentStatusService::class)->sync($this->reservation());
+
+        $this->assertSame(['accounts' => 1, 'failed' => 0, 'campaigns' => 0], $stats);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/act_123/campaigns')
+            && $request['fields'] === 'id,account_id,name,status,effective_status'
+            && ! isset($request['effective_status']));
+        $this->assertDatabaseCount('campaign_current_statuses', 0);
+    }
+
+    public function test_meta_repeated_cursor_rejects_incomplete_inventory(): void
+    {
+        $this->fake(['graph.facebook.com/*' => Http::sequence()
+            ->push($this->inventory() + ['paging' => ['next' => 'page-2', 'cursors' => ['after' => 'repeat']]])
+            ->push(['data' => [], 'paging' => ['next' => 'page-3', 'cursors' => ['after' => 'repeat']]])]);
+
+        $this->assertSame(1, app(CampaignCurrentStatusService::class)->sync($this->reservation())['failed']);
+        $this->assertDatabaseCount('campaign_current_statuses', 0);
     }
 
     public function test_missing_campaign_is_not_deleted_or_kept_fresh_and_accounts_are_isolated(): void
@@ -207,6 +232,7 @@ class CampaignCurrentStatusTest extends TestCase
 
     public function test_google_attribute_query_is_paged_without_metrics_and_removed_is_supported(): void
     {
+        $this->assertSame('v25', config('services.google_ads.api_version'));
         config(['services.google_ads.developer_token' => 'synthetic', 'services.google_ads.client_id' => 'synthetic',
             'services.google_ads.client_secret' => 'synthetic', 'services.google_ads.refresh_token' => 'synthetic',
             'services.google_ads.customer_ids' => ['123-456-7890'], 'services.meta_ads.ad_account_ids' => []]);
@@ -219,8 +245,26 @@ class CampaignCurrentStatusTest extends TestCase
         $service = app(CampaignCurrentStatusService::class);
         $this->assertSame(2, $service->sync($this->reservation())['campaigns']);
         $this->assertSame('Eliminada', $service->decorate([$this->row('google_ads', '1234567890', '2')])[0]['current_status']['label']);
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'googleAds:search') && ($request['pageToken'] ?? null) === 'second'
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v25/customers/1234567890/googleAds:search')
+            && ($request['pageToken'] ?? null) === 'second'
+            && str_contains($request['query'], 'customer.id, campaign.id, campaign.name, campaign.status')
             && ! str_contains($request['query'], 'metrics.') && ! str_contains($request['query'], 'segments.date'));
+    }
+
+    public function test_google_empty_inventory_is_valid_and_explicit_api_version_is_honored(): void
+    {
+        config(['services.google_ads.api_version' => 'v24',
+            'services.google_ads.developer_token' => 'synthetic', 'services.google_ads.client_id' => 'synthetic',
+            'services.google_ads.client_secret' => 'synthetic', 'services.google_ads.refresh_token' => 'synthetic',
+            'services.google_ads.customer_ids' => ['123'], 'services.meta_ads.ad_account_ids' => []]);
+        $this->fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'synthetic']),
+            'googleads.googleapis.com/*' => Http::response(['results' => []]),
+        ]);
+
+        $this->assertSame(0, app(CampaignCurrentStatusService::class)->sync($this->reservation())['failed']);
+        $this->assertDatabaseCount('campaign_current_statuses', 0);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v24/customers/123/googleAds:search'));
     }
 
     public function test_reservations_and_lock_prevent_overlap_without_provider_requests(): void

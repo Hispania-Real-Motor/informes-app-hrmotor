@@ -14,7 +14,7 @@ class GoogleAdsClient
     {
         $customerId = CampaignCurrentStatusService::identifier($customerId, 'google_ads', true);
         $token = $this->accessToken();
-        $url = sprintf('https://googleads.googleapis.com/%s/customers/%s/googleAds:search', config('services.google_ads.api_version', 'v22'), $customerId);
+        $url = sprintf('https://googleads.googleapis.com/%s/customers/%s/googleAds:search', config('services.google_ads.api_version', 'v25'), $customerId);
         $headers = ['Authorization' => 'Bearer '.$token, 'developer-token' => config('services.google_ads.developer_token')];
         if (filled(config('services.google_ads.login_customer_id'))) {
             $headers['login-customer-id'] = CampaignCurrentStatusService::identifier((string) config('services.google_ads.login_customer_id'), 'google_ads', true);
@@ -104,7 +104,7 @@ GAQL);
         }
 
         $token = $this->accessToken();
-        $apiVersion = config('services.google_ads.api_version', 'v22');
+        $apiVersion = config('services.google_ads.api_version', 'v25');
         $url = sprintf(
             'https://googleads.googleapis.com/%s/customers/%s/googleAds:searchStream',
             $apiVersion,

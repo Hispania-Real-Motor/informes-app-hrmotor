@@ -13,6 +13,7 @@ use App\Services\Campaigns\CampaignCurrentStatusService;
 use App\Services\Campaigns\CampaignDashboardDatasetService;
 use App\Services\Campaigns\CampaignSaleAmountResolver;
 use App\Services\Campaigns\GoogleAdsClient;
+use App\Services\Campaigns\GoogleCampaignSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -421,28 +422,67 @@ class CampaignDashboardTest extends TestCase
         config()->set('services.google_ads.customer_ids', ['1234567890']);
 
         $capturedQuery = null;
+        $capturedUrl = null;
 
-        Http::fake(function ($request) use (&$capturedQuery) {
+        Http::fake(function ($request) use (&$capturedQuery, &$capturedUrl) {
             if (str_contains($request->url(), 'oauth2.googleapis.com/token')) {
                 return Http::response(['access_token' => 'access-token'], 200);
             }
 
+            $capturedUrl = $request->url();
             $capturedQuery = $request->data()['query'] ?? null;
 
-            return Http::response([['results' => []]], 200);
+            return Http::response([['results' => [[
+                'segments' => ['date' => '2026-05-10'],
+                'campaign' => ['id' => '9007199254740993', 'name' => 'Campaña simulada', 'status' => 'ENABLED'],
+                'metrics' => ['costMicros' => '123456789', 'impressions' => '1000', 'clicks' => '25'],
+            ]]]], 200);
         });
 
-        app(GoogleAdsClient::class)->searchDailyMetrics(
+        $rows = app(GoogleAdsClient::class)->searchDailyMetrics(
             '1234567890',
             CarbonImmutable::parse('2026-05-01'),
             CarbonImmutable::parse('2026-05-31'),
         );
 
+        $this->assertStringContainsString('/v25/customers/1234567890/googleAds:searchStream', $capturedUrl);
+        $this->assertSame('9007199254740993', $rows[0]['campaign']['id']);
+        $this->assertSame('123456789', $rows[0]['metrics']['costMicros']);
         $this->assertStringContainsString('FROM campaign', $capturedQuery);
         $this->assertStringNotContainsString('FROM ad_group', $capturedQuery);
         $this->assertStringContainsString('campaign.advertising_channel_type', $capturedQuery);
         $this->assertStringContainsString('metrics.cost_micros', $capturedQuery);
         $this->assertStringNotContainsString('advertising_channel_type IN', $capturedQuery);
+    }
+
+    public function test_google_unsupported_version_is_a_sanitized_sync_failure_without_economic_writes(): void
+    {
+        $metricsBefore = DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson();
+        config()->set('services.google_ads.developer_token', 'synthetic-developer-token');
+        config()->set('services.google_ads.client_id', 'synthetic-client');
+        config()->set('services.google_ads.client_secret', 'synthetic-secret');
+        config()->set('services.google_ads.refresh_token', 'synthetic-refresh');
+        config()->set('services.google_ads.customer_ids', ['1234567890']);
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'synthetic-access'], 200),
+            'googleads.googleapis.com/*' => Http::response([
+                'error' => ['status' => 'UNSUPPORTED_VERSION', 'message' => 'synthetic-access'],
+            ], 400),
+        ]);
+
+        $result = app(GoogleCampaignSyncService::class)->sync(
+            CarbonImmutable::parse('2026-05-01'), CarbonImmutable::parse('2026-05-31')
+        );
+
+        $this->assertTrue($result['configured']);
+        $this->assertSame(0, $result['processed']);
+        $this->assertSame(0, $result['saved']);
+        $this->assertCount(1, $result['warnings']);
+        $this->assertStringContainsString('No se ha podido actualizar', $result['warnings'][0]);
+        $this->assertStringNotContainsString('synthetic-access', json_encode($result));
+        $this->assertSame($metricsBefore, DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson());
     }
 
     public function test_una_campana_sugerida_por_nombre_solo_sale_del_kpi_tras_clasificacion_explicita(): void
@@ -509,11 +549,13 @@ class CampaignDashboardTest extends TestCase
         config()->set('services.google_ads.customer_ids', ['1234567890']);
 
         $capturedQuery = null;
-        Http::fake(function ($request) use (&$capturedQuery) {
+        $capturedUrl = null;
+        Http::fake(function ($request) use (&$capturedQuery, &$capturedUrl) {
             if (str_contains($request->url(), 'oauth2.googleapis.com/token')) {
                 return Http::response(['access_token' => 'access-token'], 200);
             }
 
+            $capturedUrl = $request->url();
             $capturedQuery = $request->data()['query'] ?? null;
 
             return Http::response([['results' => []]], 200);
@@ -521,6 +563,7 @@ class CampaignDashboardTest extends TestCase
 
         app(GoogleAdsClient::class)->searchAttributionIdentifiers('1234567890');
 
+        $this->assertStringContainsString('/v25/customers/1234567890/googleAds:searchStream', $capturedUrl);
         $this->assertStringContainsString('FROM ad_group_ad', $capturedQuery);
         $this->assertStringContainsString('ad_group.id', $capturedQuery);
         $this->assertStringContainsString('ad_group_ad.ad.id', $capturedQuery);
