@@ -223,6 +223,16 @@ final class InterestGenerationStore
                     || ! hash_equals((string) $g->cutoff_at, (string) ($initialEvidence['f5']['cutoff_at'] ?? ''))) {
                     throw new RuntimeException('Initial source is not verified.');
                 }
+                $external = $initialEvidence['external'] ?? null;
+                if (! is_array($external)
+                    || in_array($external['source'] ?? '', ['candidate_manifest', 'legacy_table'], true)
+                    || ! hash_equals($manifest['identifiers_sha256'], (string) ($external['identifiers_sha256'] ?? ''))
+                    || (int) ($external['rows'] ?? -1) !== $manifest['rows']
+                    || (int) ($external['deleted'] ?? -1) !== $manifest['deleted']
+                    || ! is_string($external['relationships_sha256'] ?? null)
+                    || ! is_string($external['coverage_sha256'] ?? null)) {
+                    throw new RuntimeException('Independent source evidence does not match the candidate.');
+                }
             }
             if ($g->status !== 'validating') {
                 return;
@@ -239,6 +249,7 @@ final class InterestGenerationStore
     {
         $g = $this->generation($id);
         $hash = hash_init('sha256');
+        $identityHash = hash_init('sha256');
         hash_update($hash, json_encode([$g->id, $g->cutoff_at, $g->interest_run_id, $g->activity_run_id], JSON_THROW_ON_ERROR));
         $count = 0;
         $deleted = 0;
@@ -246,13 +257,15 @@ final class InterestGenerationStore
             ->chunkById(1000, function ($rows) use ($hash, &$count, &$deleted): void {
                 foreach ($rows as $row) {
                     hash_update($hash, $row->salesforce_id.'|'.$row->content_hash."\n");
+                    hash_update($identityHash, $row->salesforce_id.'|'.$row->content_hash.'|'.(int) $row->is_deleted."\n");
                     $count++;
                     $deleted += (int) $row->is_deleted;
                 }
             }, 'version.id', 'id');
 
         return ['generation_id' => $id, 'cutoff_at' => $g->cutoff_at,
-            'rows' => $count, 'deleted' => $deleted, 'sha256' => hash_final($hash)];
+            'rows' => $count, 'deleted' => $deleted, 'sha256' => hash_final($hash),
+            'identifiers_sha256' => hash_final($identityHash)];
     }
 
     public function publish(int $id): void

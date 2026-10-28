@@ -79,6 +79,9 @@ if ($mode !== 'delta') {
     $store->certify($base, ['source' => 'isolated_salesforce_reconstruction',
         'manifest_sha256' => $manifest['sha256'], 'manifest' => $manifest,
         'f5' => ['run_id' => $g->activity_run_id, 'cutoff_at' => $g->cutoff_at],
+        'external' => ['source' => 'synthetic_salesforce_export', 'identifiers_sha256' => $manifest['identifiers_sha256'],
+            'rows' => $manifest['rows'], 'deleted' => $manifest['deleted'],
+            'relationships_sha256' => hash('sha256', 'synthetic-relations'), 'coverage_sha256' => hash('sha256', 'synthetic-coverage')],
         'checks' => array_fill_keys(['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'], true)]);
     $store->publish($base);
     $baseSeconds = microtime(true) - $start;
