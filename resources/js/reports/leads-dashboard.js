@@ -214,6 +214,8 @@ async function reloadAllData() {
         renderPortals(portals.items || []);
     } catch (error) {
         if (error?.name !== 'AbortError' && requestId === latestLeadReloadRequestId) {
+            setLoadingState(true);
+            document.getElementById('updatedBadge').textContent = 'Datos no disponibles';
             showLoadError(error);
         }
     } finally {
@@ -814,6 +816,12 @@ async function fetchJson(url, options = {}) {
     });
 
     if (!response.ok) {
+        if (response.status === 503) {
+            const payload = await response.json().catch(() => null);
+            if (payload?.error === 'interest_dataset_unavailable') {
+                throw new Error('El informe de intereses no está disponible porque sus datos todavía no están certificados.');
+            }
+        }
         throw new Error(`Error cargando ${url}`);
     }
 

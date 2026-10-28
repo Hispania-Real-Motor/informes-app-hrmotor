@@ -29,6 +29,37 @@ class SalesforceInterestDashboardDatasetTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_failed_f2_returns_unavailable_without_exposing_partial_data(): void
+    {
+        $this->alignedRuns();
+        $this->interest(['salesforce_id' => 'a01000000000009999', 'status' => 'Potencial']);
+        ReportSyncRun::query()->create([
+            'dataset' => SalesforceInterestSyncService::DATASET,
+            'source' => SalesforceInterestSyncService::SOURCE,
+            'status' => 'failed',
+            'started_at' => now('UTC'),
+            'completed_at' => now('UTC'),
+            'timezone' => 'UTC',
+        ]);
+
+        foreach (['summary', 'commercials', 'delegations', 'portals', 'kpi-audit'] as $endpoint) {
+            $response = $this->getJson('/informes/leads/data/'.$endpoint);
+            $response->assertStatus(503)->assertJsonPath('error', 'interest_dataset_unavailable');
+            $response->assertHeader('Cache-Control', 'no-store, private');
+            $this->assertStringNotContainsString('a01000000000009999', $response->getContent());
+            $this->assertArrayNotHasKey('kpis', $response->json());
+        }
+    }
+
+    public function test_missing_aligned_f5_returns_unavailable(): void
+    {
+        $this->completedF2();
+
+        $this->getJson('/informes/leads/data/summary')
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'interest_dataset_unavailable');
+    }
+
     public function test_interest_is_the_fact_functional_date_and_direct_f5_activity_drive_kpis(): void
     {
         CarbonImmutable::setTestNow('2026-10-08 12:00:00');

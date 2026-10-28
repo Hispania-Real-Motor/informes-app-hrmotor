@@ -20,6 +20,25 @@ El informe usa exclusivamente estas fuentes locales:
 El render HTTP no consulta Salesforce. No recupera atributos desde Lead,
 Account o Contact y no utiliza PII como fallback.
 
+## Disponibilidad del dashboard
+
+El servicio exige que el último run F2 esté completado y tenga cutoff, y que
+exista un F5 completado vinculado al mismo run y cutoff. Si falta ese contexto
+o cambia durante la construcción, responde con HTTP 503, código
+`interest_dataset_unavailable` y `Cache-Control: no-store`. El dashboard muestra
+«Datos no disponibles» y un mensaje de datos todavía no certificados. Las
+respuestas de datos no incluyen KPIs parciales en ese caso. La prueba
+`SalesforceInterestDashboardDatasetTest` cubre F2 fallido en summary, tablas y
+auditoría JSON, y ausencia de F5 alineado en summary.
+
+Esta comprobación no conserva una versión anterior: F2 escribe en la tabla
+viva por bloques y un fallo puede dejar escrituras parciales. No se vuelve al
+último run completado ni se certifica esa tabla por su fecha. La publicación
+aislada por generaciones y la recuperación de la incidencia #5729 siguen
+pendientes. La garantía HTTP para errores durante la emisión de CSV por cursor
+requiere comprobación adicional; una respuesta ya iniciada no puede cambiar su
+estado HTTP.
+
 ## Período funcional
 
 - La fecha del hecho es `salesforce_interests.functional_created_at`.

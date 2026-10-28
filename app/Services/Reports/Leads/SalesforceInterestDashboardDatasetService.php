@@ -14,7 +14,6 @@ use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\LazyCollection;
-use RuntimeException;
 
 class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardDatasetService
 {
@@ -609,7 +608,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
             ->where('source_interest_cutoff_at', $f2->source_cutoff_at)
             ->latest('id')->first();
         if ($f5 === null) {
-            throw new RuntimeException('Interest dashboard activity snapshot is not aligned with F2.');
+            throw new InterestDatasetUnavailable('Interest dashboard activity snapshot is not aligned with F2.');
         }
 
         return ['f2' => $f2, 'f5' => $f5];
@@ -622,7 +621,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
             ->where('source', SalesforceInterestSyncService::SOURCE)
             ->latest('id')->first();
         if ($f2 === null || $f2->status !== 'completed' || $f2->source_cutoff_at === null) {
-            throw new RuntimeException('Interest dashboard source is not a completed F2 snapshot.');
+            throw new InterestDatasetUnavailable('Interest dashboard source is not a completed F2 snapshot.');
         }
 
         return $f2;
@@ -633,7 +632,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
         $current = $this->resolveF2Context();
         if ($current->id !== $expected->id
             || ! $current->source_cutoff_at->equalTo($expected->source_cutoff_at)) {
-            throw new RuntimeException('Interest source changed during dataset construction.');
+            throw new InterestDatasetUnavailable('Interest source changed during dataset construction.');
         }
     }
 
@@ -643,7 +642,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
         if ($current['f2']->id !== $context['f2']->id
             || ! $current['f2']->source_cutoff_at->equalTo($context['f2']->source_cutoff_at)
             || $current['f5']->id !== $context['f5']->id) {
-            throw new RuntimeException('Interest dashboard sources changed during dataset construction.');
+            throw new InterestDatasetUnavailable('Interest dashboard sources changed during dataset construction.');
         }
     }
 

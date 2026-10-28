@@ -807,6 +807,40 @@ históricos, NO instrucciones de repetición para este correctivo:
 El usuario confirmó que ambos dashboards cargaban resultados. No se reejecutan
 cargas completas ni snapshots en este lote. Se mantiene el pipeline serial F2/F5.
 
+### Investigación pendiente del incidente Interests F2 #5729
+
+El operador comunicó que #5729 falló tras registrar 268.627 inserciones y
+753 actualizaciones, con cuatro conflictos de origen de migración contra
+propietarios locales. Esos contadores no identifican todas las filas afectadas
+ni sus valores anteriores. El backup localizado del 27/10/2026 contiene cero
+bytes descomprimidos y no es restaurable; no consta otra copia anterior
+verificada. El run completado #5722 no demuestra que la tabla viva conserve
+su estado. No hay base certificada para esta recuperación hasta verificar una.
+
+La investigación debe realizarla personal autorizado, con evidencias
+restringidas y resultados compartibles agregados sin identificadores sensibles:
+
+1. Comprobar el estado efectivo del scheduler en el momento del despliegue;
+   se comunicó que fue detenido manualmente, pero ese estado puede cambiar.
+2. Preservar los runs, errores y una copia verificable del estado actual para
+   investigación, sin modificar #5729 ni sus asociaciones.
+3. Inventariar mediante lecturas los registros y versiones afectados en la
+   medida que permitan las evidencias disponibles. Si aparece otra copia,
+   comprobar su integridad, cobertura y restauración en aislamiento antes de
+   usarla como referencia; cotejar también F5 y las dependencias del informe.
+4. Contrastar individualmente los cuatro conflictos y sus propietarios con
+   evidencia de origen en un canal restringido. Registrar la decisión y su
+   autorización; no liberar ni reasignar orígenes por inferencia.
+5. Evaluar distribución temporal de modificaciones y evidencia disponible para
+   explicar el volumen consultado; el contador por sí solo no prueba una
+   actualización masiva legítima.
+
+Una reconstrucción futura aislada desde Salesforce requeriría mecanismos,
+validación de cobertura, borrados, unicidad, relaciones y alineación F5 antes
+de publicar. Esta capacidad no está implementada en este cambio y una extracción
+actual no garantiza reproducir una fotografía histórica. La investigación no
+autoriza sincronizaciones reales, restauraciones ni reactivación del scheduler.
+
 ### Provisión y recuperación exclusiva de OPS
 
 Las etiquetas Docker referían /srv/production/laravel/app-informes/docker-compose.production.yml,
