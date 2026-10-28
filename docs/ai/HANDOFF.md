@@ -5952,3 +5952,103 @@ Validador integral ejecutado correctamente contra el commit de la corrección: P
 - Archivos documentales de este ajuste: `docs/salesforce-interest-generations.md` y este handoff. No cambian KPIs, fuente, filtros, esquema, configuración ni permisos por esta corrección de apropiación. La matriz ya registra el contrato de generaciones del diff acumulado; no se añaden fichas o fórmulas nuevas.
 - Resultado local comunicado por el agente principal: 1.523 pruebas correctas y nueve fallidas en la suite completa; seis por ZIP no disponible, una por `vite.config` ausente en la copia efímera y dos fixtures corregidas posteriormente. Es el resultado observado, no una suite verde ni una revalidación de las correcciones. Nueva CI pendiente y ejecución MariaDB de 39 pruebas en curso; el padre registrará resultados definitivos.
 - Continúan los límites de carga representativa, p95 concurrente superior a 11 s, consumidores multipetición fuera de Interests y certificación conjunta de materializaciones. No apto para producción; sin despliegue, acceso productivo, cambios de scheduler o recuperación de datos ejecutada.
+
+## 2026-10-28 — PR #92: verificación de la implementación por generaciones
+
+- Núcleo implementado: versiones inmutables, membresías por candidata, conflictos cifrados, alineación F2/F5 y publicación breve mediante puntero bloqueado con comparación de base. Una migración agrega cinco tablas; no importa ni certifica legacy. No hay nuevas dependencias runtime.
+- MariaDB 11.8 local aislada: `pest tests/Feature/InterestGenerationTest.php tests/Feature/SalesforceInterestSyncServiceTest.php --compact`, **39 passed, 152 assertions**. La advertencia final corresponde únicamente a la caché de Pest en vendor montado de solo lectura.
+- SQLite local: repetición de núcleo, Llamadas, reconciliación inversa y diseño, **50 passed, 269 assertions**. Suite completa previa: 1.523 passed y nueve fallos; seis por extensión ZIP ausente, uno por archivo no copiado y dos regresiones de fixtures posteriormente corregidas. CI comprueba el entorno completo; no se confunden estos resultados.
+- Frontend: `node --test tests/js/leads-unavailable.test.mjs`, **2 passed**; build Vite local correcto (12,21 s). Documentación: `python -m unittest discover -s tests/documentation`, 40 pruebas, **39 correctas y una omitida** por capacidad de symlinks de Windows. Validador documental sobre 239aed3: PASS, 87 rutas. Pint y `git diff --check` correctos en cambios revisados.
+- Rendimiento: ensayo sintético MariaDB de 270.000 modificaciones y carrera de publicación con dos procesos. Un ganador y un rechazo. Métricas, límites y comandos reproducibles en `tests/performance/README.md`; p95 concurrente >11 s, frecuencia horaria no acreditada.
+- Bloqueos esenciales: carga representativa con tamaño/distribución reales y F5, EXPLAIN/SLO/binlog/retención; coherencia entre múltiples peticiones fuera de Interests y linaje conjunto de materializaciones dependientes. La suite funcional no sustituye esas garantías. La implementación sigue en borrador y no se declara apta para producción ni íntegramente finalizada.
+- Operación pendiente: revisión de PR, ensayo de migración y restauración en entorno autorizado separado, confirmar scheduler, inicialización vacía y reconciliación independiente antes de primera certificación. El backup posterior a #5729 no prueba estado histórico; no se ha accedido a él. Despliegue y rollback detallados en `docs/salesforce-interest-generations.md`. Ningún comando productivo ejecutado.
+- Seguridad: sin endpoints de publicación; evidencia cifrada y mensajes sanitizados, permisos existentes conservados, sin resolución automática de asociaciones ni limpieza de generaciones. El rollback de esquema rechaza generaciones existentes.
+- Revisión documental delegada a `report_docs_maintainer` y contrastada por el agente principal. Mensaje de commit del núcleo: `feat: isolate Salesforce Interests F2/F5 generations`.
+
+### Archivos de esta iteración (desde edf2d97)
+- `.github/workflows/ci.yml`
+- `app/Console/Commands/DebugCampaignAttributionCommand.php`
+- `app/Console/Commands/ManageInterestGenerationCommand.php`
+- `app/Console/Commands/PruneTransversalDataCommand.php`
+- `app/Console/Commands/RefreshMonthlyCommercialReportCommand.php`
+- `app/Console/Commands/ReprocessCallsClassificationCommand.php`
+- `app/Console/Commands/SalesforceSyncInterestActivitiesCommand.php`
+- `app/Console/Commands/SalesforceSyncInterestsCommand.php`
+- `app/Providers/AppServiceProvider.php`
+- `app/Services/Campaigns/CampaignAttributionBuilderService.php`
+- `app/Services/Campaigns/CampaignDashboardDatasetService.php`
+- `app/Services/Campaigns/CampaignPublicationReadiness.php`
+- `app/Services/Reports/Calls/SalesforceCallSyncService.php`
+- `app/Services/Reports/Leads/SalesforceInterestDashboardDatasetService.php`
+- `app/Services/Reports/ReservationsSales/CommercialPerformanceAuditService.php`
+- `app/Services/Reports/ReservationsSales/CommercialPerformanceDatasetService.php`
+- `app/Services/Reports/ReservationsSales/OpportunityInterestAttributionService.php`
+- `app/Services/Salesforce/InterestGenerationReader.php`
+- `app/Services/Salesforce/InterestGenerationStore.php`
+- `app/Services/Salesforce/SalesforceClient.php`
+- `app/Services/Salesforce/SalesforceInterestActivitySyncService.php`
+- `app/Services/Salesforce/SalesforceInterestChunkPersister.php`
+- `app/Services/Salesforce/SalesforceInterestLeadDependencySyncService.php`
+- `app/Services/Salesforce/SalesforceInterestOpportunityDependencySyncService.php`
+- `app/Services/Salesforce/SalesforceInterestOpportunityReconciliationService.php`
+- `app/Services/Salesforce/SalesforceInterestReconciliationService.php`
+- `app/Services/Salesforce/SalesforceInterestReportingPipelineService.php`
+- `app/Services/Salesforce/SalesforceInterestSyncService.php`
+- `app/Services/Salesforce/SalesforceOpportunityInterestReconciliationService.php`
+- `app/Services/SeoAnalytics/SalesforceOrganicInterestProjectionService.php`
+- `app/Services/SeoAnalytics/SeoIntegrationReadinessService.php`
+- `app/Services/SeoAnalytics/SeoSourceStatusDatasetService.php`
+- `database/migrations/2026_10_28_120000_create_salesforce_interest_generations.php`
+- `docs/Documentacion_general_informes_y_contraste_salesforce.md`
+- `docs/ai/DECISIONS.md`
+- `docs/ai/HANDOFF.md`
+- `docs/ai/PROJECT_CONTEXT.md`
+- `docs/ai/SEO_ANALYTICS.md`
+- `docs/decisiones-negocio-pendientes.md`
+- `docs/guia-mantenimiento-documental.md`
+- `docs/informe-campanas.md`
+- `docs/informe-comisiones.md`
+- `docs/informe-llamadas.md`
+- `docs/informe-reservas-ventas.md`
+- `docs/informe-stock.md`
+- `docs/matriz-trazabilidad-kpi.md`
+- `docs/operaciones-produccion.md`
+- `docs/reglas-negocio-leads.md`
+- `docs/salesforce-interest-generations.md`
+- `resources/js/reports/leads-dashboard.js`
+- `scripts/check_documentation_integrity.py`
+- `tests/Concerns/ProvidesRot4CampaignContext.php`
+- `tests/Feature/CallsReprocessClassificationCommandTest.php`
+- `tests/Feature/CampaignAttributionFieldMigrationTest.php`
+- `tests/Feature/CampaignCommandsTest.php`
+- `tests/Feature/CampaignDashboardTest.php`
+- `tests/Feature/CampaignPublicationReadinessTest.php`
+- `tests/Feature/Concerns/MirrorsLeadFixturesToInterestReporting.php`
+- `tests/Feature/ExecutiveDailyDatasetTest.php`
+- `tests/Feature/ExecutiveSummaryPageTest.php`
+- `tests/Feature/InterestGenerationTest.php`
+- `tests/Feature/MonthlyCommercialInterestTimezoneTest.php`
+- `tests/Feature/MonthlyCommercialReportBuilderDataTest.php`
+- `tests/Feature/ReservationsSalesCohortAndDuplicateQualityTest.php`
+- `tests/Feature/ReservationsSalesCommercialPerformanceTest.php`
+- `tests/Feature/ReservationsSalesInterestAttributionTest.php`
+- `tests/Feature/SalesforceCallSyncServiceTest.php`
+- `tests/Feature/SalesforceInterestActivitySyncTest.php`
+- `tests/Feature/SalesforceInterestDashboardDatasetTest.php`
+- `tests/Feature/SalesforceInterestLeadDependencySyncTest.php`
+- `tests/Feature/SalesforceInterestOpportunityDependencySyncTest.php`
+- `tests/Feature/SalesforceInterestOpportunityReconciliationTest.php`
+- `tests/Feature/SalesforceInterestReconciliationTest.php`
+- `tests/Feature/SalesforceInterestSyncServiceTest.php`
+- `tests/Feature/SalesforceOpportunityInterestReconciliationTest.php`
+- `tests/Feature/SeoSalesforceOrganicSyncTest.php`
+- `tests/Feature/SeoSyncCommandsTest.php`
+- `tests/Feature/TransversalRetentionCommandTest.php`
+- `tests/Support/InterestGenerationFixture.php`
+- `tests/documentation/test_check_documentation_integrity.py`
+- `tests/js/leads-unavailable.test.mjs`
+- `tests/performance/README.md`
+- `tests/performance/interest-generation-publication-race.php`
+- `tests/performance/interest-generations.php`
+`n### CI confirmada`n
+- SHA de código 239aed3e343538e8edac8db97aad74de1ab75858: CI #210 (40687478965) y Documentation integrity #26 (40687479070) completadas con success. Incluye pruebas PHP completas, Composer validate/audit, Pint, build frontend y whitespace. El commit documental posterior registra esta evidencia sin cambiar código.
