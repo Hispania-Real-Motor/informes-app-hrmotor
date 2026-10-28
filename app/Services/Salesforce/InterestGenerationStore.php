@@ -30,8 +30,15 @@ final class InterestGenerationStore
 
     public function rows(int $id): Builder
     {
-        return DB::table('salesforce_interest_members as member')
-            ->join('salesforce_interest_versions as version', 'version.id', '=', 'member.version_id')
+        $query = DB::query();
+        if (DB::connection()->getDriverName() === 'mysql') {
+            $query->fromRaw('salesforce_interest_members as member STRAIGHT_JOIN salesforce_interest_versions as version ON version.id = member.version_id');
+        } else {
+            $query->from('salesforce_interest_members as member')
+                ->join('salesforce_interest_versions as version', 'version.id', '=', 'member.version_id');
+        }
+
+        return $query
             ->where('member.generation_id', $id)->select('version.*');
     }
 

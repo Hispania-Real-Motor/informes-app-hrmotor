@@ -2,9 +2,9 @@
 -- The generation predicate must remain the leading access path for readers.
 EXPLAIN FORMAT=JSON
 SELECT version.*
-FROM salesforce_interest_versions AS version
-INNER JOIN salesforce_interest_members AS member
-  ON member.version_id = version.id
+FROM salesforce_interest_members AS member
+STRAIGHT_JOIN salesforce_interest_versions AS version
+  ON version.id = member.version_id
 WHERE member.generation_id = 1
 ORDER BY version.id
 LIMIT 1000;

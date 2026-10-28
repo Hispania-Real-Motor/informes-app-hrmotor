@@ -36,7 +36,12 @@ Las muestras por ID y origen devolvieron `Impossible WHERE` porque esos valores
 sintéticos no existían en esa base. No se añade un índice especulativo: falta
 repetir el plan con IDs existentes y distribución real.
 
-Tras reordenar `InterestGenerationStore::rows()` para comenzar por
+En MySQL, `InterestGenerationStore::rows()` usa `STRAIGHT_JOIN` para comenzar
+por la pertenencia, porque el orden textual de un `INNER JOIN` no obliga al
+optimizador. En SQLite y otros drivers se conserva el builder portable.
+El plan MySQL de la consulta equivalente usa `sf_im_version_idx`
+(`generation_id, version_id`) con `Using where; Using index` y un `eq_ref` por
+la clave primaria de versiones. Tras reordenar `InterestGenerationStore::rows()` para comenzar por
 `salesforce_interest_members`, el plan equivalente usa `sf_im_version_idx`
 (`generation_id, version_id`) con `Using where; Using index` y un `eq_ref` por
 la clave primaria de versiones. La base quedó sin filas después de la
