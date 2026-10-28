@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SalesforceInterestOpportunityReconciliationTest extends TestCase
@@ -32,6 +33,8 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
         parent::setUp();
 
         $this->interestRun = $this->interestSourceRun();
+        InterestGenerationFixture::published($this->interestRun);
+        InterestGenerationFixture::listenForNewRows();
         $this->opportunityRun = $this->opportunitySourceRun();
     }
 

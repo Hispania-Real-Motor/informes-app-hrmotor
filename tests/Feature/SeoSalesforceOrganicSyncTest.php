@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
+use App\Models\SalesforceInterest;
 use App\Models\SeoSalesforceOrganicInterestDailyMetric;
 use App\Services\Reports\ReportSyncRunService;
 use App\Services\Salesforce\SalesforceInterestSyncService;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
 use RuntimeException;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SeoSalesforceOrganicSyncTest extends TestCase
@@ -215,7 +217,7 @@ class SeoSalesforceOrganicSyncTest extends TestCase
 
     private function f2(string $status, ?string $cutoff): ReportSyncRun
     {
-        return ReportSyncRun::query()->create([
+        $run = ReportSyncRun::query()->create([
             'dataset' => SalesforceInterestSyncService::DATASET, 'source' => SalesforceInterestSyncService::SOURCE,
             'status' => $status, 'period_start_at' => '2026-01-01 00:00:00',
             'period_end_at' => $cutoff ?? '2026-08-19 10:00:00',
@@ -223,6 +225,11 @@ class SeoSalesforceOrganicSyncTest extends TestCase
             'started_at' => '2026-08-19 09:00:00',
             'completed_at' => $status === 'running' ? null : '2026-08-19 10:01:00', 'timezone' => 'UTC',
         ]);
+        if ($status === 'completed' && $cutoff !== null) {
+            InterestGenerationFixture::published($run);
+        }
+
+        return $run;
     }
 
     private function interest(
@@ -242,5 +249,6 @@ class SeoSalesforceOrganicSyncTest extends TestCase
             'utm_medium' => $utmMedium, 'source' => $source, 'is_deleted' => $deleted,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        InterestGenerationFixture::row(SalesforceInterest::where('salesforce_id', $id)->sole());
     }
 }

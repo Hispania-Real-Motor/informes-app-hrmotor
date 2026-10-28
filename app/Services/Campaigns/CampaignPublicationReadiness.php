@@ -4,6 +4,7 @@ namespace App\Services\Campaigns;
 
 use App\Models\ReportSyncRun;
 use App\Models\SalesforceOpportunityInterestDirectRun;
+use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
@@ -186,7 +187,11 @@ class CampaignPublicationReadiness
     private function latest(string $dataset, string $source): ?ReportSyncRun
     {
         if ($dataset === SalesforceInterestSyncService::DATASET) {
-            return app(InterestGenerationReader::class)->f2();
+            try {
+                return app(InterestGenerationReader::class)->f2();
+            } catch (InterestDatasetUnavailable) {
+                return null; // Keep the existing blocked-readiness contract without adopting legacy data.
+            }
         }
 
         return ReportSyncRun::query()->useWritePdo()->where('dataset', $dataset)->where('source', $source)->orderByDesc('id')->first();

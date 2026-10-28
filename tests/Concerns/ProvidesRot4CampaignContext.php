@@ -9,6 +9,7 @@ use App\Models\SalesforceOpportunityInterestDirect;
 use App\Models\SalesforceOpportunityInterestDirectRun;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Illuminate\Support\Str;
+use Tests\Support\InterestGenerationFixture;
 
 trait ProvidesRot4CampaignContext
 {
@@ -28,8 +29,8 @@ trait ProvidesRot4CampaignContext
             'timezone' => 'UTC',
         ]);
         $this->rot4InterestRunId = (int) $interestRun->id;
-        \Tests\Support\InterestGenerationFixture::published($interestRun);
-        SalesforceInterest::created(fn (SalesforceInterest $row) => \Tests\Support\InterestGenerationFixture::row($row));
+        InterestGenerationFixture::published($interestRun);
+        SalesforceInterest::created(fn (SalesforceInterest $row) => InterestGenerationFixture::row($row));
 
         $directRun = SalesforceOpportunityInterestDirectRun::query()->create([
             'run_identifier' => (string) Str::uuid(),

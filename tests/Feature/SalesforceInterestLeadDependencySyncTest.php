@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SalesforceInterestLeadDependencySyncTest extends TestCase
@@ -460,7 +461,7 @@ class SalesforceInterestLeadDependencySyncTest extends TestCase
 
     public function interestRun(string $status, ?string $cutoff): ReportSyncRun
     {
-        return ReportSyncRun::query()->create([
+        $run = ReportSyncRun::query()->create([
             'dataset' => 'salesforce_interests',
             'source' => 'salesforce',
             'status' => $status,
@@ -469,6 +470,12 @@ class SalesforceInterestLeadDependencySyncTest extends TestCase
             'completed_at' => $status === 'running' ? null : '2026-09-29 10:00:00',
             'timezone' => 'UTC',
         ]);
+        if ($status === 'completed' && $cutoff !== null) {
+            InterestGenerationFixture::published($run);
+            InterestGenerationFixture::listenForNewRows();
+        }
+
+        return $run;
     }
 
     private function interest(int $sequence, string $origin): SalesforceInterest

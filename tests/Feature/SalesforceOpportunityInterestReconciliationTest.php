@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SalesforceOpportunityInterestReconciliationTest extends TestCase
@@ -528,6 +529,9 @@ class SalesforceOpportunityInterestReconciliationTest extends TestCase
             'completed_at' => '2026-10-06 09:00:01',
             'timezone' => 'UTC',
         ]);
+
+        InterestGenerationFixture::published($interestRun);
+        InterestGenerationFixture::listenForNewRows();
 
         return SalesforceInterestOpportunityReconciliationRun::query()->create([
             'run_identifier' => '80000000-0000-4000-8000-000000000001',

@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Tests\Concerns\AssertsOperationalSchedule;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class ReservationsSalesCommercialPerformanceTest extends TestCase
@@ -44,8 +45,8 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             'started_at' => '2026-10-09 09:00:00',
             'completed_at' => '2026-10-09 09:01:00',
         ]);
-        \Tests\Support\InterestGenerationFixture::published($f2);
-        SalesforceInterest::created(fn (SalesforceInterest $row) => \Tests\Support\InterestGenerationFixture::row($row));
+        InterestGenerationFixture::published($f2);
+        SalesforceInterest::created(fn (SalesforceInterest $row) => InterestGenerationFixture::row($row));
     }
 
     public function test_cache_base_no_reconstruye_interests_para_filtros_y_se_invalida_por_version(): void

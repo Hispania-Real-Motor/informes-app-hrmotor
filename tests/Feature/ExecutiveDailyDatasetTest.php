@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Concerns\CreatesOpportunityDashboardRows;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class ExecutiveDailyDatasetTest extends TestCase
@@ -516,6 +517,8 @@ class ExecutiveDailyDatasetTest extends TestCase
             'timezone' => 'Europe/Madrid',
             'stats' => [],
         ]);
+        InterestGenerationFixture::published($run);
+        InterestGenerationFixture::listenForNewRows();
     }
 
     private function coverInterestActivitySource(): void

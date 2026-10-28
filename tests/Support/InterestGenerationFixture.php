@@ -11,6 +11,15 @@ use Illuminate\Support\Str;
 /** Synthetic fixtures only. Production initialization must use the reviewed reconstruction CLI. */
 final class InterestGenerationFixture
 {
+    public static function listenForNewRows(): void
+    {
+        if (app()->bound('tests.interest-generation-fixture-listener')) {
+            return;
+        }
+        app()->instance('tests.interest-generation-fixture-listener', true);
+        SalesforceInterest::created(fn (SalesforceInterest $row) => self::row($row));
+    }
+
     public static function published(ReportSyncRun $f2, ?SalesforceInterestActivityRun $f5 = null): int
     {
         $f5 ??= SalesforceInterestActivityRun::create([

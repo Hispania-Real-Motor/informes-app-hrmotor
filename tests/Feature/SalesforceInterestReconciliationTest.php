@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SalesforceInterestReconciliationTest extends TestCase
@@ -37,6 +38,8 @@ class SalesforceInterestReconciliationTest extends TestCase
             'completed_at' => '2026-09-28 15:06:11',
             'timezone' => 'UTC',
         ]);
+        InterestGenerationFixture::published($this->interestSourceRun);
+        InterestGenerationFixture::listenForNewRows();
         $this->dependencyRun = SalesforceInterestLeadDependencyRun::query()->create([
             'run_identifier' => '00000000-0000-4000-8000-000000000099',
             'reason' => 'Synthetic current dependency snapshot fixture',

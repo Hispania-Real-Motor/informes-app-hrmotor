@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\Feature\Concerns\CreatesOpportunityDashboardRows;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class ExecutiveSummaryPageTest extends TestCase
@@ -147,7 +148,7 @@ class ExecutiveSummaryPageTest extends TestCase
 
     private function coverInterestSource(string $start, string $cutoff): void
     {
-        ReportSyncRun::query()->create([
+        $run = ReportSyncRun::query()->create([
             'dataset' => SalesforceInterestSyncService::DATASET,
             'source' => SalesforceInterestSyncService::SOURCE,
             'status' => 'completed',
@@ -159,6 +160,8 @@ class ExecutiveSummaryPageTest extends TestCase
             'timezone' => 'Europe/Madrid',
             'stats' => [],
         ]);
+        InterestGenerationFixture::published($run);
+        InterestGenerationFixture::listenForNewRows();
     }
 
     private function coverOpportunitySource(

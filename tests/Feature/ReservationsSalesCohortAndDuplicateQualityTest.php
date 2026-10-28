@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Tests\Feature\Concerns\CreatesOpportunityDashboardRows;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class ReservationsSalesCohortAndDuplicateQualityTest extends TestCase
@@ -22,7 +23,7 @@ class ReservationsSalesCohortAndDuplicateQualityTest extends TestCase
     {
         parent::setUp();
 
-        ReportSyncRun::query()->create([
+        $f2 = ReportSyncRun::query()->create([
             'dataset' => 'salesforce_interests',
             'source' => 'salesforce',
             'status' => 'completed',
@@ -30,6 +31,8 @@ class ReservationsSalesCohortAndDuplicateQualityTest extends TestCase
             'started_at' => '2026-10-09 09:00:00',
             'completed_at' => '2026-10-09 09:01:00',
         ]);
+        InterestGenerationFixture::published($f2);
+        InterestGenerationFixture::listenForNewRows();
     }
 
     public function test_reservas_ventas_no_devuelve_conclusiones_evaluativas_ni_recomendaciones(): void

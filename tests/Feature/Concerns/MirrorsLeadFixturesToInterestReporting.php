@@ -10,6 +10,7 @@ use App\Models\SalesforceLead;
 use App\Models\SalesforceLeadActivitySummary;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Illuminate\Support\Str;
+use Tests\Support\InterestGenerationFixture;
 
 trait MirrorsLeadFixturesToInterestReporting
 {
@@ -39,8 +40,8 @@ trait MirrorsLeadFixturesToInterestReporting
             'completed_at' => $cutoff,
             'stats' => [],
         ]);
-        \Tests\Support\InterestGenerationFixture::published($f2, $this->interestActivityFixtureRun);
-        SalesforceInterest::created(fn (SalesforceInterest $row) => \Tests\Support\InterestGenerationFixture::row($row));
+        InterestGenerationFixture::published($f2, $this->interestActivityFixtureRun);
+        SalesforceInterest::created(fn (SalesforceInterest $row) => InterestGenerationFixture::row($row));
 
         SalesforceLead::created(function (SalesforceLead $lead): void {
             $ownerId = $lead->owner_id;
