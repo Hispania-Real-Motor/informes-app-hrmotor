@@ -1237,3 +1237,23 @@ La lectura se une fuera de la caché de economía y solo amplía JSON, mantenien
 ### Integración limpia y evidencia temporal MariaDB
 
 La base de revisión pasa a main 89282a32b79060fca671adee4bc49741c954308f tras PR #85. Se trasladan exclusivamente los tres commits B con cherry-pick -x, conservando la rama original; la dependencia A ya está fusionada. Los campos last_observed_at/last_verified_at y created_at/updated_at de la migración nueva usan DATETIME civil UTC (estos últimos mediante datetimes() de Laravel), escrito por el servicio explícitamente en UTC, frente a TIMESTAMP sujeto a conversión por zona de sesión MariaDB. Esta decisión preserva el instante usado para frescura sin modificar la configuración global ni tablas históricas. Una prueba opt-in verifica el mismo valor con sesiones +00:00/+02:00 y los límites de 24 h/fecha futura, además de created_at sin desplazamiento.
+
+## 2026-10-28 — versiones inmutables y pertenencias F2/F5 (PR #92)
+
+Decisión implementada en revisión: compartir versiones de filas y copiar solo
+el índice de pertenencia por candidata. Copiar payloads completos cada hora
+multiplica I/O, almacenamiento y binlog; mantener solo deltas enlazados exigiría
+resolver cadenas y unicidad efectiva en cada consulta. Las pertenencias permiten
+unicidad física por generación/origen y lecturas por join indexado, a costa de
+copiar O(N) claves por ejecución y conservar índices adicionales. No se considera
+validada su viabilidad horaria: el benchmark sintético detecta contención y
+latencia concurrente elevada; producción está bloqueada hasta medir y resolverla.
+
+Se separan «F2 completed», «F5 completed», certificación y publicación. Solo el
+puntero transaccional cambia el watermark; una comparación de base impide
+publicaciones incompatibles incluso si caduca un lock de caché. Candidatas con
+conflictos no se publican. Se preservan versiones, F5 y evidencia sin retención
+automática; el rollback del esquema con generaciones existentes se rechaza.
+La primera generación requiere reconstrucción aislada y revisión del manifiesto;
+no se usa como base la tabla actual ni un backup posterior a la incidencia.
+[Alternativas, costes y operación](../salesforce-interest-generations.md).

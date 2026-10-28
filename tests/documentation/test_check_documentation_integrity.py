@@ -21,6 +21,7 @@ def fixture_root(root: Path) -> None:
                  "docs/informe-comisiones-financieras.md",
                  "docs/Calculo_comisiones_comerciales.txt",
                  "docs/ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md",
+                 "docs/salesforce-interest-generations.md",
                  "docs/decisiones-negocio-pendientes.md"):
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -50,6 +51,23 @@ def no_impact(scope: str, evidence: str) -> str:
 
 
 class IntegrityTests(unittest.TestCase):
+    def test_shared_generation_infrastructure_is_not_outside_reports(self) -> None:
+        for path in ("app/Providers/AppServiceProvider.php",
+                     "app/Services/Salesforce/SalesforceClient.php",
+                     "app/Console/Commands/PruneTransversalDataCommand.php"):
+            self.assertEqual(checker.ALL, checker.domains_for(path))
+        self.assertEqual({"interests", "reservations"}, checker.domains_for(
+            "app/Console/Commands/RefreshMonthlyCommercialReportCommand.php"))
+        self.assertEqual({"interests", "campaigns"}, checker.domains_for(
+            "app/Services/SeoAnalytics/SalesforceOrganicInterestProjectionService.php"))
+
+    def test_generation_services_map_to_interest_consumers(self) -> None:
+        for service in ("Store", "Reader"):
+            self.assertEqual(
+                {"interests", "reservations", "calls", "campaigns"},
+                checker.domains_for(f"app/Services/Salesforce/InterestGeneration{service}.php"),
+            )
+
     def test_salesforce_opportunities_command_maps_to_its_report_consumers(self) -> None:
         self.assertEqual(
             {"reservations", "campaigns", "commissions", "stock"},

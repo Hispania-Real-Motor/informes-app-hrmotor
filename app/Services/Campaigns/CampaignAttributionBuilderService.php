@@ -7,7 +7,7 @@ use App\Models\SalesforceOpportunity;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
 use App\Services\Reports\ReservationsSales\OpportunityInterestAttributionService;
-use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -198,7 +198,7 @@ class CampaignAttributionBuilderService
 
     private function candidateInterests(CarbonInterface $start, CarbonInterface $end, array &$stats): Collection
     {
-        $base = DB::table('salesforce_interests')
+        $base = app(InterestGenerationReader::class)->query()
             ->where('is_deleted', false)
             ->where('functional_created_at', '>=', CarbonImmutable::parse($start)->utc())
             ->where('functional_created_at', '<', CarbonImmutable::parse($end)->utc());
@@ -1545,10 +1545,6 @@ class CampaignAttributionBuilderService
 
     private function latestInterestRun(): ?ReportSyncRun
     {
-        return ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        return app(InterestGenerationReader::class)->f2();
     }
 }

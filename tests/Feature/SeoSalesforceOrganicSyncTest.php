@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
+use App\Models\SalesforceInterest;
 use App\Models\SeoSalesforceOrganicInterestDailyMetric;
 use App\Services\Reports\ReportSyncRunService;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use App\Services\SeoAnalytics\SalesforceOrganicInterestProjectionService;
 use Carbon\CarbonImmutable;
@@ -14,6 +16,7 @@ use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
 use RuntimeException;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SeoSalesforceOrganicSyncTest extends TestCase
@@ -149,7 +152,7 @@ class SeoSalesforceOrganicSyncTest extends TestCase
         return [[null], ['running'], ['failed'], ['completed']];
     }
 
-    public function test_source_change_after_read_fails_without_publishing_rows(): void
+    public function test_running_attempt_after_read_does_not_change_pinned_projection(): void
     {
         $this->completedF2('2026-08-19 10:00:00');
         $service = new class(app(ReportSyncRunService::class)) extends SalesforceOrganicInterestProjectionService
@@ -164,19 +167,14 @@ class SeoSalesforceOrganicSyncTest extends TestCase
             }
         };
 
-        try {
-            $service->sync(1, CarbonImmutable::parse('2026-08-19 12:00:00 Europe/Madrid'));
-            $this->fail('Expected safe source-change failure.');
-        } catch (RuntimeException) {
-            $this->assertDatabaseCount('seo_salesforce_organic_interest_daily_metrics', 0);
-            $this->assertDatabaseHas('report_sync_runs', [
-                'dataset' => SalesforceOrganicInterestProjectionService::DATASET,
-                'status' => 'failed', 'error_message' => 'SEO Interest projection failed safely.',
-            ]);
-        }
+        $service->sync(1, CarbonImmutable::parse('2026-08-19 12:00:00 Europe/Madrid'));
+        $this->assertDatabaseCount('seo_salesforce_organic_interest_daily_metrics', 1);
+        $this->assertDatabaseHas('report_sync_runs', [
+            'dataset' => SalesforceOrganicInterestProjectionService::DATASET, 'status' => 'completed',
+        ]);
     }
 
-    public function test_source_change_during_persistence_rolls_back_the_projection(): void
+    public function test_failed_attempt_during_persistence_does_not_change_pinned_projection(): void
     {
         $this->completedF2('2026-08-19 10:00:00');
         $service = new class(app(ReportSyncRunService::class)) extends SalesforceOrganicInterestProjectionService
@@ -192,15 +190,11 @@ class SeoSalesforceOrganicSyncTest extends TestCase
             }
         };
 
-        try {
-            $service->sync(1, CarbonImmutable::parse('2026-08-19 12:00:00 Europe/Madrid'));
-            $this->fail('Expected safe source-change failure.');
-        } catch (RuntimeException) {
-            $this->assertDatabaseCount('seo_salesforce_organic_interest_daily_metrics', 0);
-            $this->assertDatabaseHas('report_sync_runs', [
-                'dataset' => SalesforceOrganicInterestProjectionService::DATASET, 'status' => 'failed',
-            ]);
-        }
+        $service->sync(1, CarbonImmutable::parse('2026-08-19 12:00:00 Europe/Madrid'));
+        $this->assertDatabaseCount('seo_salesforce_organic_interest_daily_metrics', 1);
+        $this->assertDatabaseHas('report_sync_runs', [
+            'dataset' => SalesforceOrganicInterestProjectionService::DATASET, 'status' => 'completed',
+        ]);
     }
 
     private function service(): SalesforceOrganicInterestProjectionService
@@ -215,7 +209,7 @@ class SeoSalesforceOrganicSyncTest extends TestCase
 
     private function f2(string $status, ?string $cutoff): ReportSyncRun
     {
-        return ReportSyncRun::query()->create([
+        $run = ReportSyncRun::query()->create([
             'dataset' => SalesforceInterestSyncService::DATASET, 'source' => SalesforceInterestSyncService::SOURCE,
             'status' => $status, 'period_start_at' => '2026-01-01 00:00:00',
             'period_end_at' => $cutoff ?? '2026-08-19 10:00:00',
@@ -223,6 +217,12 @@ class SeoSalesforceOrganicSyncTest extends TestCase
             'started_at' => '2026-08-19 09:00:00',
             'completed_at' => $status === 'running' ? null : '2026-08-19 10:01:00', 'timezone' => 'UTC',
         ]);
+        if ($status === 'completed' && $cutoff !== null) {
+            InterestGenerationFixture::published($run);
+            app()->forgetInstance(InterestGenerationReader::class);
+        }
+
+        return $run;
     }
 
     private function interest(
@@ -242,5 +242,6 @@ class SeoSalesforceOrganicSyncTest extends TestCase
             'utm_medium' => $utmMedium, 'source' => $source, 'is_deleted' => $deleted,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        InterestGenerationFixture::row(SalesforceInterest::where('salesforce_id', $id)->sole());
     }
 }

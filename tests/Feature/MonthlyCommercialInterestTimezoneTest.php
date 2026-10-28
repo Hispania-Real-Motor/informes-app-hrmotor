@@ -10,6 +10,7 @@ use App\Services\Reports\MonthlyCommercial\MonthlyCommercialReportBuilder;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class MonthlyCommercialInterestTimezoneTest extends TestCase
@@ -54,6 +55,7 @@ class MonthlyCommercialInterestTimezoneTest extends TestCase
             'is_deleted' => false,
         ])->save();
 
+        InterestGenerationFixture::row($interest);
         $payload = app(MonthlyCommercialReportBuilder::class)->build(1, $instant);
 
         $this->assertSame('2026-10-08', $payload['fecha_analisis']);
@@ -74,7 +76,7 @@ class MonthlyCommercialInterestTimezoneTest extends TestCase
             'completed_at' => $cutoff,
             'timezone' => 'UTC',
         ]);
-        SalesforceInterestActivityRun::query()->create([
+        $f5 = SalesforceInterestActivityRun::query()->create([
             'run_identifier' => (string) str()->uuid(),
             'reason' => 'Monthly Commercial timezone regression',
             'status' => 'completed',
@@ -85,5 +87,6 @@ class MonthlyCommercialInterestTimezoneTest extends TestCase
             'completed_at' => $cutoff,
             'stats' => [],
         ]);
+        InterestGenerationFixture::published($f2, $f5);
     }
 }

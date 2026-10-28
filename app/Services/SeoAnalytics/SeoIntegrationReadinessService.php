@@ -2,8 +2,7 @@
 
 namespace App\Services\SeoAnalytics;
 
-use App\Models\ReportSyncRun;
-use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\Salesforce\InterestGenerationStore;
 
 final class SeoIntegrationReadinessService
 {
@@ -52,13 +51,7 @@ final class SeoIntegrationReadinessService
 
     private function salesforceAvailable(): bool
     {
-        $latest = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
-
-        return $latest?->status === 'completed' && $latest->source_cutoff_at !== null;
+        return app(InterestGenerationStore::class)->published() !== null;
     }
 
     /** @return array{key: string, title: string, detail: string, badge: string} */

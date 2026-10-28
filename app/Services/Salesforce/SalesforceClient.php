@@ -3,6 +3,7 @@
 namespace App\Services\Salesforce;
 
 use App\Support\IntegrationErrorSanitizer;
+use Carbon\CarbonInterface;
 use Generator;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -55,15 +56,35 @@ class SalesforceClient
         }
 
         $page = $response->json() ?? [];
+        $seen = [];
+        $received = 0;
+        $expected = $page['totalSize'] ?? null;
+        if (! is_int($expected) || $expected < 0) {
+            throw new RuntimeException('Salesforce query total size is missing or invalid.');
+        }
 
         while (true) {
-            yield $page['records'] ?? [];
+            if (! is_array($page) || ! is_array($page['records'] ?? null)
+                || ! is_bool($page['done'] ?? null)) {
+                throw new RuntimeException('Salesforce query page is incomplete.');
+            }
+            $received += count($page['records']);
+            yield $page['records'];
 
-            if ((bool) ($page['done'] ?? true) || blank($page['nextRecordsUrl'] ?? null)) {
+            if ($page['done']) {
+                if ($expected !== null && (! is_int($expected) || $received !== $expected)) {
+                    throw new RuntimeException('Salesforce query coverage is incomplete.');
+                }
                 break;
             }
 
-            $nextRecordsUrl = $page['nextRecordsUrl'];
+            $nextRecordsUrl = $page['nextRecordsUrl'] ?? null;
+            if (! is_string($nextRecordsUrl)
+                || ! preg_match('#^/services/data/v[0-9]+\.[0-9]+/query(?:All)?/[A-Za-z0-9_-]+$#', $nextRecordsUrl)
+                || isset($seen[$nextRecordsUrl])) {
+                throw new RuntimeException('Salesforce query continuation is missing or invalid.');
+            }
+            $seen[$nextRecordsUrl] = true;
             $response = Http::withToken($auth['access_token'])
                 ->timeout((int) config('salesforce.timeout', 120))
                 ->acceptJson()
@@ -86,6 +107,32 @@ class SalesforceClient
 
             $page = $response->json() ?? [];
         }
+    }
+
+    /** Read-only deletion log. Coverage validation belongs to the replication caller. */
+    public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+    {
+        if (! preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $object)) {
+            throw new RuntimeException('Invalid deletion-log object.');
+        }
+        $auth = $this->authService->accessToken();
+        $request = fn (array $credentials): Response => Http::withToken($credentials['access_token'])
+            ->timeout((int) config('salesforce.timeout', 120))->acceptJson()
+            ->get($this->sObjectUrl($credentials, $object).'/deleted/', [
+                'start' => $start->copy()->utc()->format('Y-m-d\TH:i:s\Z'),
+                'end' => $end->copy()->utc()->format('Y-m-d\TH:i:s\Z'),
+            ]);
+        $response = $request($auth);
+        if ($response->status() === 401) {
+            $this->authService->clearToken();
+            $response = $request($this->authService->accessToken());
+        }
+        if (! $response->successful() || ! is_array($response->json('deletedRecords'))
+            || ! is_string($response->json('earliestDateAvailable')) || ! is_string($response->json('latestDateCovered'))) {
+            throw new RuntimeException('Salesforce deletion log is unavailable or incomplete.');
+        }
+
+        return $response->json();
     }
 
     public function create(string $object, array $fields): string
@@ -174,5 +221,4 @@ class SalesforceClient
             .config('salesforce.api_version')
             .($includeDeleted ? '/queryAll' : '/query');
     }
-
 }

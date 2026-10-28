@@ -12,6 +12,7 @@ class SeoSalesforceOrganicInterestDailyMetric extends Model
         'data_date' => 'date',
         'interest_count' => 'integer',
         'source_interest_sync_run_id' => 'integer',
+        'interest_generation_id' => 'integer',
         'source_interest_cutoff_at' => 'datetime',
         'extracted_at' => 'datetime',
     ];

@@ -6,9 +6,19 @@ use App\Models\SalesforceInterest;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class SalesforceInterestChunkPersister
 {
+    private ?int $generationId = null;
+
+    public function forGeneration(int $generationId): static
+    {
+        $this->generationId = $generationId;
+
+        return $this;
+    }
+
     /**
      * MySQL/MariaDB upsert is deliberately forbidden here: it ignores Laravel's
      * uniqueBy and may select migration_origin_lead_id instead of salesforce_id.
@@ -17,6 +27,16 @@ class SalesforceInterestChunkPersister
      * @return array{inserted:int, updated:int, unchanged:int}
      */
     public function persist(array $rows): array
+    {
+        if ($this->generationId !== null) {
+            return app(InterestGenerationStore::class)->persist($this->generationId, $rows);
+        }
+
+        return DB::transaction(fn (): array => $this->persistInTransaction($rows));
+    }
+
+    /** @param list<array<string, mixed>> $rows @return array{inserted:int, updated:int, unchanged:int} */
+    private function persistInTransaction(array $rows): array
     {
         if ($rows === []) {
             return ['inserted' => 0, 'updated' => 0, 'unchanged' => 0];

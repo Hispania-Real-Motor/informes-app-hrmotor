@@ -125,11 +125,7 @@ class SalesforceInterestOpportunityDependencySyncService
 
     private function latestStableInterestRun(): ReportSyncRun
     {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        $run = app(InterestGenerationReader::class)->f2();
 
         if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
             throw new RuntimeException('The latest Interest sync run is not a stable completed source.');
@@ -141,7 +137,7 @@ class SalesforceInterestOpportunityDependencySyncService
     private function seedReferences(SalesforceInterestOpportunityDependencyRun $run): int
     {
         $now = now();
-        $source = DB::table('salesforce_interests')
+        $source = app(InterestGenerationReader::class)->query()
             ->selectRaw('? as dependency_run_id', [$run->id])
             ->selectRaw('TRIM(inverse_opportunity_salesforce_id) as salesforce_id')
             ->selectRaw("'pending' as presence_status")
@@ -307,7 +303,7 @@ class SalesforceInterestOpportunityDependencySyncService
 
         if ((clone $dependencies)->where('presence_status', 'pending')->exists()
             || (clone $dependencies)->count() !== $referencesSeeded
-            || DB::table('salesforce_interests as interests')
+            || app(InterestGenerationReader::class)->query('interests')
                 ->leftJoin('salesforce_interest_opportunity_dependencies as dependencies', function ($join) use ($run): void {
                     $join->on(
                         DB::raw('TRIM(interests.inverse_opportunity_salesforce_id)'),

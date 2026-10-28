@@ -5,6 +5,7 @@ namespace App\Services\SeoAnalytics;
 use App\Models\ReportSyncRun;
 use App\Models\SeoSalesforceOrganicInterestDailyMetric;
 use App\Services\Reports\ReportSyncRunService;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,7 @@ class SalesforceOrganicInterestProjectionService
 
         $timezone = (string) config('seo_analytics.timezone', 'Europe/Madrid');
         $sourceRun = $this->latestStableInterestRun();
+        $sourceGeneration = app(InterestGenerationReader::class)->generation();
         $localNow = ($now ?? CarbonImmutable::now($timezone))->setTimezone($timezone);
         $localClosedDay = $localNow->startOfDay()->subDay();
         $f2ClosedDay = CarbonImmutable::parse($sourceRun->source_cutoff_at)
@@ -67,7 +69,7 @@ class SalesforceOrganicInterestProjectionService
             $counts = $this->aggregate($startUtc, $endExclusiveUtc, $timezone, $stats);
             $this->afterInterestsRead($run, $stats);
             $this->assertSourceRunUnchanged($sourceRun);
-            $rows = $this->rows($periodStart, $periodEnd, $counts, $timezone, $sourceRun);
+            $rows = $this->rows($periodStart, $periodEnd, $counts, $timezone, $sourceRun, (int) $sourceGeneration->id);
             $stats['days_persisted'] = count($rows);
 
             DB::transaction(function () use ($rows, $run, $sourceRun, $projectionCutoff, &$stats): void {
@@ -76,7 +78,7 @@ class SalesforceOrganicInterestProjectionService
                     ['data_date'],
                     [
                         'interest_count', 'source_timezone', 'source_interest_sync_run_id',
-                        'source_interest_cutoff_at', 'extracted_at', 'updated_at',
+                        'interest_generation_id', 'source_interest_cutoff_at', 'extracted_at', 'updated_at',
                     ],
                 );
                 $this->afterProjectionPersisted($run, $stats);
@@ -105,11 +107,7 @@ class SalesforceOrganicInterestProjectionService
 
     private function latestStableInterestRun(): ReportSyncRun
     {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        $run = app(InterestGenerationReader::class)->f2();
 
         if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
             throw new RuntimeException('The latest Interest sync run is not a stable completed source.');
@@ -127,7 +125,7 @@ class SalesforceOrganicInterestProjectionService
     ): array {
         $counts = [];
 
-        DB::table('salesforce_interests')
+        app(InterestGenerationReader::class)->query()
             ->select(['id', 'functional_created_at', 'medium'])
             ->where('is_deleted', false)
             ->where('medium', self::ORGANIC_MEDIUM)
@@ -164,6 +162,7 @@ class SalesforceOrganicInterestProjectionService
         array $counts,
         string $timezone,
         ReportSyncRun $sourceRun,
+        int $sourceGenerationId,
     ): array {
         $now = now('UTC');
         $rows = [];
@@ -173,6 +172,7 @@ class SalesforceOrganicInterestProjectionService
                 'interest_count' => $counts[$date->toDateString()] ?? 0,
                 'source_timezone' => $timezone,
                 'source_interest_sync_run_id' => $sourceRun->id,
+                'interest_generation_id' => $sourceGenerationId,
                 'source_interest_cutoff_at' => $sourceRun->source_cutoff_at,
                 'extracted_at' => $now,
                 'created_at' => $now,

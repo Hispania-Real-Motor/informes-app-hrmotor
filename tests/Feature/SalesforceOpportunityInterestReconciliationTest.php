@@ -10,6 +10,7 @@ use App\Models\SalesforceOpportunityInterestDirect;
 use App\Models\SalesforceOpportunityInterestDirectRun;
 use App\Models\SalesforceOpportunityInterestReconciliation;
 use App\Models\SalesforceOpportunityInterestReconciliationRun;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use App\Services\Salesforce\SalesforceOpportunityInterestReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,6 +18,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SalesforceOpportunityInterestReconciliationTest extends TestCase
@@ -265,14 +267,12 @@ class SalesforceOpportunityInterestReconciliationTest extends TestCase
         $this->assertSame(0, $stats['contradiction']);
     }
 
-    public function test_rejects_inverse_snapshot_when_latest_interest_run_is_newer_running_or_failed(): void
+    public function test_unpublished_newer_runs_do_not_invalidate_certified_inverse_source(): void
     {
+        $this->directRun();
+        $this->inverseRun();
         foreach (['completed', 'running', 'failed'] as $status) {
-            ReportSyncRun::query()->delete();
-            SalesforceInterestOpportunityReconciliationRun::query()->delete();
-            SalesforceOpportunityInterestDirectRun::query()->delete();
-            $this->directRun();
-            $this->inverseRun();
+            app()->forgetInstance(InterestGenerationReader::class);
             ReportSyncRun::query()->create([
                 'dataset' => SalesforceInterestSyncService::DATASET,
                 'source' => SalesforceInterestSyncService::SOURCE,
@@ -283,20 +283,15 @@ class SalesforceOpportunityInterestReconciliationTest extends TestCase
                 'timezone' => 'UTC',
             ]);
 
-            try {
-                app(SalesforceOpportunityInterestReconciliationService::class)
-                    ->run('Reject stale inverse Interest source metadata');
-                $this->fail("Expected latest Interest run {$status} to block reconciliation.");
-            } catch (RuntimeException $exception) {
-                $this->assertStringContainsString('not current', $exception->getMessage());
-            }
-            $this->assertDatabaseMissing('salesforce_opportunity_interest_reconciliation_runs', [
+            app(SalesforceOpportunityInterestReconciliationService::class)
+                ->run('Retain certified inverse Interest source metadata');
+            $this->assertDatabaseHas('salesforce_opportunity_interest_reconciliation_runs', [
                 'status' => 'completed',
             ]);
         }
     }
 
-    public function test_interest_run_starting_after_materialization_fails_and_preserves_previous_completed(): void
+    public function test_interest_attempt_starting_after_materialization_preserves_pinned_source(): void
     {
         $directRun = $this->directRun();
         $inverseRun = $this->inverseRun();
@@ -320,17 +315,8 @@ class SalesforceOpportunityInterestReconciliationTest extends TestCase
             }
         };
 
-        try {
-            $service->run('Detect concurrent Interest synchronization before publish');
-            $this->fail('Expected concurrent Interest run to fail reconciliation.');
-        } catch (RuntimeException $exception) {
-            $this->assertSame('Bidirectional Opportunity Interest reconciliation failed safely.', $exception->getMessage());
-        }
-
-        $this->assertSame('failed', SalesforceOpportunityInterestReconciliationRun::query()->latest('id')->value('status'));
-        $this->assertDatabaseHas('salesforce_opportunity_interest_reconciliations', [
-            'reconciliation_run_id' => $completed->id,
-        ]);
+        $service->run('Retain certified source during concurrent Interest synchronization');
+        $this->assertSame('completed', SalesforceOpportunityInterestReconciliationRun::query()->latest('id')->value('status'));
     }
 
     public function test_identical_reexecution_produces_the_same_logical_snapshot(): void
@@ -528,6 +514,9 @@ class SalesforceOpportunityInterestReconciliationTest extends TestCase
             'completed_at' => '2026-10-06 09:00:01',
             'timezone' => 'UTC',
         ]);
+
+        InterestGenerationFixture::published($interestRun);
+        InterestGenerationFixture::listenForNewRows();
 
         return SalesforceInterestOpportunityReconciliationRun::query()->create([
             'run_identifier' => '80000000-0000-4000-8000-000000000001',

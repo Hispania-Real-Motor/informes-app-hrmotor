@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\ProvidesRot4CampaignContext;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class CampaignDashboardTest extends TestCase
@@ -172,6 +173,7 @@ class CampaignDashboardTest extends TestCase
 
         DB::table('salesforce_interests')->where('salesforce_id', '00Q-material-check')
             ->update(['updated_at' => '2026-10-26 10:00:00']);
+        InterestGenerationFixture::row(SalesforceInterest::where('salesforce_id', '00Q-material-check')->sole());
         Cache::flush();
         $changed = $this->getJson($query)->assertOk()->json('warnings');
         $this->assertStringContainsString('Salesforce Interests se sincronizó después de la atribución', implode(' ', $changed));
@@ -206,6 +208,7 @@ class CampaignDashboardTest extends TestCase
             'stats' => json_encode(['inserted' => 0, 'updated' => 0, 'deleted' => 0, 'reactivated' => 0]),
         ]);
 
+        InterestGenerationFixture::row(SalesforceInterest::where('salesforce_id', '00Q-moved-out')->sole());
         $warnings = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
             ->assertOk()->json('warnings');
         $this->assertStringContainsString('Salesforce Interests se sincronizó después de la atribución', implode(' ', $warnings));

@@ -9,11 +9,13 @@ use App\Models\SalesforceOpportunityInterestDirect;
 use App\Models\SalesforceOpportunityInterestDirectRun;
 use App\Services\Reports\ReservationsSales\OpportunityInterestAttributionService;
 use App\Services\Reports\ReservationsSales\ReservationsSalesDashboardDatasetService;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class ReservationsSalesInterestAttributionTest extends TestCase
@@ -98,7 +100,7 @@ class ReservationsSalesInterestAttributionTest extends TestCase
         $this->assertSame('direct_snapshot_stale', $context['reason']);
     }
 
-    public function test_source_change_during_build_fails_safe(): void
+    public function test_unpublished_attempt_does_not_change_pinned_attribution(): void
     {
         $context = $this->sourceContext();
         ReportSyncRun::query()->create([
@@ -108,10 +110,8 @@ class ReservationsSalesInterestAttributionTest extends TestCase
             'started_at' => '2026-10-09 10:30:00',
         ]);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('fuentes locales de atribución cambiaron');
-
         app(OpportunityInterestAttributionService::class)->validate($context);
+        $this->assertTrue($context['available']);
     }
 
     public function test_canonical_inverse_identity_and_deleted_interest_lifecycle_are_auditable(): void
@@ -121,6 +121,9 @@ class ReservationsSalesInterestAttributionTest extends TestCase
         $this->direct($context['direct_run_id'], $opportunity->salesforce_id, 'a01000000000030AAA');
         $interest = $this->interest('a01000000000030AAA', '006000000000030AAA', 'Wallapop');
         $interest->forceFill(['is_deleted' => true])->save();
+        // Arrange the synthetic certified fixture, not a live-table fallback.
+        DB::table('salesforce_interest_versions')->where('salesforce_id', $interest->salesforce_id)
+            ->update(['is_deleted' => true]);
 
         $resolution = app(OpportunityInterestAttributionService::class)
             ->resolve(collect([$opportunity]), $context)
@@ -249,6 +252,8 @@ class ReservationsSalesInterestAttributionTest extends TestCase
             'completed_at' => '2026-10-09 09:01:00',
         ])->save();
 
+        InterestGenerationFixture::published($f2);
+        $this->app->forgetInstance(InterestGenerationReader::class);
         $second = app(ReservationsSalesDashboardDatasetService::class)->kpiAudit($this->auditRequest());
         $this->assertSame('both_match', $second['items'][0]['relationship_status']);
         $this->assertSame('Wallapop', $second['items'][0]['portal_resolved']);
@@ -265,7 +270,7 @@ class ReservationsSalesInterestAttributionTest extends TestCase
 
     private function interestRun(string $status, ?string $cutoff = null): ReportSyncRun
     {
-        return ReportSyncRun::query()->create([
+        $run = ReportSyncRun::query()->create([
             'dataset' => 'salesforce_interests',
             'source' => 'salesforce',
             'status' => $status,
@@ -273,6 +278,11 @@ class ReservationsSalesInterestAttributionTest extends TestCase
             'started_at' => '2026-10-09 09:00:00',
             'completed_at' => $status === 'completed' ? '2026-10-09 09:01:00' : null,
         ]);
+        if ($status === 'completed') {
+            InterestGenerationFixture::published($run);
+        }
+
+        return $run;
     }
 
     private function directRun(string $status, ?string $cutoff = null): SalesforceOpportunityInterestDirectRun
@@ -315,7 +325,7 @@ class ReservationsSalesInterestAttributionTest extends TestCase
 
     private function interest(string $id, ?string $opportunityId, string $source): SalesforceInterest
     {
-        return SalesforceInterest::query()->create([
+        $row = SalesforceInterest::query()->create([
             'salesforce_id' => $id,
             'salesforce_created_at' => '2026-10-09 07:00:00',
             'salesforce_last_modified_at' => '2026-10-09 07:00:00',
@@ -324,6 +334,9 @@ class ReservationsSalesInterestAttributionTest extends TestCase
             'inverse_opportunity_salesforce_id' => $opportunityId,
             'is_deleted' => false,
         ]);
+        InterestGenerationFixture::row($row);
+
+        return $row;
     }
 
     private function direct(int $runId, string $opportunityId, ?string $interestId, string $status = 'valid'): void

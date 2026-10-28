@@ -200,7 +200,7 @@ class CampaignAttributionFieldMigrationTest extends TestCase
         $this->assertDatabaseHas('campaign_attributions', ['interest_id' => 'a0I000000000000008']);
     }
 
-    public function test_source_change_during_build_rolls_back_the_period(): void
+    public function test_unpublished_attempt_during_build_preserves_pinned_source(): void
     {
         $this->createInterest(['salesforce_id' => 'a0I000000000000009', 'utm_campaign' => 'Unstable']);
         DB::listen(function ($query): void {
@@ -212,14 +212,8 @@ class CampaignAttributionFieldMigrationTest extends TestCase
             }
         });
 
-        try {
-            $this->build();
-            $this->fail('La mutación F2 debía invalidar la publicación.');
-        } catch (\RuntimeException $exception) {
-            $this->assertStringContainsString('cambió', $exception->getMessage());
-        }
-
-        $this->assertDatabaseMissing('campaign_attributions', ['interest_id' => 'a0I000000000000009']);
+        $this->build();
+        $this->assertDatabaseHas('campaign_attributions', ['interest_id' => 'a0I000000000000009']);
     }
 
     public function test_interest_queries_are_chunk_bounded_and_never_use_lead_or_pii_lookups(): void

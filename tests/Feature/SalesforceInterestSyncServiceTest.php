@@ -4,16 +4,19 @@ namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
-use App\Models\SalesforceInterestSyncError;
+use App\Models\SalesforceInterestActivityRun;
 use App\Services\Reports\ReportSyncRunService;
+use App\Services\Salesforce\InterestGenerationStore;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestChunkPersister;
 use App\Services\Salesforce\SalesforceInterestFoundationResolver;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SalesforceInterestSyncServiceTest extends TestCase
@@ -52,26 +55,26 @@ class SalesforceInterestSyncServiceTest extends TestCase
         $this->assertSame('completed', $result['run']->status);
         $this->assertSame('2026-09-25 12:00:00', $result['run']->source_cutoff_at->utc()->format('Y-m-d H:i:s'));
         $this->assertSame('UTC', $result['run']->timezone);
-        $this->assertSame('Lead', SalesforceInterest::query()->find(1)?->canonical_person_type);
-        $this->assertDatabaseHas('salesforce_interests', [
+        $this->assertSame('Lead', SalesforceInterest::query()->from('salesforce_interest_versions as salesforce_interests')->where('salesforce_id', 'a01000000000000101')->first()?->canonical_person_type);
+        $this->assertDatabaseHas('salesforce_interest_versions', [
             'salesforce_id' => 'a01000000000000103',
             'canonical_person_type' => 'Account',
             'canonical_person_salesforce_id' => '001000000000000103',
             'functional_created_at' => '2026-08-01 08:30:00',
         ]);
-        $this->assertDatabaseHas('salesforce_interests', [
+        $this->assertDatabaseHas('salesforce_interest_versions', [
             'salesforce_id' => 'a01000000000000102',
             'status' => 'Estado futuro',
             'type' => 'Venta con cambio',
         ]);
-        $this->assertDatabaseHas('salesforce_interests', [
+        $this->assertDatabaseHas('salesforce_interest_versions', [
             'salesforce_id' => 'a01000000000000104',
             'is_deleted' => true,
             'salesforce_last_modified_at' => '2026-09-20 09:00:00',
             'salesforce_deleted_at' => '2026-09-20 09:05:00',
             'deletion_detection_source' => SalesforceInterestSyncService::DELETION_SOURCE_QUERY_ALL,
         ]);
-        $payload = SalesforceInterest::query()->where('salesforce_id', 'a01000000000000101')->value('raw_payload');
+        $payload = SalesforceInterest::query()->from('salesforce_interest_versions as salesforce_interests')->where('salesforce_id', 'a01000000000000101')->value('raw_payload');
         $this->assertArrayNotHasKey('attributes', $payload);
         $this->assertStringContainsString('FROM Interes__c', $client->calls[0]['soql']);
         $this->assertStringContainsString('SystemModstamp <= 2026-09-25T12:00:00Z', $client->calls[0]['soql']);
@@ -151,7 +154,7 @@ class SalesforceInterestSyncServiceTest extends TestCase
 
         $this->assertSame(1, $first['stats']['inserted']);
         $this->assertSame(1, $second['stats']['unchanged']);
-        $this->assertDatabaseCount('salesforce_interests', 1);
+        $this->assertDatabaseCount('salesforce_interest_versions', 1);
 
         $deleted = $this->record('a01000000000000105', ['IsDeleted' => true]);
         $this->service($this->client([[]], [[$deleted]]))
@@ -160,7 +163,7 @@ class SalesforceInterestSyncServiceTest extends TestCase
             ->sync(SalesforceInterestSyncService::MODE_FULL, $cutoff);
 
         $this->assertSame(1, $reactivated['stats']['reactivated']);
-        $this->assertDatabaseHas('salesforce_interests', [
+        $this->assertDatabaseHas('salesforce_interest_versions', [
             'salesforce_id' => 'a01000000000000105',
             'is_deleted' => false,
             'salesforce_deleted_at' => null,
@@ -187,7 +190,7 @@ class SalesforceInterestSyncServiceTest extends TestCase
             $this->assertStringContainsString('[redacted]', $exception->getMessage());
         }
 
-        $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000106']);
+        $this->assertDatabaseHas('salesforce_interest_versions', ['salesforce_id' => 'a01000000000000106']);
         $failed = ReportSyncRun::query()->where('status', 'failed')->latest('id')->firstOrFail();
         $this->assertNull($failed->source_cutoff_at);
         $this->assertSame(1, $failed->stats['errors']);
@@ -222,16 +225,11 @@ class SalesforceInterestSyncServiceTest extends TestCase
         }
 
         $failed = ReportSyncRun::query()->where('status', 'failed')->latest('id')->firstOrFail();
-        $error = SalesforceInterestSyncError::query()
-            ->where('report_sync_run_id', $failed->id)
-            ->where('salesforce_id', 'a01000000000000108')
-            ->firstOrFail();
-        $this->assertSame('active_persist', $error->phase);
-        $this->assertSame('Interest record could not be persisted locally.', $error->error_message);
-        $this->assertStringNotContainsString($duplicateMigrationLead, $error->error_message);
-        $this->assertStringNotContainsString('insert into', strtolower($error->error_message));
+        $this->assertDatabaseHas('salesforce_interest_conflicts', [
+            'interest_run_id' => $failed->id, 'salesforce_id' => 'a01000000000000108', 'kind' => 'duplicate_in_block',
+        ]);
         $this->assertNull($failed->source_cutoff_at);
-        $this->assertDatabaseCount('salesforce_interests', 0);
+        $this->assertDatabaseCount('salesforce_interest_versions', 0);
     }
 
     public function test_new_interest_cannot_take_migration_origin_owned_by_another_interest(): void
@@ -248,17 +246,17 @@ class SalesforceInterestSyncServiceTest extends TestCase
                 ->sync(SalesforceInterestSyncService::MODE_FULL, CarbonImmutable::parse('2026-09-25T11:00:00Z'));
             $this->fail('A migration origin already owned by another Interest must fail.');
         } catch (RuntimeException) {
-            $this->assertDatabaseHas('salesforce_interest_sync_errors', [
+            $this->assertDatabaseHas('salesforce_interest_conflicts', [
                 'salesforce_id' => $incomingId,
-                'phase' => 'active_persist',
+                'kind' => 'base_owner_conflict',
             ]);
         }
 
-        $this->assertDatabaseHas('salesforce_interests', [
+        $this->assertDatabaseHas('salesforce_interest_versions', [
             'salesforce_id' => $ownerId,
             'migration_origin_lead_id' => $origin,
         ]);
-        $this->assertDatabaseMissing('salesforce_interests', ['salesforce_id' => $incomingId]);
+        $this->assertDatabaseMissing('salesforce_interest_versions', ['salesforce_id' => $incomingId]);
     }
 
     public function test_interest_can_update_while_retaining_its_own_migration_origin(): void
@@ -278,7 +276,7 @@ class SalesforceInterestSyncServiceTest extends TestCase
         ])]], []))->sync(SalesforceInterestSyncService::MODE_FULL, $cutoff);
 
         $this->assertSame(1, $result['stats']['updated']);
-        $this->assertDatabaseHas('salesforce_interests', [
+        $this->assertDatabaseHas('salesforce_interest_versions', [
             'salesforce_id' => $salesforceId,
             'migration_origin_lead_id' => $origin,
             'status' => 'Convertido',
@@ -304,17 +302,17 @@ class SalesforceInterestSyncServiceTest extends TestCase
             ])]], []))->sync(SalesforceInterestSyncService::MODE_FULL, $cutoff);
             $this->fail('Changing to an origin owned by another Interest must fail.');
         } catch (RuntimeException) {
-            $this->assertDatabaseHas('salesforce_interest_sync_errors', [
+            $this->assertDatabaseHas('salesforce_interest_conflicts', [
                 'salesforce_id' => $firstId,
-                'phase' => 'active_persist',
+                'kind' => 'base_owner_conflict',
             ]);
         }
 
-        $this->assertDatabaseHas('salesforce_interests', [
+        $this->assertDatabaseHas('salesforce_interest_versions', [
             'salesforce_id' => $firstId,
             'migration_origin_lead_id' => $firstOrigin,
         ]);
-        $this->assertDatabaseHas('salesforce_interests', [
+        $this->assertDatabaseHas('salesforce_interest_versions', [
             'salesforce_id' => $secondId,
             'migration_origin_lead_id' => $secondOrigin,
         ]);
@@ -335,10 +333,10 @@ class SalesforceInterestSyncServiceTest extends TestCase
 
         $interestWrites = collect(DB::getQueryLog())
             ->pluck('query')
-            ->filter(fn (string $query): bool => str_contains(strtolower($query), 'insert into "salesforce_interests"'));
+            ->filter(fn (string $query): bool => str_starts_with(strtolower($query), 'insert into ') && str_contains($query, 'salesforce_interest_versions'));
 
         $this->assertSame(2, $result['stats']['inserted']);
-        $this->assertDatabaseCount('salesforce_interests', 2);
+        $this->assertDatabaseCount('salesforce_interest_versions', 2);
         $this->assertNotEmpty($interestWrites);
         $this->assertTrue($interestWrites->every(
             fn (string $query): bool => ! str_contains(strtolower($query), 'on conflict')
@@ -346,7 +344,7 @@ class SalesforceInterestSyncServiceTest extends TestCase
         ), 'Interest writes must never use upsert semantics because MySQL considers every UNIQUE index.');
     }
 
-    public function test_bulk_failure_fails_run_even_when_every_diagnostic_replay_succeeds(): void
+    public function test_bulk_failure_does_not_replay_rows_with_side_effects(): void
     {
         $persister = new class extends SalesforceInterestChunkPersister
         {
@@ -383,11 +381,11 @@ class SalesforceInterestSyncServiceTest extends TestCase
             'phase' => 'active_persist_bulk',
             'error_message' => 'Interest record could not be persisted locally.',
         ]);
-        $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000908']);
-        $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000909']);
+        $this->assertDatabaseMissing('salesforce_interest_versions', ['salesforce_id' => 'a01000000000000908']);
+        $this->assertDatabaseMissing('salesforce_interest_versions', ['salesforce_id' => 'a01000000000000909']);
     }
 
-    public function test_bulk_failure_audits_individual_failure_and_still_fails_run(): void
+    public function test_bulk_failure_records_sanitized_error_without_diagnostic_writes(): void
     {
         $failingId = 'a01000000000000911';
         $persister = new class($failingId) extends SalesforceInterestChunkPersister
@@ -425,13 +423,42 @@ class SalesforceInterestSyncServiceTest extends TestCase
             'salesforce_id' => null,
             'phase' => 'active_persist_bulk',
         ]);
-        $this->assertDatabaseHas('salesforce_interest_sync_errors', [
+        $this->assertDatabaseMissing('salesforce_interest_sync_errors', [
             'report_sync_run_id' => $failed->id,
             'salesforce_id' => $failingId,
             'phase' => 'active_persist',
         ]);
-        $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000910']);
-        $this->assertDatabaseMissing('salesforce_interests', ['salesforce_id' => $failingId]);
+        $this->assertDatabaseMissing('salesforce_interest_versions', ['salesforce_id' => 'a01000000000000910']);
+        $this->assertDatabaseMissing('salesforce_interest_versions', ['salesforce_id' => $failingId]);
+    }
+
+    public function test_failed_update_rolls_back_inserts_from_the_same_chunk(): void
+    {
+        $existing = 'a01000000000000912';
+        $inserted = 'a01000000000000913';
+        $cutoff = CarbonImmutable::parse('2026-09-25T12:00:00Z');
+        $this->service($this->client([[$this->record($existing)]], []))
+            ->sync(SalesforceInterestSyncService::MODE_FULL, $cutoff);
+
+        $failOnce = true;
+        DB::listen(function ($event) use (&$failOnce): void {
+            if ($failOnce && str_starts_with(strtolower($event->sql), 'insert ')
+                && str_contains(strtolower($event->sql), 'salesforce_interest_versions')) {
+                $failOnce = false;
+                throw new RuntimeException('synthetic failure after update');
+            }
+        });
+        try {
+            $this->service($this->client([[
+                $this->record($inserted),
+                $this->record($existing, ['IN_Estado__c' => 'Convertido']),
+            ]], []))->sync(SalesforceInterestSyncService::MODE_FULL, $cutoff);
+            $this->fail('The update failure must fail the run.');
+        } catch (RuntimeException) {
+            $this->assertDatabaseMissing('salesforce_interest_versions', ['salesforce_id' => $inserted]);
+            $this->assertDatabaseHas('salesforce_interest_versions', ['salesforce_id' => $existing, 'status' => 'Potencial']);
+            $this->assertSame('failed', ReportSyncRun::query()->latest('id')->firstOrFail()->status);
+        }
     }
 
     public function test_service_rejects_negative_overlap_before_remote_access(): void
@@ -476,18 +503,61 @@ class SalesforceInterestSyncServiceTest extends TestCase
     private function service(
         SalesforceClient $client,
         ?SalesforceInterestChunkPersister $chunkPersister = null,
-    ): SalesforceInterestSyncService {
-        return new SalesforceInterestSyncService(
+    ): object {
+        $service = new SalesforceInterestSyncService(
             $client,
             app(SalesforceInterestFoundationResolver::class),
             $chunkPersister ?? app(SalesforceInterestChunkPersister::class),
             app(ReportSyncRunService::class),
         );
+
+        // Each subsequent extraction starts from the previous synthetic certified fixture.
+        // The harness never imports the legacy live table.
+        return new class($service)
+        {
+            public function __construct(private SalesforceInterestSyncService $service) {}
+
+            public function sync(string $mode = 'incremental', ?CarbonInterface $cutoff = null, ?int $overlapSeconds = null): array
+            {
+                $store = app(InterestGenerationStore::class);
+                $last = DB::table('salesforce_interest_generations')->where('status', 'validating')->latest('id')->first();
+                if ($last !== null) {
+                    $run = ReportSyncRun::findOrFail($last->interest_run_id);
+                    $f5 = SalesforceInterestActivityRun::create([
+                        'run_identifier' => (string) str()->uuid(), 'reason' => 'Synthetic F5 fixture for F2 transport tests',
+                        'status' => 'completed', 'source_interest_sync_run_id' => $run->id,
+                        'source_interest_cutoff_at' => $last->cutoff_at, 'source_cutoff_at' => $last->cutoff_at,
+                        'started_at' => now(), 'completed_at' => now(),
+                    ]);
+                    $store->finishF5($last->id, $f5);
+                    $manifest = $store->manifest($last->id);
+                    $candidate = $store->generation($last->id);
+                    $store->certify($last->id, ['source' => 'isolated_salesforce_reconstruction',
+                        'manifest_sha256' => $manifest['sha256'], 'manifest' => $manifest,
+                        'f5' => ['run_id' => $candidate->activity_run_id, 'cutoff_at' => $candidate->cutoff_at],
+                        'external' => ['source' => 'synthetic_salesforce_export', 'identifiers_sha256' => $manifest['identifiers_sha256'],
+                            'rows' => $manifest['rows'], 'deleted' => $manifest['deleted'],
+                            'relationships_sha256' => hash('sha256', 'synthetic-relations'), 'coverage_sha256' => hash('sha256', 'synthetic-coverage')],
+                        'checks' => array_fill_keys(['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'], true)]);
+                    $store->publish($last->id);
+                }
+                $base = $store->published();
+                $cutoff ??= CarbonImmutable::now('UTC');
+                if ($base !== null && CarbonImmutable::parse($base->cutoff_at)->gte($cutoff)) {
+                    $cutoff = CarbonImmutable::parse($base->cutoff_at)->addMinute();
+                }
+                if ($mode === 'full' && $base === null) {
+                    return $this->service->sync($mode, $cutoff, $overlapSeconds, $store->begin($cutoff, true));
+                }
+
+                return $this->service->sync('incremental', $cutoff, $overlapSeconds);
+            }
+        };
     }
 
     private function completedRun(string $cutoff): ReportSyncRun
     {
-        return ReportSyncRun::query()->create([
+        $run = ReportSyncRun::query()->create([
             'dataset' => SalesforceInterestSyncService::DATASET,
             'source' => SalesforceInterestSyncService::SOURCE,
             'status' => 'completed',
@@ -498,6 +568,9 @@ class SalesforceInterestSyncServiceTest extends TestCase
             'completed_at' => $cutoff,
             'timezone' => 'UTC',
         ]);
+        InterestGenerationFixture::published($run);
+
+        return $run;
     }
 
     /** @return array<string, mixed> */
@@ -564,6 +637,11 @@ class SalesforceInterestSyncServiceTest extends TestCase
                         throw new RuntimeException('Authorization: Bearer secret-value');
                     }
                 }
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['deletedRecords' => [], 'earliestDateAvailable' => $start->toIso8601String(), 'latestDateCovered' => $end->toIso8601String()];
             }
 
             public function create(string $object, array $fields): string

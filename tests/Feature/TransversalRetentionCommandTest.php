@@ -84,7 +84,7 @@ class TransversalRetentionCommandTest extends TestCase
         $this->assertDatabaseMissing('report_sync_runs', ['dataset' => 'completed-old']);
         $this->assertDatabaseMissing('salesforce_interest_sync_errors', ['report_sync_run_id' => $oldRunId]);
         $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000902']);
-        $this->assertNull(DB::table('salesforce_interests')
+        $this->assertNotNull(DB::table('salesforce_interests')
             ->where('salesforce_id', 'a01000000000000902')
             ->value('raw_payload'));
         $this->assertDatabaseHas('report_sync_runs', ['dataset' => 'completed-recent']);

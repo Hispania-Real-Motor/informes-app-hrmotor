@@ -4,8 +4,8 @@ namespace App\Services\Reports\Calls;
 
 use App\Models\SalesforceCall;
 use App\Models\SalesforceCallClassificationHistory;
-use App\Models\SalesforceInterest;
 use App\Models\SalesforceUser;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -456,7 +456,7 @@ SOQL;
             return collect();
         }
 
-        return SalesforceInterest::query()
+        return app(InterestGenerationReader::class)->eloquent()
             ->whereIn('salesforce_id', $ids)
             ->get(['salesforce_id', 'source', 'is_deleted'])
             ->keyBy('salesforce_id');

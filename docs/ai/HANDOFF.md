@@ -5901,3 +5901,175 @@ Validador integral ejecutado correctamente contra el commit de la corrección: P
 - Estado operativo: `campaign_current_statuses` sigue siendo la única fuente local; `CAMPAIGN_CURRENT_STATUS_ENABLED=false` por defecto. No se consultaron tabla, runs, cuentas ni credenciales productivas ni se ejecutaron APIs. «Estado no disponible» no prueba un fallo de proveedor: el runbook exige confirmar tabla, configuración efectiva, runs, IDs, frescura de 24 h, códigos, errores parciales y ambigüedad antes de atribuir causa. Primera sincronización y activación periódica requieren autorizaciones separadas.
 - Seguridad: clasificación restringida sin ampliar permisos, sin secretos ni datos personales en documentación, sin eliminación de relaciones comerciales. Rendimiento: filtro de filas en memoria, opciones mediante consulta distinta agregada de métricas, sin N+1 ni llamadas remotas HTTP; versionado dirigido de caché, sin vaciar el sistema. Riesgos: rankings y CSV de entidades cambian por el universo solicitado, y snapshots antiguos podrían contener identidades Salesforce; no afirmar limpieza física ni estado remoto verificado. La revisión visual de áreas clicables en escritorio/móvil y la verificación productiva de estado quedan pendientes.
 - Pruebas funcionales comunicadas por el agente principal al estabilizar código: focal 102/102, suite PHP completa 1465/1465, JavaScript 25/25 y build Vite correcto. Pruebas documentales: 37 ejecutadas, 36 correctas y una omitida por entorno; `git diff --check` correcto. La validación integral del PR requiere el SHA del commit final y el cuerpo `Docs-Impact: updated` / `Docs-Matrix-Impact: updated`, por lo que el agente principal debe ejecutarla después de integrar estos documentos. No hay migración ni variable de entorno nueva. Acción manual futura: desplegar código/manifest/assets del mismo build bajo procedimiento aprobado; rollback por release anterior completo, sin tocar datos históricos. Mensaje de commit sugerido: `docs(campaigns): clarify advertising entities and Salesforce attribution in phase C`.
+
+## 2026-10-28 — Disponibilidad controlada de Interests
+
+- Base `2e326b5f8df6cfc4fec7073f709a523c85f98668`. El servicio del dashboard convierte la ausencia o cambio del contexto F2/F5 exigido en `InterestDatasetUnavailable`, con JSON 503 sanitizado y sin caché. El frontend muestra indisponibilidad. Se añaden pruebas de F2 fallido para summary, tablas y auditoría JSON y de F5 no alineado para summary. Véase [contrato del informe](../reglas-negocio-leads.md#disponibilidad-del-dashboard).
+- Archivos funcionales: `app/Services/Reports/Leads/SalesforceInterestDashboardDatasetService.php`, `app/Services/Reports/Leads/InterestDatasetUnavailable.php`, `resources/js/reports/leads-dashboard.js`, `tests/Feature/SalesforceInterestDashboardDatasetTest.php`, `tests/js/leads-unavailable.test.mjs`. Documentación: `docs/reglas-negocio-leads.md`, `docs/operaciones-produccion.md`, `docs/ai/HANDOFF.md`. El [procedimiento de investigación](../operaciones-produccion.md#investigación-pendiente-del-incidente-interests-f2-5729) no presupone base certificada ni capacidad de reconstrucción implementada.
+- Decisión: rechazar la lectura sin contexto válido; no se selecciona un run anterior porque la tabla viva puede contener escrituras parciales. No cambia fórmula, universo, fuente ni trazabilidad de KPI; matriz sin cambios. No hay migraciones, configuración ni cambios de datos. Se mantienen permisos y se evita incluir identificadores en el error; no se modifican consultas ni sincronización.
+- Pruebas focales PHP: 18 casos y 112 aserciones, con advertencias por ausencia de .env y caché Pest en vendor de solo lectura; prueba frontend `tests/js/leads-unavailable.test.mjs` superada, según ejecución del agente principal. Verificación documental integral pendiente del commit y descripción de PR. La garantía ante fallo durante streaming CSV, la arquitectura de generaciones, F2/F5 atómicos, recuperación #5729 y medición de carga siguen pendientes. El backup citado por el usuario no es restaurable; no se ha verificado otro. No ejecutar sincronizaciones, restauraciones ni alterar estados históricos como parte de este cambio.
+- Verificaciones adicionales: Pint pasó en los tres PHP modificados; 38 pruebas documentales, con una omisión; build Vite correcto en directorio externo de pruebas, sin actualizar los assets versionados. Si este componente se despliega, debe construirse y publicarse el conjunto coherente de manifest y assets. No se ejecutó prueba representativa MySQL ni suite PHP completa. El mecanismo de generaciones no está implementado y este cambio no está listo para satisfacer el encargo completo.
+
+## 2026-10-28 — F2: atomicidad por bloque, continuación de PR #92
+
+- Diff adicional sobre `5385dec3555fa806d354ba2f2a697b9679b5a572`: `SalesforceInterestChunkPersister` encapsula cada bloque en una transacción; `SalesforceInterestSyncService` elimina la repetición diagnóstica de filas tras un fallo general y conserva el error sanitizado de bloque. La prueba focal verifica rollback dentro del bloque y ausencia de escrituras diagnósticas. La documentación funcional y este handoff recogen el alcance; la nota de respaldo en operaciones se conserva del trabajo concurrente.
+- No existen generaciones, cuarentena individual, publicación atómica F2/F5 ni aislamiento de consumidores. Los bloques anteriores pueden seguir persistidos tras el fallo; el 503 existente no hace disponible una versión certificada previa. No se certifica el estado de la tabla actual. La matriz KPI no cambia: no se modifica fórmula, campo API, universo, filtros, identidad, cálculo ni exportación; cambia la persistencia ante fallos.
+- El operador comunicó una copia posterior a #5729 de 105 tablas y 437 MB comprimidos, con gzip y checksum correctos; la restauración no se ha probado. No acredita el estado anterior ni permite certificar la tabla. El backup anterior mencionado era irrecuperable. Scheduler comunicado detenido en la última comprobación: verificar su estado real en despliegue.
+- Según ejecución del agente principal, pruebas F2 SQLite en Docker: 16 casos, 88 aserciones, sin fallos, con advertencias por `.env` y caché. No se ejecutaron sincronizaciones reales ni se consultaron datos productivos. No se añaden migraciones ni configuración. Seguridad: no se amplían permisos y se mantiene sanitización del error de bloque; desaparece la auditoría diagnóstica individual para fallos generales.
+- Tras sustituir el trigger de la fixture, el caso de rollback pasó en SQLite y MariaDB 11.8 aislados (una prueba y tres aserciones en cada motor, con advertencias de entorno). La primera versión de la fixture falló en MariaDB porque crear el trigger dentro de la transacción de prueba provocó un commit implícito de DDL; se sustituyó por una excepción sintética tras la actualización. No equivale a una prueba exhaustiva de fallos, concurrencia ni carga de la aplicación.
+- Medición preliminar sintética aislada comunicada por el agente principal en MariaDB 11.8: tabla reducida y payload aproximado de 512 bytes; 270.000 inserciones en 7,74 s, copia en 7,24 s y cambios por lotes en 15,47 s; dos generaciones ocuparon 370.081.792 bytes de datos y 63.733.760 de índices, memoria observada 403 MiB y lectura `count` de 337 ms. Los materiales reproducibles están en `tests/performance/`; no hubo prueba formal de simultaneidad. No representa esquema, volumen ni carga productivos y no demuestra viabilidad horaria.
+- Pendientes para producción: arquitectura de generaciones y bootstrap con fuente verificable, aislamiento de todos los consumidores, conflictos auditables, F2/F5 alineados, pruebas MySQL de integración completas y concurrencia, exportaciones, carga representativa y plan verificable de despliegue/rollback. No desplegar ni reactivar scheduler por este cambio. El agente principal debe revisar el diff y ejecutar el validador con HEAD y descripción definitivos.
+
+- Revisión de consumidores compartidos: docs/informe-reservas-ventas.md, docs/informe-llamadas.md y docs/informe-campanas.md documentan la dependencia de la tabla viva F2 y el límite de integridad tras fallo; el 503 específico de Interests no se aplica automáticamente a esos informes. No se alteran sus fórmulas, filtros, atribuciones ni exportaciones. La protección de estos consumidores mediante generaciones sigue pendiente.
+
+## 2026-10-28 — PR #92: núcleo F2/F5 por generaciones, revisión documental
+
+- Base contrastada `edf2d97b6e5624936ed5cfd12fa790889fea3df2` y diff de trabajo, incluidos nuevos Store, Reader, CLI, migración y pruebas. Se delegó la revisión documental; no se modificó código desde el agente documental. Las entradas anteriores que dicen «no existen generaciones» describen la fase previa.
+- Implementación: versiones inmutables, pertenencias copiadas por bloques, cuarentena individual cifrada, base certificada, F5 ligado exactamente al F2 candidato, puntero/watermark transaccionales y lectores fijados. Los detalles están en [arquitectura y operación](../salesforce-interest-generations.md). Cinco tablas nuevas; no se modifica ni certifica el estado legacy automáticamente.
+- Documentos modificados en esta revisión: `docs/salesforce-interest-generations.md`, `docs/reglas-negocio-leads.md`, `docs/informe-reservas-ventas.md`, `docs/informe-llamadas.md`, `docs/informe-campanas.md`, `docs/informe-comisiones.md`, `docs/informe-stock.md`, `docs/ai/SEO_ANALYTICS.md`, `docs/Documentacion_general_informes_y_contraste_salesforce.md`, `docs/matriz-trazabilidad-kpi.md`, `docs/decisiones-negocio-pendientes.md`, `docs/operaciones-produccion.md`, `docs/ai/PROJECT_CONTEXT.md`, `docs/ai/DECISIONS.md` y este handoff. La matriz registra cambio de fuente/versionado; no inventa fichas KPI completas.
+- Seguridad: evidencia cifrada, errores sanitizados, CLI sin endpoint público, permisos existentes conservados. No se consultaron Salesforce ni bases de datos desde la revisión documental. El backup posterior al incidente conserva la limitación de restauración no probada; no constituye fuente histórica. No hay resolución automática de conflictos ni borrado de evidencia.
+- Pruebas comunicadas por el agente principal durante la revisión: cuatro suites focales SQLite 71/71 y 361 aserciones; núcleo de 22 pruebas superado en MariaDB, revalidación MariaDB ampliada en curso; JS 2/2; carrera MariaDB de dos procesos con un ganador. No se declara suite global verde: fixtures y regresiones heredadas requieren cierre. Los resultados finales deben incorporarse por el agente principal antes del commit.
+- Rendimiento: ensayo sintético de 270.000 deltas con payload de 2 KB, versiones y pertenencias; lectura concurrente p95 superior a 11 s. No acredita frecuencia horaria ni SLO; faltan dimensiones/distribución reales e impacto completo de F5. Métricas y comandos reproducibles en `tests/performance/README.md`, mantenido por el agente principal.
+- Pendientes: regresión integral de consumidores, contratos de cargas compuestas fuera de Interests, cobertura inicial verificable de borrados/relaciones, rendimiento representativo y autorización operacional. La evidencia inicial consiste en comprobaciones humanas más digest, no certificación automática de origen. La cuarentena bloquea toda fila de conflicto, sin flujo implantado de resolución. No apto para producción ni encargo completo acreditado.
+- Acciones futuras: revisión de PR, ensayo de migración/rollback, validación independiente de primera candidata, despliegue aprobado y verificación de scheduler. No desplegar, ejecutar extracción real, restaurar backup o reactivar tareas desde esta revisión. Validador documental definitivo requiere HEAD que incluya estos cambios y cuerpo final de PR con `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`.
+- Comprobación documental de esta revisión: `git diff --check -- docs` sin errores; `validate_matrix` sobre árbol real devuelve cero errores. La suite documental inicial ejecutó 38 pruebas (seis fallos, una omitida): los seis fallos corresponden a la fixture que todavía no incorpora el destino nuevo `docs/salesforce-interest-generations.md`. Se comunicó al agente principal para actualizar fixture y repetir; no se modificaron tests desde el agente documental. Validador de PR final pendiente de HEAD/cuerpo definitivos.
+- Actualización del agente principal: MariaDB final focal 38 pruebas correctas/148 aserciones; SQLite focal 71 correctas/361 aserciones. El padre amplió el mapeo explícito `InterestGeneration` y su test e incorporó el runbook a la fixture documental. Se actualiza la guía para ese contrato de control; el agente documental no modificó scripts ni tests. La suite global y el validador final quedan a cargo del agente principal.
+- Revalidación documental tras corregir la fixture por el agente principal: 39 pruebas ejecutadas, correctas con una omisión; `git diff --check -- docs` sin errores. El validador por SHA no se ejecutó para el diff todavía sin commit: pendiente del HEAD y cuerpo de PR definitivos, sin sustituirlo por el chequeo de una revisión anterior.
+
+## 2026-10-28 — PR #92: revisión posterior del núcleo y regresiones
+
+- Referencias revisadas: `edcb357` (núcleo), `f84e97e` y `9c4dc2c` (adaptación de fixtures), más diff pendiente. `CampaignPublicationReadiness` mantiene `blocked` ante ausencia de base/evidencia; `InterestGenerationReader` traduce ausencia de runs F2/F5 a `InterestDatasetUnavailable`, sin adoptar legacy. Se conserva la fijación frente a intentos nuevos fallidos o en curso.
+- Las pruebas de consumidores y dependencias ahora materializan explícitamente generaciones sintéticas, renuevan el scope al representar un nuevo job y separan una publicación de un mero run. Estos helpers son exclusivos de tests. No autorizan copiar ni certificar datos vivos y no prueban por sí solos integridad global de materializaciones dependientes.
+- Infraestructura: mapa explícito de Store/Reader para los cuatro consumidores Interest; proveedor/cliente Salesforce/retención para los seis informes; precheck mensual para Interests/Reservas y SEO para Interests/Campañas. La CI crea `.env` vacío en su checkout efímero con configuración sintética del job para evitar avisos; no importa secretos ni configuración del usuario.
+- Documentación de esta revisión: `docs/ai/HANDOFF.md`, `docs/guia-mantenimiento-documental.md`, `docs/reglas-negocio-leads.md`, `docs/informe-campanas.md`, `docs/salesforce-interest-generations.md`. Matriz sin nueva fórmula o fuente: ya registra el cambio de versionado; estos ajustes precisan disponibilidad y fixtures. No hay migración adicional ni configuración productiva en este ajuste.
+- Evidencia comunicada por el agente principal: build Vite correcto, 40 pruebas documentales con una omitida, validador de 69 rutas correcto y CI documental verde. La suite funcional pasó por ejecuciones con 289, 100 y 31 fallos; la ejecución completa actual en Linux efímero sigue pendiente de resultado. No se declara verde ni se extrapola el éxito documental al funcional. El padre añadirá el resultado exacto final y SHA.
+- Permanecen los bloqueos: p95 concurrente superior a 11 segundos sin SLO representativo acreditado, tokens de carga multipetición fuera de Interests sin garantía completa y materializaciones dependientes no certificadas conjuntamente. No apto para producción; no despliegue, sincronización real, restauración ni reactivación de scheduler en esta tarea.
+- Comprobación propia posterior: validador documental con base `2e326b5f8df6cfc4fec7073f709a523c85f98668`, SHA completo resuelto de `9c4dc2c` y cuerpo local de PR: PASS, 79 rutas. `git diff --check -- docs` correcto. El diff posterior todavía sin commit requiere repetir el validador con el nuevo SHA definitivo.
+
+## 2026-10-28 — PR #92: protección de apropiación concurrente
+
+- Revisión documental sobre `f3c3a473ffc0c897e7c2a9311d71ec55bfb403c2`, comparada con el alcance acumulado desde `edf2d97`. La asociación F2/candidata entra en el `try`; solo tras éxito de `bindRun` un error puede marcar esa candidata fallida. Un segundo extractor rechazado falla su propio run sin cambiar propietario ni estado del candidato existente y sin consulta remota. Prueba nueva en `InterestGenerationTest`.
+- Archivos documentales de este ajuste: `docs/salesforce-interest-generations.md` y este handoff. No cambian KPIs, fuente, filtros, esquema, configuración ni permisos por esta corrección de apropiación. La matriz ya registra el contrato de generaciones del diff acumulado; no se añaden fichas o fórmulas nuevas.
+- Resultado local comunicado por el agente principal: 1.523 pruebas correctas y nueve fallidas en la suite completa; seis por ZIP no disponible, una por `vite.config` ausente en la copia efímera y dos fixtures corregidas posteriormente. Es el resultado observado, no una suite verde ni una revalidación de las correcciones. Nueva CI pendiente y ejecución MariaDB de 39 pruebas en curso; el padre registrará resultados definitivos.
+- Continúan los límites de carga representativa, p95 concurrente superior a 11 s, consumidores multipetición fuera de Interests y certificación conjunta de materializaciones. No apto para producción; sin despliegue, acceso productivo, cambios de scheduler o recuperación de datos ejecutada.
+
+## 2026-10-28 — PR #92: verificación de la implementación por generaciones
+
+- Núcleo implementado: versiones inmutables, membresías por candidata, conflictos cifrados, alineación F2/F5 y publicación breve mediante puntero bloqueado con comparación de base. Una migración agrega cinco tablas; no importa ni certifica legacy. No hay nuevas dependencias runtime.
+- MariaDB 11.8 local aislada: `pest tests/Feature/InterestGenerationTest.php tests/Feature/SalesforceInterestSyncServiceTest.php --compact`, **39 passed, 152 assertions**. La advertencia final corresponde únicamente a la caché de Pest en vendor montado de solo lectura.
+- SQLite local: repetición de núcleo, Llamadas, reconciliación inversa y diseño, **50 passed, 269 assertions**. Suite completa previa: 1.523 passed y nueve fallos; seis por extensión ZIP ausente, uno por archivo no copiado y dos regresiones de fixtures posteriormente corregidas. CI comprueba el entorno completo; no se confunden estos resultados.
+- Frontend: `node --test tests/js/leads-unavailable.test.mjs`, **2 passed**; build Vite local correcto (12,21 s). Documentación: `python -m unittest discover -s tests/documentation`, 40 pruebas, **39 correctas y una omitida** por capacidad de symlinks de Windows. Validador documental sobre 239aed3: PASS, 87 rutas. Pint y `git diff --check` correctos en cambios revisados.
+- Rendimiento: ensayo sintético MariaDB de 270.000 modificaciones y carrera de publicación con dos procesos. Un ganador y un rechazo. Métricas, límites y comandos reproducibles en `tests/performance/README.md`; p95 concurrente >11 s, frecuencia horaria no acreditada.
+- Bloqueos esenciales: carga representativa con tamaño/distribución reales y F5, EXPLAIN/SLO/binlog/retención; coherencia entre múltiples peticiones fuera de Interests y linaje conjunto de materializaciones dependientes. La suite funcional no sustituye esas garantías. La implementación sigue en borrador y no se declara apta para producción ni íntegramente finalizada.
+- Operación pendiente: revisión de PR, ensayo de migración y restauración en entorno autorizado separado, confirmar scheduler, inicialización vacía y reconciliación independiente antes de primera certificación. El backup posterior a #5729 no prueba estado histórico; no se ha accedido a él. Despliegue y rollback detallados en `docs/salesforce-interest-generations.md`. Ningún comando productivo ejecutado.
+- Seguridad: sin endpoints de publicación; evidencia cifrada y mensajes sanitizados, permisos existentes conservados, sin resolución automática de asociaciones ni limpieza de generaciones. El rollback de esquema rechaza generaciones existentes.
+- Revisión documental delegada a `report_docs_maintainer` y contrastada por el agente principal. Mensaje de commit del núcleo: `feat: isolate Salesforce Interests F2/F5 generations`.
+
+### Archivos de esta iteración (desde edf2d97)
+- `.github/workflows/ci.yml`
+- `app/Console/Commands/DebugCampaignAttributionCommand.php`
+- `app/Console/Commands/ManageInterestGenerationCommand.php`
+- `app/Console/Commands/PruneTransversalDataCommand.php`
+- `app/Console/Commands/RefreshMonthlyCommercialReportCommand.php`
+- `app/Console/Commands/ReprocessCallsClassificationCommand.php`
+- `app/Console/Commands/SalesforceSyncInterestActivitiesCommand.php`
+- `app/Console/Commands/SalesforceSyncInterestsCommand.php`
+- `app/Providers/AppServiceProvider.php`
+- `app/Services/Campaigns/CampaignAttributionBuilderService.php`
+- `app/Services/Campaigns/CampaignDashboardDatasetService.php`
+- `app/Services/Campaigns/CampaignPublicationReadiness.php`
+- `app/Services/Reports/Calls/SalesforceCallSyncService.php`
+- `app/Services/Reports/Leads/SalesforceInterestDashboardDatasetService.php`
+- `app/Services/Reports/ReservationsSales/CommercialPerformanceAuditService.php`
+- `app/Services/Reports/ReservationsSales/CommercialPerformanceDatasetService.php`
+- `app/Services/Reports/ReservationsSales/OpportunityInterestAttributionService.php`
+- `app/Services/Salesforce/InterestGenerationReader.php`
+- `app/Services/Salesforce/InterestGenerationStore.php`
+- `app/Services/Salesforce/SalesforceClient.php`
+- `app/Services/Salesforce/SalesforceInterestActivitySyncService.php`
+- `app/Services/Salesforce/SalesforceInterestChunkPersister.php`
+- `app/Services/Salesforce/SalesforceInterestLeadDependencySyncService.php`
+- `app/Services/Salesforce/SalesforceInterestOpportunityDependencySyncService.php`
+- `app/Services/Salesforce/SalesforceInterestOpportunityReconciliationService.php`
+- `app/Services/Salesforce/SalesforceInterestReconciliationService.php`
+- `app/Services/Salesforce/SalesforceInterestReportingPipelineService.php`
+- `app/Services/Salesforce/SalesforceInterestSyncService.php`
+- `app/Services/Salesforce/SalesforceOpportunityInterestReconciliationService.php`
+- `app/Services/SeoAnalytics/SalesforceOrganicInterestProjectionService.php`
+- `app/Services/SeoAnalytics/SeoIntegrationReadinessService.php`
+- `app/Services/SeoAnalytics/SeoSourceStatusDatasetService.php`
+- `database/migrations/2026_10_28_120000_create_salesforce_interest_generations.php`
+- `docs/Documentacion_general_informes_y_contraste_salesforce.md`
+- `docs/ai/DECISIONS.md`
+- `docs/ai/HANDOFF.md`
+- `docs/ai/PROJECT_CONTEXT.md`
+- `docs/ai/SEO_ANALYTICS.md`
+- `docs/decisiones-negocio-pendientes.md`
+- `docs/guia-mantenimiento-documental.md`
+- `docs/informe-campanas.md`
+- `docs/informe-comisiones.md`
+- `docs/informe-llamadas.md`
+- `docs/informe-reservas-ventas.md`
+- `docs/informe-stock.md`
+- `docs/matriz-trazabilidad-kpi.md`
+- `docs/operaciones-produccion.md`
+- `docs/reglas-negocio-leads.md`
+- `docs/salesforce-interest-generations.md`
+- `resources/js/reports/leads-dashboard.js`
+- `scripts/check_documentation_integrity.py`
+- `tests/Concerns/ProvidesRot4CampaignContext.php`
+- `tests/Feature/CallsReprocessClassificationCommandTest.php`
+- `tests/Feature/CampaignAttributionFieldMigrationTest.php`
+- `tests/Feature/CampaignCommandsTest.php`
+- `tests/Feature/CampaignDashboardTest.php`
+- `tests/Feature/CampaignPublicationReadinessTest.php`
+- `tests/Feature/Concerns/MirrorsLeadFixturesToInterestReporting.php`
+- `tests/Feature/ExecutiveDailyDatasetTest.php`
+- `tests/Feature/ExecutiveSummaryPageTest.php`
+- `tests/Feature/InterestGenerationTest.php`
+- `tests/Feature/MonthlyCommercialInterestTimezoneTest.php`
+- `tests/Feature/MonthlyCommercialReportBuilderDataTest.php`
+- `tests/Feature/ReservationsSalesCohortAndDuplicateQualityTest.php`
+- `tests/Feature/ReservationsSalesCommercialPerformanceTest.php`
+- `tests/Feature/ReservationsSalesInterestAttributionTest.php`
+- `tests/Feature/SalesforceCallSyncServiceTest.php`
+- `tests/Feature/SalesforceInterestActivitySyncTest.php`
+- `tests/Feature/SalesforceInterestDashboardDatasetTest.php`
+- `tests/Feature/SalesforceInterestLeadDependencySyncTest.php`
+- `tests/Feature/SalesforceInterestOpportunityDependencySyncTest.php`
+- `tests/Feature/SalesforceInterestOpportunityReconciliationTest.php`
+- `tests/Feature/SalesforceInterestReconciliationTest.php`
+- `tests/Feature/SalesforceInterestSyncServiceTest.php`
+- `tests/Feature/SalesforceOpportunityInterestReconciliationTest.php`
+- `tests/Feature/SeoSalesforceOrganicSyncTest.php`
+- `tests/Feature/SeoSyncCommandsTest.php`
+- `tests/Feature/TransversalRetentionCommandTest.php`
+- `tests/Support/InterestGenerationFixture.php`
+- `tests/documentation/test_check_documentation_integrity.py`
+- `tests/js/leads-unavailable.test.mjs`
+- `tests/performance/README.md`
+- `tests/performance/interest-generation-publication-race.php`
+- `tests/performance/interest-generations.php`
+
+### CI confirmada
+
+- SHA de código 239aed3e343538e8edac8db97aad74de1ab75858: CI #210 (40687478965) y Documentation integrity #26 (40687479070) completadas con success. Incluye 1.533 pruebas PHP correctas (13.989 aserciones), Composer validate/audit, Pint sobre 63 archivos, build frontend y whitespace. El commit documental posterior registra esta evidencia sin cambiar código.
+## 2026-10-28 — endurecimiento de certificación inicial
+
+- `InterestGenerationStore::certify` compara la evidencia inicial con el manifiesto calculado de la candidata (filas, borrados y SHA-256) y exige el `run_id` y corte F5 exactos. Los indicadores booleanos ya no bastan.
+- Se actualizaron el comando operativo, fixtures de rendimiento y pruebas de sincronización. La prueba de regresión rechaza un JSON con checks favorables pero sin manifiesto/F5 verificables.
+- Commit: `3e4e2e7ddf0ed527fa6b8f538952c47f8b0ac9a1`. CI #213 y documentación #31 están en curso; documentación #30 ya pasó.
+- Siguen pendientes para producción: EXPLAIN y ensayo de rendimiento con distribución real, SLO, F5 completo, y contrato de lineage para materializaciones fuera de Interests. No se ejecutó producción.
+## 2026-10-28 — evidencia independiente de primera generación
+
+- `InterestGenerationStore::manifest` ahora expone `identifiers_sha256`, separado del hash interno de la candidata.
+- La certificación inicial exige evidencia externa identificable con huella de identidades, filas, borrados y huellas de relaciones/cobertura. Rechaza `candidate_manifest` y `legacy_table`; los checks booleanos no son suficientes.
+- Se actualizaron fixtures sintéticas, benchmark y procedimiento operativo. Commit de código: `1b37f266845c6ff8de771e4755c6c119074d108c1`.
+- El lineage de materializaciones dependientes fuera de Interests sigue siendo una barrera explícita para producción; no se certifica por inferencia.
+- Se añadió `tests/performance/interest-generation-explain.sql` con planes MariaDB reproducibles para lectura paginada, ID y origen. La captura sobre volumen/distribución real sigue pendiente y es requisito antes de producción.
+- Se añadió lineage explícito `interest_generation_id` a `seo_salesforce_organic_interest_daily_metrics`; la proyección SEO lo fija junto con run y cutoff. Filas históricas NULL requieren reconstrucción y no certifican una generación.
+- EXPLAIN MariaDB aislado ejecutado: lectura paginada usa PRIMARY de versiones y `salesforce_interest_members_version_id_foreign` con `Using index`; muestras por ID/origen resultaron `Impossible WHERE` por no existir esos valores. No se añade índice especulativo; se requiere repetir con distribución real.
+- Corrección de CI de esta iteración: la migración SEO usa los namespaces Laravel completos (`Illuminate\\Database\\Migrations\\Migration`, `Blueprint`, `Schema`). El validador también exigió `Docs-Outside-*` para el único modelo funcional sin mapa automático; el cuerpo de la PR ya lo declara con JSON válido.
+- Corrección puntual posterior: `manifest()` captura `$identityHash` en el callback `chunkById()`, manteniendo el hash incremental determinista de ID, contenido y borrado. No cambia el contrato de certificación ni el esquema.
+- Optimización puntual: `InterestGenerationStore::rows()` parte ahora de memberships y usa `sf_im_version_idx` (`generation_id, version_id`), conservando el join a versiones inmutables. El plan aislado resultante es `Using where; Using index` + `eq_ref`; la base no tenía filas para medir latencias comparables.
+- Corrección de rendimiento: MySQL usa `STRAIGHT_JOIN` desde memberships hacia versiones para impedir que el optimizador recorra todas las versiones; drivers no-MySQL mantienen el builder portable. CI #223 fallaba solo porque la prueba de Llamadas buscaba el texto del join antiguo; ahora cuenta la tabla de memberships sin depender de la sintaxis.

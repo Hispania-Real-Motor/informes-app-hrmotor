@@ -3,13 +3,11 @@
 namespace App\Services\Reports\ReservationsSales;
 
 use App\Models\CommercialPerformanceMonthlyTarget;
-use App\Models\ReportSyncRun;
-use App\Models\SalesforceInterest;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceOpportunityHistorySyncInterval;
 use App\Models\SalesforceOpportunityStageTransition;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
-use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -260,7 +258,7 @@ class CommercialPerformanceDatasetService
         CarbonImmutable $end,
         array $rosterContext,
     ): void {
-        SalesforceInterest::query()
+        app(InterestGenerationReader::class)->eloquent()
             ->where('is_deleted', false)
             ->where('functional_created_at', '>=', $start->utc())
             ->where('functional_created_at', '<', $end->utc())
@@ -1187,17 +1185,14 @@ class CommercialPerformanceDatasetService
         return [
             'reservas_ventas_dashboard' => (int) Cache::get('reservas_ventas_dashboard_cache_version', 1),
             'commercial_performance' => (int) Cache::get('commercial_performance_cache_version', 1),
+            'interest_generation' => app(InterestGenerationReader::class)->generation()->id,
         ];
     }
 
     /** @return array{id:int,cutoff:string} */
     public function interestSourceContext(): array
     {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        $run = app(InterestGenerationReader::class)->f2();
 
         if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
             throw new \RuntimeException('El snapshot F2 de Interests no está disponible para Rendimiento comercial.');

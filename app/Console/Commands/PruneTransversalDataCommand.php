@@ -17,7 +17,7 @@ class PruneTransversalDataCommand extends Command
         'salesforce_vehicles',
         'salesforce_logistics',
         'campaign_platform_identifiers',
-        'salesforce_interests',
+        // Legacy Interests remain frozen as incident evidence; generations have no automatic retention.
     ];
 
     protected $signature = 'reports:prune-transversal-data
@@ -60,6 +60,7 @@ class PruneTransversalDataCommand extends Command
 
         $metrics['sync_runs.completed'] = $this->deleteInChunks(
             DB::table('report_sync_runs')
+                ->whereNotIn('id', DB::table('salesforce_interest_generations')->select('interest_run_id')->whereNotNull('interest_run_id'))
                 ->where('status', 'completed')
                 ->where('completed_at', '<', $now->copy()->subMonthNoOverflow()),
             'id',
@@ -68,6 +69,7 @@ class PruneTransversalDataCommand extends Command
         );
         $metrics['sync_runs.failed'] = $this->deleteInChunks(
             DB::table('report_sync_runs')
+                ->whereNotIn('id', DB::table('salesforce_interest_generations')->select('interest_run_id')->whereNotNull('interest_run_id'))
                 ->whereIn('status', ['failed', 'unverified'])
                 ->where('completed_at', '<', $now->copy()->subDays(14)),
             'id',

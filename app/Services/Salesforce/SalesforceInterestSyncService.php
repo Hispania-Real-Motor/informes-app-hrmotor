@@ -3,7 +3,6 @@
 namespace App\Services\Salesforce;
 
 use App\Models\ReportSyncRun;
-use App\Models\SalesforceInterest;
 use App\Models\SalesforceInterestSyncError;
 use App\Services\Reports\ReportSyncRunService;
 use App\Support\IntegrationErrorSanitizer;
@@ -42,16 +41,21 @@ final class SalesforceInterestSyncService
         string $mode = self::MODE_INCREMENTAL,
         ?CarbonInterface $cutoff = null,
         ?int $overlapSeconds = null,
+        ?int $generationId = null,
     ): array {
         if (! in_array($mode, [self::MODE_FULL, self::MODE_INCREMENTAL], true)) {
             throw new InvalidArgumentException('Interest sync mode must be full or incremental.');
         }
 
-        $cutoff = CarbonImmutable::parse($cutoff ?? now(self::UTC))->utc()->startOfSecond();
+        $cutoff = CarbonImmutable::parse($cutoff ?? now(self::UTC)->subMinutes(2))->utc()->startOfMinute();
         $overlapSeconds ??= (int) config('salesforce.interest_sync_overlap_seconds', 300);
 
         if ($overlapSeconds < 0) {
             throw new InvalidArgumentException('Interest sync overlap must be greater than or equal to zero.');
+        }
+        $generations = app(InterestGenerationStore::class);
+        if ($mode === self::MODE_FULL && $generationId === null) {
+            throw new RuntimeException('Full extraction requires an explicitly created isolated initial candidate.');
         }
         $watermark = $mode === self::MODE_INCREMENTAL ? $this->lastCompletedCutoff() : null;
 
@@ -59,6 +63,12 @@ final class SalesforceInterestSyncService
             throw new RuntimeException('Interest incremental sync requires a completed watermark. Run full mode first.');
         }
 
+        $generationId ??= $generations->begin($cutoff);
+        $candidate = $generations->generation($generationId);
+        if (! CarbonImmutable::parse($candidate->cutoff_at)->equalTo($cutoff)
+            || ($mode === self::MODE_FULL && $candidate->base_generation_id !== null)) {
+            throw new RuntimeException('Extraction mode and cutoff must match the isolated candidate.');
+        }
         $windowStart = $watermark?->subSeconds($overlapSeconds);
         $run = $this->syncRuns->start(
             self::DATASET,
@@ -69,13 +79,26 @@ final class SalesforceInterestSyncService
         );
         $stats = $this->emptyStats($mode, $windowStart, $cutoff, $overlapSeconds);
 
+        $stats['generation_id'] = $generationId;
+        $stats['conflicts'] = 0;
+        $bound = false;
+
         try {
+            $generations->bindRun($generationId, $run);
+            $bound = true;
             $this->syncPages($run, $this->activeSoql($windowStart, $cutoff), false, 'active', $stats);
             $this->syncPages($run, $this->deletedSoql($windowStart, $cutoff), true, 'deleted', $stats);
+            if ($windowStart !== null) {
+                $this->syncDeletionLog($generationId, $windowStart, $cutoff, $stats);
+            }
+            $generations->finishF2($generationId);
             $this->syncRuns->complete($run, $cutoff, $stats);
 
-            return ['run' => $run->fresh(), 'stats' => $stats];
+            return ['run' => $run->fresh(), 'stats' => $stats, 'generation_id' => $generationId];
         } catch (Throwable $exception) {
+            if ($bound) {
+                $generations->fail($generationId);
+            }
             $stats['errors'] = SalesforceInterestSyncError::query()
                 ->where('report_sync_run_id', $run->id)
                 ->count();
@@ -198,6 +221,7 @@ SOQL;
             'account_salesforce_id' => data_get($record, 'IN_Account__c'),
             'migration_origin_lead_id' => data_get($record, 'IN_Lead_Origen_Migracion__c'),
             'salesforce_created_at' => $this->parseDateTime(data_get($record, 'CreatedDate')),
+            'system_modstamp_at' => $this->parseDateTime(data_get($record, 'SystemModstamp')),
             'salesforce_last_modified_at' => $this->parseDateTime(data_get($record, 'LastModifiedDate')),
             'origin_created_at' => $this->parseDateTime(data_get($record, 'IN_Fecha_Creacion_Origen__c')),
             'owner_salesforce_id' => data_get($record, 'OwnerId'),
@@ -232,15 +256,16 @@ SOQL;
     private function persistChunk(ReportSyncRun $run, array $rows, string $phase, array &$stats): void
     {
         $reactivatedIds = $phase === 'active'
-            ? SalesforceInterest::query()
-                ->whereIn('salesforce_id', array_column($rows, 'salesforce_id'))
+            ? app(InterestGenerationStore::class)->rows($stats['generation_id'])
+                ->whereIn('version.salesforce_id', array_column($rows, 'salesforce_id'))
                 ->where('is_deleted', true)
-                ->pluck('salesforce_id')
+                ->pluck('version.salesforce_id')
                 ->all()
             : [];
 
         try {
-            $result = $this->chunkPersister->persist($rows);
+            $result = $this->chunkPersister->forGeneration($stats['generation_id'])->persist($rows);
+            $stats['conflicts'] += $result['conflicts'];
         } catch (SalesforceInterestPersistenceConflict $conflict) {
             foreach ($conflict->salesforceIds as $salesforceId) {
                 $this->recordPersistenceError($run, $salesforceId, $phase.'_persist', $conflict);
@@ -249,20 +274,6 @@ SOQL;
             throw new RuntimeException('Interest chunk contains conflicting migration origins.');
         } catch (Throwable $bulkException) {
             $this->recordPersistenceError($run, null, $phase.'_persist_bulk', $bulkException);
-
-            foreach ($rows as $row) {
-                try {
-                    $this->chunkPersister->persist([$row]);
-                } catch (Throwable $rowException) {
-                    $this->recordPersistenceError(
-                        $run,
-                        (string) $row['salesforce_id'],
-                        $phase.'_persist',
-                        $rowException,
-                    );
-                }
-            }
-
             throw new RuntimeException('Interest chunk bulk persistence failed.');
         }
 
@@ -305,15 +316,50 @@ SOQL;
         ]);
     }
 
+    private function syncDeletionLog(int $generationId, CarbonImmutable $start, CarbonImmutable $cutoff, array &$stats): void
+    {
+        $start = $start->startOfMinute();
+        $response = $this->client->getDeleted('Interes__c', $start, $cutoff);
+        if (CarbonImmutable::parse($response['earliestDateAvailable'])->gt($start)
+            || CarbonImmutable::parse($response['latestDateCovered'])->lt($cutoff)) {
+            throw new RuntimeException('Salesforce deletion history does not cover the candidate window.');
+        }
+        $store = app(InterestGenerationStore::class);
+        $stats['deletion_log_records'] = count($response['deletedRecords']);
+        foreach (array_chunk($response['deletedRecords'], self::PERSIST_CHUNK_SIZE) as $chunk) {
+            $dates = [];
+            foreach ($chunk as $record) {
+                if (! is_array($record) || ! preg_match('/^[A-Za-z0-9]{18}$/', $record['id'] ?? '')
+                    || ! is_string($record['deletedDate'] ?? null)) {
+                    throw new RuntimeException('Salesforce deletion evidence is malformed.');
+                }
+                $deletedAt = CarbonImmutable::parse($record['deletedDate'])->utc();
+                if ($deletedAt->lt($start) || $deletedAt->gt($cutoff)) {
+                    throw new RuntimeException('Salesforce deletion evidence is outside the covered window.');
+                }
+                $dates[$record['id']] = $deletedAt;
+            }
+            $rows = [];
+            foreach ($store->rows($generationId)->whereIn('version.salesforce_id', array_keys($dates))->get() as $current) {
+                $deletedAt = $dates[$current->salesforce_id];
+                if ($current->system_modstamp_at !== null && CarbonImmutable::parse($current->system_modstamp_at)->gt($deletedAt)) {
+                    continue; // A later observed reactivation wins over an older deletion event.
+                }
+                $row = (array) $current;
+                unset($row['id'], $row['generation_id'], $row['batch_token'], $row['content_hash'], $row['created_at'], $row['updated_at']);
+                $rows[] = [...$row, 'is_deleted' => true, 'salesforce_deleted_at' => $deletedAt,
+                    'system_modstamp_at' => $deletedAt, 'deletion_detection_source' => 'get_deleted'];
+            }
+            if ($rows !== []) {
+                $store->persist($generationId, $rows);
+            }
+        }
+        $stats['deletion_log_covered_through'] = $cutoff->toIso8601String();
+    }
+
     private function lastCompletedCutoff(): ?CarbonImmutable
     {
-        $cutoff = ReportSyncRun::query()
-            ->where('dataset', self::DATASET)
-            ->where('source', self::SOURCE)
-            ->where('status', 'completed')
-            ->whereNotNull('source_cutoff_at')
-            ->orderByDesc('source_cutoff_at')
-            ->value('source_cutoff_at');
+        $cutoff = app(InterestGenerationStore::class)->published()?->cutoff_at;
 
         return $cutoff === null ? null : CarbonImmutable::parse($cutoff)->utc();
     }

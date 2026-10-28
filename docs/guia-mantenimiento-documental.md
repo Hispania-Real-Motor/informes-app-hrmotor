@@ -223,3 +223,26 @@ las fórmulas o universos de todos ellos. La matriz solo se actualiza cuando la
 evidencia permita revisar trazabilidad o contratos KPI; una nota de no impacto
 debe explicar concretamente las reglas preservadas. La prueba del validador
 debe mantener este alcance para evitar que el comando vuelva a quedar sin mapa.
+
+### Generaciones de Interests (PR #92)
+
+El prefijo `app/Services/Salesforce/InterestGeneration` se mapea explícitamente
+al conjunto Interests, Reservas/Ventas, Llamadas y Campañas. Store y Reader
+modifican persistencia, publicación y fuente compartida; su nombre no debe hacer
+que se omita el impacto documental. La prueba del mapa mantiene ese alcance.
+La fixture documental incluye `docs/salesforce-interest-generations.md`, destino
+enlazado por la matriz de trazabilidad. Las verificaciones estructurales no
+certifican la consistencia del pipeline ni su rendimiento; requieren pruebas
+funcionales y revisión de los límites de certificación del runbook.
+
+El proveedor de servicios, cliente Salesforce y retención transversal se mapean
+conservadoramente a los seis informes; el prechequeo mensual a Interests y
+Reservas/Ventas, y las proyecciones SEO a Interests y Campañas. Sus cambios
+compartidos requieren revisión documental aunque no modifiquen una fórmula.
+
+La CI principal crea un `.env` vacío únicamente en el checkout efímero de pruebas,
+antes de migrar la SQLite sintética; la configuración de test llega de las
+variables del job. Este archivo evita avisos de ausencia de `.env`, no importa
+configuración local ni secretos de producción. El cambio del workflow exige
+revisión conjunta de guía y pruebas documentales por pertenecer a los controles
+críticos; no exime de ejecutar la suite funcional completa.

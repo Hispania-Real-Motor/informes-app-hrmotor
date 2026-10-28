@@ -794,3 +794,17 @@ La asignación administrativa vive en commercial_commission_approvers (seis fila
 Una tabla independiente `campaign_current_statuses` mantiene estado publicitario por plataforma/cuenta/Campaign ID textual. `CampaignCurrentStatusService` comparte clientes Meta/Google, reutiliza `report_sync_runs` para auditoría por cuenta y el catálogo operacional para reservas/ejecuciones. `campaigns-sync-current-status` queda deshabilitada salvo activación explícita de `CAMPAIGN_CURRENT_STATUS_ENABLED`.
 
 La metadata `current_status` se une por lote después de la caché económica en summary.campaigns/items; no entra en CSV ni sustituye campos históricos. TTL de 24 horas con degradación conservadora ante intentos posteriores o códigos desconocidos. La sincronización escribe solo inventario operativo y su auditoría; métricas, atribuciones y cierres están aislados. Los detalles y límites están en [informe](../informe-campanas.md) y [runbook](../operaciones-produccion.md). Los formateadores numéricos de Campañas se agrupan explícitamente, sin modificar convenciones de otros informes.
+
+## 2026-10-28 — núcleo de generaciones Interests (PR #92)
+
+La fuente Interest se almacena en versiones inmutables compartidas, pertenencias
+por generación y puntero único publicado. `InterestGenerationStore` implementa
+preparación por bloques, deltas, cuarentena cifrada, certificación F2/F5 y
+publicación transaccional con comparación de base. `InterestGenerationReader`
+es scoped y fija las lecturas; no hay importación automática de la tabla legacy.
+El watermark certificado avanza solo al publicar. F5 se asocia al candidato
+exacto y conserva detalle de generaciones anteriores. La inicialización usa CLI
+con autorización de lectura, revisión independiente y aprobación explícita.
+Esta arquitectura está implementada en revisión, no desplegada ni habilitada
+para producción; subsisten bloqueos de rendimiento/regresión/conciliación.
+[Esquema, límites y procedimientos](../salesforce-interest-generations.md).

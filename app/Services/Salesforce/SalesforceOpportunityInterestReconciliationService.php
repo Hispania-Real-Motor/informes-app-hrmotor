@@ -222,7 +222,7 @@ class SalesforceOpportunityInterestReconciliationService
     /** @param list<string> $interestIds @return Collection<string, SalesforceInterest> */
     private function interestPresence(array $interestIds): Collection
     {
-        return SalesforceInterest::query()
+        return app(InterestGenerationReader::class)->eloquent()
             ->select(['salesforce_id', 'is_deleted'])
             ->whereIn('salesforce_id', array_values(array_unique($interestIds)))
             ->get()
@@ -371,11 +371,7 @@ class SalesforceOpportunityInterestReconciliationService
     private function latestStableInterestRun(
         SalesforceInterestOpportunityReconciliationRun $inverseRun,
     ): ReportSyncRun {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->latest('id')
-            ->first();
+        $run = app(InterestGenerationReader::class)->f2();
 
         if ($run === null
             || $run->status !== 'completed'

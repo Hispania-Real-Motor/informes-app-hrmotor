@@ -227,3 +227,13 @@ Archivos principales:
 - `app/Services/Reports/Stock/StockSaleValidityService.php`;
 - `app/Services/Reports/Stock/StockCatalogNormalizer.php`;
 - `app/Services/Reports/Stock/SalesforceStockCatalogSyncService.php`.
+
+## PR #92 — alcance compartido de reconciliación Interest
+
+La presencia Interest usada por `SalesforceOpportunityInterestReconciliationService`
+se fija a la generación publicada. El cambio pertenece a evidencia compartida de
+relaciones Opportunity; no modifica en este diff cálculos, pestañas, filtros,
+antigüedad ni exportaciones de Stock. El mapeo conservador incluye Stock por su
+fuente Opportunity compartida. No se declara por ello una certificación nueva de
+KPIs o snapshots de Stock.
+[Contrato y pendientes de regresión](salesforce-interest-generations.md).

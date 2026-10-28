@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\Feature\Concerns\CreatesOpportunityDashboardRows;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class ExecutiveSummaryPageTest extends TestCase
@@ -91,7 +92,7 @@ class ExecutiveSummaryPageTest extends TestCase
 
         $this->assertSame(1, $withLegacyLead['metrics']['leads']['current']);
         $this->assertDatabaseMissing('report_sync_runs', ['dataset' => 'leads_dashboard']);
-        $this->assertDatabaseCount('salesforce_interest_activity_runs', 0);
+        $this->assertDatabaseCount('salesforce_interest_activity_runs', 1); // The certified fixture's F5; no reader-created run.
     }
 
     public function test_summary_html_does_not_expose_pii_salesforce_ids_or_sync_run_ids(): void
@@ -147,7 +148,7 @@ class ExecutiveSummaryPageTest extends TestCase
 
     private function coverInterestSource(string $start, string $cutoff): void
     {
-        ReportSyncRun::query()->create([
+        $run = ReportSyncRun::query()->create([
             'dataset' => SalesforceInterestSyncService::DATASET,
             'source' => SalesforceInterestSyncService::SOURCE,
             'status' => 'completed',
@@ -159,6 +160,8 @@ class ExecutiveSummaryPageTest extends TestCase
             'timezone' => 'Europe/Madrid',
             'stats' => [],
         ]);
+        InterestGenerationFixture::published($run);
+        InterestGenerationFixture::listenForNewRows();
     }
 
     private function coverOpportunitySource(

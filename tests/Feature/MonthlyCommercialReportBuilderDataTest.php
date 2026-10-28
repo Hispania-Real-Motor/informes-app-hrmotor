@@ -11,6 +11,7 @@ use App\Services\Reports\MonthlyCommercial\MonthlyCommercialReportBuilder;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class MonthlyCommercialReportBuilderDataTest extends TestCase
@@ -41,6 +42,8 @@ class MonthlyCommercialReportBuilderDataTest extends TestCase
             'stats' => [],
         ]);
 
+        InterestGenerationFixture::published($f2, $f5);
+        InterestGenerationFixture::listenForNewRows();
         SalesforceUser::create([
             'salesforce_id' => '005-owner',
             'name' => 'Comercial Demo',

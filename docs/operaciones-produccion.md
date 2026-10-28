@@ -807,6 +807,44 @@ históricos, NO instrucciones de repetición para este correctivo:
 El usuario confirmó que ambos dashboards cargaban resultados. No se reejecutan
 cargas completas ni snapshots en este lote. Se mantiene el pipeline serial F2/F5.
 
+### Investigación pendiente del incidente Interests F2 #5729
+
+El operador comunicó que #5729 falló tras registrar 268.627 inserciones y
+753 actualizaciones, con cuatro conflictos de origen de migración contra
+propietarios locales. Esos contadores no identifican todas las filas afectadas
+ni sus valores anteriores. El backup localizado del 27/10/2026 contiene cero
+bytes descomprimidos y no es restaurable; no consta otra copia anterior
+verificada. El operador comunicó después una copia completa del estado actual,
+con gzip y checksum correctos y 105 tablas; no se ha probado su restauración y
+la copia es posterior al fallo #5729. No acredita el estado anterior ni sirve
+por sí sola para inicializar una generación certificada. El run completado
+#5722 no demuestra que la tabla viva conserve su estado. No hay base
+certificada para esta recuperación hasta verificar una.
+
+La investigación debe realizarla personal autorizado, con evidencias
+restringidas y resultados compartibles agregados sin identificadores sensibles:
+
+1. Comprobar el estado efectivo del scheduler en el momento del despliegue;
+   se comunicó que fue detenido manualmente, pero ese estado puede cambiar.
+2. Preservar los runs, errores y una copia verificable del estado actual para
+   investigación, sin modificar #5729 ni sus asociaciones.
+3. Inventariar mediante lecturas los registros y versiones afectados en la
+   medida que permitan las evidencias disponibles. Si aparece otra copia,
+   comprobar su integridad, cobertura y restauración en aislamiento antes de
+   usarla como referencia; cotejar también F5 y las dependencias del informe.
+4. Contrastar individualmente los cuatro conflictos y sus propietarios con
+   evidencia de origen en un canal restringido. Registrar la decisión y su
+   autorización; no liberar ni reasignar orígenes por inferencia.
+5. Evaluar distribución temporal de modificaciones y evidencia disponible para
+   explicar el volumen consultado; el contador por sí solo no prueba una
+   actualización masiva legítima.
+
+Una reconstrucción futura aislada desde Salesforce requeriría mecanismos,
+validación de cobertura, borrados, unicidad, relaciones y alineación F5 antes
+de publicar. Esta capacidad no está implementada en este cambio y una extracción
+actual no garantiza reproducir una fotografía histórica. La investigación no
+autoriza sincronizaciones reales, restauraciones ni reactivación del scheduler.
+
 ### Provisión y recuperación exclusiva de OPS
 
 Las etiquetas Docker referían /srv/production/laravel/app-informes/docker-compose.production.yml,
@@ -1440,3 +1478,16 @@ Estos recuentos no replican la deduplicación, los universos ni los filtros del
 dataset: solo ubican un posible tramo de pérdida y se contrastan con builder
 y API. No se declara correcto ni incorrecto el cero observado hasta completar
 esa comparación; el hallazgo tampoco autoriza reabrir un período cerrado.
+
+## PR #92 — continuación por generaciones (2026-10-28)
+
+La fase anterior de 503 y transacciones por bloque queda complementada por
+[generaciones F2/F5](salesforce-interest-generations.md). Ese documento define
+el nuevo esquema, la CLI de inicialización con evidencia, el aislamiento,
+publicación, recuperación de fallos, despliegue y rollback. Los pasos históricos
+que suponen bootstrap sobre la tabla viva no deben utilizarse con esta versión.
+No se ha realizado ninguna acción productiva. La copia posterior a #5729,
+comunicada como íntegra en gzip/checksum, sigue sin restauración ensayada y no
+representa una base anterior certificada. Inventario de filas afectadas y causa
+del volumen extraordinario pendientes. Confirmar estado real del scheduler en
+la intervención; no reactivarlo por la mera presencia de este cambio.

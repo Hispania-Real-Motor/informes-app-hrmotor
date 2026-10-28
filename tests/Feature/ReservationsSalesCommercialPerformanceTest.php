@@ -15,6 +15,7 @@ use App\Services\Reports\ReservasVentas\OpportunityPortalNormalizer;
 use App\Services\Reports\ReservationsSales\CommercialDelegationSnapshotService;
 use App\Services\Reports\ReservationsSales\CommercialPerformanceDatasetService;
 use App\Services\Reports\ReservationsSales\Sync\SalesforceOpportunitySyncService;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceLeadFieldResolver;
 use Carbon\CarbonImmutable;
@@ -25,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Tests\Concerns\AssertsOperationalSchedule;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class ReservationsSalesCommercialPerformanceTest extends TestCase
@@ -36,7 +38,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
     {
         parent::setUp();
 
-        ReportSyncRun::query()->create([
+        $f2 = ReportSyncRun::query()->create([
             'dataset' => 'salesforce_interests',
             'source' => 'salesforce',
             'status' => 'completed',
@@ -44,6 +46,8 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             'started_at' => '2026-10-09 09:00:00',
             'completed_at' => '2026-10-09 09:01:00',
         ]);
+        InterestGenerationFixture::published($f2);
+        SalesforceInterest::created(fn (SalesforceInterest $row) => InterestGenerationFixture::row($row));
     }
 
     public function test_cache_base_no_reconstruye_interests_para_filtros_y_se_invalida_por_version(): void
@@ -120,7 +124,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
             $service = app(CommercialPerformanceDatasetService::class);
             $first = $service->payload(['month' => '2026-08']);
 
-            ReportSyncRun::query()->create([
+            $nextF2 = ReportSyncRun::query()->create([
                 'dataset' => 'salesforce_interests',
                 'source' => 'salesforce',
                 'status' => 'completed',
@@ -128,6 +132,8 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
                 'started_at' => '2026-10-09 10:00:00',
                 'completed_at' => '2026-10-09 10:01:00',
             ]);
+            InterestGenerationFixture::published($nextF2);
+            app()->forgetInstance(InterestGenerationReader::class);
             CarbonImmutable::setTestNow($fixedNow->addSecond());
 
             $second = $service->payload(['month' => '2026-08']);
