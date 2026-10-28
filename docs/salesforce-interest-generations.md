@@ -62,3 +62,13 @@ exclusivamente generaciones sintéticas y simulan el comienzo de otro job para
 renovar el lector scoped. Un intento nuevo, incluso fallido, no invalida la
 generación ya fijada. Estas fixtures no son un mecanismo operacional ni una
 excepción a la inmutabilidad productiva.
+
+### Apropiación de candidata por F2
+
+`SalesforceInterestSyncService` registra la asociación del run dentro del manejo
+de errores. Si otro extractor intenta apropiarse de una candidata ya ligada,
+su propio run queda fallido y no invalida la candidata del propietario. Solo un
+extractor cuya asociación haya tenido éxito puede marcar su candidata fallida.
+`test_second_extractor_cannot_take_over_candidate_or_leave_its_run_running`
+comprueba rechazo, conservación del propietario/estado y ausencia de llamadas
+remotas. No permite reanudar ni reasignar una candidata ajena.

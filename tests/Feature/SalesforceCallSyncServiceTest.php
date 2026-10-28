@@ -497,7 +497,7 @@ class SalesforceCallSyncServiceTest extends TestCase
         });
         $interestSelects = 0;
         DB::listen(function ($query) use (&$interestSelects): void {
-            if (str_contains($query->sql, 'from "salesforce_interest_generation_members"')) {
+            if (str_contains($query->sql, 'join "salesforce_interest_members"')) {
                 $interestSelects++;
             }
         });
