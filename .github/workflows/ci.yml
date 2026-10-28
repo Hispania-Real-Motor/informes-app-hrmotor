@@ -64,6 +64,7 @@ jobs:
       - name: Prepare test database
         run: |
           touch database/database.sqlite
+          touch .env
           php artisan migrate --force --no-interaction
 
       - name: PHP tests

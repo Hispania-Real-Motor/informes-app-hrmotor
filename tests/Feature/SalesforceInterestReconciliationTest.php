@@ -9,6 +9,7 @@ use App\Models\SalesforceInterestLeadDependencyRun;
 use App\Models\SalesforceInterestReconciliation;
 use App\Models\SalesforceInterestReconciliationRun;
 use App\Models\SalesforceLead;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceInterestReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -84,7 +85,7 @@ class SalesforceInterestReconciliationTest extends TestCase
         $this->interest(10, ['migration_origin_lead_id' => $historicA->salesforce_id, 'account_salesforce_id' => $sharedAccount]);
         $this->interest(11, ['migration_origin_lead_id' => $historicB->salesforce_id, 'account_salesforce_id' => $sharedAccount]);
         $inconsistent = $this->interest(14, ['account_salesforce_id' => '001000000000000014']);
-        DB::table('salesforce_interests')->where('id', $inconsistent->id)->update([
+        DB::table('salesforce_interest_versions')->where('salesforce_id', $inconsistent->salesforce_id)->update([
             'canonical_person_type' => 'Lead',
             'canonical_person_salesforce_id' => $this->leadId(14),
         ]);
@@ -854,7 +855,7 @@ class SalesforceInterestReconciliationTest extends TestCase
     {
         $originId = $this->leadId(750);
         $this->interest(750, ['migration_origin_lead_id' => $originId]);
-        ReportSyncRun::query()->create([
+        $newSource = ReportSyncRun::query()->create([
             'dataset' => 'salesforce_interests',
             'source' => 'salesforce',
             'status' => 'completed',
@@ -863,6 +864,7 @@ class SalesforceInterestReconciliationTest extends TestCase
             'completed_at' => '2026-09-28 16:01:00',
             'timezone' => 'UTC',
         ]);
+        InterestGenerationFixture::published($newSource);
 
         try {
             app(SalesforceInterestReconciliationService::class)
@@ -874,6 +876,10 @@ class SalesforceInterestReconciliationTest extends TestCase
         $this->assertDatabaseMissing('salesforce_interest_reconciliation_runs', ['status' => 'completed']);
 
         ReportSyncRun::query()->latest('id')->delete();
+        DB::table('salesforce_interest_publication')->where('id', 1)->update([
+            'generation_id' => DB::table('salesforce_interest_generations')->where('interest_run_id', $this->interestSourceRun->id)->value('id'),
+        ]);
+        app()->forgetInstance(InterestGenerationReader::class);
         SalesforceInterestLeadDependency::query()
             ->where('dependency_run_id', $this->dependencyRun->id)
             ->where('salesforce_id', $originId)

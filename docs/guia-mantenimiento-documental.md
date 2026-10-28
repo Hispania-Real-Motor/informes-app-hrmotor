@@ -239,3 +239,10 @@ El proveedor de servicios, cliente Salesforce y retención transversal se mapean
 conservadoramente a los seis informes; el prechequeo mensual a Interests y
 Reservas/Ventas, y las proyecciones SEO a Interests y Campañas. Sus cambios
 compartidos requieren revisión documental aunque no modifiquen una fórmula.
+
+La CI principal crea un `.env` vacío únicamente en el checkout efímero de pruebas,
+antes de migrar la SQLite sintética; la configuración de test llega de las
+variables del job. Este archivo evita avisos de ausencia de `.env`, no importa
+configuración local ni secretos de producción. El cambio del workflow exige
+revisión conjunta de guía y pruebas documentales por pertenecer a los controles
+críticos; no exime de ejecutar la suite funcional completa.

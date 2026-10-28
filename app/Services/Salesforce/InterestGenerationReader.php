@@ -53,11 +53,13 @@ final class InterestGenerationReader
 
     public function f2(): ReportSyncRun
     {
-        return ReportSyncRun::findOrFail($this->generation()->interest_run_id);
+        return ReportSyncRun::find($this->generation()->interest_run_id)
+            ?? throw new InterestDatasetUnavailable('Certified F2 evidence is unavailable.');
     }
 
     public function f5(): SalesforceInterestActivityRun
     {
-        return SalesforceInterestActivityRun::findOrFail($this->generation()->activity_run_id);
+        return SalesforceInterestActivityRun::find($this->generation()->activity_run_id)
+            ?? throw new InterestDatasetUnavailable('Certified F5 evidence is unavailable.');
     }
 }

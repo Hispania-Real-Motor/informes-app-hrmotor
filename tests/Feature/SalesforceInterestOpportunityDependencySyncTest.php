@@ -7,6 +7,7 @@ use App\Models\SalesforceInterest;
 use App\Models\SalesforceInterestOpportunityDependency;
 use App\Models\SalesforceInterestOpportunityDependencyRun;
 use App\Models\SalesforceOpportunity;
+use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestOpportunityDependencySyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,7 +157,7 @@ class SalesforceInterestOpportunityDependencySyncTest extends TestCase
                 $this->service($client)->sync('Reject unavailable Interest source snapshot');
                 $this->fail("Expected {$state} Interest source to be rejected.");
             } catch (RuntimeException $exception) {
-                $this->assertStringContainsString('stable completed source', $exception->getMessage());
+                $this->assertInstanceOf(InterestDatasetUnavailable::class, $exception);
             }
             $this->assertSame(0, $client->queryAllCalls);
         }
@@ -218,12 +219,8 @@ class SalesforceInterestOpportunityDependencySyncTest extends TestCase
             }
         };
 
-        $this->expectException(RuntimeException::class);
-        try {
-            $service->sync('Reject a newer Interest run during dependency build');
-        } finally {
-            $this->assertSame('failed', SalesforceInterestOpportunityDependencyRun::query()->latest('id')->value('status'));
-        }
+        $service->sync('Keep certified generation during a newer Interest attempt');
+        $this->assertSame('completed', SalesforceInterestOpportunityDependencyRun::query()->latest('id')->value('status'));
     }
 
     public function test_pending_or_incomplete_coverage_cannot_publish_completed_snapshot(): void

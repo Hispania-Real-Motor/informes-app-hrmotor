@@ -92,7 +92,7 @@ class ExecutiveSummaryPageTest extends TestCase
 
         $this->assertSame(1, $withLegacyLead['metrics']['leads']['current']);
         $this->assertDatabaseMissing('report_sync_runs', ['dataset' => 'leads_dashboard']);
-        $this->assertDatabaseCount('salesforce_interest_activity_runs', 0);
+        $this->assertDatabaseCount('salesforce_interest_activity_runs', 1); // The certified fixture's F5; no reader-created run.
     }
 
     public function test_summary_html_does_not_expose_pii_salesforce_ids_or_sync_run_ids(): void

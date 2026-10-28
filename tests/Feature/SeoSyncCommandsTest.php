@@ -10,6 +10,7 @@ use App\Services\SeoAnalytics\SeoAnalyticsDatasetService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\AssertsOperationalSchedule;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SeoSyncCommandsTest extends TestCase
@@ -32,7 +33,7 @@ class SeoSyncCommandsTest extends TestCase
             'salesforce.client_secret' => null,
         ]);
         Http::fake();
-        ReportSyncRun::query()->create([
+        $f2 = ReportSyncRun::query()->create([
             'dataset' => SalesforceInterestSyncService::DATASET,
             'source' => SalesforceInterestSyncService::SOURCE,
             'status' => 'completed',
@@ -44,6 +45,7 @@ class SeoSyncCommandsTest extends TestCase
             'timezone' => 'UTC',
         ]);
 
+        InterestGenerationFixture::published($f2);
         $this->artisan('seo:sync-search-console')->expectsOutputToContain('SKIPPED')->assertSuccessful();
         $this->artisan('seo:sync-salesforce-organic')->expectsOutputToContain('Intereses organicos')->assertSuccessful();
         $this->artisan('seo:sync-ga4-organic')->expectsOutputToContain('SKIPPED')->assertSuccessful();

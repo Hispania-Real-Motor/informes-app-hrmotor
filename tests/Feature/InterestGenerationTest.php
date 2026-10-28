@@ -32,6 +32,22 @@ class InterestGenerationTest extends TestCase
         return app(InterestGenerationStore::class);
     }
 
+    public function test_second_extractor_cannot_take_over_candidate_or_leave_its_run_running(): void
+    {
+        $id = $this->candidate();
+        $owner = $this->store()->generation($id)->interest_run_id;
+        Http::preventStrayRequests();
+        try {
+            app(SalesforceInterestSyncService::class)->sync('full', CarbonImmutable::parse('2026-10-28 10:00:00', 'UTC'), 300, $id);
+            $this->fail('A second extractor must be rejected.');
+        } catch (RuntimeException) {
+            $this->assertEquals($owner, $this->store()->generation($id)->interest_run_id);
+            $this->assertSame('syncing', $this->store()->generation($id)->status);
+            $this->assertSame('failed', ReportSyncRun::latest('id')->firstOrFail()->status);
+            Http::assertNothingSent();
+        }
+    }
+
     private function row(string $id = 'a01000000000000001', ?string $origin = null, string $status = 'new'): array
     {
         return ['salesforce_id' => $id, 'migration_origin_lead_id' => $origin,

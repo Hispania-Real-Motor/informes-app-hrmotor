@@ -18,6 +18,7 @@ use Database\Seeders\CallAgentMappingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Mockery;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class SalesforceCallSyncServiceTest extends TestCase
@@ -29,6 +30,7 @@ class SalesforceCallSyncServiceTest extends TestCase
         parent::setUp();
 
         $this->seed(CallAgentMappingsSeeder::class);
+        InterestGenerationFixture::nextJob();
     }
 
     public function test_guarda_task_como_salesforce_call_con_campos_resueltos(): void
@@ -192,6 +194,7 @@ class SalesforceCallSyncServiceTest extends TestCase
         $this->assertDatabaseCount('salesforce_call_classification_history', 0);
 
         $interest->update(['source' => 'Wallapop']);
+        InterestGenerationFixture::nextJob();
         $service->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
 
         $history = SalesforceCallClassificationHistory::query()->sole();
@@ -378,6 +381,7 @@ class SalesforceCallSyncServiceTest extends TestCase
         $this->service($client)->sync(CarbonImmutable::parse('2026-05-10'), CarbonImmutable::parse('2026-05-11'));
 
         $interest->update(['source' => 'Coches.net Pamplona']);
+        InterestGenerationFixture::nextJob();
         $agentMapping->update(['team_type' => 'customer_service']);
         $delegation = 'HR MOTOR PAMPLONA';
         $client = $this->clientForStableTaskWithOwner(
@@ -493,7 +497,7 @@ class SalesforceCallSyncServiceTest extends TestCase
         });
         $interestSelects = 0;
         DB::listen(function ($query) use (&$interestSelects): void {
-            if (str_contains($query->sql, 'from "salesforce_interests"')) {
+            if (str_contains($query->sql, 'from "salesforce_interest_generation_members"')) {
                 $interestSelects++;
             }
         });

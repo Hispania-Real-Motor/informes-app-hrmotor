@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Mockery\MockInterface;
 use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\Concerns\ProvidesRot4CampaignContext;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class CampaignCommandsTest extends TestCase
@@ -802,6 +803,7 @@ class CampaignCommandsTest extends TestCase
         SalesforceInterest::query()->where('salesforce_id', '00Q-rebuild')->update([
             'utm_campaign' => 'tasador',
         ]);
+        InterestGenerationFixture::nextJob();
 
         app(CampaignAttributionBuilderService::class)->build(
             CarbonImmutable::parse('2026-05-01'),

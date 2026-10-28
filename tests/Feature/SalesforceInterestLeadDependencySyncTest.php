@@ -233,22 +233,16 @@ class SalesforceInterestLeadDependencySyncTest extends TestCase
         ]);
     }
 
-    public function test_latest_interest_run_must_be_completed_before_remote_access(): void
+    public function test_failed_attempt_keeps_certified_source_available(): void
     {
         $this->completedInterestRun();
         $this->interest(20, $this->leadId(20));
         $this->interestRun('failed', null);
         $client = $this->client([]);
 
-        try {
-            $this->service($client)->sync('Synthetic unstable Interest source validation');
-            $this->fail('The dependency sync must reject a latest failed source run.');
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('stable completed source', $exception->getMessage());
-        }
-
-        $this->assertSame(0, $client->queryAllCalls);
-        $this->assertDatabaseCount('salesforce_interest_lead_dependency_runs', 0);
+        $this->service($client)->sync('Synthetic failed attempt with certified base');
+        $this->assertSame(1, $client->queryAllCalls);
+        $this->assertDatabaseHas('salesforce_interest_lead_dependency_runs', ['status' => 'completed']);
     }
 
     public function test_missing_interest_sync_run_is_rejected_before_remote_access(): void
@@ -265,24 +259,19 @@ class SalesforceInterestLeadDependencySyncTest extends TestCase
         }
     }
 
-    public function test_latest_running_interest_run_is_rejected_before_remote_access(): void
+    public function test_running_attempt_keeps_certified_source_available(): void
     {
         $this->completedInterestRun();
         $this->interest(21, $this->leadId(21));
         $this->interestRun('running', null);
         $client = $this->client([]);
 
-        $this->expectException(RuntimeException::class);
-
-        try {
-            $this->service($client)->sync('Synthetic running Interest source validation');
-        } finally {
-            $this->assertSame(0, $client->queryAllCalls);
-            $this->assertDatabaseCount('salesforce_interest_lead_dependency_runs', 0);
-        }
+        $this->service($client)->sync('Synthetic running attempt with certified base');
+        $this->assertSame(1, $client->queryAllCalls);
+        $this->assertDatabaseHas('salesforce_interest_lead_dependency_runs', ['status' => 'completed']);
     }
 
-    public function test_interest_source_change_during_build_fails_without_publishing_snapshot(): void
+    public function test_publication_during_build_keeps_original_generation_pinned(): void
     {
         $this->completedInterestRun();
         $origin = $this->leadId(30);
@@ -307,17 +296,10 @@ class SalesforceInterestLeadDependencySyncTest extends TestCase
             }
         };
 
-        try {
-            $service->sync('Synthetic concurrent Interest source change');
-            $this->fail('The dependency sync must fail when the Interest source changes.');
-        } catch (RuntimeException $exception) {
-            $this->assertSame('Interest Lead dependency sync failed safely.', $exception->getMessage());
-            $this->assertNull($exception->getPrevious());
-        }
-
+        $service->sync('Synthetic concurrent Interest publication');
         $run = SalesforceInterestLeadDependencyRun::query()->sole();
-        $this->assertSame('failed', $run->status);
-        $this->assertSame('Interest Lead dependency sync failed safely.', $run->error_message);
+        $this->assertSame('completed', $run->status);
+        $this->assertSame('2026-09-29 10:00:00', $run->source_interest_cutoff_at->format('Y-m-d H:i:s'));
     }
 
     public function test_remote_failure_is_sanitized_and_preserves_previous_completed_snapshot(): void

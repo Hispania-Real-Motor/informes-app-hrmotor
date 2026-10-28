@@ -5,12 +5,25 @@ namespace Tests\Support;
 use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
 use App\Models\SalesforceInterestActivityRun;
+use App\Services\Salesforce\InterestGenerationReader;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /** Synthetic fixtures only. Production initialization must use the reviewed reconstruction CLI. */
 final class InterestGenerationFixture
 {
+    /** A new synthetic job's certified input; never used by production or isolation tests. */
+    public static function nextJob(): void
+    {
+        $run = ReportSyncRun::create([
+            'dataset' => 'salesforce_interests', 'source' => 'salesforce', 'status' => 'completed',
+            'source_cutoff_at' => now('UTC'), 'started_at' => now('UTC'), 'completed_at' => now('UTC'),
+        ]);
+        self::published($run);
+        self::listenForNewRows();
+        app()->forgetInstance(InterestGenerationReader::class);
+    }
+
     public static function listenForNewRows(): void
     {
         if (app()->bound('tests.interest-generation-fixture-listener')) {

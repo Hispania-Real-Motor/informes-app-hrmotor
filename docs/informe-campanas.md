@@ -535,3 +535,10 @@ para Campañas. Las regresiones integrales deben verificar esa composición y la
 exportaciones. El texto anterior de la fase de transacciones por bloque describe
 el estado previo a generaciones.
 [Arquitectura y operación](salesforce-interest-generations.md).
+
+Cuando no existe base certificada o su evidencia F2 falta,
+`CampaignPublicationReadiness` conserva su contrato de publicación bloqueada:
+trata la fuente como no disponible sin adoptar legacy. No convierte un nuevo
+intento F2 iniciado/fallido en una invalidación del snapshot publicado y fijado.
+Las pruebas compartidas incorporan generaciones sintéticas explícitas para
+representar estos estados, sin autorizar importaciones de datos vivos.

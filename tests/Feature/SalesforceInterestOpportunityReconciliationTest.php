@@ -381,7 +381,7 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             ->latest('id')->value('status'));
     }
 
-    public function test_fails_without_publishing_when_f2_changes_during_materialization(): void
+    public function test_running_f2_attempt_does_not_change_materialization_source(): void
     {
         $this->interest(1);
         $this->dependencySnapshot();
@@ -401,16 +401,10 @@ class SalesforceInterestOpportunityReconciliationTest extends TestCase
             }
         };
 
-        try {
-            $service->run('Detect a concurrent Interest synchronization');
-            $this->fail('Expected safe reconciliation failure.');
-        } catch (RuntimeException $exception) {
-            $this->assertSame('Interest–Opportunity reconciliation failed safely.', $exception->getMessage());
-            $this->assertNull($exception->getPrevious());
-        }
-
-        $this->assertSame('failed', SalesforceInterestOpportunityReconciliationRun::query()->latest('id')->value('status'));
-        $this->assertDatabaseMissing('salesforce_interest_opportunity_reconciliation_runs', ['status' => 'completed']);
+        $service->run('Retain certified source during concurrent Interest synchronization');
+        $run = SalesforceInterestOpportunityReconciliationRun::query()->latest('id')->firstOrFail();
+        $this->assertSame('completed', $run->status);
+        $this->assertSame($this->interestRun->id, $run->source_interest_sync_run_id);
     }
 
     public function test_fails_without_publishing_when_dependency_snapshot_changes_during_materialization(): void

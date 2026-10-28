@@ -4,11 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\ReportSyncRun;
 use App\Services\Campaigns\CampaignPublicationReadiness;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\ProvidesRot4CampaignContext;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class CampaignPublicationReadinessTest extends TestCase
@@ -226,12 +228,18 @@ class CampaignPublicationReadinessTest extends TestCase
 
     private function sourceRun(string $dataset, string $source, array $stats = []): ReportSyncRun
     {
-        return ReportSyncRun::query()->create([
+        $run = ReportSyncRun::query()->create([
             'dataset' => $dataset, 'source' => $source, 'status' => 'completed',
             'period_start_at' => $dataset === 'campaign_platform_daily_metrics' ? now()->subDays(7) : null,
             'period_end_at' => $dataset === 'campaign_platform_daily_metrics' ? now()->addDay() : null,
             'started_at' => now()->subMinute(), 'completed_at' => now(),
             'source_cutoff_at' => now(), 'timezone' => 'Europe/Madrid', 'stats' => $stats,
         ]);
+        if ($dataset === 'salesforce_interests') {
+            InterestGenerationFixture::published($run);
+            app()->forgetInstance(InterestGenerationReader::class);
+        }
+
+        return $run;
     }
 }

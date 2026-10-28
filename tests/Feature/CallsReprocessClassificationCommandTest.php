@@ -8,11 +8,18 @@ use App\Models\SalesforceUser;
 use App\Services\Reports\Calls\CallClassificationRules;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Tests\Support\InterestGenerationFixture;
 use Tests\TestCase;
 
 class CallsReprocessClassificationCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        InterestGenerationFixture::nextJob();
+    }
 
     public function test_reprocesa_origen_portal_duracion_y_equipo_de_llamadas_existentes(): void
     {

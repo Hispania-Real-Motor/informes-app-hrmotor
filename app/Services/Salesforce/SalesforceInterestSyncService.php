@@ -79,11 +79,13 @@ final class SalesforceInterestSyncService
         );
         $stats = $this->emptyStats($mode, $windowStart, $cutoff, $overlapSeconds);
 
-        $generations->bindRun($generationId, $run);
         $stats['generation_id'] = $generationId;
         $stats['conflicts'] = 0;
+        $bound = false;
 
         try {
+            $generations->bindRun($generationId, $run);
+            $bound = true;
             $this->syncPages($run, $this->activeSoql($windowStart, $cutoff), false, 'active', $stats);
             $this->syncPages($run, $this->deletedSoql($windowStart, $cutoff), true, 'deleted', $stats);
             if ($windowStart !== null) {
@@ -94,7 +96,9 @@ final class SalesforceInterestSyncService
 
             return ['run' => $run->fresh(), 'stats' => $stats, 'generation_id' => $generationId];
         } catch (Throwable $exception) {
-            $generations->fail($generationId);
+            if ($bound) {
+                $generations->fail($generationId);
+            }
             $stats['errors'] = SalesforceInterestSyncError::query()
                 ->where('report_sync_run_id', $run->id)
                 ->count();

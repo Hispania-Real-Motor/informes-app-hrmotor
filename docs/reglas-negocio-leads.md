@@ -40,6 +40,12 @@ certificada. Pruebas: `InterestGenerationTest`,
 `SalesforceInterestDashboardDatasetTest` y `leads-unavailable.test.mjs`.
 Véase [arquitectura, recuperación y límites](salesforce-interest-generations.md).
 
+Ajuste de disponibilidad posterior del núcleo: si falta el run F2 o F5 que una
+generación publicada referencia, `InterestGenerationReader::f2()/f5()` devuelve
+el error controlado `InterestDatasetUnavailable` (503), sin una excepción de
+modelo inexistente ni lectura alternativa de la tabla legacy. Es una condición
+de evidencia incompleta que requiere revisión, no una certificación automática.
+
 ## Período funcional
 
 - La fecha del hecho es `salesforce_interest_versions.functional_created_at`.

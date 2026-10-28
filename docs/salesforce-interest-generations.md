@@ -52,3 +52,13 @@ Rollback de aplicación conserva todas las tablas y evidencias. `down()` rechaza
 Pruebas nuevas: `InterestGenerationTest` cubre aislamiento, conflictos, reintentos, borrados/reactivación, publicación competitiva, lector fijado, F5 fallido, ausencia de base y evidencia inicial. F2/F5/dashboard y JS incorporan fixtures de generaciones y tokens. `Tests/Support/InterestGenerationFixture` es exclusivamente sintética y no constituye un procedimiento productivo. La carrera MariaDB de dos procesos y el benchmark están en `tests/performance/`.
 
 Resultados finales y métricas reproducibles: [pruebas de rendimiento](../tests/performance/README.md) y [handoff](ai/HANDOFF.md). Los ensayos de 270.000 modificaciones con payload sintético de 2 KB detectaron latencia p95 de lectura concurrente superior a 11 segundos. No acreditan SLO ni viabilidad horaria; faltan distribución y volumen reales, impacto F5 completo y regresiones integrales. Esta implementación no está declarada apta para producción.
+
+### Evidencia ausente y regresiones de consumidores
+
+El lector traduce ausencia del run F2/F5 referenciado a indisponibilidad
+controlada. Readiness de Campañas convierte esa ausencia en su contrato blocked;
+no introduce una fuente alternativa. Las fixtures compartidas publican
+exclusivamente generaciones sintéticas y simulan el comienzo de otro job para
+renovar el lector scoped. Un intento nuevo, incluso fallido, no invalida la
+generación ya fijada. Estas fixtures no son un mecanismo operacional ni una
+excepción a la inmutabilidad productiva.
