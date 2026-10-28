@@ -6050,5 +6050,7 @@ Validador integral ejecutado correctamente contra el commit de la corrección: P
 - `tests/performance/README.md`
 - `tests/performance/interest-generation-publication-race.php`
 - `tests/performance/interest-generations.php`
-`n### CI confirmada`n
-- SHA de código 239aed3e343538e8edac8db97aad74de1ab75858: CI #210 (40687478965) y Documentation integrity #26 (40687479070) completadas con success. Incluye pruebas PHP completas, Composer validate/audit, Pint, build frontend y whitespace. El commit documental posterior registra esta evidencia sin cambiar código.
+
+### CI confirmada
+
+- SHA de código 239aed3e343538e8edac8db97aad74de1ab75858: CI #210 (40687478965) y Documentation integrity #26 (40687479070) completadas con success. Incluye 1.533 pruebas PHP correctas (13.989 aserciones), Composer validate/audit, Pint sobre 63 archivos, build frontend y whitespace. El commit documental posterior registra esta evidencia sin cambiar código.
