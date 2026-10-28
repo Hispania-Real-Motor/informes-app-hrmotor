@@ -30,6 +30,12 @@ resolución por origen. La revisión exige que `salesforce_interest_members`
 utilice las claves cuyo primer componente es `generation_id`; copiar un plan de
 SQLite o de una tabla reducida no acredita el comportamiento de producción.
 
+En la instancia aislada disponible, la lectura paginada usa `PRIMARY` de
+versiones y `salesforce_interest_members_version_id_foreign` con `Using index`.
+Las muestras por ID y origen devolvieron `Impossible WHERE` porque esos valores
+sintéticos no existían en esa base. No se añade un índice especulativo: falta
+repetir el plan con IDs existentes y distribución real.
+
 ## Decisión y bloqueo de producción
 
 Se evita copiar los payloads completos cada hora: se copian referencias de membresía y se escriben únicamente versiones modificadas. La membresía sigue teniendo coste O(N) por generación. Si cambia toda la población, el coste de versiones sigue siendo proporcional al dataset completo.
