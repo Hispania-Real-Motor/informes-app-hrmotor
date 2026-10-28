@@ -346,7 +346,7 @@ class SalesforceInterestSyncServiceTest extends TestCase
         ), 'Interest writes must never use upsert semantics because MySQL considers every UNIQUE index.');
     }
 
-    public function test_bulk_failure_fails_run_even_when_every_diagnostic_replay_succeeds(): void
+    public function test_bulk_failure_does_not_replay_rows_with_side_effects(): void
     {
         $persister = new class extends SalesforceInterestChunkPersister
         {
@@ -383,11 +383,11 @@ class SalesforceInterestSyncServiceTest extends TestCase
             'phase' => 'active_persist_bulk',
             'error_message' => 'Interest record could not be persisted locally.',
         ]);
-        $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000908']);
-        $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000909']);
+        $this->assertDatabaseMissing('salesforce_interests', ['salesforce_id' => 'a01000000000000908']);
+        $this->assertDatabaseMissing('salesforce_interests', ['salesforce_id' => 'a01000000000000909']);
     }
 
-    public function test_bulk_failure_audits_individual_failure_and_still_fails_run(): void
+    public function test_bulk_failure_records_sanitized_error_without_diagnostic_writes(): void
     {
         $failingId = 'a01000000000000911';
         $persister = new class($failingId) extends SalesforceInterestChunkPersister
@@ -425,13 +425,42 @@ class SalesforceInterestSyncServiceTest extends TestCase
             'salesforce_id' => null,
             'phase' => 'active_persist_bulk',
         ]);
-        $this->assertDatabaseHas('salesforce_interest_sync_errors', [
+        $this->assertDatabaseMissing('salesforce_interest_sync_errors', [
             'report_sync_run_id' => $failed->id,
             'salesforce_id' => $failingId,
             'phase' => 'active_persist',
         ]);
-        $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => 'a01000000000000910']);
+        $this->assertDatabaseMissing('salesforce_interests', ['salesforce_id' => 'a01000000000000910']);
         $this->assertDatabaseMissing('salesforce_interests', ['salesforce_id' => $failingId]);
+    }
+
+    public function test_failed_update_rolls_back_inserts_from_the_same_chunk(): void
+    {
+        $existing = 'a01000000000000912';
+        $inserted = 'a01000000000000913';
+        $cutoff = CarbonImmutable::parse('2026-09-25T12:00:00Z');
+        $this->service($this->client([[$this->record($existing)]], []))
+            ->sync(SalesforceInterestSyncService::MODE_FULL, $cutoff);
+
+        $failOnce = true;
+        DB::listen(function ($event) use (&$failOnce): void {
+            if ($failOnce && str_starts_with(strtolower($event->sql), 'update ')
+                && str_contains(strtolower($event->sql), 'salesforce_interests')) {
+                $failOnce = false;
+                throw new RuntimeException('synthetic failure after update');
+            }
+        });
+        try {
+            $this->service($this->client([[
+                $this->record($inserted),
+                $this->record($existing, ['IN_Estado__c' => 'Convertido']),
+            ]], []))->sync(SalesforceInterestSyncService::MODE_FULL, $cutoff);
+            $this->fail('The update failure must fail the run.');
+        } catch (RuntimeException) {
+            $this->assertDatabaseMissing('salesforce_interests', ['salesforce_id' => $inserted]);
+            $this->assertDatabaseHas('salesforce_interests', ['salesforce_id' => $existing, 'status' => 'Potencial']);
+            $this->assertSame('failed', ReportSyncRun::query()->latest('id')->firstOrFail()->status);
+        }
     }
 
     public function test_service_rejects_negative_overlap_before_remote_access(): void

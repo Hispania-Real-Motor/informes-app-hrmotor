@@ -144,3 +144,7 @@ Archivos principales:
 - `app/Services/Reports/Calls/CallInterestPortalResolver.php`;
 - `app/Services/Reports/Calls/CallDashboardDatasetService.php`;
 - `app/Console/Commands/ReprocessCallsClassificationCommand.php`.
+
+### Límite de integridad de la fuente compartida F2
+
+La relación local `Task.WhatId` y el fallback de fuente consultan la tabla viva F2. Cada bloque de persistencia F2 se ejecuta en una transacción y un fallo general ya no repite filas con escrituras para diagnóstico. Un fallo posterior puede dejar persistidos bloques anteriores; no existe aislamiento por generaciones. El último run completado por sí solo no certifica el contenido actual de la tabla tras una ejecución fallida. La respuesta HTTP 503 específica del dashboard de Interests no se extiende por este cambio a este informe. No cambian las reglas de atribución, los filtros, fórmulas ni exportaciones de este informe. Véase [disponibilidad de Interests](reglas-negocio-leads.md#disponibilidad-del-dashboard).

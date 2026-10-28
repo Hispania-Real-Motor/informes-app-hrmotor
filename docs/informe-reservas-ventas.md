@@ -754,3 +754,7 @@ php artisan salesforce:backfill-lead-phone-normalization --apply
 
 El comando es local, reanudable con `--after-id`, admite `--limit`, usa mutex en
 apply, realiza UPDATE masivo por lotes y nunca consulta ni escribe Salesforce.
+
+### Límite de integridad de la fuente compartida F2
+
+La atribución y auditoría que consultan `salesforce_interests` dependen de la tabla viva F2. Cada bloque de persistencia F2 se ejecuta en una transacción y un fallo general ya no repite filas con escrituras para diagnóstico. Un fallo posterior puede dejar persistidos bloques anteriores; no existe aislamiento por generaciones. El último run completado por sí solo no certifica el contenido actual de la tabla tras una ejecución fallida. La respuesta HTTP 503 específica del dashboard de Interests no se extiende por este cambio a este informe. No cambian las reglas de atribución, los filtros, fórmulas ni exportaciones de este informe. Véase [disponibilidad de Interests](reglas-negocio-leads.md#disponibilidad-del-dashboard).

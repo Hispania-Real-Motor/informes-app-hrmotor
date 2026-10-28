@@ -249,20 +249,6 @@ SOQL;
             throw new RuntimeException('Interest chunk contains conflicting migration origins.');
         } catch (Throwable $bulkException) {
             $this->recordPersistenceError($run, null, $phase.'_persist_bulk', $bulkException);
-
-            foreach ($rows as $row) {
-                try {
-                    $this->chunkPersister->persist([$row]);
-                } catch (Throwable $rowException) {
-                    $this->recordPersistenceError(
-                        $run,
-                        (string) $row['salesforce_id'],
-                        $phase.'_persist',
-                        $rowException,
-                    );
-                }
-            }
-
             throw new RuntimeException('Interest chunk bulk persistence failed.');
         }
 

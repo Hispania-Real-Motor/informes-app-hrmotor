@@ -814,8 +814,12 @@ El operador comunicó que #5729 falló tras registrar 268.627 inserciones y
 propietarios locales. Esos contadores no identifican todas las filas afectadas
 ni sus valores anteriores. El backup localizado del 27/10/2026 contiene cero
 bytes descomprimidos y no es restaurable; no consta otra copia anterior
-verificada. El run completado #5722 no demuestra que la tabla viva conserve
-su estado. No hay base certificada para esta recuperación hasta verificar una.
+verificada. El operador comunicó después una copia completa del estado actual,
+con gzip y checksum correctos y 105 tablas; no se ha probado su restauración y
+la copia es posterior al fallo #5729. No acredita el estado anterior ni sirve
+por sí sola para inicializar una generación certificada. El run completado
+#5722 no demuestra que la tabla viva conserve su estado. No hay base
+certificada para esta recuperación hasta verificar una.
 
 La investigación debe realizarla personal autorizado, con evidencias
 restringidas y resultados compartibles agregados sin identificadores sensibles:

@@ -6,6 +6,7 @@ use App\Models\SalesforceInterest;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class SalesforceInterestChunkPersister
 {
@@ -17,6 +18,12 @@ class SalesforceInterestChunkPersister
      * @return array{inserted:int, updated:int, unchanged:int}
      */
     public function persist(array $rows): array
+    {
+        return DB::transaction(fn (): array => $this->persistInTransaction($rows));
+    }
+
+    /** @param list<array<string, mixed>> $rows @return array{inserted:int, updated:int, unchanged:int} */
+    private function persistInTransaction(array $rows): array
     {
         if ($rows === []) {
             return ['inserted' => 0, 'updated' => 0, 'unchanged' => 0];

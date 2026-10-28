@@ -31,6 +31,15 @@ respuestas de datos no incluyen KPIs parciales en ese caso. La prueba
 `SalesforceInterestDashboardDatasetTest` cubre F2 fallido en summary, tablas y
 auditoría JSON, y ausencia de F5 alineado en summary.
 
+La persistencia F2 ejecuta cada bloque en una transacción: si falla una
+inserción o actualización del bloque, revierte sus escrituras. Ante un error
+general de persistencia se registra un error sanitizado de bloque y ya no
+se reintentan las filas con escrituras para diagnosticarlo. Las colisiones de
+origen siguen rechazando el bloque; no existe cuarentena individual ni
+continuación de las filas válidas de ese bloque. `SalesforceInterestSyncServiceTest`
+cubre el rollback de una inserción al fallar una actualización y la ausencia
+de escrituras de diagnóstico.
+
 Esta comprobación no conserva una versión anterior: F2 escribe en la tabla
 viva por bloques y un fallo puede dejar escrituras parciales. No se vuelve al
 último run completado ni se certifica esa tabla por su fecha. La publicación
