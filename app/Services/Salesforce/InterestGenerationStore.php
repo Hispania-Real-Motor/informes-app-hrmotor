@@ -30,8 +30,8 @@ final class InterestGenerationStore
 
     public function rows(int $id): Builder
     {
-        return DB::table('salesforce_interest_versions as version')
-            ->join('salesforce_interest_members as member', 'member.version_id', '=', 'version.id')
+        return DB::table('salesforce_interest_members as member')
+            ->join('salesforce_interest_versions as version', 'version.id', '=', 'member.version_id')
             ->where('member.generation_id', $id)->select('version.*');
     }
 

@@ -36,6 +36,13 @@ Las muestras por ID y origen devolvieron `Impossible WHERE` porque esos valores
 sintéticos no existían en esa base. No se añade un índice especulativo: falta
 repetir el plan con IDs existentes y distribución real.
 
+Tras reordenar `InterestGenerationStore::rows()` para comenzar por
+`salesforce_interest_members`, el plan equivalente usa `sf_im_version_idx`
+(`generation_id, version_id`) con `Using where; Using index` y un `eq_ref` por
+la clave primaria de versiones. La base quedó sin filas después de la
+recreación aislada, por lo que no se declara una latencia antes/después ni un
+p95 representativo; el benchmark debe poblarse de nuevo antes de comparar.
+
 ## Decisión y bloqueo de producción
 
 Se evita copiar los payloads completos cada hora: se copian referencias de membresía y se escriben únicamente versiones modificadas. La membresía sigue teniendo coste O(N) por generación. Si cambia toda la población, el coste de versiones sigue siendo proporcional al dataset completo.

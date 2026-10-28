@@ -1,10 +1,5 @@
 <?php
 
-// Standalone synthetic workload. Never accepts an arbitrary database or a production environment.
-require __DIR__.'/../../vendor/autoload.php';
-$app = require __DIR__.'/../../bootstrap/app.php';
-$app->make(Kernel::class)->bootstrap();
-
 use App\Models\SalesforceInterestActivityRun;
 use App\Services\Reports\ReportSyncRunService;
 use App\Services\Salesforce\InterestGenerationStore;
@@ -12,6 +7,11 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+
+// Standalone synthetic workload. Never accepts an arbitrary database or a production environment.
+require __DIR__.'/../../vendor/autoload.php';
+$app = require __DIR__.'/../../bootstrap/app.php';
+$app->make(Kernel::class)->bootstrap();
 
 if (! app()->environment('testing') || DB::connection()->getDatabaseName() !== 'interests_generation_benchmark'
     || DB::connection()->getDriverName() !== 'mysql') {
