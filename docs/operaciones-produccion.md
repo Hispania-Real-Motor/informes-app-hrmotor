@@ -1478,3 +1478,16 @@ Estos recuentos no replican la deduplicación, los universos ni los filtros del
 dataset: solo ubican un posible tramo de pérdida y se contrastan con builder
 y API. No se declara correcto ni incorrecto el cero observado hasta completar
 esa comparación; el hallazgo tampoco autoriza reabrir un período cerrado.
+
+## PR #92 — continuación por generaciones (2026-10-28)
+
+La fase anterior de 503 y transacciones por bloque queda complementada por
+[generaciones F2/F5](salesforce-interest-generations.md). Ese documento define
+el nuevo esquema, la CLI de inicialización con evidencia, el aislamiento,
+publicación, recuperación de fallos, despliegue y rollback. Los pasos históricos
+que suponen bootstrap sobre la tabla viva no deben utilizarse con esta versión.
+No se ha realizado ninguna acción productiva. La copia posterior a #5729,
+comunicada como íntegra en gzip/checksum, sigue sin restauración ensayada y no
+representa una base anterior certificada. Inventario de filas afectadas y causa
+del volumen extraordinario pendientes. Confirmar estado real del scheduler en
+la intervención; no reactivarlo por la mera presencia de este cambio.

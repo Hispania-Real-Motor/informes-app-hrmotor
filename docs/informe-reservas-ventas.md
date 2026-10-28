@@ -758,3 +758,19 @@ apply, realiza UPDATE masivo por lotes y nunca consulta ni escribe Salesforce.
 ### Límite de integridad de la fuente compartida F2
 
 La atribución y auditoría que consultan `salesforce_interests` dependen de la tabla viva F2. Cada bloque de persistencia F2 se ejecuta en una transacción y un fallo general ya no repite filas con escrituras para diagnóstico. Un fallo posterior puede dejar persistidos bloques anteriores; no existe aislamiento por generaciones. El último run completado por sí solo no certifica el contenido actual de la tabla tras una ejecución fallida. La respuesta HTTP 503 específica del dashboard de Interests no se extiende por este cambio a este informe. No cambian las reglas de atribución, los filtros, fórmulas ni exportaciones de este informe. Véase [disponibilidad de Interests](reglas-negocio-leads.md#disponibilidad-del-dashboard).
+
+## Fuente Interest por generación — PR #92 (2026-10-28)
+
+La atribución Opportunity/Interest, Rendimiento comercial y su auditoría consultan
+`InterestGenerationReader`, fijado a la generación publicada durante la petición.
+La caché de Rendimiento incluye su ID. Se mantienen fecha pivote
+`functional_created_at`, límites UTC derivados de Europe/Madrid, exclusión de
+eliminados y reglas de atribución; cambia la versión local de la fuente, que ya
+no es la tabla viva. Una candidata fallida no sustituye el F2 certificado.
+`OpportunityInterestAttributionService` conserva el resultado explícito de fuente
+no resuelta cuando no existe generación, sin leer legacy. No se certifican por
+ello las otras fuentes ni se modifican cierres. Pruebas adaptadas:
+`ReservationsSalesInterestAttributionTest` y `MonthlyCommercialInterestTimezoneTest`;
+regresión integral y contratos de varias peticiones siguen sujetos a validación.
+Las notas anteriores sobre tabla viva describen la fase previa.
+[Contrato transversal y límites](salesforce-interest-generations.md).

@@ -518,3 +518,20 @@ Esta iteración no inspecciona producción ni consulta proveedores; seguir el
 ### Límite de integridad de la fuente compartida F2
 
 La atribución y las consultas de Campañas que usan `salesforce_interests` dependen de la tabla viva F2. Cada bloque de persistencia F2 se ejecuta en una transacción y un fallo general ya no repite filas con escrituras para diagnóstico. Un fallo posterior puede dejar persistidos bloques anteriores; no existe aislamiento por generaciones. El último run completado por sí solo no certifica el contenido actual de la tabla tras una ejecución fallida. La respuesta HTTP 503 específica del dashboard de Interests no se extiende por este cambio a este informe. No cambian las reglas de atribución, los filtros, fórmulas ni exportaciones de este informe. Véase [disponibilidad de Interests](reglas-negocio-leads.md#disponibilidad-del-dashboard).
+
+## Fuente Interest por generación — PR #92 (2026-10-28)
+
+Builder, consultas auxiliares del dashboard, diagnóstico y readiness obtienen
+Interests y F2 mediante `InterestGenerationReader`. La selección deja de depender
+del último intento F2 y usa la generación publicada fijada. El análisis de cambios
+materiales para readiness considera runs F2 publicados; la caché de opciones
+incluye generación. No cambian first touch, `functional_created_at`, filtros,
+atribución, ratios ni deduplicación, y no se reabren snapshots económicos.
+
+Esta garantía corresponde a la fuente Interest. Las atribuciones materializadas,
+fuentes publicitarias y otras fuentes conservan sus contratos de build/readiness;
+no se afirma una transacción global sobre ellas ni un token de carga multipetición
+para Campañas. Las regresiones integrales deben verificar esa composición y las
+exportaciones. El texto anterior de la fase de transacciones por bloque describe
+el estado previo a generaciones.
+[Arquitectura y operación](salesforce-interest-generations.md).

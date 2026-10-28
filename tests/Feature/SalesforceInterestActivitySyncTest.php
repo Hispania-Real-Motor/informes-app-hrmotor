@@ -6,6 +6,7 @@ use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
 use App\Models\SalesforceInterestActivity;
 use App\Models\SalesforceInterestActivityRun;
+use App\Services\Salesforce\InterestGenerationStore;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
 use App\Services\Salesforce\SalesforceInterestSyncService;
@@ -70,7 +71,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
         );
         $interestsBefore = DB::table('salesforce_interests')->orderBy('id')->get()->all();
 
-        $result = $this->service($client)->sync('Capture direct Interest activity evidence safely');
+        $result = $this->service($client)->sync('Capture direct Interest activity evidence safely', $this->candidate());
 
         $this->assertSame('completed', $result['run']->status);
         $this->assertSame($source->id, $result['run']->source_interest_sync_run_id);
@@ -132,14 +133,15 @@ class SalesforceInterestActivitySyncTest extends TestCase
             $events[] = $this->event($index, $this->interestId(2), null);
         }
         $client = new InterestActivityFakeClient($tasks, $events, pageSize: 250);
+        $candidate = $this->candidate();
         $interestSelects = 0;
         DB::listen(function ($query) use (&$interestSelects): void {
-            if (str_contains(strtolower($query->sql), 'from "salesforce_interests"')) {
+            if (str_contains(strtolower($query->sql), 'from "salesforce_interest_versions"')) {
                 $interestSelects++;
             }
         });
 
-        $result = $this->service($client)->sync('Verify bounded Interest activity batching and pagination');
+        $result = $this->service($client)->sync('Verify bounded Interest activity batching and pagination', $candidate);
 
         $this->assertSame(2001, $result['stats']['source_interests']);
         $this->assertSame(2, $result['stats']['query_all_calls']);
@@ -170,7 +172,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
         }
         $client = new InterestActivityFakeClient;
 
-        $result = $this->service($client)->sync('Count source Interests without remote query fan out');
+        $result = $this->service($client)->sync('Count source Interests without remote query fan out', $this->candidate());
 
         $this->assertSame($interestCount, $result['stats']['source_interests']);
         $this->assertSame(2, $result['stats']['query_all_calls']);
@@ -200,7 +202,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
             $invalidReference,
         ]);
 
-        $result = $this->service($client)->sync('Audit invalid activity evidence without heuristics');
+        $result = $this->service($client)->sync('Audit invalid activity evidence without heuristics', $this->candidate());
 
         $this->assertSame(0, $result['stats']['direct_relations']);
         $this->assertSame(3, $result['stats']['unresolved_references']);
@@ -231,7 +233,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
         $records = [$this->task(1, $this->interestId(1), null)];
 
         $first = $this->service(new InterestActivityFakeClient($records))
-            ->sync('Build the first deterministic activity snapshot');
+            ->sync('Build the first deterministic activity snapshot', $this->candidate());
         $firstRows = SalesforceInterestActivity::query()
             ->where('activity_run_id', $first['run']->id)
             ->get()
@@ -246,7 +248,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
             ->all();
 
         $second = $this->service(new InterestActivityFakeClient($records))
-            ->sync('Rebuild the same deterministic activity snapshot');
+            ->sync('Rebuild the same deterministic activity snapshot', $this->candidate());
         $secondRows = SalesforceInterestActivity::query()
             ->where('activity_run_id', $second['run']->id)
             ->get()
@@ -261,7 +263,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
             ->all();
 
         $this->assertSame($firstRows, $secondRows);
-        $this->assertDatabaseCount('salesforce_interest_activities', 1);
+        $this->assertDatabaseCount('salesforce_interest_activities', 2);
         $this->assertDatabaseCount('salesforce_interest_activity_runs', 2);
     }
 
@@ -275,17 +277,17 @@ class SalesforceInterestActivitySyncTest extends TestCase
             $client = new InterestActivityFakeClient;
 
             try {
-                $this->service($client)->sync('Reject an unstable Interest source snapshot');
+                $this->service($client)->sync('Reject an unstable Interest source snapshot', $this->candidate());
                 $this->fail("Expected {$state} source rejection.");
             } catch (RuntimeException $exception) {
-                $this->assertStringContainsString('stable completed source', $exception->getMessage());
+                $this->assertStringContainsString('explicit isolated F2 candidate', $exception->getMessage());
             }
             $this->assertSame(0, $client->queryCalls);
         }
     }
 
     #[DataProvider('concurrentInterestRunStatuses')]
-    public function test_new_interest_run_during_build_fails_safely_and_preserves_previous_completed(
+    public function test_new_interest_run_during_build_keeps_candidate_pinned_and_preserves_previous_completed(
         string $concurrentStatus,
     ): void {
         $this->completedInterestRun();
@@ -316,16 +318,8 @@ class SalesforceInterestActivitySyncTest extends TestCase
             }
         };
 
-        try {
-            $service->sync('Reject a concurrent Interest synchronization safely');
-            $this->fail('Expected concurrent source failure.');
-        } catch (RuntimeException $exception) {
-            $this->assertSame('Interest activity sync failed safely.', $exception->getMessage());
-            $this->assertNull($exception->getPrevious());
-        }
-
-        $failed = SalesforceInterestActivityRun::query()->latest('id')->firstOrFail();
-        $this->assertSame('failed', $failed->status);
+        $result = $service->sync('Build against the pinned F2 candidate safely', $this->candidate());
+        $this->assertSame('completed', $result['run']->status);
         $this->assertSame('completed', $previous->fresh()->status);
         $this->assertDatabaseHas('salesforce_interest_activities', ['activity_run_id' => $previous->id]);
     }
@@ -350,7 +344,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
         );
 
         try {
-            $this->service($client)->sync('Sanitize a remote activity synchronization failure');
+            $this->service($client)->sync('Sanitize a remote activity synchronization failure', $this->candidate());
             $this->fail('Expected remote failure.');
         } catch (RuntimeException $exception) {
             $this->assertSame('Interest activity sync failed safely.', $exception->getMessage());
@@ -370,7 +364,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
         };
 
         try {
-            $service->sync('Sanitize a local activity persistence failure');
+            $service->sync('Sanitize a local activity persistence failure', $this->candidate());
             $this->fail('Expected persistence failure.');
         } catch (RuntimeException $exception) {
             $this->assertSame('Interest activity sync failed safely.', $exception->getMessage());
@@ -378,7 +372,7 @@ class SalesforceInterestActivitySyncTest extends TestCase
         }
     }
 
-    public function test_cleanup_is_chunked_and_cleanup_failure_does_not_degrade_published_snapshot(): void
+    public function test_new_candidate_keeps_all_previous_activity_snapshots(): void
     {
         $this->completedInterestRun();
         $old = $this->completedActivityRun();
@@ -399,10 +393,10 @@ class SalesforceInterestActivitySyncTest extends TestCase
             }
         };
 
-        $result = $service->sync('Remove superseded activity detail in bounded chunks');
+        $result = $service->sync('Remove superseded activity detail in bounded chunks', $this->candidate());
         $this->assertSame('completed', $result['run']->status);
-        $this->assertSame(2, $service->cleanupChunks);
-        $this->assertDatabaseMissing('salesforce_interest_activities', ['activity_run_id' => $old->id]);
+        $this->assertSame(0, $service->cleanupChunks);
+        $this->assertDatabaseHas('salesforce_interest_activities', ['activity_run_id' => $old->id]);
 
         SalesforceInterestActivity::query()->create($this->detailRow($result['run'], 2000));
         $failing = new class(new InterestActivityFakeClient) extends SalesforceInterestActivitySyncService
@@ -412,9 +406,9 @@ class SalesforceInterestActivitySyncTest extends TestCase
                 throw new RuntimeException('sensitive cleanup error');
             }
         };
-        $next = $failing->sync('Keep published activity snapshot after cleanup failure');
+        $next = $failing->sync('Keep published activity snapshot after cleanup failure', $this->candidate());
         $this->assertSame('completed', $next['run']->status);
-        $this->assertSame(1, $next['stats']['cleanup_errors']);
+        $this->assertSame(0, $next['stats']['cleanup_errors']);
         $this->assertNull($next['run']->error_message);
     }
 
@@ -430,6 +424,33 @@ class SalesforceInterestActivitySyncTest extends TestCase
         } finally {
             $lock->release();
         }
+    }
+
+    private function candidate(): ?int
+    {
+        $run = ReportSyncRun::query()->latest('id')->first();
+        if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
+            return null;
+        }
+        if (DB::table('salesforce_interest_generations')->where('interest_run_id', $run->id)->exists()) {
+            $run = $run->replicate();
+            $run->save();
+        }
+        $store = app(InterestGenerationStore::class);
+        $id = $store->begin($run->source_cutoff_at, true);
+        $store->bindRun($id, $run);
+        // Explicit synthetic source materialization; no runtime fallback to the live table.
+        SalesforceInterest::query()->chunkById(200, function ($rows) use ($store, $id): void {
+            $store->persist($id, $rows->map(function ($row): array {
+                $attributes = $row->getAttributes();
+                unset($attributes['id'], $attributes['created_at'], $attributes['updated_at']);
+
+                return $attributes;
+            })->all());
+        });
+        $store->finishF2($id);
+
+        return $id;
     }
 
     private function service(SalesforceClient $client): SalesforceInterestActivitySyncService

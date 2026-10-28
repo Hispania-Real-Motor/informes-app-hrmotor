@@ -4,12 +4,12 @@ namespace App\Console\Commands;
 
 use App\Models\SalesforceCall;
 use App\Models\SalesforceCallClassificationHistory;
-use App\Models\SalesforceInterest;
 use App\Models\SalesforceUser;
 use App\Services\Reports\Calls\CallClassificationRules;
 use App\Services\Reports\Calls\CallDescriptionParser;
 use App\Services\Reports\Calls\CallInterestPortalResolver;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
@@ -384,7 +384,7 @@ class ReprocessCallsClassificationCommand extends Command
             return collect();
         }
 
-        return SalesforceInterest::query()
+        return app(InterestGenerationReader::class)->eloquent()
             ->whereIn('salesforce_id', $ids)
             ->get([
                 'salesforce_id',

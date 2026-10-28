@@ -1,3 +1,4 @@
+let pinnedInterestGeneration = null;
 const fmt = new Intl.NumberFormat('es-ES');
 const tableSortState = new Map();
 const leadCommercialColumnsStorageKey = 'leadCommercialColumns';
@@ -74,7 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function bindReconciliationAudit() {
     document.getElementById('reconciliationAudit')?.addEventListener('click', (event) => {
-        event.currentTarget.href = `/informes/leads/export/reconciliation-audit.csv?${currentFilters()}`;
+        event.currentTarget.href = `/informes/leads/export/reconciliation-audit.csv?${currentFilters()}&interest_generation=${pinnedInterestGeneration || ''}`;
     });
 }
 
@@ -190,6 +191,7 @@ async function reloadAllData() {
     leadReloadController?.abort();
     leadReloadController = new AbortController();
     const requestId = ++latestLeadReloadRequestId;
+    pinnedInterestGeneration = null;
     const requestOptions = { signal: leadReloadController.signal };
     const filters = currentFilters();
     setLoadingState(true);
@@ -197,6 +199,8 @@ async function reloadAllData() {
     try {
         const summary = await fetchJson(`/informes/leads/data/summary?${filters}`, requestOptions);
         if (requestId !== latestLeadReloadRequestId) return;
+        pinnedInterestGeneration = summary.generation_id;
+        requestOptions.headers = { 'X-Interest-Generation': String(pinnedInterestGeneration) };
         renderSummary(summary);
         renderFilterOptions(summary.filters || {});
 
@@ -227,9 +231,9 @@ async function reloadAllData() {
 
 function renderSummary(data) {
     const updatedBadge = document.getElementById('updatedBadge');
-    updatedBadge.textContent = data.datos_actualizados
-        ? `Datos actualizados: ${formatDateTime(data.datos_actualizados)}`
-        : 'Datos actualizados: pendiente';
+    updatedBadge.textContent = data.dataset_cutoff_at
+        ? `Datos certificados hasta: ${formatDateTime(data.dataset_cutoff_at)}${data.generation_stale ? ' · Desactualizados' : ''}`
+        : 'Datos certificados: pendiente';
     updatedBadge.title = [
         data.salesforce_leads_synced_at ? `Intereses: ${formatDateTime(data.salesforce_leads_synced_at)}` : null,
         data.activities_synced_at ? `Actividades: ${formatDateTime(data.activities_synced_at)}` : null,
@@ -754,7 +758,7 @@ function buildKpiAuditUrl(metric) {
     const params = new URLSearchParams(currentFilters());
     params.set('metric', metric);
 
-    return `/informes/leads/export/kpi-audit.csv?${params.toString()}`;
+    return `/informes/leads/export/kpi-audit.csv?${params.toString()}&interest_generation=${pinnedInterestGeneration || ''}`;
 }
 
 function kpiAuditLinkHtml(metric, label) {
@@ -812,7 +816,7 @@ function toggleCustomPeriods() {
 async function fetchJson(url, options = {}) {
     const response = await fetch(url, {
         ...options,
-        headers: { Accept: 'application/json', ...(options.headers || {}) },
+        headers: { Accept: 'application/json', ...(pinnedInterestGeneration ? { 'X-Interest-Generation': String(pinnedInterestGeneration) } : {}), ...(options.headers || {}) },
     });
 
     if (!response.ok) {

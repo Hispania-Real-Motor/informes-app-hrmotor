@@ -393,3 +393,14 @@ correo será el Resumen Ejecutivo global, con alertas y medidas recomendadas
 deterministas/auditables, sin inferencia causal ni dos correos diarios equivalentes.
 OPS-1 no implementa ese correo. Las ventanas actuales se registran en el catálogo
 operacional; las omisiones conocidas no cuentan como heartbeat de éxito.
+
+## PR #92 — generación certificada en la proyección orgánica
+
+`SalesforceOrganicInterestProjectionService` fija `InterestGenerationReader`
+para el F2 y las filas agregadas. Conserva `medium = Orgánico`, exclusión de
+eliminados y `functional_created_at`; cambia la fuente física a versiones y
+pertenencias publicadas. Readiness/estado de fuente ya no toman un intento F2
+fallido como sustituto de la publicación válida. Esto no sincroniza ni certifica
+conjuntamente GA4/Search Console. Regresión SEO integral pendiente de la ejecución
+final; no se afirma nueva auditoría de sus KPIs.
+[Contrato de generaciones](../salesforce-interest-generations.md).

@@ -302,3 +302,26 @@ abierto y sin atribución vigente que cubra el rango; la fecha visible exige
 además cobertura del período consultado por el snapshot. Estos son contratos
 de publicación/auditoría, no cambios de la
 fuente API, fecha pivote, fórmula ni universo de los KPI históricos.
+
+## PR #92 — cambio de trazabilidad de Interest por generaciones
+
+Referencia: `edf2d97b6e5624936ed5cfd12fa790889fea3df2` más diff de esta iteración,
+pendiente de SHA final. Registro focalizado de fuente/versionado; no es una ficha
+KPI completa ni certifica fórmulas no auditadas.
+
+| Contrato o sección | Cadena contrastada | Estado y límites |
+| --- | --- | --- |
+| Interests: resumen, comparativas, tablas y auditorías KPI/conciliación | `Interes__c.Id`, `SystemModstamp`, `IN_Lead_Origen_Migracion__c` → `SalesforceInterestSyncService::mapRecord/persistChunk` → versiones/pertenencias → `InterestGenerationReader` → `SalesforceInterestDashboardDatasetService`; `Task/Event.WhatId` → F5 de la misma candidata | Cambia fuente local/versionado, no reglas ROT-1. `generation_id` fija AJAX y CSV. Tests de generaciones, dashboard y JS; fuente externa real no consultada. |
+| Métrica ejecutiva `leads` y Monthly Commercial | `executiveLeadTotal` y precheck `RefreshMonthlyCommercialReportCommand` leen F2 de generación publicada, cuyo F5 ya está certificado | Conteo activo por fecha funcional preservado; no consulta detalle de actividades para contar. Test de zona mensual adaptado. |
+| Reservas/Ventas: atribución y Rendimiento comercial/auditoría | `OpportunityInterestAttributionService`, `CommercialPerformanceDatasetService::aggregateInterests/interestSourceContext`, `CommercialPerformanceAuditService::appendInterests` → lector publicado | Mismos campos de identidad, fuente y relación inversa; caché Rendimiento incluye generación. Otras fuentes no son parte de la publicación F2/F5. |
+| Campañas: atribución, detalle, opciones y readiness | `CampaignAttributionBuilderService::candidateInterests/latestInterestRun`; dashboard y `CampaignPublicationReadiness` → lector y runs publicados | Fórmulas y universos de atribución intactos; cambia trazabilidad local. Auditoría integral de campos API, materializaciones, exportación y cargas compuestas pendiente. |
+| Llamadas: procedencia de Interest relacionado | `SalesforceCallSyncService::relatedInterestMatches` y reproceso → `salesforce_id/source/is_deleted` de generación publicada | No cambia fórmula ni clasificación; regresión de consumidores pendiente del cierre de pruebas. |
+| SEO: proyección orgánica y estado Salesforce | `SalesforceOrganicInterestProjectionService::aggregate/latestStableInterestRun` → generación publicada | Conserva medio Orgánico, activos y fecha funcional. No certifica GA4/Search Console. |
+
+Los normalizadores funcionales, configuración de clasificaciones, umbrales,
+redondeos, nulos de KPIs y fechas pivote no cambian en este diff. No se han
+reauditado todas sus cadenas de 23 campos. Origen vacío se normaliza a null en
+persistencia; unicidad y cuarentena son por generación. Las pruebas sintéticas
+no demuestran que los 270.000 cambios procedieran de una actualización masiva
+legítima. Detalle operativo, esquema, evidencias iniciales, borrados y limitaciones
+en [generaciones F2/F5](salesforce-interest-generations.md).

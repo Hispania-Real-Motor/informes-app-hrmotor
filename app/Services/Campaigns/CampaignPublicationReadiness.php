@@ -4,6 +4,7 @@ namespace App\Services\Campaigns;
 
 use App\Models\ReportSyncRun;
 use App\Models\SalesforceOpportunityInterestDirectRun;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -184,6 +185,10 @@ class CampaignPublicationReadiness
 
     private function latest(string $dataset, string $source): ?ReportSyncRun
     {
+        if ($dataset === SalesforceInterestSyncService::DATASET) {
+            return app(InterestGenerationReader::class)->f2();
+        }
+
         return ReportSyncRun::query()->useWritePdo()->where('dataset', $dataset)->where('source', $source)->orderByDesc('id')->first();
     }
 
@@ -205,6 +210,7 @@ class CampaignPublicationReadiness
         $changed = false;
         ReportSyncRun::query()->useWritePdo()
             ->where('dataset', SalesforceInterestSyncService::DATASET)
+            ->whereIn('id', DB::table('salesforce_interest_generations')->select('interest_run_id')->where('status', 'published'))
             ->where('source', SalesforceInterestSyncService::SOURCE)
             ->where('id', '>', $previousId)
             ->where('id', '<=', $currentId)

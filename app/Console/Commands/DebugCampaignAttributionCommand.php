@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Campaigns\CampaignTypeResolver;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
@@ -32,7 +33,7 @@ class DebugCampaignAttributionCommand extends Command
         $start = $startLocal->utc();
         $end = $endLocalExclusive->utc();
 
-        $interests = DB::table('salesforce_interests')
+        $interests = app(InterestGenerationReader::class)->query()
             ->where('is_deleted', false)
             ->where('functional_created_at', '>=', $start)
             ->where('functional_created_at', '<', $end)

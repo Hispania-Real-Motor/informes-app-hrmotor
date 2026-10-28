@@ -116,3 +116,14 @@ afecte históricos y acompañarse de pruebas y auditoría por ID.
 ## 2026-10-23 — Estado actual de campañas: decisión de implementación autorizada
 
 El encargo Fase B autoriza persistencia independiente, contrato JSON aditivo y tarea cada seis horas **deshabilitada por defecto**. La propuesta de dos tablas se resuelve con una sola `campaign_current_statuses` y reutilización de `report_sync_runs`/catálogo operacional. No queda pendiente decidir esa arquitectura en esta rama; sí la revisión del diff, integración, migración productiva y activación por operador. No cambia ninguna decisión de atribución, fórmula o cierres. Evidencia y límites: [decisión](ai/DECISIONS.md), [contrato funcional](informe-campanas.md) y [runbook](operaciones-produccion.md). No consta ejecución remota ni verificación de campañas reales.
+
+## Actualización PR #92 — reglas de origen y primera publicación
+
+La cuarentena de orígenes por generación está implementada, pero permanece
+pendiente la decisión documentada de negocio para cada colisión y cualquier
+cambio de la regla de unicidad. No se presume que el entrante o el propietario
+sea correcto. No existe resolución automática ni autorización para reasignar.
+La primera publicación requiere conciliación independiente y aprobación
+operativa explícita; el backup posterior al incidente no la sustituye.
+Estas decisiones son distintas de las reglas históricas de clasificación Lead.
+Véase [procedimiento y limitaciones](salesforce-interest-generations.md).

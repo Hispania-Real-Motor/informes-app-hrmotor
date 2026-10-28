@@ -133,7 +133,7 @@ class SalesforceInterestReconciliationService
             }
 
             $leadIds = $leads->pluck('salesforce_id')->map(fn (mixed $id): string => (string) $id)->all();
-            $interests = SalesforceInterest::query()
+            $interests = app(InterestGenerationReader::class)->eloquent()
                 ->select($this->interestFields())
                 ->whereIn('migration_origin_lead_id', $leadIds)
                 ->get()
@@ -228,7 +228,7 @@ class SalesforceInterestReconciliationService
         $cursor = 0;
 
         while (true) {
-            $interests = SalesforceInterest::query()
+            $interests = app(InterestGenerationReader::class)->eloquent()
                 ->select(['id', ...$this->interestFields()])
                 ->where('id', '>', $cursor)
                 ->orderBy('id')
@@ -663,7 +663,7 @@ class SalesforceInterestReconciliationService
 
     private function dependencyContext(): ?SalesforceInterestLeadDependencyRun
     {
-        $hasOrigins = SalesforceInterest::query()
+        $hasOrigins = app(InterestGenerationReader::class)->eloquent()
             ->whereNotNull('migration_origin_lead_id')
             ->whereRaw("TRIM(migration_origin_lead_id) <> ''")
             ->exists();
@@ -680,7 +680,7 @@ class SalesforceInterestReconciliationService
             throw new RuntimeException('No current completed Interest dependency snapshot is available.');
         }
 
-        $missingCoverage = SalesforceInterest::query()
+        $missingCoverage = app(InterestGenerationReader::class)->eloquent()
             ->whereNotNull('migration_origin_lead_id')
             ->whereRaw("TRIM(migration_origin_lead_id) <> ''")
             ->whereNotExists(function ($query) use ($dependencyRun): void {
@@ -705,11 +705,7 @@ class SalesforceInterestReconciliationService
 
     private function latestInterestRun(): ReportSyncRun
     {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        $run = app(InterestGenerationReader::class)->f2();
         if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
             throw new RuntimeException('The current Interest source is not stable.');
         }

@@ -125,11 +125,7 @@ class SalesforceInterestLeadDependencySyncService
 
     private function latestStableInterestRun(): ReportSyncRun
     {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        $run = app(InterestGenerationReader::class)->f2();
 
         if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
             throw new RuntimeException('The latest Interest sync run is not a stable completed source.');
@@ -141,7 +137,7 @@ class SalesforceInterestLeadDependencySyncService
     private function seedOrigins(SalesforceInterestLeadDependencyRun $run): int
     {
         $now = now();
-        $source = DB::table('salesforce_interests')
+        $source = app(InterestGenerationReader::class)->query()
             ->selectRaw('? as dependency_run_id', [$run->id])
             ->selectRaw('TRIM(migration_origin_lead_id) as salesforce_id')
             ->selectRaw("'pending' as presence_status")

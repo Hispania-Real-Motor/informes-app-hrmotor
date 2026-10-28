@@ -32,7 +32,7 @@ class SalesforceSyncInterestsCommand extends Command
             $result = $sync->sync($mode, overlapSeconds: $overlap === null ? null : (int) $overlap);
             $stats = $result['stats'];
 
-            $this->info('Sincronización local de Interests completada.');
+            $this->info('F2 candidato completado; F5 y publicacion conjunta pendientes.');
             $this->line('Modo: '.$stats['mode']);
             $this->line('Ventana UTC: '.($stats['window_start'] ?? 'inicio completo').' → '.$stats['window_end']);
             $this->line('Páginas/registros: '.$stats['pages'].'/'.$stats['queried']);

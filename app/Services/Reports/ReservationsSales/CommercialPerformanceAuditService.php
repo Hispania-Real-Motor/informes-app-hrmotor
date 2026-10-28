@@ -3,10 +3,10 @@
 namespace App\Services\Reports\ReservationsSales;
 
 use App\Models\CommercialPerformanceMonthlyTarget;
-use App\Models\SalesforceInterest;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceOpportunityStageTransition;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -124,7 +124,7 @@ class CommercialPerformanceAuditService
 
     private function appendInterests(Collection $rows, CarbonImmutable $start, CarbonImmutable $end, array $context): void
     {
-        SalesforceInterest::query()
+        app(InterestGenerationReader::class)->eloquent()
             ->where('functional_created_at', '>=', $start->utc())
             ->where('functional_created_at', '<', $end->utc())
             ->select([

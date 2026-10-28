@@ -10,6 +10,15 @@ use Illuminate\Support\Facades\DB;
 
 class SalesforceInterestChunkPersister
 {
+    private ?int $generationId = null;
+
+    public function forGeneration(int $generationId): static
+    {
+        $this->generationId = $generationId;
+
+        return $this;
+    }
+
     /**
      * MySQL/MariaDB upsert is deliberately forbidden here: it ignores Laravel's
      * uniqueBy and may select migration_origin_lead_id instead of salesforce_id.
@@ -19,6 +28,10 @@ class SalesforceInterestChunkPersister
      */
     public function persist(array $rows): array
     {
+        if ($this->generationId !== null) {
+            return app(InterestGenerationStore::class)->persist($this->generationId, $rows);
+        }
+
         return DB::transaction(fn (): array => $this->persistInTransaction($rows));
     }
 

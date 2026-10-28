@@ -1454,3 +1454,18 @@ confirmó consulta, persistencia e idempotencia.
 Este cierre no acredita los históricos de Fase 7A o Fase 7B: ambas herramientas
 están disponibles, pero sus ejecuciones continúan pendientes según la evidencia
 versionada disponible.
+
+## Cambio transversal de fuente local Interest — PR #92
+
+Desde esta implementación en revisión, `salesforce_interests` es almacenamiento
+legacy conservado; las lecturas adaptadas se resuelven por generación publicada
+sobre `salesforce_interest_versions` y `salesforce_interest_members`. La identidad
+externa sigue siendo `Interes__c.Id`; los aliases Leads no cambian el objeto fuente.
+El run F2 aislado no constituye publicación: se requieren F5 alineado, validación
+y puntero transaccional. Las descripciones históricas de «último F2»/tabla viva
+quedan sustituidas por [el contrato de generaciones](salesforce-interest-generations.md).
+Se revisan Interests, Reservas/Ventas, Campañas, Llamadas, Monthly Commercial y
+SEO en sus puntos de dependencia. No se modifican fórmulas económicas de
+Comisiones/Stock ni se certifican snapshots ajenos. Las auditorías KPI completas
+siguen pendientes en la matriz; el aislamiento no demuestra por sí solo sus
+fórmulas, ni consistencia temporal de otras fuentes.

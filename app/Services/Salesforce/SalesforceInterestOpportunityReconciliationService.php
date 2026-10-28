@@ -3,7 +3,6 @@
 namespace App\Services\Salesforce;
 
 use App\Models\ReportSyncRun;
-use App\Models\SalesforceInterest;
 use App\Models\SalesforceInterestOpportunityDependency;
 use App\Models\SalesforceInterestOpportunityDependencyRun;
 use App\Models\SalesforceInterestOpportunityReconciliation;
@@ -62,7 +61,7 @@ class SalesforceInterestOpportunityReconciliationService
                     'stats' => $stats,
                 ]);
 
-                $stats['distinct_opportunities_referenced'] = (int) SalesforceInterest::query()
+                $stats['distinct_opportunities_referenced'] = (int) app(InterestGenerationReader::class)->eloquent()
                     ->whereNotNull('inverse_opportunity_salesforce_id')
                     ->whereRaw(self::NORMALIZED_OPPORTUNITY_ID_SQL." <> ''")
                     ->selectRaw('COUNT(DISTINCT '.self::NORMALIZED_OPPORTUNITY_ID_SQL.') as aggregate')
@@ -134,7 +133,7 @@ class SalesforceInterestOpportunityReconciliationService
         $cursor = 0;
 
         while (true) {
-            $interests = SalesforceInterest::query()
+            $interests = app(InterestGenerationReader::class)->eloquent()
                 ->select(['id', 'salesforce_id', 'inverse_opportunity_salesforce_id', 'is_deleted'])
                 ->where('id', '>', $cursor)
                 ->orderBy('id')
@@ -246,7 +245,7 @@ class SalesforceInterestOpportunityReconciliationService
             return [];
         }
 
-        return SalesforceInterest::query()
+        return app(InterestGenerationReader::class)->eloquent()
             ->selectRaw(self::NORMALIZED_OPPORTUNITY_ID_SQL.' as normalized_opportunity_salesforce_id')
             ->selectRaw('COUNT(*) as reference_count')
             ->whereNotNull('inverse_opportunity_salesforce_id')
@@ -291,11 +290,7 @@ class SalesforceInterestOpportunityReconciliationService
 
     private function latestStableInterestRun(): ReportSyncRun
     {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->latest('id')
-            ->first();
+        $run = app(InterestGenerationReader::class)->f2();
 
         if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
             throw new RuntimeException('The latest Interest sync run is not a stable completed source.');
@@ -347,7 +342,7 @@ class SalesforceInterestOpportunityReconciliationService
             ->where('dependency_run_id', $dependencyRun->id)
             ->where('presence_status', 'pending')
             ->exists()
-            || DB::table('salesforce_interests as interests')
+            || app(InterestGenerationReader::class)->query('interests')
                 ->leftJoin('salesforce_interest_opportunity_dependencies as dependencies', function ($join) use ($dependencyRun): void {
                     $join->on(
                         DB::raw('TRIM(interests.inverse_opportunity_salesforce_id)'),

@@ -3,9 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\MonthlyCommercialReportSnapshot;
-use App\Models\SalesforceInterest;
 use App\Services\Reports\MonthlyCommercial\MonthlyCommercialPeriodService;
 use App\Services\Reports\MonthlyCommercial\MonthlyCommercialReportBuilder;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
@@ -31,7 +31,7 @@ class RefreshMonthlyCommercialReportCommand extends Command
         $currentEndUtc = $periods['current_end']->setTimezone('UTC');
 
         try {
-            $currentLeads = SalesforceInterest::query()
+            $currentLeads = app(InterestGenerationReader::class)->eloquent()
                 ->where('is_deleted', false)
                 ->where('functional_created_at', '>=', $currentStartUtc)
                 ->where('functional_created_at', '<', $currentEndUtc)

@@ -9,7 +9,8 @@ use Throwable;
 class SalesforceSyncInterestActivitiesCommand extends Command
 {
     protected $signature = 'salesforce:sync-interest-activities
-        {--reason= : Motivo auditable obligatorio, entre 10 y 500 caracteres}';
+        {--reason= : Motivo auditable obligatorio, entre 10 y 500 caracteres}
+        {--generation= : Generacion candidata F2 completa y sin conflictos}';
 
     protected $description = 'Captura read-only Task y Event relacionados directamente con Interest.';
 
@@ -22,8 +23,14 @@ class SalesforceSyncInterestActivitiesCommand extends Command
             return self::FAILURE;
         }
 
+        $generation = (string) $this->option('generation');
+        if (! ctype_digit($generation) || strlen($generation) > 18 || (int) $generation < 1) {
+            $this->error('--generation debe identificar una candidata F2 completa.');
+
+            return self::FAILURE;
+        }
         try {
-            $result = $service->sync($reason);
+            $result = $service->sync($reason, (int) $generation);
         } catch (Throwable $exception) {
             $this->error(str_starts_with($exception->getMessage(), 'Another Interest activity sync')
                 ? $exception->getMessage()
@@ -36,7 +43,7 @@ class SalesforceSyncInterestActivitiesCommand extends Command
             $result['stats'],
             JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
         ));
-        $this->info('Snapshot Interest–Task/Event completado.');
+        $this->info('F5 candidato completado; la publicacion conjunta sigue siendo obligatoria.');
 
         return self::SUCCESS;
     }

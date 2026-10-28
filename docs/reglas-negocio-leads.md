@@ -4,13 +4,13 @@
 > `leads_*` se conservan por compatibilidad. Desde ROT-1 el hecho funcional del
 > informe es Salesforce `Interes__c`, no `Lead`.
 
-Actualizado: 2026-10-08.
+Actualizado: 2026-10-28 (PR #92, implementación en revisión).
 
 ## Fuentes y persistencia vigentes
 
 El informe usa exclusivamente estas fuentes locales:
 
-- `salesforce_interests`: réplica read-only de `Interes__c` (FOUNDATION-2);
+- `salesforce_interest_versions` y `salesforce_interest_members`: versiones de `Interes__c` fijadas por la generación publicada (FOUNDATION-2);
 - `salesforce_interest_activity_runs` y `salesforce_interest_activities`:
   evidencia FOUNDATION-5 de Task/Event relacionados directamente mediante
   `WhatId → Interes__c`;
@@ -22,35 +22,27 @@ Account o Contact y no utiliza PII como fallback.
 
 ## Disponibilidad del dashboard
 
-El servicio exige que el último run F2 esté completado y tenga cutoff, y que
-exista un F5 completado vinculado al mismo run y cutoff. Si falta ese contexto
-o cambia durante la construcción, responde con HTTP 503, código
-`interest_dataset_unavailable` y `Cache-Control: no-store`. El dashboard muestra
-«Datos no disponibles» y un mensaje de datos todavía no certificados. Las
-respuestas de datos no incluyen KPIs parciales en ese caso. La prueba
-`SalesforceInterestDashboardDatasetTest` cubre F2 fallido en summary, tablas y
-auditoría JSON, y ausencia de F5 alineado en summary.
+La fuente es la generación publicada mediante puntero transaccional, con F2/F5
+completos y alineados. Una candidata en curso, fallida o con conflictos no cambia
+las filas publicadas ni el watermark. Summary devuelve `generation_id`; AJAX y
+CSV lo fijan para evitar mezclas. La fecha visible es el corte certificado y se
+marca desactualizado después de 7.200 segundos por defecto. Un token inválido,
+una generación inexistente o ausencia de publicación produce HTTP 503,
+`interest_dataset_unavailable` y `Cache-Control: no-store`, sin KPIs parciales.
+Recargar permite iniciar una carga coherente; una generación antigua publicada
+sigue siendo consultable mientras se conserve.
 
-La persistencia F2 ejecuta cada bloque en una transacción: si falla una
-inserción o actualización del bloque, revierte sus escrituras. Ante un error
-general de persistencia se registra un error sanitizado de bloque y ya no
-se reintentan las filas con escrituras para diagnosticarlo. Las colisiones de
-origen siguen rechazando el bloque; no existe cuarentena individual ni
-continuación de las filas válidas de ese bloque. `SalesforceInterestSyncServiceTest`
-cubre el rollback de una inserción al fallar una actualización y la ausencia
-de escrituras de diagnóstico.
-
-Esta comprobación no conserva una versión anterior: F2 escribe en la tabla
-viva por bloques y un fallo puede dejar escrituras parciales. No se vuelve al
-último run completado ni se certifica esa tabla por su fecha. La publicación
-aislada por generaciones y la recuperación de la incidencia #5729 siguen
-pendientes. La garantía HTTP para errores durante la emisión de CSV por cursor
-requiere comprobación adicional; una respuesta ya iniciada no puede cambiar su
-estado HTTP.
+F2 persiste versiones y pertenencias candidatas por bloques, aísla colisiones
+individuales con evidencia cifrada y procesa las filas válidas. Cualquier
+conflicto bloquea certificación. F5 debe pertenecer al candidato exacto; solo la
+publicación conjunta avanza el watermark. La tabla viva heredada no es una base
+certificada. Pruebas: `InterestGenerationTest`,
+`SalesforceInterestDashboardDatasetTest` y `leads-unavailable.test.mjs`.
+Véase [arquitectura, recuperación y límites](salesforce-interest-generations.md).
 
 ## Período funcional
 
-- La fecha del hecho es `salesforce_interests.functional_created_at`.
+- La fecha del hecho es `salesforce_interest_versions.functional_created_at`.
 - La persistencia es UTC.
 - Los períodos visibles y calendarios de negocio se interpretan en
   `Europe/Madrid`; sus límites se convierten explícitamente a UTC antes de
@@ -59,18 +51,18 @@ estado HTTP.
 
 ## Estado y lifecycle
 
-Los estados funcionales proceden de `salesforce_interests.status`: Convertido,
+Los estados funcionales proceden de `salesforce_interest_versions.status`: Convertido,
 Descartado y Potencial mantienen la semántica vigente de KPI. Un estado no
 reconocido permanece auditable y no se fuerza a otro estado.
 
-`salesforce_interests.is_deleted = true` excluye el Interest del KPI activo. El
+`salesforce_interest_versions.is_deleted = true` excluye el Interest del KPI activo. El
 registro sigue disponible en conciliación con `salesforce_deleted_at` y
 `deletion_detection_source`; nunca se presenta como incluido en el dataset
 activo.
 
 ## Tipo
 
-El tipo procede exclusivamente de `salesforce_interests.type`.
+El tipo procede exclusivamente de `salesforce_interest_versions.type`.
 `LeadRecordTypeNormalizer` mantiene la normalización compatible para filtros y
 KPIs (`tasacion`, `venta`, `venta_con_cambio`), pero ROT-1 no recupera
 RecordType ni otro atributo desde Lead.
@@ -147,15 +139,15 @@ El pipeline ROT-1 es:
 php artisan salesforce:sync-interest-reporting
 ```
 
-Antes del cutover productivo requiere un bootstrap F2 completo y un F5 alineado
+Antes del cutover requiere la inicialización explícita revisada del runbook y un F5 alineado
 con el mismo run/cutoff. Después, el comando ejecuta el flujo incremental F2 →
 F5 con lock y está programado cada hora. El dashboard operativo exige F2/F5
 alineados; la métrica ejecutiva técnica `leads`, que solo cuenta Interests
-activos, depende únicamente de un F2 estable.
+activos, lee F2 de una generación ya certificada junto con F5, sin consultar detalle de actividades para ese conteo.
 
-## Referencia legacy — consumidores todavía no rotados
+## Referencia histórica — anterior a las rotaciones y generaciones
 
-Campañas y otros consumidores expresamente fuera de ROT-1 continúan usando
+Descripción histórica de ROT-1, no aplicable al estado actual de PR #92: Campañas y otros consumidores expresamente fuera de aquella fase continuaban usando
 `SalesforceLeadDashboardDatasetService`, `salesforce_leads`,
 `salesforce_activities` y `salesforce_lead_activity_summaries` bajo sus reglas
 Lead históricas. Esa semántica no aplica al informe `/informes/leads`, a Monthly

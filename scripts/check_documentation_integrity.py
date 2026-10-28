@@ -40,6 +40,7 @@ DOCS = {
 }
 ALL = frozenset(DOCS)
 SOURCE_PREFIXES = (
+    ("app/Services/Salesforce/InterestGeneration", {"interests", "reservations", "calls", "campaigns"}),
     ("app/Services/Reports/Leads/", {"interests"}),
     ("app/Services/Reports/MonthlyCommercial/", {"interests", "reservations"}),
     ("app/Services/Reports/ReservationsSales/", {"reservations"}),

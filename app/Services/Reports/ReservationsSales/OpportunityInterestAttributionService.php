@@ -6,8 +6,9 @@ use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
 use App\Models\SalesforceOpportunityInterestDirect;
 use App\Models\SalesforceOpportunityInterestDirectRun;
+use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Reports\ReservasVentas\OpportunityPortalNormalizer;
-use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use RuntimeException;
@@ -85,7 +86,7 @@ class OpportunityInterestAttributionService
         }
 
         $directInterestIds = $directs->pluck('interest_salesforce_id')->filter()->map(fn ($id) => (string) $id);
-        $interests = SalesforceInterest::query()
+        $interests = app(InterestGenerationReader::class)->eloquent()
             ->select(['salesforce_id', 'inverse_opportunity_salesforce_id', 'source', 'is_deleted'])
             ->where(function ($query) use ($opportunityIds, $directInterestIds): void {
                 $query->whereIn('inverse_opportunity_salesforce_id', $opportunityIds->all());
@@ -189,10 +190,11 @@ class OpportunityInterestAttributionService
 
     private function latestInterestRun(): ?ReportSyncRun
     {
-        return ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        try {
+            return app(InterestGenerationReader::class)->f2();
+        } catch (InterestDatasetUnavailable) {
+            // Preserve the existing explicit unresolved-attribution contract without reading legacy Interests.
+            return null;
+        }
     }
 }

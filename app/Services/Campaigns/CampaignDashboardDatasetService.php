@@ -5,11 +5,10 @@ namespace App\Services\Campaigns;
 use App\Models\CampaignAttribution;
 use App\Models\CampaignOperationalClassification;
 use App\Models\CampaignPlatformDailyMetric;
-use App\Models\ReportSyncRun;
 use App\Models\SalesforceOpportunity;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
 use App\Services\Reports\ReservationsSales\OpportunityInterestAttributionService;
-use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Support\ReportUserAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -2834,12 +2833,7 @@ class CampaignDashboardDatasetService
             $warnings[] = 'Las metricas publicitarias son posteriores a la atribucion. Ejecuta campaigns:build-attribution antes de validar el panel.';
         }
 
-        $lastInterestRun = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->where('status', 'completed')
-            ->orderByDesc('id')
-            ->first();
+        $lastInterestRun = app(InterestGenerationReader::class)->f2();
         if ($lastAttributionBuild && $lastInterestRun?->completed_at
             && CarbonImmutable::parse($lastAttributionBuild)->lessThan($lastInterestRun->completed_at)
             && $this->interestHasMaterialChangesSinceAttribution($period, $lastAttributionBuild)) {
@@ -2851,7 +2845,7 @@ class CampaignDashboardDatasetService
 
     private function interestHasMaterialChangesSinceAttribution(array $period, string $lastAttributionBuild): bool
     {
-        if (DB::table('salesforce_interests')
+        if (app(InterestGenerationReader::class)->query()
             ->where('functional_created_at', '>=', $period['start_at'])
             ->where('functional_created_at', '<', $period['end_at'])
             ->where('updated_at', '>', $lastAttributionBuild)
@@ -2860,7 +2854,7 @@ class CampaignDashboardDatasetService
         }
 
         return DB::table('campaign_attributions as attribution')
-            ->join('salesforce_interests as interest', 'interest.salesforce_id', '=', 'attribution.interest_id')
+            ->joinSub(app(InterestGenerationReader::class)->query(), 'interest', 'interest.salesforce_id', '=', 'attribution.interest_id')
             ->where('attribution.interest_functional_created_at', '>=', $period['start_at'])
             ->where('attribution.interest_functional_created_at', '<', $period['end_at'])
             ->where('interest.updated_at', '>', $lastAttributionBuild)
@@ -3124,7 +3118,7 @@ class CampaignDashboardDatasetService
 
     private function leadsWithAcquisitionNotNull(array $period): int
     {
-        return DB::table('salesforce_interests')
+        return app(InterestGenerationReader::class)->query()
             ->where('is_deleted', false)
             ->where('functional_created_at', '>=', $period['start_at'])
             ->where('functional_created_at', '<', $period['end_at'])
@@ -3752,11 +3746,7 @@ class CampaignDashboardDatasetService
 
     private function campaignDatasetMetadata(array $period, array $filters): array
     {
-        $interestRun = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        $interestRun = app(InterestGenerationReader::class)->f2();
         $interestSync = $interestRun?->status === 'completed' ? $interestRun->source_cutoff_at : null;
         $metaSync = CampaignPlatformDailyMetric::query()->where('platform', 'meta')->max('synced_at');
         $googleSync = CampaignPlatformDailyMetric::query()->where('platform', 'google_ads')->max('synced_at');
@@ -3778,10 +3768,7 @@ class CampaignDashboardDatasetService
 
     private function dataVersion(): array
     {
-        $interestRun = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')->first(['id', 'status', 'completed_at', 'source_cutoff_at']);
+        $interestRun = app(InterestGenerationReader::class)->f2();
 
         return [
             'attributions_updated_at' => DB::table('campaign_lead_attributions')->max('updated_at'),
@@ -3801,6 +3788,7 @@ class CampaignDashboardDatasetService
     private function filterOptionsVersion(): array
     {
         return [
+            'interest_generation' => app(InterestGenerationReader::class)->generation()->id,
             'campaign_lead_attributions_updated_at' => DB::table('campaign_lead_attributions')->max('updated_at'),
             'campaign_attributions_updated_at' => DB::table('campaign_attributions')->max('updated_at'),
             'metrics_updated_at' => CampaignPlatformDailyMetric::query()->max('updated_at'),

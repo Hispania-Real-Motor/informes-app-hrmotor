@@ -5,9 +5,8 @@ namespace App\Services\Reports\Leads;
 use App\Models\ReportSyncRun;
 use App\Models\SalesforceInterest;
 use App\Models\SalesforceInterestActivity;
-use App\Models\SalesforceInterestActivityRun;
 use App\Models\SalesforceUser;
-use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Support\ReportServerTiming;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -59,6 +58,10 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
         if (($payload['summary']['empty'] ?? false) === true) {
             $payload['summary']['message'] = 'No hay Interests que coincidan con el periodo y los filtros seleccionados.';
         }
+        $generation = app(InterestGenerationReader::class)->generation();
+        $payload['summary']['generation_id'] = $generation->id;
+        $payload['summary']['generation_stale'] = CarbonImmutable::parse($generation->cutoff_at, 'UTC')
+            ->lt(CarbonImmutable::now('UTC')->subSeconds((int) config('salesforce.interest_stale_after_seconds', 7200)));
         $payload['summary']['functional_source'] = 'salesforce_interests';
         $payload['summary']['compatibility_aliases'] = ['portal' => 'source'];
         $payload['summary']['comparativa'] = collect($payload['summary']['comparativa'] ?? [])
@@ -86,7 +89,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
     {
         $f2 = $this->resolveF2Context();
         [$startUtc, $endUtc] = $this->utcBounds(['start' => $start, 'end' => $end]);
-        $query = SalesforceInterest::query()
+        $query = app(InterestGenerationReader::class)->eloquent()
             ->where('is_deleted', false)
             ->where('functional_created_at', '>=', $startUtc)
             ->where('functional_created_at', '<=', $endUtc);
@@ -147,7 +150,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
     {
         $this->sourceContext = $this->resolveAlignedContext();
         $ids = collect($salesforceIds)->map(fn (mixed $id) => trim((string) $id))->filter()->unique()->take(200)->values();
-        $rows = SalesforceInterest::query()->whereIn('salesforce_id', $ids)->get()->keyBy('salesforce_id');
+        $rows = app(InterestGenerationReader::class)->eloquent()->whereIn('salesforce_id', $ids)->get()->keyBy('salesforce_id');
         $summaries = $this->activitySummaries($this->sourceContext['f5']->id, $ids->all());
         $filters = $request ? $this->filters($request, 'summary') : null;
 
@@ -300,7 +303,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
         $referenceDate = $this->functionalBoundary($period['end']);
         [$startUtc, $endUtc] = $this->utcBounds($period);
 
-        SalesforceInterest::query()
+        app(InterestGenerationReader::class)->eloquent()
             ->where('is_deleted', false)
             ->where('functional_created_at', '>=', $startUtc)
             ->where('functional_created_at', '<=', $endUtc)
@@ -328,7 +331,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
 
     protected function lastUpdated(): ?CarbonImmutable
     {
-        $updated = SalesforceInterest::query()->max('updated_at');
+        $updated = app(InterestGenerationReader::class)->eloquent()->max('updated_at');
 
         return $updated ? CarbonImmutable::parse($updated) : null;
     }
@@ -337,7 +340,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
     {
         $context = $this->sourceContext ??= $this->resolveAlignedContext();
         [$startUtc, $endUtc] = $this->utcBounds($period);
-        $query = SalesforceInterest::query()->where('is_deleted', false)
+        $query = app(InterestGenerationReader::class)->eloquent()->where('is_deleted', false)
             ->where('functional_created_at', '>=', $startUtc)
             ->where('functional_created_at', '<=', $endUtc);
 
@@ -404,7 +407,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
 
         return LazyCollection::make(function () use ($startUtc, $endUtc, $context, $activeOnly): \Generator {
             $buffer = [];
-            $query = SalesforceInterest::query()
+            $query = app(InterestGenerationReader::class)->eloquent()
                 ->where('functional_created_at', '>=', $startUtc)
                 ->where('functional_created_at', '<=', $endUtc)
                 ->orderBy('id');
@@ -600,31 +603,14 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
 
     private function resolveAlignedContext(): array
     {
-        $f2 = $this->resolveF2Context();
+        $reader = app(InterestGenerationReader::class);
 
-        $f5 = SalesforceInterestActivityRun::query()
-            ->where('status', 'completed')
-            ->where('source_interest_sync_run_id', $f2->id)
-            ->where('source_interest_cutoff_at', $f2->source_cutoff_at)
-            ->latest('id')->first();
-        if ($f5 === null) {
-            throw new InterestDatasetUnavailable('Interest dashboard activity snapshot is not aligned with F2.');
-        }
-
-        return ['f2' => $f2, 'f5' => $f5];
+        return ['f2' => $reader->f2(), 'f5' => $reader->f5()];
     }
 
     private function resolveF2Context(): ReportSyncRun
     {
-        $f2 = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->latest('id')->first();
-        if ($f2 === null || $f2->status !== 'completed' || $f2->source_cutoff_at === null) {
-            throw new InterestDatasetUnavailable('Interest dashboard source is not a completed F2 snapshot.');
-        }
-
-        return $f2;
+        return app(InterestGenerationReader::class)->f2();
     }
 
     private function assertF2StillCurrent(ReportSyncRun $expected): void

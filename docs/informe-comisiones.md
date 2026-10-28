@@ -289,3 +289,14 @@ La ausencia de una fila de configuración o una fila incoherente no habilita leg
 La asignación tampoco concede acceso al informe si el rol no lo permite. Financiero conserva su pestaña Financieros y los controles administrativos siguen separados. La autorización del POST se revalida dentro de la transacción.
 
 Orden de bloqueos: fila(s) de configuración por ID, usuarios implicados por ID y, para aprobación, cierre económico. El bloqueo de configuración se mantiene hasta el commit del cierre. Los controladores pueden repetir hasta tres veces la transacción completa ante deadlocks detectados por Laravel; los intentos abortados no conservan eventos ni cambios parciales. No se modifican algoritmos de preparación ni cálculos.
+
+## PR #92 — alcance compartido de reconciliación Interest
+
+`SalesforceOpportunityInterestReconciliationService` lee presencia Interest y
+F2 desde la generación publicada; deja de depender del último intento F2 y la
+tabla viva. El cambio afecta la evidencia compartida de relaciones, sin cambiar
+las fórmulas, coeficientes, fechas pivote, pestañas ni cierres de Comisiones.
+No certifica retroactivamente snapshots económicos. El alcance conservador del
+mapa documental incluye este informe por la fuente Opportunity compartida;
+no se ha detectado en el diff una nueva fórmula KPI de Comisiones.
+[Contrato y pendientes de regresión](salesforce-interest-generations.md).

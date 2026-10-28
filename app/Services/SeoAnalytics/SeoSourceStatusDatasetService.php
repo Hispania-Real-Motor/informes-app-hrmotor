@@ -3,7 +3,8 @@
 namespace App\Services\SeoAnalytics;
 
 use App\Models\ReportSyncRun;
-use App\Services\Salesforce\SalesforceInterestSyncService;
+use App\Services\Salesforce\InterestGenerationReader;
+use App\Services\Salesforce\InterestGenerationStore;
 use Carbon\CarbonImmutable;
 
 final class SeoSourceStatusDatasetService
@@ -33,11 +34,8 @@ final class SeoSourceStatusDatasetService
         $property = is_string($property) && $property !== '' ? $property : null;
         $salesforceCompletedRun = $this->sourceStates->latestCompletedRun(SalesforceOrganicInterestProjectionService::DATASET);
         $salesforceLatestRun = $this->sourceStates->latestRun(SalesforceOrganicInterestProjectionService::DATASET);
-        $interestLatestRun = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        $published = app(InterestGenerationStore::class)->published();
+        $interestLatestRun = $published === null ? null : app(InterestGenerationReader::class)->f2();
         $ga4PropertyId = $this->analytics->configuredPropertyId();
         $ga4CompletedRun = $ga4PropertyId
             ? $this->sourceStates->latestCompletedRun(

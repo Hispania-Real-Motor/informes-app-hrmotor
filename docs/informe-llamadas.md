@@ -148,3 +148,15 @@ Archivos principales:
 ### Límite de integridad de la fuente compartida F2
 
 La relación local `Task.WhatId` y el fallback de fuente consultan la tabla viva F2. Cada bloque de persistencia F2 se ejecuta en una transacción y un fallo general ya no repite filas con escrituras para diagnóstico. Un fallo posterior puede dejar persistidos bloques anteriores; no existe aislamiento por generaciones. El último run completado por sí solo no certifica el contenido actual de la tabla tras una ejecución fallida. La respuesta HTTP 503 específica del dashboard de Interests no se extiende por este cambio a este informe. No cambian las reglas de atribución, los filtros, fórmulas ni exportaciones de este informe. Véase [disponibilidad de Interests](reglas-negocio-leads.md#disponibilidad-del-dashboard).
+
+## Fuente Interest por generación — PR #92 (2026-10-28)
+
+`SalesforceCallSyncService::relatedInterestMatches()` y el reproceso de
+clasificación obtienen `salesforce_id`, `source` e `is_deleted` a través de
+`InterestGenerationReader`, fijado a una generación publicada. La procedencia de
+la llamada vinculada ya no se consulta sobre la tabla viva parcialmente escrita.
+No cambian prioridades del clasificador, fecha de llamada, filtros, fórmulas ni
+exportaciones de Llamadas. Sin generación certificada, el lector rechaza usar
+legacy; debe validarse la regresión de sincronización/reproceso con esas
+condiciones. Las notas anteriores sobre tabla viva son históricas.
+[Contrato transversal y límites](salesforce-interest-generations.md).

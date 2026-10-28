@@ -36,8 +36,21 @@ class SalesforceInterestActivitySyncService
     ) {}
 
     /** @return array{run: SalesforceInterestActivityRun, stats: array<string, int|float|string|null>} */
-    public function sync(string $reason): array
+    public function sync(string $reason, ?int $generationId = null): array
     {
+        if ($generationId === null) {
+            throw new RuntimeException('F5 requires an explicit isolated F2 candidate.');
+        }
+        $generations = app(InterestGenerationStore::class);
+        $candidate = $generations->generation($generationId);
+        if ($candidate->status !== 'validating' || ! $candidate->f2_complete) {
+            throw new RuntimeException('F5 requires a complete conflict-free F2 candidate.');
+        }
+        if ($candidate->f5_complete && $candidate->activity_run_id !== null) {
+            $completed = SalesforceInterestActivityRun::findOrFail($candidate->activity_run_id);
+
+            return ['run' => $completed, 'stats' => $completed->stats ?? []];
+        }
         $reason = trim($reason);
         if (mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
             throw new RuntimeException('Interest activity sync requires a reason between 10 and 500 characters.');
@@ -49,15 +62,15 @@ class SalesforceInterestActivitySyncService
         }
 
         $run = null;
-        $cutoff = CarbonImmutable::now('UTC');
+        $cutoff = CarbonImmutable::parse($candidate->cutoff_at, 'UTC');
         $stats = $this->initialStats($cutoff);
         $startedAt = microtime(true);
 
         try {
-            $sourceRun = $this->latestStableInterestRun();
+            $sourceRun = ReportSyncRun::findOrFail($candidate->interest_run_id);
             $stats['source_interest_sync_run_id'] = $sourceRun->id;
             $stats['source_interest_cutoff_at'] = $sourceRun->source_cutoff_at->utc()->toIso8601String();
-            $stats['source_interests'] = DB::table('salesforce_interests')->count();
+            $stats['source_interests'] = $generations->rows($generationId)->count();
 
             try {
                 $run = SalesforceInterestActivityRun::query()->create([
@@ -71,10 +84,12 @@ class SalesforceInterestActivitySyncService
                     'stats' => $stats,
                 ]);
 
-                $this->syncActivities($run, $cutoff, $stats);
+                $this->syncActivities($run, $cutoff, $stats, $generationId);
                 $this->afterSnapshotBuilt($run, $stats);
                 $this->assertSnapshotComplete($run, $stats);
-                $this->assertSourceRunUnchanged($sourceRun);
+                if (! $generations->generation($generationId)->f2_complete) {
+                    throw new RuntimeException('F2 candidate is no longer complete.');
+                }
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
 
                 $run->update([
@@ -83,7 +98,9 @@ class SalesforceInterestActivitySyncService
                     'stats' => $stats,
                     'error_message' => null,
                 ]);
+                $generations->finishF5($generationId, $run);
             } catch (Throwable) {
+                $generations->fail($generationId);
                 $stats['errors']++;
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
                 try {
@@ -98,29 +115,7 @@ class SalesforceInterestActivitySyncService
                 } catch (Throwable) {
                 }
 
-                if ($run !== null) {
-                    try {
-                        $this->cleanupDetailedSnapshots($run, false);
-                    } catch (Throwable) {
-                        $stats['cleanup_errors']++;
-                        try {
-                            $run->update(['stats' => $stats]);
-                        } catch (Throwable) {
-                        }
-                    }
-                }
-
                 throw new RuntimeException('Interest activity sync failed safely.');
-            }
-
-            try {
-                $this->cleanupDetailedSnapshots($run, true);
-            } catch (Throwable) {
-                $stats['cleanup_errors']++;
-                try {
-                    $run->update(['stats' => $stats]);
-                } catch (Throwable) {
-                }
             }
 
             return ['run' => $run, 'stats' => $stats];
@@ -129,29 +124,15 @@ class SalesforceInterestActivitySyncService
         }
     }
 
-    private function latestStableInterestRun(): ReportSyncRun
-    {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
-
-        if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
-            throw new RuntimeException('The latest Interest sync run is not a stable completed source.');
-        }
-
-        return $run;
-    }
-
     /** @param array<string, int|float|string|null> $stats */
     private function syncActivities(
         SalesforceInterestActivityRun $run,
         CarbonImmutable $cutoff,
         array &$stats,
+        int $generationId,
     ): void {
-        $this->syncActivityKind($run, 'Task', $cutoff, $stats);
-        $this->syncActivityKind($run, 'Event', $cutoff, $stats);
+        $this->syncActivityKind($run, 'Task', $cutoff, $stats, $generationId);
+        $this->syncActivityKind($run, 'Event', $cutoff, $stats, $generationId);
     }
 
     /** @param array<string, int|float|string|null> $stats */
@@ -160,12 +141,13 @@ class SalesforceInterestActivitySyncService
         string $kind,
         CarbonImmutable $cutoff,
         array &$stats,
+        int $generationId,
     ): void {
         $stats['query_all_calls']++;
         foreach ($this->client->queryPages($this->soql($kind, $cutoff), true) as $records) {
             $stats[$kind === 'Task' ? 'task_pages' : 'event_pages']++;
             $stats[$kind === 'Task' ? 'tasks_examined' : 'events_examined'] += count($records);
-            $interestById = $this->resolveInterests($records);
+            $interestById = $this->resolveInterests($records, $generationId);
             $rows = array_map(
                 fn (array $record): array => $this->mapRecord($run, $kind, $record, $interestById),
                 $records,
@@ -198,7 +180,7 @@ class SalesforceInterestActivitySyncService
      * @param  list<array<string, mixed>>  $records
      * @return array<string, object>
      */
-    private function resolveInterests(array $records): array
+    private function resolveInterests(array $records, int $generationId): array
     {
         $ids = array_values(array_unique(array_filter(array_map(
             fn (array $record): string => trim((string) data_get($record, 'WhatId')),
@@ -207,9 +189,9 @@ class SalesforceInterestActivitySyncService
         $interests = [];
 
         foreach (array_chunk($ids, self::LOCAL_LOOKUP_CHUNK_SIZE) as $chunk) {
-            foreach (DB::table('salesforce_interests')
-                ->select(['salesforce_id', 'is_deleted'])
-                ->whereIn('salesforce_id', $chunk)
+            foreach (app(InterestGenerationStore::class)->rows($generationId)
+                ->select(['version.salesforce_id', 'version.is_deleted'])
+                ->whereIn('version.salesforce_id', $chunk)
                 ->get() as $interest) {
                 $interests[trim((string) $interest->salesforce_id)] = $interest;
             }
@@ -279,50 +261,6 @@ class SalesforceInterestActivitySyncService
         if ($persisted !== $stats['rows_materialized']
             || $persisted !== $stats['tasks_examined'] + $stats['events_examined']) {
             throw new RuntimeException('Interest activity snapshot coverage is incomplete.');
-        }
-    }
-
-    private function assertSourceRunUnchanged(ReportSyncRun $sourceRun): void
-    {
-        $latest = $this->latestStableInterestRun();
-        if ($latest->id !== $sourceRun->id
-            || ! $latest->source_cutoff_at?->equalTo($sourceRun->source_cutoff_at)) {
-            throw new RuntimeException('The Interest source changed while activities were being built.');
-        }
-    }
-
-    private function cleanupDetailedSnapshots(SalesforceInterestActivityRun $currentRun, bool $completed): void
-    {
-        $protectedRunIds = [$currentRun->id];
-        if (! $completed) {
-            $latestCompleted = SalesforceInterestActivityRun::query()
-                ->where('status', 'completed')
-                ->orderByDesc('completed_at')
-                ->orderByDesc('id')
-                ->value('id');
-            if ($latestCompleted !== null) {
-                $protectedRunIds[] = (int) $latestCompleted;
-            }
-        }
-
-        while (true) {
-            $ids = SalesforceInterestActivity::query()
-                ->whereNotIn('activity_run_id', $protectedRunIds)
-                ->whereIn('activity_run_id', SalesforceInterestActivityRun::query()
-                    ->select('id')
-                    ->whereIn('status', ['completed', 'failed']))
-                ->orderBy('id')
-                ->limit(self::CLEANUP_CHUNK_SIZE)
-                ->pluck('id');
-            if ($ids->isEmpty()) {
-                break;
-            }
-
-            DB::transaction(fn (): int => SalesforceInterestActivity::query()
-                ->whereIn('id', $ids->all())
-                ->whereNotIn('activity_run_id', $protectedRunIds)
-                ->delete());
-            $this->afterCleanupChunk($ids->count());
         }
     }
 

@@ -5,6 +5,7 @@ namespace App\Services\SeoAnalytics;
 use App\Models\ReportSyncRun;
 use App\Models\SeoSalesforceOrganicInterestDailyMetric;
 use App\Services\Reports\ReportSyncRunService;
+use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -105,11 +106,7 @@ class SalesforceOrganicInterestProjectionService
 
     private function latestStableInterestRun(): ReportSyncRun
     {
-        $run = ReportSyncRun::query()
-            ->where('dataset', SalesforceInterestSyncService::DATASET)
-            ->where('source', SalesforceInterestSyncService::SOURCE)
-            ->orderByDesc('id')
-            ->first();
+        $run = app(InterestGenerationReader::class)->f2();
 
         if ($run === null || $run->status !== 'completed' || $run->source_cutoff_at === null) {
             throw new RuntimeException('The latest Interest sync run is not a stable completed source.');
@@ -127,7 +124,7 @@ class SalesforceOrganicInterestProjectionService
     ): array {
         $counts = [];
 
-        DB::table('salesforce_interests')
+        app(InterestGenerationReader::class)->query()
             ->select(['id', 'functional_created_at', 'medium'])
             ->where('is_deleted', false)
             ->where('medium', self::ORGANIC_MEDIUM)
