@@ -530,8 +530,11 @@ class SalesforceInterestSyncServiceTest extends TestCase
                         'started_at' => now(), 'completed_at' => now(),
                     ]);
                     $store->finishF5($last->id, $f5);
+                    $manifest = $store->manifest($last->id);
+                    $candidate = $store->generation($last->id);
                     $store->certify($last->id, ['source' => 'isolated_salesforce_reconstruction',
-                        'manifest_sha256' => $store->manifest($last->id)['sha256'],
+                        'manifest_sha256' => $manifest['sha256'], 'manifest' => $manifest,
+                        'f5' => ['run_id' => $candidate->activity_run_id, 'cutoff_at' => $candidate->cutoff_at],
                         'checks' => array_fill_keys(['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'], true)]);
                     $store->publish($last->id);
                 }

@@ -83,8 +83,11 @@ class InterestGenerationTest extends TestCase
 
     private function certify(int $id): void
     {
+        $manifest = $this->store()->manifest($id);
+        $g = $this->store()->generation($id);
         $this->store()->certify($id, ['source' => 'isolated_salesforce_reconstruction',
-            'manifest_sha256' => $this->store()->manifest($id)['sha256'],
+            'manifest_sha256' => $manifest['sha256'], 'manifest' => $manifest,
+            'f5' => ['run_id' => $g->activity_run_id, 'cutoff_at' => $g->cutoff_at],
             'checks' => array_fill_keys(['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'], true)]);
     }
 
@@ -205,6 +208,19 @@ class InterestGenerationTest extends TestCase
         $this->complete($id);
         $this->expectException(RuntimeException::class);
         $this->store()->certify($id, ['source' => 'legacy_table']);
+    }
+
+    public function test_initial_generation_rejects_boolean_review_without_matching_manifest_and_f5_evidence(): void
+    {
+        $id = $this->candidate();
+        $this->complete($id);
+        $manifest = $this->store()->manifest($id);
+        $this->expectException(RuntimeException::class);
+        $this->store()->certify($id, [
+            'source' => 'isolated_salesforce_reconstruction',
+            'manifest_sha256' => $manifest['sha256'],
+            'checks' => array_fill_keys(['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'], true),
+        ]);
     }
 
     public function test_absence_of_certified_generation_is_unavailable_even_with_legacy_rows(): void

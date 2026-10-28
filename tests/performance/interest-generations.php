@@ -74,8 +74,11 @@ if ($mode !== 'delta') {
         'source_interest_sync_run_id' => $run->id, 'source_interest_cutoff_at' => $cutoff,
         'source_cutoff_at' => $cutoff, 'started_at' => $cutoff, 'completed_at' => $cutoff]);
     $store->finishF5($base, $f5);
+    $manifest = $store->manifest($base);
+    $g = $store->generation($base);
     $store->certify($base, ['source' => 'isolated_salesforce_reconstruction',
-        'manifest_sha256' => $store->manifest($base)['sha256'],
+        'manifest_sha256' => $manifest['sha256'], 'manifest' => $manifest,
+        'f5' => ['run_id' => $g->activity_run_id, 'cutoff_at' => $g->cutoff_at],
         'checks' => array_fill_keys(['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'], true)]);
     $store->publish($base);
     $baseSeconds = microtime(true) - $start;

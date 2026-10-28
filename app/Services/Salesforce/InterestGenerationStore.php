@@ -204,13 +204,23 @@ final class InterestGenerationStore
             }
             $this->assertAligned($g);
             if ($g->base_generation_id === null) {
+                $manifest = $this->manifest($id);
+                $reportedManifest = $initialEvidence['manifest'] ?? null;
+                if (! is_array($reportedManifest)
+                    || (int) ($reportedManifest['rows'] ?? -1) !== $manifest['rows']
+                    || (int) ($reportedManifest['deleted'] ?? -1) !== $manifest['deleted']
+                    || ! hash_equals($manifest['sha256'], (string) ($reportedManifest['sha256'] ?? ''))
+                    || ! hash_equals($manifest['sha256'], (string) ($initialEvidence['manifest_sha256'] ?? ''))) {
+                    throw new RuntimeException('Initial evidence does not match the candidate manifest.');
+                }
                 foreach (['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'] as $check) {
                     if (($initialEvidence['checks'][$check] ?? false) !== true) {
                         throw new RuntimeException('Initial reconstruction requires independent coverage validation.');
                     }
                 }
-                if (! hash_equals($this->manifest($id)['sha256'], $initialEvidence['manifest_sha256'] ?? '')
-                    || ($initialEvidence['source'] ?? '') !== 'isolated_salesforce_reconstruction') {
+                if (($initialEvidence['source'] ?? '') !== 'isolated_salesforce_reconstruction'
+                    || (int) ($initialEvidence['f5']['run_id'] ?? 0) !== (int) $g->activity_run_id
+                    || ! hash_equals((string) $g->cutoff_at, (string) ($initialEvidence['f5']['cutoff_at'] ?? ''))) {
                     throw new RuntimeException('Initial source is not verified.');
                 }
             }
