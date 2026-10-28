@@ -6060,3 +6060,9 @@ Validador integral ejecutado correctamente contra el commit de la corrección: P
 - Se actualizaron el comando operativo, fixtures de rendimiento y pruebas de sincronización. La prueba de regresión rechaza un JSON con checks favorables pero sin manifiesto/F5 verificables.
 - Commit: `3e4e2e7ddf0ed527fa6b8f538952c47f8b0ac9a1`. CI #213 y documentación #31 están en curso; documentación #30 ya pasó.
 - Siguen pendientes para producción: EXPLAIN y ensayo de rendimiento con distribución real, SLO, F5 completo, y contrato de lineage para materializaciones fuera de Interests. No se ejecutó producción.
+## 2026-10-28 — evidencia independiente de primera generación
+
+- `InterestGenerationStore::manifest` ahora expone `identifiers_sha256`, separado del hash interno de la candidata.
+- La certificación inicial exige evidencia externa identificable con huella de identidades, filas, borrados y huellas de relaciones/cobertura. Rechaza `candidate_manifest` y `legacy_table`; los checks booleanos no son suficientes.
+- Se actualizaron fixtures sintéticas, benchmark y procedimiento operativo. Commit de código: `1b37f266845c6ff8de771e4755c6c119074d108c1`.
+- El lineage de materializaciones dependientes fuera de Interests sigue siendo una barrera explícita para producción; no se certifica por inferencia.
