@@ -24,6 +24,12 @@ Tras 540.000 versiones: aproximadamente 1.463 MB de datos y 339 MB de índices d
 
 La carrera con dos conexiones independientes produjo exactamente `published` y `rejected`: un solo ganador. Ninguna candidata cambió el puntero durante su construcción.
 
+`interest-generation-explain.sql` contiene los tres planes que deben capturarse
+en la misma MariaDB de benchmark: lectura paginada, resolución por ID y
+resolución por origen. La revisión exige que `salesforce_interest_members`
+utilice las claves cuyo primer componente es `generation_id`; copiar un plan de
+SQLite o de una tabla reducida no acredita el comportamiento de producción.
+
 ## Decisión y bloqueo de producción
 
 Se evita copiar los payloads completos cada hora: se copian referencias de membresía y se escriben únicamente versiones modificadas. La membresía sigue teniendo coste O(N) por generación. Si cambia toda la población, el coste de versiones sigue siendo proporcional al dataset completo.

@@ -6066,3 +6066,4 @@ Validador integral ejecutado correctamente contra el commit de la corrección: P
 - La certificación inicial exige evidencia externa identificable con huella de identidades, filas, borrados y huellas de relaciones/cobertura. Rechaza `candidate_manifest` y `legacy_table`; los checks booleanos no son suficientes.
 - Se actualizaron fixtures sintéticas, benchmark y procedimiento operativo. Commit de código: `1b37f266845c6ff8de771e4755c6c119074d108c1`.
 - El lineage de materializaciones dependientes fuera de Interests sigue siendo una barrera explícita para producción; no se certifica por inferencia.
+- Se añadió `tests/performance/interest-generation-explain.sql` con planes MariaDB reproducibles para lectura paginada, ID y origen. La captura sobre volumen/distribución real sigue pendiente y es requisito antes de producción.
