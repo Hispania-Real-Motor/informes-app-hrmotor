@@ -234,3 +234,8 @@ La fixture documental incluye `docs/salesforce-interest-generations.md`, destino
 enlazado por la matriz de trazabilidad. Las verificaciones estructurales no
 certifican la consistencia del pipeline ni su rendimiento; requieren pruebas
 funcionales y revisión de los límites de certificación del runbook.
+
+El proveedor de servicios, cliente Salesforce y retención transversal se mapean
+conservadoramente a los seis informes; el prechequeo mensual a Interests y
+Reservas/Ventas, y las proyecciones SEO a Interests y Campañas. Sus cambios
+compartidos requieren revisión documental aunque no modifiquen una fórmula.

@@ -40,6 +40,7 @@ DOCS = {
 }
 ALL = frozenset(DOCS)
 SOURCE_PREFIXES = (
+    ("app/Services/SeoAnalytics/", {"interests", "campaigns"}),
     ("app/Services/Salesforce/InterestGeneration", {"interests", "reservations", "calls", "campaigns"}),
     ("app/Services/Reports/Leads/", {"interests"}),
     ("app/Services/Reports/MonthlyCommercial/", {"interests", "reservations"}),
@@ -73,6 +74,10 @@ SOURCE_PREFIXES = (
     ("resources/views/reports/summary/", ALL),
 )
 EXACT = {
+    "app/Providers/AppServiceProvider.php": ALL,
+    "app/Services/Salesforce/SalesforceClient.php": ALL,
+    "app/Console/Commands/PruneTransversalDataCommand.php": ALL,
+    "app/Console/Commands/RefreshMonthlyCommercialReportCommand.php": {"interests", "reservations"},
     "app/Console/Commands/SalesforceSyncOpportunitiesCommand.php": {"reservations", "campaigns", "commissions", "stock"},
     "config/campaign_current_status.php": {"campaigns"},
     "config/commercial_commissions.php": {"commissions"},

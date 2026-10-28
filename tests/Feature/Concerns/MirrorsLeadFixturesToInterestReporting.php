@@ -39,6 +39,8 @@ trait MirrorsLeadFixturesToInterestReporting
             'completed_at' => $cutoff,
             'stats' => [],
         ]);
+        \Tests\Support\InterestGenerationFixture::published($f2, $this->interestActivityFixtureRun);
+        SalesforceInterest::created(fn (SalesforceInterest $row) => \Tests\Support\InterestGenerationFixture::row($row));
 
         SalesforceLead::created(function (SalesforceLead $lead): void {
             $ownerId = $lead->owner_id;

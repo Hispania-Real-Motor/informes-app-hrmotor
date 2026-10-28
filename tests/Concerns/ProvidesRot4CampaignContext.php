@@ -28,6 +28,8 @@ trait ProvidesRot4CampaignContext
             'timezone' => 'UTC',
         ]);
         $this->rot4InterestRunId = (int) $interestRun->id;
+        \Tests\Support\InterestGenerationFixture::published($interestRun);
+        SalesforceInterest::created(fn (SalesforceInterest $row) => \Tests\Support\InterestGenerationFixture::row($row));
 
         $directRun = SalesforceOpportunityInterestDirectRun::query()->create([
             'run_identifier' => (string) Str::uuid(),
