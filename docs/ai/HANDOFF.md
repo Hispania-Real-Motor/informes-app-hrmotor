@@ -6067,3 +6067,4 @@ Validador integral ejecutado correctamente contra el commit de la corrección: P
 - Se actualizaron fixtures sintéticas, benchmark y procedimiento operativo. Commit de código: `1b37f266845c6ff8de771e4755c6c119074d108c1`.
 - El lineage de materializaciones dependientes fuera de Interests sigue siendo una barrera explícita para producción; no se certifica por inferencia.
 - Se añadió `tests/performance/interest-generation-explain.sql` con planes MariaDB reproducibles para lectura paginada, ID y origen. La captura sobre volumen/distribución real sigue pendiente y es requisito antes de producción.
+- Se añadió lineage explícito `interest_generation_id` a `seo_salesforce_organic_interest_daily_metrics`; la proyección SEO lo fija junto con run y cutoff. Filas históricas NULL requieren reconstrucción y no certifican una generación.

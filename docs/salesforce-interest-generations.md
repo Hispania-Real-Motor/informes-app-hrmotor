@@ -26,6 +26,11 @@ La cuarentena distingue `duplicate_in_block`, `duplicate_between_blocks`, `base_
 
 Lectores adaptados: dashboard y auditorías Interests, métrica ejecutiva y prechequeo mensual, atribución y auditoría de Reservas/Ventas y Rendimiento comercial, builder/readiness/dashboard de Campañas, clasificación y reproceso de Llamadas, proyección orgánica y estado SEO, dependencias y reconciliaciones de Interests/Opportunities. Esto fija la fuente Interest; no certifica conjuntamente otras fuentes, cierres económicos o materializaciones dependientes. El token entre varias peticiones está implementado específicamente en Interests; verificar los restantes contratos de caché y pantallas compuestas mediante sus regresiones sigue siendo un requisito de revisión.
 
+La materialización SEO diaria conserva ahora `interest_generation_id` además del
+run y cutoff F2. Las filas antiguas sin ese campo no se consideran evidencia de
+una generación certificada; una reconstrucción SEO debe ejecutarse de nuevo
+desde un lector publicado antes de usarla para una publicación dependiente.
+
 ## Primera generación e incidente #5729
 
 El backup posterior al incidente comunicado por el operador tiene gzip y checksum correctos (437 MB comprimidos, 105 tablas); su restauración no está probada. No es evidencia de un estado anterior ni fuente inicial certificable. No se ha accedido a él en desarrollo. El inventario exacto de filas insertadas/modificadas por #5729 y sus valores anteriores sigue pendiente; los contadores del run no bastan para reconstruirlo. Los 270.000 cambios pueden deberse a actualización masiva, pero no se ha demostrado la causa ni consultado Salesforce durante esta tarea.

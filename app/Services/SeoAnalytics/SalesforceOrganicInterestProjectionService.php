@@ -33,6 +33,7 @@ class SalesforceOrganicInterestProjectionService
 
         $timezone = (string) config('seo_analytics.timezone', 'Europe/Madrid');
         $sourceRun = $this->latestStableInterestRun();
+        $sourceGeneration = app(InterestGenerationReader::class)->generation();
         $localNow = ($now ?? CarbonImmutable::now($timezone))->setTimezone($timezone);
         $localClosedDay = $localNow->startOfDay()->subDay();
         $f2ClosedDay = CarbonImmutable::parse($sourceRun->source_cutoff_at)
@@ -68,7 +69,7 @@ class SalesforceOrganicInterestProjectionService
             $counts = $this->aggregate($startUtc, $endExclusiveUtc, $timezone, $stats);
             $this->afterInterestsRead($run, $stats);
             $this->assertSourceRunUnchanged($sourceRun);
-            $rows = $this->rows($periodStart, $periodEnd, $counts, $timezone, $sourceRun);
+            $rows = $this->rows($periodStart, $periodEnd, $counts, $timezone, $sourceRun, (int) $sourceGeneration->id);
             $stats['days_persisted'] = count($rows);
 
             DB::transaction(function () use ($rows, $run, $sourceRun, $projectionCutoff, &$stats): void {
@@ -77,7 +78,7 @@ class SalesforceOrganicInterestProjectionService
                     ['data_date'],
                     [
                         'interest_count', 'source_timezone', 'source_interest_sync_run_id',
-                        'source_interest_cutoff_at', 'extracted_at', 'updated_at',
+                        'interest_generation_id', 'source_interest_cutoff_at', 'extracted_at', 'updated_at',
                     ],
                 );
                 $this->afterProjectionPersisted($run, $stats);
@@ -161,6 +162,7 @@ class SalesforceOrganicInterestProjectionService
         array $counts,
         string $timezone,
         ReportSyncRun $sourceRun,
+        int $sourceGenerationId,
     ): array {
         $now = now('UTC');
         $rows = [];
@@ -170,6 +172,7 @@ class SalesforceOrganicInterestProjectionService
                 'interest_count' => $counts[$date->toDateString()] ?? 0,
                 'source_timezone' => $timezone,
                 'source_interest_sync_run_id' => $sourceRun->id,
+                'interest_generation_id' => $sourceGenerationId,
                 'source_interest_cutoff_at' => $sourceRun->source_cutoff_at,
                 'extracted_at' => $now,
                 'created_at' => $now,
