@@ -254,7 +254,7 @@ final class InterestGenerationStore
         $count = 0;
         $deleted = 0;
         $this->rows($id)->select(['version.id', 'version.salesforce_id', 'version.content_hash', 'version.is_deleted'])
-            ->chunkById(1000, function ($rows) use ($hash, &$count, &$deleted): void {
+            ->chunkById(1000, function ($rows) use ($hash, $identityHash, &$count, &$deleted): void {
                 foreach ($rows as $row) {
                     hash_update($hash, $row->salesforce_id.'|'.$row->content_hash."\n");
                     hash_update($identityHash, $row->salesforce_id.'|'.$row->content_hash.'|'.(int) $row->is_deleted."\n");
