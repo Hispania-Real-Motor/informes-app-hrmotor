@@ -6054,3 +6054,9 @@ Validador integral ejecutado correctamente contra el commit de la corrección: P
 ### CI confirmada
 
 - SHA de código 239aed3e343538e8edac8db97aad74de1ab75858: CI #210 (40687478965) y Documentation integrity #26 (40687479070) completadas con success. Incluye 1.533 pruebas PHP correctas (13.989 aserciones), Composer validate/audit, Pint sobre 63 archivos, build frontend y whitespace. El commit documental posterior registra esta evidencia sin cambiar código.
+## 2026-10-28 — endurecimiento de certificación inicial
+
+- `InterestGenerationStore::certify` compara la evidencia inicial con el manifiesto calculado de la candidata (filas, borrados y SHA-256) y exige el `run_id` y corte F5 exactos. Los indicadores booleanos ya no bastan.
+- Se actualizaron el comando operativo, fixtures de rendimiento y pruebas de sincronización. La prueba de regresión rechaza un JSON con checks favorables pero sin manifiesto/F5 verificables.
+- Commit: `3e4e2e7ddf0ed527fa6b8f538952c47f8b0ac9a1`. CI #213 y documentación #31 están en curso; documentación #30 ya pasó.
+- Siguen pendientes para producción: EXPLAIN y ensayo de rendimiento con distribución real, SLO, F5 completo, y contrato de lineage para materializaciones fuera de Interests. No se ejecutó producción.
