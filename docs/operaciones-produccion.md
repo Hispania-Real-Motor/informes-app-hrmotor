@@ -1338,6 +1338,74 @@ comerciales solo en un anexo de acceso restringido.
    registro válido perdido de forma reproducible; no ampliar matching ni
    alterar una fórmula para fabricar resultados.
 
+Para investigar específicamente **1–27 de octubre de 2026** en Madrid, fijar
+el rango semiabierto `[2026-09-30 22:00:00,
+2026-10-27 23:00:00)` en UTC: comprende desde las 00:00 del día 1 hasta el
+final civil del día 27, incluido el cambio de horario del 25. Vincular estos
+límites como `:inicio_utc` y `:fin_utc`; no usar un desplazamiento UTC fijo
+para ambos extremos. Registrar en un canal restringido los filtros exactos
+de la petición (`context=venta`, estado histórico, cuenta, plataforma,
+campaña y otros seleccionados) y las fechas de los últimos runs completos o
+fallidos de Google, F2, Opportunities, atribución y publicación. Una etiqueta
+de «Datos actualizados» neutral o una sync incompleta impide certificar el
+cero como dato productivo vigente.
+
+Las siguientes consultas devuelven **solo agregados por plataforma y tipo**,
+sin IDs ni datos personales. La primera usa el hecho de presentación
+`campaign_lead_attributions`, que sí guarda `campaign_type`; la segunda usa
+`campaign_attributions` legacy y obtiene el tipo únicamente de una fila
+correspondiente de la primera tabla (legacy no tiene columna `campaign_type`).
+El emparejamiento de diagnóstico por `interest_id`, plataforma y Campaign ID
+no sustituye la conciliación ni deduplicación del dataset:
+
+```sql
+SELECT platform, campaign_type,
+       COUNT(*) AS filas,
+       COUNT(DISTINCT interest_id) AS intereses,
+       COUNT(DISTINCT CASE WHEN is_ambiguous = 0 AND interest_is_deleted = 0
+            THEN interest_id END) AS intereses_no_ambiguos_activos,
+       COUNT(DISTINCT CASE WHEN has_sale = 1 THEN opportunity_id END) AS oportunidades_marcadas_venta
+FROM campaign_lead_attributions
+WHERE platform IN ('google_ads', 'meta')
+  AND interest_functional_created_at >= :inicio_utc
+  AND interest_functional_created_at < :fin_utc
+GROUP BY platform, campaign_type;
+
+SELECT ca.platform, COALESCE(cla.campaign_type, 'sin_tipo_en_cla') AS tipo_diagnostico,
+       COUNT(DISTINCT ca.id) AS atribuciones_legacy,
+       COUNT(DISTINCT ca.interest_id) AS intereses_legacy,
+       COUNT(DISTINCT CASE WHEN ca.has_sale = 1 THEN ca.opportunity_id END) AS oportunidades_marcadas_venta
+FROM campaign_attributions AS ca
+LEFT JOIN campaign_lead_attributions AS cla
+  ON cla.interest_id = ca.interest_id
+ AND cla.platform = ca.platform AND cla.campaign_id = ca.campaign_id
+WHERE ca.platform IN ('google_ads', 'meta')
+  AND ca.interest_functional_created_at >= :inicio_utc
+  AND ca.interest_functional_created_at < :fin_utc
+GROUP BY ca.platform, COALESCE(cla.campaign_type, 'sin_tipo_en_cla');
+
+SELECT platform, COUNT(*) AS campanas_con_tipos_mixtos
+FROM (
+    SELECT platform, campaign_id, campaign_name
+    FROM campaign_lead_attributions
+    WHERE platform IN ('google_ads', 'meta')
+      AND interest_functional_created_at >= :inicio_utc
+      AND interest_functional_created_at < :fin_utc
+      AND interest_is_deleted = 0 AND is_ambiguous = 0
+    GROUP BY platform, campaign_id, campaign_name
+    HAVING COUNT(DISTINCT campaign_type) > 1
+) AS mixtas
+GROUP BY platform;
+```
+
+Contrastar esos recuentos con la respuesta autorizada de summary, detalle y
+CSV bajo **los mismos filtros**, primero `Todos` y después `Venta`, y con el
+run de atribución que cubre el rango. Un cero Google con gasto puede ser
+legítimo, deberse a ausencia de Interest/matching o a filtros; si aparece una
+campaña mixta y las atribuciones Venta se pierden solo en comparativa/detalle,
+el defecto sintético corregido es candidato. No extrapolar ese mecanismo al
+caso productivo sin la conciliación de filas agregadas y el linaje de sync.
+
 Ejemplos de consultas preparadas con `:cuenta` y `:campana` vinculados como
 **cadenas**, límites diarios `:inicio_dia`/`:fin_dia` y UTC
 `:inicio_utc`/`:fin_utc`:
