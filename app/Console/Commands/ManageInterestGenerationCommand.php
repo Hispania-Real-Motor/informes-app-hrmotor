@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Salesforce\InterestGenerationStore;
 use App\Services\Salesforce\InterestExternalEvidenceService;
+use App\Services\Salesforce\InterestGenerationStore;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
