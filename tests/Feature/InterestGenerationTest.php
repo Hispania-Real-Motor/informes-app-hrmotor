@@ -125,7 +125,20 @@ class InterestGenerationTest extends TestCase
         $id = $this->candidate('2026-10-28 11:00:00');
         $rows = [$this->row('a01000000000000002', '00Q000000000000001'), $this->row('a01000000000000003')];
         $stats = $this->store()->persist($id, $rows);
-        $this->store()->persist($id, $rows);
+        $this->store()->persist($id, array_slice($rows, 0, 500));
+        DB::table('salesforce_interest_versions')->insert([
+            'generation_id' => $id, 'batch_token' => (string) Str::uuid(),
+            'content_hash' => hash('sha256', 'orphan-version-1'), 'salesforce_id' => 'a01999999999999991',
+            'salesforce_created_at' => '2026-10-01 00:00:00', 'salesforce_last_modified_at' => '2026-10-01 00:00:00',
+            'functional_created_at' => '2026-10-01 00:00:00', 'raw_payload' => '{}', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('salesforce_interest_versions')->insert([
+            'generation_id' => $id, 'batch_token' => (string) Str::uuid(),
+            'content_hash' => hash('sha256', 'orphan-version-2'), 'salesforce_id' => 'a01999999999999992',
+            'salesforce_created_at' => '2026-10-01 00:00:00', 'salesforce_last_modified_at' => '2026-10-01 00:00:00',
+            'functional_created_at' => '2026-10-01 00:00:00', 'raw_payload' => '{}', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->store()->persist($id, array_slice($rows, 500));
         $this->assertSame(1, $stats['conflicts']);
         $this->assertSame(1, $stats['inserted']);
         $this->assertSame(2, $this->store()->rows($id)->count());
@@ -232,6 +245,9 @@ class InterestGenerationTest extends TestCase
         $ordered = $this->store()->rows($id)
             ->select(['member.version_id', 'version.salesforce_id', 'version.content_hash', 'version.is_deleted'])
             ->orderBy('member.version_id')->get();
+        $versionIds = $ordered->pluck('version_id')->values()->all();
+        $this->assertTrue(collect($versionIds)->zip(collect($versionIds)->skip(1))
+            ->contains(fn ($pair): bool => $pair[1] > $pair[0] + 1));
         $full = hash_init('sha256');
         $identities = hash_init('sha256');
         hash_update($full, json_encode([$id, $first['cutoff_at'], $this->store()->generation($id)->interest_run_id,
