@@ -214,6 +214,40 @@ class InterestGenerationTest extends TestCase
         $this->store()->certify($id, ['source' => 'legacy_table']);
     }
 
+    public function test_manifest_is_deterministic_across_non_contiguous_multi_chunk_version_ids(): void
+    {
+        $id = $this->candidate();
+        $rows = [];
+        foreach (range(1, 1001) as $number) {
+            $rows[] = $this->row(
+                id: sprintf('a01%015d', $number * 3),
+                origin: sprintf('00Q%015d', $number * 3),
+                status: $number % 2 === 0 ? 'deleted' : 'new',
+            ) + ['is_deleted' => $number % 2 === 0];
+        }
+        $this->store()->persist($id, $rows);
+
+        $first = $this->store()->manifest($id);
+        $second = $this->store()->manifest($id);
+        $ordered = $this->store()->rows($id)
+            ->select(['member.version_id', 'version.salesforce_id', 'version.content_hash', 'version.is_deleted'])
+            ->orderBy('member.version_id')->get();
+        $full = hash_init('sha256');
+        $identities = hash_init('sha256');
+        hash_update($full, json_encode([$id, $first['cutoff_at'], $this->store()->generation($id)->interest_run_id,
+            $this->store()->generation($id)->activity_run_id], JSON_THROW_ON_ERROR));
+        foreach ($ordered as $row) {
+            hash_update($full, $row->salesforce_id.'|'.$row->content_hash."\n");
+            hash_update($identities, $row->salesforce_id.'|'.$row->content_hash.'|'.(int) $row->is_deleted."\n");
+        }
+
+        $this->assertSame(1001, $first['rows']);
+        $this->assertSame(500, $first['deleted']);
+        $this->assertSame(hash_final($full), $first['sha256']);
+        $this->assertSame(hash_final($identities), $first['identifiers_sha256']);
+        $this->assertSame($first, $second);
+    }
+
     public function test_initial_generation_rejects_boolean_review_without_matching_manifest_and_f5_evidence(): void
     {
         $id = $this->candidate();
