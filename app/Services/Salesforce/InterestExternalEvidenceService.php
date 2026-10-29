@@ -102,7 +102,7 @@ final class InterestExternalEvidenceService
             }
         }
 
-        return ['hash' => hash_final($hash), 'pages' => $relationPages, 'rows' => $relationRows, 'unverifiable' => 0];
+        return ['hash' => hash_final($hash), 'pages' => $relationPages, 'rows' => $relationRows, 'unverifiable' => $relationRows];
     }
 
     /** @return array<string, mixed> */
