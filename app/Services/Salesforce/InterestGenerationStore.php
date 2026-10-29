@@ -330,7 +330,7 @@ final class InterestGenerationStore
         return $g;
     }
 
-    private function hash(array $row): string
+    public function hash(array $row): string
     {
         unset($row['synced_at'], $row['created_at'], $row['updated_at']);
         ksort($row);

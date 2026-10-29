@@ -213,7 +213,7 @@ SOQL;
     }
 
     /** @param array<string, mixed> $record */
-    private function mapRecord(array $record, bool $deleted): array
+    public function mapRecord(array $record, bool $deleted): array
     {
         $row = [
             'salesforce_id' => data_get($record, 'Id'),

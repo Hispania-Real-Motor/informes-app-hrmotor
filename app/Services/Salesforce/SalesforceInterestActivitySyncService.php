@@ -205,7 +205,7 @@ class SalesforceInterestActivitySyncService
      * @param  array<string, object>  $interestById
      * @return array<string, mixed>
      */
-    private function mapRecord(
+    public function mapRecord(
         SalesforceInterestActivityRun $run,
         string $kind,
         array $record,
