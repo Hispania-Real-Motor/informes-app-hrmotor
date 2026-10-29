@@ -37,12 +37,23 @@ final class InterestInitialCurrentRecoveryService
         }
 
         $source = $this->store->generation($sourceGenerationId);
-        $watermark = CarbonImmutable::now('UTC')->subMinutes(2)->startOfMinute();
+        $sourceCutoff = CarbonImmutable::parse($source->cutoff_at, 'UTC');
+        $requestedWatermark = CarbonImmutable::now('UTC')->subMinutes(2)->startOfMinute();
+        $preflight = $this->client->getDeleted('Interes__c', $sourceCutoff, $requestedWatermark);
+        $earliestAvailable = CarbonImmutable::parse($preflight['earliestDateAvailable'])->utc();
+        $latestCovered = CarbonImmutable::parse($preflight['latestDateCovered'])->utc()->startOfMinute();
+        if ($earliestAvailable->gt($sourceCutoff)) {
+            throw new RuntimeException('Salesforce deletion history does not cover the recovery source cutoff.');
+        }
+        $watermark = $latestCovered->lt($requestedWatermark) ? $latestCovered : $requestedWatermark;
+        if ($watermark->lte($sourceCutoff)) {
+            throw new RuntimeException('Salesforce deletion history has not advanced beyond the recovery source cutoff.');
+        }
         $candidateId = $this->store->beginInitialRecovery($sourceGenerationId, $watermark);
         $run = $this->runs->start(
             SalesforceInterestSyncService::DATASET,
             SalesforceInterestSyncService::SOURCE,
-            CarbonImmutable::parse($source->cutoff_at, 'UTC'),
+            $sourceCutoff,
             $watermark,
             'UTC',
         );
@@ -54,7 +65,7 @@ final class InterestInitialCurrentRecoveryService
             // longer returned by queryAll. Coverage failure closes the flow.
             $this->interests->applyDeletionLog(
                 $candidateId,
-                CarbonImmutable::parse($source->cutoff_at, 'UTC'),
+                $sourceCutoff,
                 $watermark,
                 $deletionStats,
             );
@@ -93,6 +104,7 @@ final class InterestInitialCurrentRecoveryService
                 'source_generation_id' => $sourceGenerationId,
                 'recovered_generation_id' => $candidateId,
                 'source_cutoff' => (string) $source->cutoff_at,
+                'requested_watermark' => $requestedWatermark->toDateTimeString(),
                 'watermark' => (string) $this->store->generation($candidateId)->cutoff_at,
                 'interest_run_id' => $run->id,
                 'reconciliation_passes' => count($passes),

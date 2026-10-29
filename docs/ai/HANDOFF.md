@@ -6113,3 +6113,20 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   Mantener pendiente la validación con datos representativos y Salesforce; no se
   garantiza fotografía histórica. El despliegue y la publicación son acciones
   operativas separadas.
+
+## Watermark garantizado de recuperación inicial — hotfix sobre c57433d
+
+- `recover-initial` hace un preflight read-only de `getDeleted` antes de crear
+  la candidata. El watermark efectivo es la menor frontera entre el corte
+  solicitado (`now - 2 min`) y `latestDateCovered`, normalizada al minuto; no
+  se exige que Salesforce cubra la hora local.
+- La cobertura debe empezar como máximo en el cutoff fuente y avanzar más allá
+  de él. La aplicación vuelve a comprobar borrados hasta el watermark efectivo;
+  una cobertura que retrocede falla la candidata sin publicar ni modificar la
+  fuente. La evidencia incluye corte solicitado y efectivo; este último queda
+  limitado por la cobertura de borrados y no certifica por sí solo toda la
+  replicación ni una fotografía histórica de F2/F5.
+- Se añadieron regresiones de frontera retrasada, cobertura histórica ausente y
+  regresión entre preflight y aplicación. Pendiente PHPUnit completo en CI por
+  ausencia de `vendor/` completo en este worktree; sintaxis, Pint, diff y
+  documentación deben repetirse antes de publicar el hotfix.
