@@ -259,7 +259,7 @@ class InterestGenerationTest extends TestCase
 
     public function test_current_initial_recovery_reuses_identical_versions_and_never_publishes(): void
     {
-        $this->travelTo(CarbonImmutable::parse('2026-10-28 11:02:00', 'UTC'));
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
         $record = [
             'Id' => 'a01000000000000001', 'CreatedDate' => '2026-10-01T00:00:00Z',
             'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z',
@@ -271,12 +271,14 @@ class InterestGenerationTest extends TestCase
             'ActivityDate' => '2026-10-28', 'CreatedDate' => '2026-10-28T10:00:00Z',
             'LastModifiedDate' => '2026-10-28T10:00:00Z', 'SystemModstamp' => '2026-10-28T10:00:00Z', 'IsDeleted' => false,
         ];
-        $source = $this->candidate();
+        $source = $this->candidate('2026-10-28 15:57:00');
         $this->store()->persist($source, [app(SalesforceInterestSyncService::class)->mapRecord($record, false)]);
         $this->complete($source);
         $sourceVersion = $this->store()->rows($source)->value('version.id');
         $client = new class($record, $task) extends SalesforceClient
         {
+            public array $deletionEnds = [];
+
             public function __construct(private array $record, private array $task) {}
 
             public function queryPages(string $soql, bool $includeDeleted = false): \Generator
@@ -290,7 +292,12 @@ class InterestGenerationTest extends TestCase
 
             public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
             {
-                return ['earliestDateAvailable' => $start->toIso8601String(), 'latestDateCovered' => $end->toIso8601String(), 'deletedRecords' => []];
+                $this->deletionEnds[] = $end->utc()->toIso8601String();
+                $latest = count($this->deletionEnds) === 1
+                    ? '2026-10-29T00:00:00.000+0000'
+                    : $end->utc()->toIso8601String();
+
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000', 'latestDateCovered' => $latest, 'deletedRecords' => []];
             }
         };
         $this->app->instance(SalesforceClient::class, $client);
@@ -304,6 +311,11 @@ class InterestGenerationTest extends TestCase
         $this->assertSame(0, $result['evidence']['f2']['content_mismatches']);
         $this->assertSame(0, $result['evidence']['f2']['candidate_only_unexplained']);
         $this->assertSame(1, $result['evidence']['f5']['rows']);
+        $this->assertSame('2026-10-29 00:00:00', $this->store()->generation($candidate)->cutoff_at);
+        $this->assertSame('2026-10-29 00:00:00', ReportSyncRun::findOrFail($this->store()->generation($candidate)->interest_run_id)->source_cutoff_at->utc()->toDateTimeString());
+        $this->assertSame('2026-10-29 00:00:00', SalesforceInterestActivityRun::findOrFail($this->store()->generation($candidate)->activity_run_id)->source_cutoff_at->utc()->toDateTimeString());
+        $this->assertSame('2026-10-29 00:00:00', $result['evidence']['watermark']);
+        $this->assertSame(['2026-10-29T13:37:00+00:00', '2026-10-29T00:00:00+00:00'], $client->deletionEnds);
         $this->travelBack();
     }
 
@@ -313,6 +325,65 @@ class InterestGenerationTest extends TestCase
             'action' => 'recover-initial', '--source-generation' => '1', '--reason' => 'Recover initial generation safely.',
         ])->assertFailed();
         $this->assertDatabaseCount('salesforce_interest_generations', 0);
+    }
+
+    public function test_current_initial_recovery_rejects_preflight_without_historical_coverage_or_advance(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->complete($source);
+        $client = new class extends SalesforceClient
+        {
+            public function __construct() {}
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2026-10-28T15:58:00+0000', 'latestDateCovered' => '2026-10-28T15:57:00+0000', 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        $this->expectException(RuntimeException::class);
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Reject incomplete deletion coverage safely.');
+        } finally {
+            $this->assertDatabaseCount('salesforce_interest_generations', 1);
+            $this->assertSame('validating', $this->store()->generation($source)->status);
+            $this->travelBack();
+        }
+    }
+
+    public function test_current_initial_recovery_fails_closed_if_deletion_coverage_recedes_after_preflight(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->complete($source);
+        $client = new class extends SalesforceClient
+        {
+            private int $calls = 0;
+
+            public function __construct() {}
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                $this->calls++;
+
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
+                    'latestDateCovered' => $this->calls === 1 ? '2026-10-29T00:00:00.000+0000' : '2026-10-28T23:59:00.000+0000',
+                    'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Reject regressed deletion coverage safely.');
+            $this->fail('Expected coverage regression to fail the candidate.');
+        } catch (RuntimeException) {
+            $this->assertDatabaseHas('salesforce_interest_generations', ['status' => 'failed']);
+            $this->assertNull($this->store()->published());
+        } finally {
+            $this->travelBack();
+        }
     }
 
     public function test_failure_and_partial_writes_do_not_change_published_rows_or_watermark(): void

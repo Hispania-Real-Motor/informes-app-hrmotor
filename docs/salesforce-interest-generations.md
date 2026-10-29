@@ -119,3 +119,15 @@ Las consultas de recuperación F2 y F5 leen el estado actual sin limitar
 ese watermark no demuestra una fotografía histórica ni simultaneidad exacta
 entre F2 y F5. El resultado y la cobertura deben revisarse antes del uso
 operativo; las pruebas simuladas no certifican Salesforce ni producción.
+
+Antes de crear la candidata, `recover-initial` consulta de forma read-only
+`getDeleted` desde el cutoff de la semilla hasta el corte solicitado (UTC,
+`now - 2 min`). El cutoff efectivo es el mínimo entre ese valor solicitado y
+`latestDateCovered`, normalizado de forma conservadora al minuto. La cobertura
+histórica debe alcanzar el cutoff de la semilla y el corte efectivo debe avanzar
+respecto a ella. La aplicación posterior vuelve a consultar `getDeleted` y
+exige cobertura hasta el cutoff efectivo; una regresión falla cerrada. Así, el
+watermark queda limitado por la cobertura de borrados comunicada por Salesforce;
+no acredita por sí solo la integridad de toda la replicación ni una fotografía
+histórica exacta. La evidencia registra `requested_watermark` y el watermark
+efectivo para que puedan contrastarse.
