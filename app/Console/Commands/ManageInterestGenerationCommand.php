@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Salesforce\InterestGenerationStore;
+use App\Services\Salesforce\InterestExternalEvidenceService;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
@@ -13,7 +14,7 @@ use RuntimeException;
 class ManageInterestGenerationCommand extends Command
 {
     protected $signature = 'salesforce:interest-generation
-        {action : prepare-initial, manifest, or publish-initial}
+        {action : prepare-initial, manifest, external-evidence, or publish-initial}
         {--generation= : Candidate identifier}
         {--evidence= : Local reviewed JSON evidence file}
         {--reason= : Operational reason, 10 to 500 characters}
@@ -22,7 +23,7 @@ class ManageInterestGenerationCommand extends Command
 
     protected $description = 'Build or publish an independently verified initial F2/F5 generation.';
 
-    public function handle(InterestGenerationStore $store): int
+    public function handle(InterestGenerationStore $store, InterestExternalEvidenceService $externalEvidence): int
     {
         try {
             $action = $this->argument('action');
@@ -50,6 +51,11 @@ class ManageInterestGenerationCommand extends Command
                 throw new RuntimeException('A valid generation identifier is required.');
             }
             $id = (int) $value;
+            if ($action === 'external-evidence') {
+                $this->line(json_encode($externalEvidence->collect($id), JSON_THROW_ON_ERROR));
+
+                return self::SUCCESS;
+            }
             if ($action === 'manifest') {
                 $this->line(json_encode($store->manifest($id), JSON_THROW_ON_ERROR));
 
