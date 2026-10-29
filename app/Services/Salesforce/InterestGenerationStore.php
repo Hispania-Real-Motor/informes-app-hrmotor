@@ -315,35 +315,34 @@ final class InterestGenerationStore
                 throw new RuntimeException('Initial current recovery is not complete and conflict-free.');
             }
             $this->assertAligned($generation);
-            $manifest = $this->manifest($id);
-            $f2 = $evidence['f2'] ?? null;
-            $f5 = $evidence['f5'] ?? null;
-            $coverage = $evidence['deletion_coverage'] ?? null;
-            if (($evidence['source'] ?? null) !== 'initial_current_recovery'
-                || (int) ($evidence['recovered_generation_id'] ?? 0) !== $id
-                || ! is_int($evidence['source_generation_id'] ?? null)
-                || (int) ($evidence['interest_run_id'] ?? 0) !== (int) $generation->interest_run_id
-                || ! is_array($f2) || ! is_array($f5) || ! is_array($coverage)
-                || (int) ($f2['content_mismatches'] ?? -1) !== 0
-                || (int) ($f2['salesforce_only'] ?? -1) !== 0
-                || (int) ($f2['candidate_only_unexplained'] ?? -1) !== 0
-                || (int) ($f2['conflicts'] ?? -1) !== 0
-                || ! hash_equals($manifest['sha256'], (string) ($f2['manifest_sha256'] ?? ''))
-                || ! hash_equals($manifest['identifiers_sha256'], (string) ($f2['identifiers_sha256'] ?? ''))
-                || (int) ($f5['run_id'] ?? 0) !== (int) $generation->activity_run_id
-                || ! is_string($f5['manifest_sha256'] ?? null)
-                || ! hash_equals((string) $f5['manifest_sha256'], (string) ($f5['verification_sha256'] ?? ''))
-                || ($f5['verified'] ?? false) !== true
-                || ! hash_equals((string) $generation->cutoff_at, (string) ($evidence['watermark'] ?? ''))
-                || ! hash_equals((string) $generation->cutoff_at, (string) ($f5['cutoff_at'] ?? ''))
-                || ! is_string($coverage['latest_date_covered'] ?? null)
-                || ! is_string($coverage['earliest_date_available'] ?? null)) {
-                throw new RuntimeException('Initial current recovery evidence is incomplete or inconsistent.');
-            }
+            $this->assertInitialCurrentRecoveryEvidenceForGeneration($generation, $evidence);
             DB::table('salesforce_interest_generations')->where('id', $id)->update([
                 'status' => 'certified', 'completed_at' => now('UTC'),
                 'validation' => json_encode($evidence, JSON_THROW_ON_ERROR),
             ]);
+        });
+    }
+
+    /**
+     * Confirms that an operator-reviewed recovery evidence file is exactly the
+     * certified evidence of this initial candidate. It is intentionally
+     * read-only; publish() remains the sole publication transition.
+     *
+     * @param  array<string, mixed>  $evidence
+     */
+    public function assertInitialCurrentRecoveryEvidence(int $id, array $evidence): void
+    {
+        DB::transaction(function () use ($id, $evidence): void {
+            $generation = DB::table('salesforce_interest_generations')->where('id', $id)->lockForUpdate()->first();
+            if ($generation === null || $generation->status !== 'certified' || $generation->base_generation_id !== null) {
+                throw new RuntimeException('Initial current recovery candidate is not certified.');
+            }
+            $this->assertAligned($generation);
+            $this->assertInitialCurrentRecoveryEvidenceForGeneration($generation, $evidence);
+            $stored = json_decode((string) $generation->validation, true, 64, JSON_THROW_ON_ERROR);
+            if (! is_array($stored) || ! hash_equals($this->canonicalEvidenceHash($stored), $this->canonicalEvidenceHash($evidence))) {
+                throw new RuntimeException('Reviewed recovery evidence does not match the certified candidate.');
+            }
         });
     }
 
@@ -414,6 +413,57 @@ final class InterestGenerationStore
             || ! $f5->source_cutoff_at?->equalTo($g->cutoff_at)) {
             throw new RuntimeException('Publication requires aligned completed F2 and F5.');
         }
+    }
+
+    /** @param array<string, mixed> $evidence */
+    private function assertInitialCurrentRecoveryEvidenceForGeneration(object $generation, array $evidence): void
+    {
+        $manifest = $this->manifest((int) $generation->id);
+        $f2 = $evidence['f2'] ?? null;
+        $f5 = $evidence['f5'] ?? null;
+        $coverage = $evidence['deletion_coverage'] ?? null;
+        if (($evidence['source'] ?? null) !== 'initial_current_recovery'
+            || (int) ($evidence['recovered_generation_id'] ?? 0) !== (int) $generation->id
+            || ! is_int($evidence['source_generation_id'] ?? null)
+            || (int) ($evidence['interest_run_id'] ?? 0) !== (int) $generation->interest_run_id
+            || ! is_array($f2) || ! is_array($f5) || ! is_array($coverage)
+            || (int) ($f2['content_mismatches'] ?? -1) !== 0
+            || (int) ($f2['salesforce_only'] ?? -1) !== 0
+            || (int) ($f2['candidate_only_unexplained'] ?? -1) !== 0
+            || (int) ($f2['conflicts'] ?? -1) !== 0
+            || ! hash_equals($manifest['sha256'], (string) ($f2['manifest_sha256'] ?? ''))
+            || ! hash_equals($manifest['identifiers_sha256'], (string) ($f2['identifiers_sha256'] ?? ''))
+            || (int) ($f5['run_id'] ?? 0) !== (int) $generation->activity_run_id
+            || ! is_string($f5['manifest_sha256'] ?? null)
+            || ! hash_equals((string) $f5['manifest_sha256'], (string) ($f5['verification_sha256'] ?? ''))
+            || ($f5['verified'] ?? false) !== true
+            || ! hash_equals((string) $generation->cutoff_at, (string) ($evidence['watermark'] ?? ''))
+            || ! hash_equals((string) $generation->cutoff_at, (string) ($f5['cutoff_at'] ?? ''))
+            || ! is_string($coverage['latest_date_covered'] ?? null)
+            || ! is_string($coverage['earliest_date_available'] ?? null)) {
+            throw new RuntimeException('Initial current recovery evidence is incomplete or inconsistent.');
+        }
+    }
+
+    /** @param array<string, mixed> $evidence */
+    private function canonicalEvidenceHash(array $evidence): string
+    {
+        return hash('sha256', json_encode($this->canonicalizeEvidence($evidence), JSON_THROW_ON_ERROR));
+    }
+
+    private function canonicalizeEvidence(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->canonicalizeEvidence($item);
+        }
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
     }
 
     private function writable(int $id): object

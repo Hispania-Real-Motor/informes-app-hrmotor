@@ -6092,3 +6092,24 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - No se ejecutó contra Salesforce ni producción. Antes de uso operativo se
   requiere revisión de la evidencia y ejecutar la suite completa en un entorno
   con dependencias instaladas.
+
+## Publicación de recuperación inicial — delta sobre c014296
+
+- `recover-initial` emite la evidencia completa en JSON. `publish-initial`
+  comprueba que la evidencia revisada coincide con la certificada para esa
+  candidata, vuelve a verificar manifiesto y alineación y conserva la aprobación
+  explícita y comprobación del puntero. La evidencia operativa debe protegerse.
+- Se añadieron pruebas de evidencia coincidente, alterada y ajena, aprobación y
+  puntero cambiado en `tests/Feature/InterestGenerationTest.php`. Resultado de
+  PHPUnit pendiente: este worktree no tiene `vendor/` completo y la instalación
+  local quedó bloqueada extrayendo una dependencia. Sintaxis PHP, Pint, `git
+  diff --check` y las 40 pruebas documentales (una omitida) sí pasaron. No hay
+  migraciones, configuración nueva ni cambios de datos productivos en la
+  revisión documental.
+- Archivos del delta: `app/Console/Commands/ManageInterestGenerationCommand.php`,
+  `app/Services/Salesforce/InterestGenerationStore.php`,
+  `tests/Feature/InterestGenerationTest.php`,
+  `docs/salesforce-interest-generations.md` y `docs/ai/HANDOFF.md`.
+  Mantener pendiente la validación con datos representativos y Salesforce; no se
+  garantiza fotografía histórica. El despliegue y la publicación son acciones
+  operativas separadas.

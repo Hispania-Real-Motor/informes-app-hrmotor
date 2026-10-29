@@ -59,11 +59,7 @@ class ManageInterestGenerationCommand extends Command
                     throw new RuntimeException('Initial recovery requires an explicit source, read authorization, and an operational reason.');
                 }
                 $result = $recovery->recover((int) $source, $reason);
-                $this->line(json_encode([
-                    'generation_id' => $result['generation_id'],
-                    'watermark' => $result['evidence']['watermark'],
-                    'reconciliation_passes' => $result['evidence']['reconciliation_passes'],
-                ], JSON_THROW_ON_ERROR));
+                $this->line(json_encode($result['evidence'], JSON_THROW_ON_ERROR));
                 $this->info('Recovery candidate certified but not published. Scheduler state was not changed.');
 
                 return self::SUCCESS;
@@ -96,7 +92,19 @@ class ManageInterestGenerationCommand extends Command
                 throw new RuntimeException('A bounded, readable reviewed evidence file is required.');
             }
             $evidence = json_decode(file_get_contents($path), true, 32, JSON_THROW_ON_ERROR);
-            $store->certify($id, $evidence);
+            $generation = $store->generation($id);
+            $isCurrentRecovery = false;
+            if ($generation->status === 'certified' && $generation->base_generation_id === null
+                && is_string($generation->validation) && $generation->validation !== '') {
+                $validation = json_decode($generation->validation, true, 64, JSON_THROW_ON_ERROR);
+                $isCurrentRecovery = is_array($validation)
+                    && ($validation['source'] ?? null) === 'initial_current_recovery';
+            }
+            if ($isCurrentRecovery) {
+                $store->assertInitialCurrentRecoveryEvidence($id, $evidence);
+            } else {
+                $store->certify($id, $evidence);
+            }
             $store->publish($id);
             $this->info('Reviewed initial generation published. Scheduler state was not changed.');
 

@@ -100,7 +100,19 @@ reutiliza el run histórico de la semilla. La evidencia `initial_current_recover
 guarda generación fuente y recuperada, watermark, runs F2/F5, manifiesto,
 contadores finales, cobertura de borrados y número de pasadas. Solo una
 generación certificada mediante esa evidencia puede llegar posteriormente a
-`publish`, que sigue siendo una acción independiente y bloqueada.
+`publish-initial`, que sigue siendo una acción independiente y requiere
+aprobación explícita. `recover-initial` emite la evidencia completa como JSON;
+debe conservarse en un archivo local protegido y revisarse antes de utilizarla
+con `--evidence`. La publicación comprueba que el contenido revisado coincide
+con la evidencia certificada y que el manifiesto y alineación siguen siendo
+válidos; rechaza evidencia alterada o de otra candidata. El puntero se verifica
+en la publicación. El JSON contiene identificadores técnicos de generaciones y
+runs, por lo que debe tratarse como evidencia operativa restringida.
+
+`InterestGenerationTest` incluye casos de publicación con evidencia coincidente,
+rechazo de evidencia alterada o ajena, ausencia de aprobación y cambio del
+puntero. Estas pruebas no sustituyen la revisión operativa ni validan datos
+reales de Salesforce.
 
 Las consultas de recuperación F2 y F5 leen el estado actual sin limitar
 `SystemModstamp` al watermark. La verificación compara lecturas sucesivas;
