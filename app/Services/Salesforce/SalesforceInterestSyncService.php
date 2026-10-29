@@ -89,7 +89,7 @@ final class SalesforceInterestSyncService
             $this->syncPages($run, $this->activeSoql($windowStart, $cutoff), false, 'active', $stats);
             $this->syncPages($run, $this->deletedSoql($windowStart, $cutoff), true, 'deleted', $stats);
             if ($windowStart !== null) {
-                $this->syncDeletionLog($generationId, $windowStart, $cutoff, $stats);
+                $this->applyDeletionLog($generationId, $windowStart, $cutoff, $stats);
             }
             $generations->finishF2($generationId);
             $this->syncRuns->complete($run, $cutoff, $stats);
@@ -121,12 +121,21 @@ final class SalesforceInterestSyncService
         return $this->soql(true, $windowStart, $cutoff);
     }
 
-    private function soql(bool $deleted, ?CarbonInterface $windowStart, CarbonInterface $cutoff): string
+    /** Full current-state query for isolated initial reconciliation, including deleted records. */
+    public function currentRecoverySoql(): string
+    {
+        return $this->soql(false, null, null);
+    }
+
+    private function soql(bool $deleted, ?CarbonInterface $windowStart, ?CarbonInterface $cutoff): string
     {
         $lowerBound = $windowStart === null
             ? ''
             : '    AND SystemModstamp >= '.$this->soqlDateTime($windowStart)."\n";
         $deletedValue = $deleted ? 'true' : 'false';
+        $filter = $cutoff === null
+            ? 'ORDER BY Id ASC'
+            : "WHERE\n    IsDeleted = {$deletedValue}\n{$lowerBound}    AND SystemModstamp <= {$this->soqlDateTime($cutoff)}\nORDER BY SystemModstamp ASC, Id ASC";
 
         return <<<SOQL
 SELECT
@@ -158,10 +167,7 @@ SELECT
     IN_TAS_Vehiculo__c,
     IN_VEN_Oportunidad__c
 FROM Interes__c
-WHERE
-    IsDeleted = {$deletedValue}
-{$lowerBound}    AND SystemModstamp <= {$this->soqlDateTime($cutoff)}
-ORDER BY SystemModstamp ASC, Id ASC
+{$filter}
 SOQL;
     }
 
@@ -316,7 +322,14 @@ SOQL;
         ]);
     }
 
-    private function syncDeletionLog(int $generationId, CarbonImmutable $start, CarbonImmutable $cutoff, array &$stats): void
+    /**
+     * Applies only deletion-log facts already covered by Salesforce. The
+     * caller supplies the bounded window and remains responsible for its
+     * certification evidence.
+     *
+     * @param  array<string, mixed>  $stats
+     */
+    public function applyDeletionLog(int $generationId, CarbonImmutable $start, CarbonImmutable $cutoff, array &$stats): void
     {
         $start = $start->startOfMinute();
         $response = $this->client->getDeleted('Interes__c', $start, $cutoff);
@@ -325,6 +338,7 @@ SOQL;
             throw new RuntimeException('Salesforce deletion history does not cover the candidate window.');
         }
         $store = app(InterestGenerationStore::class);
+        $stats['deletion_log_earliest'] = CarbonImmutable::parse($response['earliestDateAvailable'])->utc()->toIso8601String();
         $stats['deletion_log_records'] = count($response['deletedRecords']);
         foreach (array_chunk($response['deletedRecords'], self::PERSIST_CHUNK_SIZE) as $chunk) {
             $dates = [];

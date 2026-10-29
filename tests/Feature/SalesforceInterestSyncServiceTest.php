@@ -23,6 +23,17 @@ class SalesforceInterestSyncServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_recovery_query_uses_the_same_fields_without_a_historical_cutoff(): void
+    {
+        $service = app(SalesforceInterestSyncService::class);
+        $current = $service->currentRecoverySoql();
+        $normal = $service->activeSoql(null, CarbonImmutable::parse('2026-10-28 10:00:00', 'UTC'));
+        $this->assertSame(explode('FROM Interes__c', $normal)[0], explode('FROM Interes__c', $current)[0]);
+        $this->assertStringContainsString('Owner.Name', $current);
+        $this->assertStringNotContainsString('SystemModstamp <=', $current);
+        $this->assertStringContainsString('ORDER BY Id ASC', $current);
+    }
+
     public function test_full_sync_is_paginated_materialized_audited_and_read_only(): void
     {
         $client = $this->client(

@@ -8,6 +8,7 @@ use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Reports\ReportSyncRunService;
 use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\InterestGenerationStore;
+use App\Services\Salesforce\InterestInitialCurrentRecoveryService;
 use App\Services\Salesforce\SalesforceAuthService;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
@@ -130,6 +131,64 @@ class InterestGenerationTest extends TestCase
         $source = $this->publishBase();
         $this->expectException(RuntimeException::class);
         $this->store()->beginInitialRecovery($source, CarbonImmutable::parse('2026-10-28 11:00:00', 'UTC'));
+    }
+
+    public function test_current_initial_recovery_reuses_identical_versions_and_never_publishes(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-28 11:02:00', 'UTC'));
+        $record = [
+            'Id' => 'a01000000000000001', 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z',
+            'IsDeleted' => false, 'IN_Lead__c' => null, 'IN_Account__c' => null, 'IN_Lead_Origen_Migracion__c' => null,
+            'IN_Fecha_Creacion_Origen__c' => null, 'OwnerId' => null, 'Owner' => ['Name' => 'Owner'],
+        ];
+        $task = [
+            'Id' => '00T000000000000001', 'WhatId' => $record['Id'], 'WhoId' => null,
+            'ActivityDate' => '2026-10-28', 'CreatedDate' => '2026-10-28T10:00:00Z',
+            'LastModifiedDate' => '2026-10-28T10:00:00Z', 'SystemModstamp' => '2026-10-28T10:00:00Z', 'IsDeleted' => false,
+        ];
+        $source = $this->candidate();
+        $this->store()->persist($source, [app(SalesforceInterestSyncService::class)->mapRecord($record, false)]);
+        $this->complete($source);
+        $sourceVersion = $this->store()->rows($source)->value('version.id');
+        $client = new class($record, $task) extends SalesforceClient
+        {
+            public function __construct(private array $record, private array $task) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield match (true) {
+                    str_contains($soql, 'FROM Interes__c') => [$this->record],
+                    str_contains($soql, 'FROM Task') => [$this->task],
+                    default => [],
+                };
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => $start->toIso8601String(), 'latestDateCovered' => $end->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        $result = app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Recover initial generation from current Salesforce state.');
+
+        $candidate = $result['generation_id'];
+        $this->assertSame($sourceVersion, $this->store()->rows($candidate)->value('version.id'));
+        $this->assertSame('certified', $this->store()->generation($candidate)->status);
+        $this->assertNull($this->store()->published());
+        $this->assertSame(0, $result['evidence']['f2']['content_mismatches']);
+        $this->assertSame(0, $result['evidence']['f2']['candidate_only_unexplained']);
+        $this->assertSame(1, $result['evidence']['f5']['rows']);
+        $this->travelBack();
+    }
+
+    public function test_current_initial_recovery_cli_refuses_remote_read_without_explicit_authorization(): void
+    {
+        $this->artisan('salesforce:interest-generation', [
+            'action' => 'recover-initial', '--source-generation' => '1', '--reason' => 'Recover initial generation safely.',
+        ])->assertFailed();
+        $this->assertDatabaseCount('salesforce_interest_generations', 0);
     }
 
     public function test_failure_and_partial_writes_do_not_change_published_rows_or_watermark(): void

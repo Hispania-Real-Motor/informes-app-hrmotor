@@ -1,5 +1,17 @@
 # Matriz de trazabilidad de KPIs
 
+### Interests: recuperación inicial desde estado actual
+
+`InterestInitialCurrentRecoveryService::recover()` construye una candidata
+desde una semilla inicial no publicada, reconcilia `Interes__c` con el mapeo
+F2 existente y reconstruye F5 para esa candidata. La certificación específica
+precede a una publicación separada. Las lecturas actuales F2/F5 no están
+acotadas por `SystemModstamp` al watermark: no acreditan fotografía histórica
+ni simultaneidad exacta. `InterestGenerationTest` cubre semilla, ausencia de
+publicación y autorización explícita con cliente simulado; la cobertura real
+y el rendimiento quedan pendientes. Esta nota no audita ni modifica fórmulas,
+filtros o universo de los KPIs.
+
 Estado: **estructura pendiente de auditoría inicial**. Esta entrega no certifica
 ningún KPI ni traslada reglas históricas sin comprobarlas con código, pruebas y
 fuentes. Las fichas se incorporarán en una tarea posterior, una por KPI y

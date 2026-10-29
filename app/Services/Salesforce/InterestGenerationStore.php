@@ -296,6 +296,57 @@ final class InterestGenerationStore
         });
     }
 
+    /**
+     * Certifies only machine-produced evidence from the bounded current-state
+     * recovery flow. It deliberately does not loosen the historical bootstrap
+     * evidence contract in certify().
+     *
+     * @param  array<string, mixed>  $evidence
+     */
+    public function certifyInitialCurrentRecovery(int $id, array $evidence): void
+    {
+        DB::transaction(function () use ($id, $evidence): void {
+            $pointer = DB::table('salesforce_interest_publication')->where('id', 1)->lockForUpdate()->first();
+            $generation = DB::table('salesforce_interest_generations')->where('id', $id)->lockForUpdate()->first();
+            if ($pointer === null || $pointer->generation_id !== null || $generation === null
+                || $generation->base_generation_id !== null || $generation->status !== 'validating'
+                || ! $generation->f2_complete || ! $generation->f5_complete
+                || DB::table('salesforce_interest_conflicts')->where('generation_id', $id)->exists()) {
+                throw new RuntimeException('Initial current recovery is not complete and conflict-free.');
+            }
+            $this->assertAligned($generation);
+            $manifest = $this->manifest($id);
+            $f2 = $evidence['f2'] ?? null;
+            $f5 = $evidence['f5'] ?? null;
+            $coverage = $evidence['deletion_coverage'] ?? null;
+            if (($evidence['source'] ?? null) !== 'initial_current_recovery'
+                || (int) ($evidence['recovered_generation_id'] ?? 0) !== $id
+                || ! is_int($evidence['source_generation_id'] ?? null)
+                || (int) ($evidence['interest_run_id'] ?? 0) !== (int) $generation->interest_run_id
+                || ! is_array($f2) || ! is_array($f5) || ! is_array($coverage)
+                || (int) ($f2['content_mismatches'] ?? -1) !== 0
+                || (int) ($f2['salesforce_only'] ?? -1) !== 0
+                || (int) ($f2['candidate_only_unexplained'] ?? -1) !== 0
+                || (int) ($f2['conflicts'] ?? -1) !== 0
+                || ! hash_equals($manifest['sha256'], (string) ($f2['manifest_sha256'] ?? ''))
+                || ! hash_equals($manifest['identifiers_sha256'], (string) ($f2['identifiers_sha256'] ?? ''))
+                || (int) ($f5['run_id'] ?? 0) !== (int) $generation->activity_run_id
+                || ! is_string($f5['manifest_sha256'] ?? null)
+                || ! hash_equals((string) $f5['manifest_sha256'], (string) ($f5['verification_sha256'] ?? ''))
+                || ($f5['verified'] ?? false) !== true
+                || ! hash_equals((string) $generation->cutoff_at, (string) ($evidence['watermark'] ?? ''))
+                || ! hash_equals((string) $generation->cutoff_at, (string) ($f5['cutoff_at'] ?? ''))
+                || ! is_string($coverage['latest_date_covered'] ?? null)
+                || ! is_string($coverage['earliest_date_available'] ?? null)) {
+                throw new RuntimeException('Initial current recovery evidence is incomplete or inconsistent.');
+            }
+            DB::table('salesforce_interest_generations')->where('id', $id)->update([
+                'status' => 'certified', 'completed_at' => now('UTC'),
+                'validation' => json_encode($evidence, JSON_THROW_ON_ERROR),
+            ]);
+        });
+    }
+
     /** Deterministic candidate digest for independent initial coverage review. No IDs in output. */
     public function manifest(int $id): array
     {

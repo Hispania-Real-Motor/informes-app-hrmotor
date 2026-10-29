@@ -839,10 +839,11 @@ restringidas y resultados compartibles agregados sin identificadores sensibles:
    explicar el volumen consultado; el contador por sí solo no prueba una
    actualización masiva legítima.
 
-Una reconstrucción futura aislada desde Salesforce requeriría mecanismos,
-validación de cobertura, borrados, unicidad, relaciones y alineación F5 antes
-de publicar. Esta capacidad no está implementada en este cambio y una extracción
-actual no garantiza reproducir una fotografía histórica. La investigación no
+La recuperación inicial aislada desde el estado actual dispone del procedimiento
+descrito en [generaciones F2/F5](salesforce-interest-generations.md). Su uso
+operativo requiere pruebas y revisión de cobertura, borrados, unicidad,
+relaciones y alineación F5 antes de publicar. Una extracción actual no
+garantiza reproducir una fotografía histórica. La investigación no
 autoriza sincronizaciones reales, restauraciones ni reactivación del scheduler.
 
 ### Provisión y recuperación exclusiva de OPS
