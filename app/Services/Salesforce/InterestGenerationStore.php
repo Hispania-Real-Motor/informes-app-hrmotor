@@ -260,7 +260,9 @@ final class InterestGenerationStore
         hash_update($hash, json_encode([$g->id, $g->cutoff_at, $g->interest_run_id, $g->activity_run_id], JSON_THROW_ON_ERROR));
         $count = 0;
         $deleted = 0;
-        $this->rows($id)->select(['version.id', 'version.salesforce_id', 'version.content_hash', 'version.is_deleted'])
+        $this->rows($id)->select([
+            'member.version_id as id', 'version.salesforce_id', 'version.content_hash', 'version.is_deleted',
+        ])
             ->chunkById(1000, function ($rows) use ($hash, $identityHash, &$count, &$deleted): void {
                 foreach ($rows as $row) {
                     hash_update($hash, $row->salesforce_id.'|'.$row->content_hash."\n");
@@ -268,7 +270,7 @@ final class InterestGenerationStore
                     $count++;
                     $deleted += (int) $row->is_deleted;
                 }
-            }, 'version.id', 'id');
+            }, 'member.version_id', 'id');
 
         return ['generation_id' => $id, 'cutoff_at' => $g->cutoff_at,
             'rows' => $count, 'deleted' => $deleted, 'sha256' => hash_final($hash),
