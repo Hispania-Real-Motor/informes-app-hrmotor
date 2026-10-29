@@ -219,12 +219,15 @@ class InterestGenerationTest extends TestCase
         $id = $this->candidate();
         $rows = [];
         foreach (range(1, 1001) as $number) {
-            $rows[] = $this->row(
+            $row = $this->row(
                 id: sprintf('a01%015d', $number * 3),
                 origin: sprintf('00Q%015d', $number * 3),
                 status: $number % 2 === 0 ? 'deleted' : 'new',
-            ) + ['is_deleted' => $number % 2 === 0];
+            );
+            $row['is_deleted'] = $number % 2 === 0;
+            $rows[] = $row;
         }
+        $this->assertSame(500, collect($rows)->where('is_deleted', true)->count());
         $this->store()->persist($id, array_slice($rows, 0, 500));
         DB::table('salesforce_interest_versions')->insert([
             'generation_id' => $id, 'batch_token' => (string) Str::uuid(),
