@@ -30,21 +30,50 @@ final class InterestExternalEvidenceService
         $rows = 0;
         $deletedCount = 0;
         $unverifiable = 0;
+        $matched = 0;
+        $stateMismatch = 0;
+        $salesforceOnly = 0;
         $lastId = null;
         $identifiers = hash_init('sha256');
         foreach ($this->client->queryPages($soql, true) as $page) {
             $pages++;
+            $candidateById = DB::table('salesforce_interest_members as member')
+                ->join('salesforce_interest_versions as version', 'version.id', '=', 'member.version_id')
+                ->where('member.generation_id', $generationId)
+                ->whereIn('member.salesforce_id', array_values(array_filter(array_map(
+                    fn (array $item): string => trim((string) data_get($item, 'Id')), $page,
+                ))))
+                ->pluck('version.is_deleted', 'member.salesforce_id');
             foreach ($page as $record) {
                 $id = trim((string) data_get($record, 'Id'));
-                if (! preg_match('/^[A-Za-z0-9]{18}$/', $id) || ($lastId !== null && strcmp($id, $lastId) <= 0)) {
+                $created = (string) data_get($record, 'CreatedDate');
+                $modstamp = (string) data_get($record, 'SystemModstamp');
+                if (! preg_match('/^[A-Za-z0-9]{18}$/', $id) || ($lastId !== null && strcmp($id, $lastId) <= 0)
+                    || $created === '' || $modstamp === '') {
                     throw new RuntimeException('Salesforce evidence contains an invalid or duplicate identity.');
+                }
+                try {
+                    CarbonImmutable::parse($created, 'UTC');
+                    $modifiedAt = CarbonImmutable::parse($modstamp, 'UTC');
+                } catch (\Throwable) {
+                    throw new RuntimeException('Salesforce evidence contains an invalid timestamp.');
                 }
                 $lastId = $id;
                 $deleted = (bool) data_get($record, 'IsDeleted', false);
                 $deletedCount += (int) $deleted;
-                $unverifiable += (CarbonImmutable::parse((string) data_get($record, 'SystemModstamp'), 'UTC')->greaterThan($cutoff) ? 1 : 0);
+                $unverifiable += (int) $modifiedAt->greaterThan($cutoff);
                 $rows++;
                 hash_update($identifiers, $id.'|'.(int) $deleted."\n");
+
+                if ($modifiedAt->lessThanOrEqualTo($cutoff)) {
+                    if (! $candidateById->has($id)) {
+                        $salesforceOnly++;
+                    } elseif ((bool) $candidateById->get($id) === $deleted) {
+                        $matched++;
+                    } else {
+                        $stateMismatch++;
+                    }
+                }
             }
         }
 
@@ -62,6 +91,10 @@ final class InterestExternalEvidenceService
             'certifiable' => $certifiable,
             'publish_initial_compatible' => false,
             'unverifiable' => $unverifiable + $relation['unverifiable'],
+            'matched' => $matched,
+            'state_mismatch' => $stateMismatch,
+            'salesforce_only' => $salesforceOnly,
+            'candidate_only' => max(0, (int) DB::table('salesforce_interest_members')->where('generation_id', $generationId)->count() - $matched),
             'created_after_cutoff' => null,
             'reasons' => $certifiable ? [] : array_values(array_filter([
                 $concurrent ? null : 'generation_changed_during_extraction',
@@ -75,8 +108,7 @@ final class InterestExternalEvidenceService
                 'activity_run_id' => (int) $snapshot['activity_run_id'],
                 'pages' => $pages,
                 'received' => $rows + $relation['rows'],
-                'done' => true,
-                'continuations_complete' => true,
+                'query_completed' => true,
                 'relationships_pages' => $relation['pages'],
             ], JSON_THROW_ON_ERROR)),
         ];

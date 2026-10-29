@@ -23,9 +23,9 @@ class InterestExternalEvidenceTest extends TestCase
         ]);
         $client = Mockery::mock(SalesforceClient::class);
         $pages = [
-            'interest' => [[['Id' => 'a01AAA000000000001', 'IsDeleted' => false]], [['Id' => 'a01AAA000000000002', 'IsDeleted' => true]], [['Id' => 'a01AAA000000000003', 'IsDeleted' => false]]],
-            'task' => [[['Id' => '00TAAA000000000001', 'WhatId' => 'a01AAA000000000001', 'IsDeleted' => false]]],
-            'event' => [[['Id' => '00UAAA000000000001', 'WhatId' => 'a01AAA000000000001', 'IsDeleted' => false]]],
+            'interest' => [[['Id' => 'a01AAA000000000001', 'CreatedDate' => '2026-01-01T00:00:00Z', 'SystemModstamp' => '2026-01-01T00:00:00Z', 'IsDeleted' => false]], [['Id' => 'a01AAA000000000002', 'CreatedDate' => '2026-01-01T00:00:00Z', 'SystemModstamp' => '2026-01-01T00:00:00Z', 'IsDeleted' => true]], [['Id' => 'a01AAA000000000003', 'CreatedDate' => '2026-01-01T00:00:00Z', 'SystemModstamp' => '2026-01-01T00:00:00Z', 'IsDeleted' => false]]],
+            'task' => [[['Id' => '00TAAA000000000001', 'WhatId' => 'a01AAA000000000001', 'CreatedDate' => '2026-01-01T00:00:00Z', 'SystemModstamp' => '2026-01-01T00:00:00Z', 'IsDeleted' => false]]],
+            'event' => [[['Id' => '00UAAA000000000001', 'WhatId' => 'a01AAA000000000001', 'CreatedDate' => '2026-01-01T00:00:00Z', 'SystemModstamp' => '2026-01-01T00:00:00Z', 'IsDeleted' => false]]],
         ];
         $client->shouldReceive('queryPages')->times(6)->andReturnUsing(function (string $soql) use (&$pages): \Generator {
             $key = str_contains($soql, 'FROM Interes__c') ? 'interest' : (str_contains($soql, 'FROM Task') ? 'task' : 'event');
