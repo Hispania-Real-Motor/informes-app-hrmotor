@@ -76,6 +76,51 @@ final class InterestGenerationStore
         return $id;
     }
 
+    /** Copy only membership references; a seed is never treated as a certified base. */
+    public function beginInitialRecovery(int $sourceId, CarbonInterface $cutoff): int
+    {
+        $id = DB::transaction(function () use ($sourceId, $cutoff): int {
+            $pointer = DB::table('salesforce_interest_publication')->where('id', 1)->lockForUpdate()->first();
+            $source = DB::table('salesforce_interest_generations')->where('id', $sourceId)->lockForUpdate()->first();
+            if ($pointer === null || $pointer->generation_id !== null || $source === null
+                || $source->base_generation_id !== null || $source->status !== 'validating'
+                || ! $source->f2_complete || ! $source->f5_complete || $source->published_at !== null
+                || DB::table('salesforce_interest_conflicts')->where('generation_id', $sourceId)->exists()
+                || CarbonImmutable::parse($source->cutoff_at)->gte($cutoff)) {
+                throw new RuntimeException('Initial recovery source or publication state is invalid.');
+            }
+            $this->assertAligned($source);
+
+            return DB::table('salesforce_interest_generations')->insertGetId([
+                'base_generation_id' => null, 'cutoff_at' => $cutoff,
+                'status' => 'preparing', 'started_at' => now('UTC'),
+            ]);
+        });
+
+        try {
+            DB::table('salesforce_interest_members')->where('generation_id', $sourceId)
+                ->orderBy('salesforce_id')->chunkById(1000, function ($rows) use ($id): void {
+                    DB::table('salesforce_interest_members')->insert($rows->map(fn ($row) => [
+                        'generation_id' => $id, 'salesforce_id' => $row->salesforce_id,
+                        'version_id' => $row->version_id, 'migration_origin_lead_id' => $row->migration_origin_lead_id,
+                    ])->all());
+                }, 'salesforce_id');
+            DB::transaction(function () use ($id): void {
+                $pointer = DB::table('salesforce_interest_publication')->where('id', 1)->lockForUpdate()->first();
+                if ($pointer === null || $pointer->generation_id !== null) {
+                    throw new RuntimeException('Publication changed during recovery preparation.');
+                }
+                DB::table('salesforce_interest_generations')->where('id', $id)->where('status', 'preparing')
+                    ->update(['status' => 'syncing']);
+            });
+        } catch (\Throwable $exception) {
+            $this->fail($id);
+            throw $exception;
+        }
+
+        return $id;
+    }
+
     public function bindRun(int $id, ReportSyncRun $run): void
     {
         DB::transaction(function () use ($id, $run): void {

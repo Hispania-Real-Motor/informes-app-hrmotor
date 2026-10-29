@@ -106,6 +106,32 @@ class InterestGenerationTest extends TestCase
         return $id;
     }
 
+    public function test_initial_recovery_seed_reuses_versions_without_changing_source(): void
+    {
+        $source = $this->candidate();
+        $this->store()->persist($source, [$this->row()]);
+        $this->complete($source);
+        $before = $this->store()->generation($source);
+        $member = DB::table('salesforce_interest_members')->where('generation_id', $source)->first();
+
+        $recovery = $this->store()->beginInitialRecovery($source, CarbonImmutable::parse('2026-10-28 11:00:00', 'UTC'));
+
+        $this->assertEquals($before, $this->store()->generation($source));
+        $this->assertNull($this->store()->generation($recovery)->base_generation_id);
+        $this->assertDatabaseHas('salesforce_interest_members', [
+            'generation_id' => $recovery, 'salesforce_id' => $member->salesforce_id, 'version_id' => $member->version_id,
+        ]);
+        $this->assertDatabaseCount('salesforce_interest_versions', 1);
+        $this->assertNull($this->store()->published());
+    }
+
+    public function test_initial_recovery_rejects_an_existing_publication(): void
+    {
+        $source = $this->publishBase();
+        $this->expectException(RuntimeException::class);
+        $this->store()->beginInitialRecovery($source, CarbonImmutable::parse('2026-10-28 11:00:00', 'UTC'));
+    }
+
     public function test_failure_and_partial_writes_do_not_change_published_rows_or_watermark(): void
     {
         $base = $this->publishBase();
