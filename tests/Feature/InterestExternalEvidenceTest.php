@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Services\Salesforce\InterestExternalEvidenceService;
 use App\Services\Salesforce\SalesforceClient;
-use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -23,22 +22,18 @@ class InterestExternalEvidenceTest extends TestCase
             'started_at' => '2026-10-28 16:00:00',
         ]);
         $client = Mockery::mock(SalesforceClient::class);
-        $sync = Mockery::mock(SalesforceInterestSyncService::class);
-        $sync->shouldReceive('activeSoql')->once()->andReturn('active');
-        $sync->shouldReceive('deletedSoql')->once()->andReturn('deleted');
         $pages = [
-            'active' => [[['Id' => 'a01AAA000000000001', 'IsDeleted' => false]], [['Id' => 'a01AAA000000000002', 'IsDeleted' => false]]],
-            'deleted' => [[['Id' => 'a01AAA000000000003', 'IsDeleted' => true]]],
+            'interest' => [[['Id' => 'a01AAA000000000001', 'IsDeleted' => false]], [['Id' => 'a01AAA000000000002', 'IsDeleted' => true]], [['Id' => 'a01AAA000000000003', 'IsDeleted' => false]]],
             'task' => [[['Id' => '00TAAA000000000001', 'WhatId' => 'a01AAA000000000001', 'IsDeleted' => false]]],
             'event' => [[['Id' => '00UAAA000000000001', 'WhatId' => 'a01AAA000000000001', 'IsDeleted' => false]]],
         ];
-        $client->shouldReceive('queryPages')->times(8)->andReturnUsing(function (string $soql) use (&$pages): \Generator {
-            $key = match ($soql) { 'active' => 'active', 'deleted' => 'deleted', default => str_contains($soql, 'FROM Task') ? 'task' : 'event' };
+        $client->shouldReceive('queryPages')->times(10)->andReturnUsing(function (string $soql) use (&$pages): \Generator {
+            $key = str_contains($soql, 'FROM Interes__c') ? 'interest' : (str_contains($soql, 'FROM Task') ? 'task' : 'event');
             foreach ($pages[$key] as $page) {
                 yield $page;
             }
         });
-        $service = new InterestExternalEvidenceService($client, $sync);
+        $service = new InterestExternalEvidenceService($client);
 
         $before = DB::table('salesforce_interest_generations')->count();
         $first = $service->collect(91);

@@ -13,65 +13,63 @@ final class InterestExternalEvidenceService
 
     public function __construct(
         private readonly SalesforceClient $client,
-        private readonly SalesforceInterestSyncService $interests,
     ) {}
 
     /** @return array<string, mixed> */
     public function collect(int $generationId): array
     {
-        $generation = DB::table('salesforce_interest_generations')->where('id', $generationId)->first();
-        if ($generation === null) {
-            throw new RuntimeException('Generation does not exist.');
-        }
-        if ($generation->base_generation_id !== null) {
+        $snapshot = $this->snapshot($generationId);
+        if ($snapshot['base_generation_id'] !== null) {
             throw new RuntimeException('External evidence is restricted to an initial generation.');
         }
 
-        $cutoff = CarbonImmutable::parse($generation->cutoff_at, 'UTC');
-        $records = [];
+        $cutoff = CarbonImmutable::parse($snapshot['cutoff_at'], 'UTC');
+        $soql = 'SELECT Id, CreatedDate, LastModifiedDate, SystemModstamp, IsDeleted FROM Interes__c WHERE SystemModstamp <= '
+            .$cutoff->format('Y-m-d\TH:i:s\Z').' ORDER BY Id ASC';
         $pages = 0;
-        $declared = null;
-        foreach ([false, true] as $deleted) {
-            $soql = $deleted
-                ? $this->interests->deletedSoql(null, $cutoff)
-                : $this->interests->activeSoql(null, $cutoff);
-            foreach ($this->client->queryPages($soql, $deleted) as $page) {
-                $pages++;
-                foreach ($page as $record) {
-                    $id = trim((string) data_get($record, 'Id'));
-                    if ($id === '') {
-                        throw new RuntimeException('Salesforce evidence contains a record without an identifier.');
-                    }
-                    if (isset($records[$id]) && (bool) data_get($records[$id], 'IsDeleted') !== (bool) data_get($record, 'IsDeleted')) {
-                        throw new RuntimeException('Salesforce evidence contains an identity with conflicting deletion state.');
-                    }
-                    $records[$id] = $record;
+        $rows = 0;
+        $deletedCount = 0;
+        $lastId = null;
+        $identifiers = hash_init('sha256');
+        foreach ($this->client->queryPages($soql, true) as $page) {
+            $pages++;
+            foreach ($page as $record) {
+                $id = trim((string) data_get($record, 'Id'));
+                if ($id === '' || ($lastId !== null && strcmp($id, $lastId) <= 0)) {
+                    throw new RuntimeException('Salesforce evidence contains an invalid or duplicate identity.');
                 }
+                $lastId = $id;
+                $deleted = (bool) data_get($record, 'IsDeleted', false);
+                $deletedCount += (int) $deleted;
+                $rows++;
+                hash_update($identifiers, $id.'|'.(int) $deleted."\n");
             }
         }
 
-        $relation = $this->relationships($cutoff, $pages);
-        ksort($records);
-        $identifiers = hash_init('sha256');
-        $deletedCount = 0;
-        foreach ($records as $id => $record) {
-            $deleted = (bool) data_get($record, 'IsDeleted', false);
-            $deletedCount += (int) $deleted;
-            hash_update($identifiers, $id.'|'.hash('sha256', $this->canonical($record)).'|'.(int) $deleted."\n");
-        }
+        $relation = $this->relationships($cutoff);
+        $concurrent = $this->snapshot($generationId) === $snapshot;
+        // A later Salesforce snapshot cannot prove historical content at the cutoff.
+        $certifiable = false;
 
         return [
             'source' => self::SOURCE,
             'identifiers_sha256' => hash_final($identifiers),
-            'rows' => count($records),
+            'rows' => $rows,
             'deleted' => $deletedCount,
             'relationships_sha256' => $relation['hash'],
+            'certifiable' => $certifiable,
+            'reasons' => $certifiable ? [] : array_values(array_filter([
+                $concurrent ? null : 'generation_changed_during_extraction',
+                $rows === 0 ? 'empty_salesforce_snapshot' : null,
+                $relation['unverifiable'] > 0 ? 'unverifiable_activity_history' : null,
+                'historical_content_cannot_be_proven_from_a_later_snapshot',
+            ])),
             'coverage_sha256' => hash('sha256', json_encode([
                 'cutoff_at' => $cutoff->toIso8601String(),
-                'interest_run_id' => (int) $generation->interest_run_id,
-                'activity_run_id' => (int) $generation->activity_run_id,
+                'interest_run_id' => (int) $snapshot['interest_run_id'],
+                'activity_run_id' => (int) $snapshot['activity_run_id'],
                 'pages' => $pages,
-                'received' => count($records),
+                'received' => $rows + $relation['rows'],
                 'done' => true,
                 'continuations_complete' => true,
                 'relationships_pages' => $relation['pages'],
@@ -80,10 +78,11 @@ final class InterestExternalEvidenceService
     }
 
     /** @return array{hash: string, pages: int} */
-    private function relationships(CarbonImmutable $cutoff, int &$pages): array
+    private function relationships(CarbonImmutable $cutoff): array
     {
         $hash = hash_init('sha256');
         $relationPages = 0;
+        $relationRows = 0;
         foreach (['Task', 'Event'] as $kind) {
             $fields = $kind === 'Task'
                 ? SalesforceInterestActivitySyncService::TASK_SOQL_FIELDS
@@ -92,7 +91,7 @@ final class InterestExternalEvidenceService
                 .$cutoff->format('Y-m-d\TH:i:s\Z').' ORDER BY SystemModstamp ASC, Id ASC';
             foreach ($this->client->queryPages($soql, true) as $records) {
                 $relationPages++;
-                $pages++;
+                $relationRows += count($records);
                 foreach ($records as $record) {
                     hash_update($hash, $kind.'|'.json_encode([
                         'Id' => data_get($record, 'Id'),
@@ -103,26 +102,20 @@ final class InterestExternalEvidenceService
             }
         }
 
-        return ['hash' => hash_final($hash), 'pages' => $relationPages];
+        return ['hash' => hash_final($hash), 'pages' => $relationPages, 'rows' => $relationRows, 'unverifiable' => 0];
     }
 
-    private function canonical(array $record): string
+    /** @return array<string, mixed> */
+    private function snapshot(int $generationId): array
     {
-        $copy = $record;
-        unset($copy['attributes']);
-        $this->sort($copy);
-
-        return json_encode($copy, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
-
-    private function sort(array &$value): void
-    {
-        foreach ($value as &$item) {
-            if (is_array($item)) {
-                $this->sort($item);
-            }
+        $row = DB::table('salesforce_interest_generations')->where('id', $generationId)->first([
+            'id', 'base_generation_id', 'status', 'cutoff_at', 'interest_run_id', 'activity_run_id', 'f2_complete', 'f5_complete',
+        ]);
+        if ($row === null) {
+            throw new RuntimeException('Generation does not exist.');
         }
-        unset($item);
-        ksort($value);
+
+        return (array) $row;
     }
+
 }

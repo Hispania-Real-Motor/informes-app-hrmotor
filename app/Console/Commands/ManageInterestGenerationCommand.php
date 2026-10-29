@@ -52,6 +52,10 @@ class ManageInterestGenerationCommand extends Command
             }
             $id = (int) $value;
             if ($action === 'external-evidence') {
+                $reason = trim((string) $this->option('reason'));
+                if (! $this->option('allow-salesforce-read') || mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
+                    throw new RuntimeException('External evidence requires explicit read authorization and an operational reason.');
+                }
                 $this->line(json_encode($externalEvidence->collect($id), JSON_THROW_ON_ERROR));
 
                 return self::SUCCESS;
