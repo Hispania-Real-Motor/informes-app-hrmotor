@@ -6076,3 +6076,40 @@ Validador integral ejecutado correctamente contra el commit de la corrección: P
 - Hotfix limpio sobre `main` para paginar `manifest()` por `member.version_id`; la regresión crea dos versiones huérfanas para verificar gaps reales entre memberships y cruza dos chunks sin cambiar hashes ni contrato.
 * Dependencias: actualizado `symfony/mime` a v8.1.10 para corregir CVE-2026-45070; Composer requirió únicamente los polyfills intl-idn, intl-normalizer y mbstring indicados en el lock. `composer audit --locked --no-dev` pasa.
 * Evidencia inicial: añadida CLI de solo lectura `external-evidence` para extraer por páginas desde Salesforce hashes de Interests y relaciones Task/Event al corte de la generación, sin certificar ni publicar.
+Preparación de recuperación inicial Interests: se exponen los mapeos existentes F2/F5 y el hash de versiones sin cambiar sus algoritmos. La implementación posterior consume esas primitivas; no hay migraciones ni cambios de configuración. No se han consultado datos productivos.
+Recuperación inicial: `beginInitialRecovery` valida la fuente y copia memberships por bloques sin duplicar versiones. `recover-initial` añade reconciliación F2 remota, cobertura de borrados, F5 nuevo y certificación específica sin publicación automática. Sigue prohibido utilizarlo operativamente hasta completar las pruebas locales y la revisión de la evidencia.
+La consulta F2 de recuperación comparte la selección de campos de la sincronización y elimina el filtro histórico. La acción de recuperación y su certificación están implementadas, pero no se han ejecutado contra Salesforce ni producción.
+# Recuperación inicial actual de Interests (pendiente de validación remota)
+
+- Se añadió `recover-initial`, una operación CLI sin publicación que exige una
+  fuente inicial explícita, autorización de lectura y motivo operativo.
+- La recuperación copia memberships de la fuente sin tocarla, reconcilia F2
+  actual por páginas con el mapping y hash productivos, y persiste solo
+  diferencias. La cobertura de hard-deletes se valida contra `getDeleted`.
+- F5 se reconstruye en un run nuevo contra la candidata. La certificación usa
+  el contrato restringido `initial_current_recovery`; el puntero de publicación
+  sigue sin cambiar hasta una llamada explícita a `publish`.
+- No se ejecutó contra Salesforce ni producción. Antes de uso operativo se
+  requiere revisión de la evidencia y ejecutar la suite completa en un entorno
+  con dependencias instaladas.
+
+## Publicación de recuperación inicial — delta sobre c014296
+
+- `recover-initial` emite la evidencia completa en JSON. `publish-initial`
+  comprueba que la evidencia revisada coincide con la certificada para esa
+  candidata, vuelve a verificar manifiesto y alineación y conserva la aprobación
+  explícita y comprobación del puntero. La evidencia operativa debe protegerse.
+- Se añadieron pruebas de evidencia coincidente, alterada y ajena, aprobación y
+  puntero cambiado en `tests/Feature/InterestGenerationTest.php`. Resultado de
+  PHPUnit pendiente: este worktree no tiene `vendor/` completo y la instalación
+  local quedó bloqueada extrayendo una dependencia. Sintaxis PHP, Pint, `git
+  diff --check` y las 40 pruebas documentales (una omitida) sí pasaron. No hay
+  migraciones, configuración nueva ni cambios de datos productivos en la
+  revisión documental.
+- Archivos del delta: `app/Console/Commands/ManageInterestGenerationCommand.php`,
+  `app/Services/Salesforce/InterestGenerationStore.php`,
+  `tests/Feature/InterestGenerationTest.php`,
+  `docs/salesforce-interest-generations.md` y `docs/ai/HANDOFF.md`.
+  Mantener pendiente la validación con datos representativos y Salesforce; no se
+  garantiza fotografía histórica. El despliegue y la publicación son acciones
+  operativas separadas.

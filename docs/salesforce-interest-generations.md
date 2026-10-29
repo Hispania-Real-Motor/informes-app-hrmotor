@@ -79,3 +79,43 @@ extractor cuya asociación haya tenido éxito puede marcar su candidata fallida.
 `test_second_extractor_cannot_take_over_candidate_or_leave_its_run_running`
 comprueba rechazo, conservación del propietario/estado y ausencia de llamadas
 remotas. No permite reanudar ni reasignar una candidata ajena.
+## Recuperación inicial desde estado actual
+
+Cuando no existe una generación publicada, una generación histórica en estado
+`validating` puede utilizarse únicamente como semilla técnica, nunca como
+evidencia de certificación. El operador autorizado puede ejecutar
+`salesforce:interest-generation recover-initial` con una generación fuente
+explícita, autorización de lectura y un motivo operativo.
+
+El procedimiento copia solamente las memberships de la fuente y reutiliza sus
+versiones inmutables. Después lee el estado actual de Salesforce por páginas,
+lo transforma con el mismo mapeo F2 y compara el hash de contenido existente.
+Solo se escriben versiones para altas o diferencias. Los hard-deletes requieren
+cobertura válida de `getDeleted`; una fila local ausente sin esa evidencia hace
+fallar la candidata. La reconciliación tiene un máximo de tres pasadas y no
+publica ni modifica la generación fuente, el scheduler ni los workers.
+
+F5 se reconstruye en un run nuevo contra la candidata F2 reconciliada; no se
+reutiliza el run histórico de la semilla. La evidencia `initial_current_recovery`
+guarda generación fuente y recuperada, watermark, runs F2/F5, manifiesto,
+contadores finales, cobertura de borrados y número de pasadas. Solo una
+generación certificada mediante esa evidencia puede llegar posteriormente a
+`publish-initial`, que sigue siendo una acción independiente y requiere
+aprobación explícita. `recover-initial` emite la evidencia completa como JSON;
+debe conservarse en un archivo local protegido y revisarse antes de utilizarla
+con `--evidence`. La publicación comprueba que el contenido revisado coincide
+con la evidencia certificada y que el manifiesto y alineación siguen siendo
+válidos; rechaza evidencia alterada o de otra candidata. El puntero se verifica
+en la publicación. El JSON contiene identificadores técnicos de generaciones y
+runs, por lo que debe tratarse como evidencia operativa restringida.
+
+`InterestGenerationTest` incluye casos de publicación con evidencia coincidente,
+rechazo de evidencia alterada o ajena, ausencia de aprobación y cambio del
+puntero. Estas pruebas no sustituyen la revisión operativa ni validan datos
+reales de Salesforce.
+
+Las consultas de recuperación F2 y F5 leen el estado actual sin limitar
+`SystemModstamp` al watermark. La verificación compara lecturas sucesivas;
+ese watermark no demuestra una fotografía histórica ni simultaneidad exacta
+entre F2 y F5. El resultado y la cobertura deben revisarse antes del uso
+operativo; las pruebas simuladas no certifican Salesforce ni producción.

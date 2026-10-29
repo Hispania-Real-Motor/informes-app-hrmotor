@@ -76,6 +76,51 @@ final class InterestGenerationStore
         return $id;
     }
 
+    /** Copy only membership references; a seed is never treated as a certified base. */
+    public function beginInitialRecovery(int $sourceId, CarbonInterface $cutoff): int
+    {
+        $id = DB::transaction(function () use ($sourceId, $cutoff): int {
+            $pointer = DB::table('salesforce_interest_publication')->where('id', 1)->lockForUpdate()->first();
+            $source = DB::table('salesforce_interest_generations')->where('id', $sourceId)->lockForUpdate()->first();
+            if ($pointer === null || $pointer->generation_id !== null || $source === null
+                || $source->base_generation_id !== null || $source->status !== 'validating'
+                || ! $source->f2_complete || ! $source->f5_complete || $source->published_at !== null
+                || DB::table('salesforce_interest_conflicts')->where('generation_id', $sourceId)->exists()
+                || CarbonImmutable::parse($source->cutoff_at)->gte($cutoff)) {
+                throw new RuntimeException('Initial recovery source or publication state is invalid.');
+            }
+            $this->assertAligned($source);
+
+            return DB::table('salesforce_interest_generations')->insertGetId([
+                'base_generation_id' => null, 'cutoff_at' => $cutoff,
+                'status' => 'preparing', 'started_at' => now('UTC'),
+            ]);
+        });
+
+        try {
+            DB::table('salesforce_interest_members')->where('generation_id', $sourceId)
+                ->orderBy('salesforce_id')->chunkById(1000, function ($rows) use ($id): void {
+                    DB::table('salesforce_interest_members')->insert($rows->map(fn ($row) => [
+                        'generation_id' => $id, 'salesforce_id' => $row->salesforce_id,
+                        'version_id' => $row->version_id, 'migration_origin_lead_id' => $row->migration_origin_lead_id,
+                    ])->all());
+                }, 'salesforce_id');
+            DB::transaction(function () use ($id): void {
+                $pointer = DB::table('salesforce_interest_publication')->where('id', 1)->lockForUpdate()->first();
+                if ($pointer === null || $pointer->generation_id !== null) {
+                    throw new RuntimeException('Publication changed during recovery preparation.');
+                }
+                DB::table('salesforce_interest_generations')->where('id', $id)->where('status', 'preparing')
+                    ->update(['status' => 'syncing']);
+            });
+        } catch (\Throwable $exception) {
+            $this->fail($id);
+            throw $exception;
+        }
+
+        return $id;
+    }
+
     public function bindRun(int $id, ReportSyncRun $run): void
     {
         DB::transaction(function () use ($id, $run): void {
@@ -251,6 +296,56 @@ final class InterestGenerationStore
         });
     }
 
+    /**
+     * Certifies only machine-produced evidence from the bounded current-state
+     * recovery flow. It deliberately does not loosen the historical bootstrap
+     * evidence contract in certify().
+     *
+     * @param  array<string, mixed>  $evidence
+     */
+    public function certifyInitialCurrentRecovery(int $id, array $evidence): void
+    {
+        DB::transaction(function () use ($id, $evidence): void {
+            $pointer = DB::table('salesforce_interest_publication')->where('id', 1)->lockForUpdate()->first();
+            $generation = DB::table('salesforce_interest_generations')->where('id', $id)->lockForUpdate()->first();
+            if ($pointer === null || $pointer->generation_id !== null || $generation === null
+                || $generation->base_generation_id !== null || $generation->status !== 'validating'
+                || ! $generation->f2_complete || ! $generation->f5_complete
+                || DB::table('salesforce_interest_conflicts')->where('generation_id', $id)->exists()) {
+                throw new RuntimeException('Initial current recovery is not complete and conflict-free.');
+            }
+            $this->assertAligned($generation);
+            $this->assertInitialCurrentRecoveryEvidenceForGeneration($generation, $evidence);
+            DB::table('salesforce_interest_generations')->where('id', $id)->update([
+                'status' => 'certified', 'completed_at' => now('UTC'),
+                'validation' => json_encode($evidence, JSON_THROW_ON_ERROR),
+            ]);
+        });
+    }
+
+    /**
+     * Confirms that an operator-reviewed recovery evidence file is exactly the
+     * certified evidence of this initial candidate. It is intentionally
+     * read-only; publish() remains the sole publication transition.
+     *
+     * @param  array<string, mixed>  $evidence
+     */
+    public function assertInitialCurrentRecoveryEvidence(int $id, array $evidence): void
+    {
+        DB::transaction(function () use ($id, $evidence): void {
+            $generation = DB::table('salesforce_interest_generations')->where('id', $id)->lockForUpdate()->first();
+            if ($generation === null || $generation->status !== 'certified' || $generation->base_generation_id !== null) {
+                throw new RuntimeException('Initial current recovery candidate is not certified.');
+            }
+            $this->assertAligned($generation);
+            $this->assertInitialCurrentRecoveryEvidenceForGeneration($generation, $evidence);
+            $stored = json_decode((string) $generation->validation, true, 64, JSON_THROW_ON_ERROR);
+            if (! is_array($stored) || ! hash_equals($this->canonicalEvidenceHash($stored), $this->canonicalEvidenceHash($evidence))) {
+                throw new RuntimeException('Reviewed recovery evidence does not match the certified candidate.');
+            }
+        });
+    }
+
     /** Deterministic candidate digest for independent initial coverage review. No IDs in output. */
     public function manifest(int $id): array
     {
@@ -320,6 +415,57 @@ final class InterestGenerationStore
         }
     }
 
+    /** @param array<string, mixed> $evidence */
+    private function assertInitialCurrentRecoveryEvidenceForGeneration(object $generation, array $evidence): void
+    {
+        $manifest = $this->manifest((int) $generation->id);
+        $f2 = $evidence['f2'] ?? null;
+        $f5 = $evidence['f5'] ?? null;
+        $coverage = $evidence['deletion_coverage'] ?? null;
+        if (($evidence['source'] ?? null) !== 'initial_current_recovery'
+            || (int) ($evidence['recovered_generation_id'] ?? 0) !== (int) $generation->id
+            || ! is_int($evidence['source_generation_id'] ?? null)
+            || (int) ($evidence['interest_run_id'] ?? 0) !== (int) $generation->interest_run_id
+            || ! is_array($f2) || ! is_array($f5) || ! is_array($coverage)
+            || (int) ($f2['content_mismatches'] ?? -1) !== 0
+            || (int) ($f2['salesforce_only'] ?? -1) !== 0
+            || (int) ($f2['candidate_only_unexplained'] ?? -1) !== 0
+            || (int) ($f2['conflicts'] ?? -1) !== 0
+            || ! hash_equals($manifest['sha256'], (string) ($f2['manifest_sha256'] ?? ''))
+            || ! hash_equals($manifest['identifiers_sha256'], (string) ($f2['identifiers_sha256'] ?? ''))
+            || (int) ($f5['run_id'] ?? 0) !== (int) $generation->activity_run_id
+            || ! is_string($f5['manifest_sha256'] ?? null)
+            || ! hash_equals((string) $f5['manifest_sha256'], (string) ($f5['verification_sha256'] ?? ''))
+            || ($f5['verified'] ?? false) !== true
+            || ! hash_equals((string) $generation->cutoff_at, (string) ($evidence['watermark'] ?? ''))
+            || ! hash_equals((string) $generation->cutoff_at, (string) ($f5['cutoff_at'] ?? ''))
+            || ! is_string($coverage['latest_date_covered'] ?? null)
+            || ! is_string($coverage['earliest_date_available'] ?? null)) {
+            throw new RuntimeException('Initial current recovery evidence is incomplete or inconsistent.');
+        }
+    }
+
+    /** @param array<string, mixed> $evidence */
+    private function canonicalEvidenceHash(array $evidence): string
+    {
+        return hash('sha256', json_encode($this->canonicalizeEvidence($evidence), JSON_THROW_ON_ERROR));
+    }
+
+    private function canonicalizeEvidence(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->canonicalizeEvidence($item);
+        }
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
+    }
+
     private function writable(int $id): object
     {
         $g = DB::table('salesforce_interest_generations')->where('id', $id)->lockForUpdate()->first();
@@ -330,7 +476,7 @@ final class InterestGenerationStore
         return $g;
     }
 
-    private function hash(array $row): string
+    public function hash(array $row): string
     {
         unset($row['synced_at'], $row['created_at'], $row['updated_at']);
         ksort($row);

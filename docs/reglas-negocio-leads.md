@@ -40,6 +40,11 @@ certificada. Pruebas: `InterestGenerationTest`,
 `SalesforceInterestDashboardDatasetTest` y `leads-unavailable.test.mjs`.
 Véase [arquitectura, recuperación y límites](salesforce-interest-generations.md).
 
+La recuperación inicial excepcional puede certificar una candidata mediante
+reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
+Sus lecturas no prueban una fotografía histórica al watermark; los límites y
+las comprobaciones operativas figuran en el documento de generaciones.
+
 Ajuste de disponibilidad posterior del núcleo: si falta el run F2 o F5 que una
 generación publicada referencia, `InterestGenerationReader::f2()/f5()` devuelve
 el error controlado `InterestDatasetUnavailable` (503), sin una excepción de

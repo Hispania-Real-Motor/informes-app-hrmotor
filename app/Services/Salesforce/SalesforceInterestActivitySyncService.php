@@ -7,6 +7,7 @@ use App\Models\SalesforceInterestActivity;
 use App\Models\SalesforceInterestActivityRun;
 use App\Support\IntegrationErrorSanitizer;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -37,6 +38,62 @@ class SalesforceInterestActivitySyncService
 
     /** @return array{run: SalesforceInterestActivityRun, stats: array<string, int|float|string|null>} */
     public function sync(string $reason, ?int $generationId = null): array
+    {
+        return $this->syncSnapshot($reason, $generationId, false);
+    }
+
+    /**
+     * Rebuild an isolated F5 run from the current remote state. This is only
+     * used by initial recovery; it never changes an existing activity run.
+     *
+     * @return array{run: SalesforceInterestActivityRun, stats: array<string, int|float|string|null>}
+     */
+    public function syncCurrentRecovery(string $reason, int $generationId): array
+    {
+        return $this->syncSnapshot($reason, $generationId, true);
+    }
+
+    /** Deterministic, non-identifying digest of a completed F5 materialization. */
+    public function manifest(SalesforceInterestActivityRun $run): array
+    {
+        $hash = hash_init('sha256');
+        $rows = 0;
+        SalesforceInterestActivity::query()->where('activity_run_id', $run->id)
+            ->chunkById(1000, function ($items) use ($hash, &$rows): void {
+                foreach ($items as $item) {
+                    hash_update($hash, $this->activityHash((array) $item->getAttributes())."\n");
+                    $rows++;
+                }
+            });
+
+        return ['run_id' => $run->id, 'rows' => $rows, 'sha256' => hash_final($hash)];
+    }
+
+    /** @return array{rows: int, sha256: string, matches: bool} */
+    public function verifyCurrentRecovery(SalesforceInterestActivityRun $run, int $generationId): array
+    {
+        $hash = hash_init('sha256');
+        $rows = 0;
+        $cutoff = CarbonImmutable::parse($run->source_cutoff_at, 'UTC');
+        foreach (['Task', 'Event'] as $kind) {
+            foreach ($this->client->queryPages($this->soql($kind, $cutoff, true), true) as $records) {
+                $interests = $this->resolveInterests($records, $generationId);
+                foreach ($records as $record) {
+                    $row = $this->mapRecord($run, $kind, $record, $interests);
+                    hash_update($hash, $this->activityHash($row)."\n");
+                    $rows++;
+                }
+            }
+        }
+        $actual = $this->manifest($run);
+        $expected = hash_final($hash);
+
+        return ['rows' => $rows, 'sha256' => $expected,
+            'matches' => $rows === $actual['rows'] && hash_equals($expected, $actual['sha256'])];
+    }
+
+    /** @return array{run: SalesforceInterestActivityRun, stats: array<string, int|float|string|null>} */
+    private function syncSnapshot(string $reason, ?int $generationId, bool $currentState): array
     {
         if ($generationId === null) {
             throw new RuntimeException('F5 requires an explicit isolated F2 candidate.');
@@ -84,7 +141,7 @@ class SalesforceInterestActivitySyncService
                     'stats' => $stats,
                 ]);
 
-                $this->syncActivities($run, $cutoff, $stats, $generationId);
+                $this->syncActivities($run, $cutoff, $stats, $generationId, $currentState);
                 $this->afterSnapshotBuilt($run, $stats);
                 $this->assertSnapshotComplete($run, $stats);
                 if (! $generations->generation($generationId)->f2_complete) {
@@ -130,9 +187,10 @@ class SalesforceInterestActivitySyncService
         CarbonImmutable $cutoff,
         array &$stats,
         int $generationId,
+        bool $currentState,
     ): void {
-        $this->syncActivityKind($run, 'Task', $cutoff, $stats, $generationId);
-        $this->syncActivityKind($run, 'Event', $cutoff, $stats, $generationId);
+        $this->syncActivityKind($run, 'Task', $cutoff, $stats, $generationId, $currentState);
+        $this->syncActivityKind($run, 'Event', $cutoff, $stats, $generationId, $currentState);
     }
 
     /** @param array<string, int|float|string|null> $stats */
@@ -142,9 +200,10 @@ class SalesforceInterestActivitySyncService
         CarbonImmutable $cutoff,
         array &$stats,
         int $generationId,
+        bool $currentState,
     ): void {
         $stats['query_all_calls']++;
-        foreach ($this->client->queryPages($this->soql($kind, $cutoff), true) as $records) {
+        foreach ($this->client->queryPages($this->soql($kind, $cutoff, $currentState), true) as $records) {
             $stats[$kind === 'Task' ? 'task_pages' : 'event_pages']++;
             $stats[$kind === 'Task' ? 'tasks_examined' : 'events_examined'] += count($records);
             $interestById = $this->resolveInterests($records, $generationId);
@@ -205,7 +264,7 @@ class SalesforceInterestActivitySyncService
      * @param  array<string, object>  $interestById
      * @return array<string, mixed>
      */
-    private function mapRecord(
+    public function mapRecord(
         SalesforceInterestActivityRun $run,
         string $kind,
         array $record,
@@ -241,15 +300,14 @@ class SalesforceInterestActivitySyncService
         ];
     }
 
-    private function soql(string $kind, CarbonImmutable $cutoff): string
+    private function soql(string $kind, CarbonImmutable $cutoff, bool $currentState = false): string
     {
         $fields = $kind === 'Task' ? self::TASK_SOQL_FIELDS : self::EVENT_SOQL_FIELDS;
 
         return 'SELECT '.$fields."\n"
             .'FROM '.$kind."\n"
             ."WHERE What.Type = 'Interes__c'\n"
-            .'    AND SystemModstamp <= '.$cutoff->format('Y-m-d\TH:i:s\Z')."\n"
-            .'ORDER BY SystemModstamp ASC, Id ASC';
+            .($currentState ? 'ORDER BY Id ASC' : '    AND SystemModstamp <= '.$cutoff->format('Y-m-d\TH:i:s\Z')."\nORDER BY SystemModstamp ASC, Id ASC");
     }
 
     /** @param array<string, int|float|string|null> $stats */
@@ -274,6 +332,28 @@ class SalesforceInterestActivitySyncService
         $value = trim((string) $value);
 
         return $value === '' ? null : $value;
+    }
+
+    /** @param array<string, mixed> $row */
+    private function activityHash(array $row): string
+    {
+        $value = [];
+        foreach ([
+            'activity_kind', 'activity_salesforce_id', 'interest_salesforce_id', 'who_salesforce_id', 'relationship_status',
+            'activity_is_deleted', 'interest_is_deleted', 'activity_date', 'start_datetime', 'salesforce_created_at',
+            'salesforce_last_modified_at', 'system_modstamp_at',
+        ] as $field) {
+            $item = $row[$field] ?? null;
+            $value[$field] = match (true) {
+                $item instanceof CarbonInterface => $item->utc()->toIso8601String(),
+                in_array($field, ['activity_is_deleted', 'interest_is_deleted'], true) => $item === null ? null : (int) (bool) $item,
+                in_array($field, ['start_datetime', 'salesforce_created_at', 'salesforce_last_modified_at', 'system_modstamp_at'], true) => $item === null ? null : CarbonImmutable::parse($item, 'UTC')->utc()->toIso8601String(),
+                default => $item === null ? null : (string) $item,
+            };
+        }
+        ksort($value);
+
+        return hash('sha256', json_encode($value, JSON_THROW_ON_ERROR));
     }
 
     private function parseDate(mixed $value): ?string

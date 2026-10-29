@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Salesforce\InterestExternalEvidenceService;
 use App\Services\Salesforce\InterestGenerationStore;
+use App\Services\Salesforce\InterestInitialCurrentRecoveryService;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
@@ -14,8 +15,9 @@ use RuntimeException;
 class ManageInterestGenerationCommand extends Command
 {
     protected $signature = 'salesforce:interest-generation
-        {action : prepare-initial, manifest, external-evidence, or publish-initial}
+        {action : prepare-initial, recover-initial, manifest, external-evidence, or publish-initial}
         {--generation= : Candidate identifier}
+        {--source-generation= : Unpublished initial seed identifier for recover-initial}
         {--evidence= : Local reviewed JSON evidence file}
         {--reason= : Operational reason, 10 to 500 characters}
         {--allow-salesforce-read : Explicitly authorize isolated initial extraction}
@@ -23,8 +25,11 @@ class ManageInterestGenerationCommand extends Command
 
     protected $description = 'Build or publish an independently verified initial F2/F5 generation.';
 
-    public function handle(InterestGenerationStore $store, InterestExternalEvidenceService $externalEvidence): int
-    {
+    public function handle(
+        InterestGenerationStore $store,
+        InterestExternalEvidenceService $externalEvidence,
+        InterestInitialCurrentRecoveryService $recovery,
+    ): int {
         try {
             $action = $this->argument('action');
             if ($action === 'prepare-initial') {
@@ -43,6 +48,19 @@ class ManageInterestGenerationCommand extends Command
                 }
                 $this->line(json_encode($store->manifest($id), JSON_THROW_ON_ERROR));
                 $this->info('Candidate built; independent reconciliation and explicit publication are still required.');
+
+                return self::SUCCESS;
+            }
+            if ($action === 'recover-initial') {
+                $reason = trim((string) $this->option('reason'));
+                $source = (string) $this->option('source-generation');
+                if ($this->option('allow-salesforce-read') !== true || ctype_digit($source) === false
+                    || (int) $source < 1 || mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
+                    throw new RuntimeException('Initial recovery requires an explicit source, read authorization, and an operational reason.');
+                }
+                $result = $recovery->recover((int) $source, $reason);
+                $this->line(json_encode($result['evidence'], JSON_THROW_ON_ERROR));
+                $this->info('Recovery candidate certified but not published. Scheduler state was not changed.');
 
                 return self::SUCCESS;
             }
@@ -74,7 +92,19 @@ class ManageInterestGenerationCommand extends Command
                 throw new RuntimeException('A bounded, readable reviewed evidence file is required.');
             }
             $evidence = json_decode(file_get_contents($path), true, 32, JSON_THROW_ON_ERROR);
-            $store->certify($id, $evidence);
+            $generation = $store->generation($id);
+            $isCurrentRecovery = false;
+            if ($generation->status === 'certified' && $generation->base_generation_id === null
+                && is_string($generation->validation) && $generation->validation !== '') {
+                $validation = json_decode($generation->validation, true, 64, JSON_THROW_ON_ERROR);
+                $isCurrentRecovery = is_array($validation)
+                    && ($validation['source'] ?? null) === 'initial_current_recovery';
+            }
+            if ($isCurrentRecovery) {
+                $store->assertInitialCurrentRecoveryEvidence($id, $evidence);
+            } else {
+                $store->certify($id, $evidence);
+            }
             $store->publish($id);
             $this->info('Reviewed initial generation published. Scheduler state was not changed.');
 

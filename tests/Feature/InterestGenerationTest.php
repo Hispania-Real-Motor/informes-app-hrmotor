@@ -8,6 +8,7 @@ use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Reports\ReportSyncRunService;
 use App\Services\Salesforce\InterestGenerationReader;
 use App\Services\Salesforce\InterestGenerationStore;
+use App\Services\Salesforce\InterestInitialCurrentRecoveryService;
 use App\Services\Salesforce\SalesforceAuthService;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
@@ -83,16 +84,66 @@ class InterestGenerationTest extends TestCase
 
     private function certify(int $id): void
     {
+        $this->store()->certify($id, $this->historicalEvidence($id));
+    }
+
+    /** @return array<string, mixed> */
+    private function historicalEvidence(int $id): array
+    {
         $manifest = $this->store()->manifest($id);
         $g = $this->store()->generation($id);
-        $this->store()->certify($id, ['source' => 'isolated_salesforce_reconstruction',
+
+        return ['source' => 'isolated_salesforce_reconstruction',
             'manifest_sha256' => $manifest['sha256'], 'manifest' => $manifest,
             'f5' => ['run_id' => $g->activity_run_id, 'cutoff_at' => $g->cutoff_at],
             'external' => ['source' => 'salesforce_export_review_20261028',
                 'identifiers_sha256' => $manifest['identifiers_sha256'], 'rows' => $manifest['rows'],
                 'deleted' => $manifest['deleted'], 'relationships_sha256' => hash('sha256', 'synthetic-relations'),
                 'coverage_sha256' => hash('sha256', 'synthetic-coverage')],
-            'checks' => array_fill_keys(['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'], true)]);
+            'checks' => array_fill_keys(['identifiers', 'counts', 'deletions', 'relationships', 'coverage', 'f5'], true)];
+    }
+
+    /** @return array<string, mixed> */
+    private function certifyCurrentRecovery(int $id, int $sourceGenerationId = 1): array
+    {
+        $this->complete($id);
+        $generation = $this->store()->generation($id);
+        $manifest = $this->store()->manifest($id);
+        $evidence = [
+            'source' => 'initial_current_recovery',
+            'source_generation_id' => $sourceGenerationId,
+            'recovered_generation_id' => $id,
+            'source_cutoff' => '2026-10-28 09:00:00',
+            'watermark' => $generation->cutoff_at,
+            'interest_run_id' => (int) $generation->interest_run_id,
+            'reconciliation_passes' => 1,
+            'deletion_coverage' => [
+                'earliest_date_available' => '2026-10-01T00:00:00+00:00',
+                'latest_date_covered' => '2026-10-28T10:00:00+00:00',
+                'records' => 0,
+            ],
+            'f2' => [
+                'content_mismatches' => 0, 'salesforce_only' => 0, 'candidate_only_unexplained' => 0, 'conflicts' => 0,
+                'manifest_sha256' => $manifest['sha256'], 'identifiers_sha256' => $manifest['identifiers_sha256'],
+            ],
+            'f5' => [
+                'run_id' => (int) $generation->activity_run_id, 'cutoff_at' => $generation->cutoff_at, 'rows' => 0,
+                'manifest_sha256' => hash('sha256', 'synthetic-f5'), 'verification_sha256' => hash('sha256', 'synthetic-f5'),
+                'verified' => true,
+            ],
+        ];
+        $this->store()->certifyInitialCurrentRecovery($id, $evidence);
+
+        return $evidence;
+    }
+
+    /** @param array<string, mixed> $evidence */
+    private function evidenceFile(array $evidence): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'interest-recovery-evidence-');
+        file_put_contents($path, json_encode($evidence, JSON_THROW_ON_ERROR));
+
+        return $path;
     }
 
     private function publishBase(): int
@@ -104,6 +155,164 @@ class InterestGenerationTest extends TestCase
         $this->store()->publish($id);
 
         return $id;
+    }
+
+    public function test_initial_recovery_seed_reuses_versions_without_changing_source(): void
+    {
+        $source = $this->candidate();
+        $this->store()->persist($source, [$this->row()]);
+        $this->complete($source);
+        $before = $this->store()->generation($source);
+        $member = DB::table('salesforce_interest_members')->where('generation_id', $source)->first();
+
+        $recovery = $this->store()->beginInitialRecovery($source, CarbonImmutable::parse('2026-10-28 11:00:00', 'UTC'));
+
+        $this->assertEquals($before, $this->store()->generation($source));
+        $this->assertNull($this->store()->generation($recovery)->base_generation_id);
+        $this->assertDatabaseHas('salesforce_interest_members', [
+            'generation_id' => $recovery, 'salesforce_id' => $member->salesforce_id, 'version_id' => $member->version_id,
+        ]);
+        $this->assertDatabaseCount('salesforce_interest_versions', 1);
+        $this->assertNull($this->store()->published());
+    }
+
+    public function test_initial_recovery_rejects_an_existing_publication(): void
+    {
+        $source = $this->publishBase();
+        $this->expectException(RuntimeException::class);
+        $this->store()->beginInitialRecovery($source, CarbonImmutable::parse('2026-10-28 11:00:00', 'UTC'));
+    }
+
+    public function test_certified_current_recovery_publishes_only_with_its_reviewed_evidence(): void
+    {
+        $id = $this->candidate();
+        $evidence = $this->certifyCurrentRecovery($id);
+        $path = $this->evidenceFile($evidence);
+        try {
+            $this->artisan('salesforce:interest-generation', [
+                'action' => 'publish-initial', '--generation' => $id, '--evidence' => $path, '--approve-publication' => true,
+            ])->assertSuccessful();
+        } finally {
+            @unlink($path);
+        }
+        $this->assertDatabaseHas('salesforce_interest_publication', ['id' => 1, 'generation_id' => $id, 'watermark_at' => '2026-10-28 10:00:00']);
+        $this->assertSame('published', $this->store()->generation($id)->status);
+    }
+
+    public function test_current_recovery_rejects_tampered_or_foreign_reviewed_evidence(): void
+    {
+        $id = $this->candidate();
+        $evidence = $this->certifyCurrentRecovery($id);
+        $tampered = [...$evidence, 'reconciliation_passes' => 2];
+        $tamperedPath = $this->evidenceFile($tampered);
+        try {
+            $this->artisan('salesforce:interest-generation', [
+                'action' => 'publish-initial', '--generation' => $id, '--evidence' => $tamperedPath, '--approve-publication' => true,
+            ])->assertFailed();
+        } finally {
+            @unlink($tamperedPath);
+        }
+        $other = $this->candidate('2026-10-28 11:00:00');
+        $foreignPath = $this->evidenceFile($this->certifyCurrentRecovery($other, 2));
+        try {
+            $this->artisan('salesforce:interest-generation', [
+                'action' => 'publish-initial', '--generation' => $id, '--evidence' => $foreignPath, '--approve-publication' => true,
+            ])->assertFailed();
+        } finally {
+            @unlink($foreignPath);
+        }
+        $this->assertNull($this->store()->published());
+    }
+
+    public function test_current_recovery_publication_requires_approval_and_current_pointer(): void
+    {
+        $id = $this->candidate();
+        $path = $this->evidenceFile($this->certifyCurrentRecovery($id));
+        try {
+            $this->artisan('salesforce:interest-generation', [
+                'action' => 'publish-initial', '--generation' => $id, '--evidence' => $path,
+            ])->assertFailed();
+            DB::table('salesforce_interest_publication')->where('id', 1)->update(['generation_id' => 999]);
+            $this->artisan('salesforce:interest-generation', [
+                'action' => 'publish-initial', '--generation' => $id, '--evidence' => $path, '--approve-publication' => true,
+            ])->assertFailed();
+        } finally {
+            @unlink($path);
+        }
+        $this->assertSame('certified', $this->store()->generation($id)->status);
+    }
+
+    public function test_historical_initial_publication_cli_keeps_its_existing_certification_contract(): void
+    {
+        $id = $this->candidate();
+        $this->complete($id);
+        $path = $this->evidenceFile($this->historicalEvidence($id));
+        try {
+            $this->artisan('salesforce:interest-generation', [
+                'action' => 'publish-initial', '--generation' => $id, '--evidence' => $path, '--approve-publication' => true,
+            ])->assertSuccessful();
+        } finally {
+            @unlink($path);
+        }
+        $this->assertSame('published', $this->store()->generation($id)->status);
+    }
+
+    public function test_current_initial_recovery_reuses_identical_versions_and_never_publishes(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-28 11:02:00', 'UTC'));
+        $record = [
+            'Id' => 'a01000000000000001', 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z',
+            'IsDeleted' => false, 'IN_Lead__c' => null, 'IN_Account__c' => null, 'IN_Lead_Origen_Migracion__c' => null,
+            'IN_Fecha_Creacion_Origen__c' => null, 'OwnerId' => null, 'Owner' => ['Name' => 'Owner'],
+        ];
+        $task = [
+            'Id' => '00T000000000000001', 'WhatId' => $record['Id'], 'WhoId' => null,
+            'ActivityDate' => '2026-10-28', 'CreatedDate' => '2026-10-28T10:00:00Z',
+            'LastModifiedDate' => '2026-10-28T10:00:00Z', 'SystemModstamp' => '2026-10-28T10:00:00Z', 'IsDeleted' => false,
+        ];
+        $source = $this->candidate();
+        $this->store()->persist($source, [app(SalesforceInterestSyncService::class)->mapRecord($record, false)]);
+        $this->complete($source);
+        $sourceVersion = $this->store()->rows($source)->value('version.id');
+        $client = new class($record, $task) extends SalesforceClient
+        {
+            public function __construct(private array $record, private array $task) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield match (true) {
+                    str_contains($soql, 'FROM Interes__c') => [$this->record],
+                    str_contains($soql, 'FROM Task') => [$this->task],
+                    default => [],
+                };
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => $start->toIso8601String(), 'latestDateCovered' => $end->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        $result = app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Recover initial generation from current Salesforce state.');
+
+        $candidate = $result['generation_id'];
+        $this->assertSame($sourceVersion, $this->store()->rows($candidate)->value('version.id'));
+        $this->assertSame('certified', $this->store()->generation($candidate)->status);
+        $this->assertNull($this->store()->published());
+        $this->assertSame(0, $result['evidence']['f2']['content_mismatches']);
+        $this->assertSame(0, $result['evidence']['f2']['candidate_only_unexplained']);
+        $this->assertSame(1, $result['evidence']['f5']['rows']);
+        $this->travelBack();
+    }
+
+    public function test_current_initial_recovery_cli_refuses_remote_read_without_explicit_authorization(): void
+    {
+        $this->artisan('salesforce:interest-generation', [
+            'action' => 'recover-initial', '--source-generation' => '1', '--reason' => 'Recover initial generation safely.',
+        ])->assertFailed();
+        $this->assertDatabaseCount('salesforce_interest_generations', 0);
     }
 
     public function test_failure_and_partial_writes_do_not_change_published_rows_or_watermark(): void
