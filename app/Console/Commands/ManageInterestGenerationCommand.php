@@ -29,7 +29,7 @@ class ManageInterestGenerationCommand extends Command
             $action = $this->argument('action');
             if ($action === 'prepare-initial') {
                 $reason = trim((string) $this->option('reason'));
-                if (! $this->option('allow-salesforce-read') || mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
+                if (!$this->option('allow-salesforce-read') || mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
                     throw new RuntimeException('Initial extraction requires explicit read authorization and an operational reason.');
                 }
                 $cutoff = CarbonImmutable::now('UTC')->subMinutes(2)->startOfMinute();
@@ -47,13 +47,13 @@ class ManageInterestGenerationCommand extends Command
                 return self::SUCCESS;
             }
             $value = (string) $this->option('generation');
-            if (! ctype_digit($value) || strlen($value) > 18 || (int) $value < 1) {
+            if (!ctype_digit($value) || strlen($value) > 18 || (int) $value < 1) {
                 throw new RuntimeException('A valid generation identifier is required.');
             }
             $id = (int) $value;
             if ($action === 'external-evidence') {
                 $reason = trim((string) $this->option('reason'));
-                if (! $this->option('allow-salesforce-read') || mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
+                if (!$this->option('allow-salesforce-read') || mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
                     throw new RuntimeException('External evidence requires explicit read authorization and an operational reason.');
                 }
                 $this->line(json_encode($externalEvidence->collect($id), JSON_THROW_ON_ERROR));
@@ -65,12 +65,12 @@ class ManageInterestGenerationCommand extends Command
 
                 return self::SUCCESS;
             }
-            if ($action !== 'publish-initial' || ! $this->option('approve-publication')
+            if ($action !== 'publish-initial' || !$this->option('approve-publication')
                 || $store->generation($id)->base_generation_id !== null) {
                 throw new RuntimeException('Initial publication requires explicit approval of an initial candidate.');
             }
             $path = (string) $this->option('evidence');
-            if (! is_file($path) || ! is_readable($path) || filesize($path) > 65536) {
+            if (!is_file($path) || !is_readable($path) || filesize($path) > 65536) {
                 throw new RuntimeException('A bounded, readable reviewed evidence file is required.');
             }
             $evidence = json_decode(file_get_contents($path), true, 32, JSON_THROW_ON_ERROR);

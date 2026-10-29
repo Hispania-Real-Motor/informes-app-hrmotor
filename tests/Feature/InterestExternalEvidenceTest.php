@@ -49,5 +49,4 @@ class InterestExternalEvidenceTest extends TestCase
         $this->assertSame(64, strlen($first['relationships_sha256']));
         $this->assertSame(64, strlen($first['coverage_sha256']));
     }
-
 }

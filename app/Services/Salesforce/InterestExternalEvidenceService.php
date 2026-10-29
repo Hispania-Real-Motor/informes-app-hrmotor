@@ -178,5 +178,4 @@ final class InterestExternalEvidenceService
 
         return (array) $row;
     }
-
 }
