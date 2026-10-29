@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Services\Salesforce\InterestExternalEvidenceService;
 use App\Services\Salesforce\SalesforceClient;
-use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Mockery;
