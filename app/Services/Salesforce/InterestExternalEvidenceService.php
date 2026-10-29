@@ -33,6 +33,7 @@ final class InterestExternalEvidenceService
         $matched = 0;
         $stateMismatch = 0;
         $salesforceOnly = 0;
+        $candidateSeen = 0;
         $lastId = null;
         $identifiers = hash_init('sha256');
         foreach ($this->client->queryPages($soql, true) as $page) {
@@ -64,6 +65,9 @@ final class InterestExternalEvidenceService
                 $unverifiable += (int) $modifiedAt->greaterThan($cutoff);
                 $rows++;
                 hash_update($identifiers, $id.'|'.(int) $deleted."\n");
+                if ($candidateById->has($id)) {
+                    $candidateSeen++;
+                }
 
                 if ($modifiedAt->lessThanOrEqualTo($cutoff)) {
                     if (! $candidateById->has($id)) {
@@ -94,7 +98,7 @@ final class InterestExternalEvidenceService
             'matched' => $matched,
             'state_mismatch' => $stateMismatch,
             'salesforce_only' => $salesforceOnly,
-            'candidate_only' => max(0, (int) DB::table('salesforce_interest_members')->where('generation_id', $generationId)->count() - $matched),
+            'candidate_only' => max(0, (int) DB::table('salesforce_interest_members')->where('generation_id', $generationId)->count() - $candidateSeen),
             'created_after_cutoff' => null,
             'reasons' => $certifiable ? [] : array_values(array_filter([
                 $concurrent ? null : 'generation_changed_during_extraction',
@@ -126,15 +130,33 @@ final class InterestExternalEvidenceService
                 ? SalesforceInterestActivitySyncService::TASK_SOQL_FIELDS
                 : SalesforceInterestActivitySyncService::EVENT_SOQL_FIELDS;
             $soql = 'SELECT '.$fields." FROM {$kind} WHERE What.Type = 'Interes__c' AND CreatedDate <= "
-                .$cutoff->format('Y-m-d\TH:i:s\Z').' ORDER BY SystemModstamp ASC, Id ASC';
+                .$cutoff->format('Y-m-d\TH:i:s\Z').' ORDER BY Id ASC';
+            $lastActivityId = null;
             foreach ($this->client->queryPages($soql, true) as $records) {
                 $relationPages++;
                 $relationRows += count($records);
                 foreach ($records as $record) {
-                    $relationUnverifiable += (CarbonImmutable::parse((string) data_get($record, 'SystemModstamp'), 'UTC')->greaterThan($cutoff) ? 1 : 0);
+                    $activityId = trim((string) data_get($record, 'Id'));
+                    $whatId = trim((string) data_get($record, 'WhatId'));
+                    $created = (string) data_get($record, 'CreatedDate');
+                    $modstamp = (string) data_get($record, 'SystemModstamp');
+                    if (! preg_match('/^[A-Za-z0-9]{18}$/', $activityId)
+                        || ($lastActivityId !== null && strcmp($activityId, $lastActivityId) <= 0)
+                        || ($whatId !== '' && ! preg_match('/^[A-Za-z0-9]{18}$/', $whatId))
+                        || $created === '' || $modstamp === '') {
+                        throw new RuntimeException('Salesforce activity evidence is invalid.');
+                    }
+                    $lastActivityId = $activityId;
+                    try {
+                        CarbonImmutable::parse($created, 'UTC');
+                        $activityModifiedAt = CarbonImmutable::parse($modstamp, 'UTC');
+                    } catch (\Throwable) {
+                        throw new RuntimeException('Salesforce activity evidence contains an invalid timestamp.');
+                    }
+                    $relationUnverifiable += (int) $activityModifiedAt->greaterThan($cutoff);
                     hash_update($hash, $kind.'|'.json_encode([
-                        'Id' => data_get($record, 'Id'),
-                        'WhatId' => data_get($record, 'WhatId'),
+                        'Id' => $activityId,
+                        'WhatId' => $whatId === '' ? null : $whatId,
                         'IsDeleted' => (bool) data_get($record, 'IsDeleted', false),
                     ], JSON_THROW_ON_ERROR)."\n");
                 }
