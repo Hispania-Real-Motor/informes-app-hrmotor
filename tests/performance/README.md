@@ -36,6 +36,10 @@ Las muestras por ID y origen devolvieron `Impossible WHERE` porque esos valores
 sintéticos no existían en esa base. No se añade un índice especulativo: falta
 repetir el plan con IDs existentes y distribución real.
 
+La consulta exacta de `manifest()` selecciona `member.version_id AS id` y
+pagina con `member.version_id > cursor`. El SQL incluye una segunda página y
+debe conservar `sf_im_version_idx`, sin `filesort` global ni `OFFSET`.
+
 En MySQL, `InterestGenerationStore::rows()` usa `STRAIGHT_JOIN` para comenzar
 por la pertenencia, porque el orden textual de un `INNER JOIN` no obliga al
 optimizador. En SQLite y otros drivers se conserva el builder portable.

@@ -214,6 +214,61 @@ class InterestGenerationTest extends TestCase
         $this->store()->certify($id, ['source' => 'legacy_table']);
     }
 
+    public function test_manifest_is_deterministic_across_non_contiguous_multi_chunk_version_ids(): void
+    {
+        $id = $this->candidate();
+        $rows = [];
+        foreach (range(1, 1001) as $number) {
+            $row = $this->row(
+                id: sprintf('a01%015d', $number * 3),
+                origin: sprintf('00Q%015d', $number * 3),
+                status: $number % 2 === 0 ? 'deleted' : 'new',
+            );
+            $row['is_deleted'] = $number % 2 === 0;
+            $rows[] = $row;
+        }
+        $this->assertSame(500, collect($rows)->where('is_deleted', true)->count());
+        $this->store()->persist($id, array_slice($rows, 0, 500));
+        DB::table('salesforce_interest_versions')->insert([
+            'generation_id' => $id, 'batch_token' => (string) Str::uuid(),
+            'content_hash' => hash('sha256', 'orphan-version-1'), 'salesforce_id' => 'a01999999999999991',
+            'salesforce_created_at' => '2026-10-01 00:00:00', 'salesforce_last_modified_at' => '2026-10-01 00:00:00',
+            'functional_created_at' => '2026-10-01 00:00:00', 'raw_payload' => '{}', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('salesforce_interest_versions')->insert([
+            'generation_id' => $id, 'batch_token' => (string) Str::uuid(),
+            'content_hash' => hash('sha256', 'orphan-version-2'), 'salesforce_id' => 'a01999999999999992',
+            'salesforce_created_at' => '2026-10-01 00:00:00', 'salesforce_last_modified_at' => '2026-10-01 00:00:00',
+            'functional_created_at' => '2026-10-01 00:00:00', 'raw_payload' => '{}', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->store()->persist($id, array_slice($rows, 500));
+
+        $first = $this->store()->manifest($id);
+        $second = $this->store()->manifest($id);
+        $ordered = $this->store()->rows($id)
+            ->select(['member.version_id', 'version.salesforce_id', 'version.content_hash', 'version.is_deleted'])
+            ->orderBy('member.version_id')->get();
+        $versionIds = $ordered->pluck('version_id')->values()->all();
+        $this->assertCount(1001, $versionIds);
+        $this->assertCount(1001, array_unique($versionIds));
+        $this->assertTrue(collect($versionIds)->zip(collect($versionIds)->skip(1))
+            ->contains(fn ($pair): bool => $pair[1] > $pair[0] + 1));
+        $full = hash_init('sha256');
+        $identities = hash_init('sha256');
+        hash_update($full, json_encode([$id, $first['cutoff_at'], $this->store()->generation($id)->interest_run_id,
+            $this->store()->generation($id)->activity_run_id], JSON_THROW_ON_ERROR));
+        foreach ($ordered as $row) {
+            hash_update($full, $row->salesforce_id.'|'.$row->content_hash."\n");
+            hash_update($identities, $row->salesforce_id.'|'.$row->content_hash.'|'.(int) $row->is_deleted."\n");
+        }
+
+        $this->assertSame(1001, $first['rows']);
+        $this->assertSame(500, $first['deleted']);
+        $this->assertSame(hash_final($full), $first['sha256']);
+        $this->assertSame(hash_final($identities), $first['identifiers_sha256']);
+        $this->assertSame($first, $second);
+    }
+
     public function test_initial_generation_rejects_boolean_review_without_matching_manifest_and_f5_evidence(): void
     {
         $id = $this->candidate();
