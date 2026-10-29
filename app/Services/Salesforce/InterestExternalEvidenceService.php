@@ -24,23 +24,25 @@ final class InterestExternalEvidenceService
         }
 
         $cutoff = CarbonImmutable::parse($snapshot['cutoff_at'], 'UTC');
-        $soql = 'SELECT Id, CreatedDate, LastModifiedDate, SystemModstamp, IsDeleted FROM Interes__c WHERE SystemModstamp <= '
+        $soql = 'SELECT Id, CreatedDate, LastModifiedDate, SystemModstamp, IsDeleted FROM Interes__c WHERE CreatedDate <= '
             .$cutoff->format('Y-m-d\TH:i:s\Z').' ORDER BY Id ASC';
         $pages = 0;
         $rows = 0;
         $deletedCount = 0;
+        $unverifiable = 0;
         $lastId = null;
         $identifiers = hash_init('sha256');
         foreach ($this->client->queryPages($soql, true) as $page) {
             $pages++;
             foreach ($page as $record) {
                 $id = trim((string) data_get($record, 'Id'));
-                if ($id === '' || ($lastId !== null && strcmp($id, $lastId) <= 0)) {
+                if (! preg_match('/^[A-Za-z0-9]{18}$/', $id) || ($lastId !== null && strcmp($id, $lastId) <= 0)) {
                     throw new RuntimeException('Salesforce evidence contains an invalid or duplicate identity.');
                 }
                 $lastId = $id;
                 $deleted = (bool) data_get($record, 'IsDeleted', false);
                 $deletedCount += (int) $deleted;
+                $unverifiable += (CarbonImmutable::parse((string) data_get($record, 'SystemModstamp'), 'UTC')->greaterThan($cutoff) ? 1 : 0);
                 $rows++;
                 hash_update($identifiers, $id.'|'.(int) $deleted."\n");
             }
@@ -53,15 +55,18 @@ final class InterestExternalEvidenceService
 
         return [
             'source' => self::SOURCE,
-            'identifiers_sha256' => hash_final($identifiers),
+            'salesforce_identity_state_sha256' => hash_final($identifiers),
             'rows' => $rows,
             'deleted' => $deletedCount,
             'relationships_sha256' => $relation['hash'],
             'certifiable' => $certifiable,
+            'publish_initial_compatible' => false,
+            'unverifiable' => $unverifiable + $relation['unverifiable'],
+            'created_after_cutoff' => null,
             'reasons' => $certifiable ? [] : array_values(array_filter([
                 $concurrent ? null : 'generation_changed_during_extraction',
                 $rows === 0 ? 'empty_salesforce_snapshot' : null,
-                $relation['unverifiable'] > 0 ? 'unverifiable_activity_history' : null,
+                ($unverifiable + $relation['unverifiable']) > 0 ? 'unverifiable_history' : null,
                 'historical_content_cannot_be_proven_from_a_later_snapshot',
             ])),
             'coverage_sha256' => hash('sha256', json_encode([
@@ -83,16 +88,18 @@ final class InterestExternalEvidenceService
         $hash = hash_init('sha256');
         $relationPages = 0;
         $relationRows = 0;
+        $relationUnverifiable = 0;
         foreach (['Task', 'Event'] as $kind) {
             $fields = $kind === 'Task'
                 ? SalesforceInterestActivitySyncService::TASK_SOQL_FIELDS
                 : SalesforceInterestActivitySyncService::EVENT_SOQL_FIELDS;
-            $soql = 'SELECT '.$fields." FROM {$kind} WHERE What.Type = 'Interes__c' AND SystemModstamp <= "
+            $soql = 'SELECT '.$fields." FROM {$kind} WHERE What.Type = 'Interes__c' AND CreatedDate <= "
                 .$cutoff->format('Y-m-d\TH:i:s\Z').' ORDER BY SystemModstamp ASC, Id ASC';
             foreach ($this->client->queryPages($soql, true) as $records) {
                 $relationPages++;
                 $relationRows += count($records);
                 foreach ($records as $record) {
+                    $relationUnverifiable += (CarbonImmutable::parse((string) data_get($record, 'SystemModstamp'), 'UTC')->greaterThan($cutoff) ? 1 : 0);
                     hash_update($hash, $kind.'|'.json_encode([
                         'Id' => data_get($record, 'Id'),
                         'WhatId' => data_get($record, 'WhatId'),
@@ -102,7 +109,7 @@ final class InterestExternalEvidenceService
             }
         }
 
-        return ['hash' => hash_final($hash), 'pages' => $relationPages, 'rows' => $relationRows, 'unverifiable' => $relationRows];
+        return ['hash' => hash_final($hash), 'pages' => $relationPages, 'rows' => $relationRows, 'unverifiable' => $relationUnverifiable];
     }
 
     /** @return array<string, mixed> */

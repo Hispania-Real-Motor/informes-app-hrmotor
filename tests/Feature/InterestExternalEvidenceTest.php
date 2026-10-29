@@ -27,7 +27,7 @@ class InterestExternalEvidenceTest extends TestCase
             'task' => [[['Id' => '00TAAA000000000001', 'WhatId' => 'a01AAA000000000001', 'IsDeleted' => false]]],
             'event' => [[['Id' => '00UAAA000000000001', 'WhatId' => 'a01AAA000000000001', 'IsDeleted' => false]]],
         ];
-        $client->shouldReceive('queryPages')->times(10)->andReturnUsing(function (string $soql) use (&$pages): \Generator {
+        $client->shouldReceive('queryPages')->times(6)->andReturnUsing(function (string $soql) use (&$pages): \Generator {
             $key = str_contains($soql, 'FROM Interes__c') ? 'interest' : (str_contains($soql, 'FROM Task') ? 'task' : 'event');
             foreach ($pages[$key] as $page) {
                 yield $page;
@@ -42,8 +42,10 @@ class InterestExternalEvidenceTest extends TestCase
         $this->assertSame($first, $second);
         $this->assertSame(3, $first['rows']);
         $this->assertSame(1, $first['deleted']);
+        $this->assertFalse($first['certifiable']);
+        $this->assertFalse($first['publish_initial_compatible']);
         $this->assertSame($before, DB::table('salesforce_interest_generations')->count());
-        $this->assertSame(64, strlen($first['identifiers_sha256']));
+        $this->assertSame(64, strlen($first['salesforce_identity_state_sha256']));
         $this->assertSame(64, strlen($first['relationships_sha256']));
         $this->assertSame(64, strlen($first['coverage_sha256']));
     }
