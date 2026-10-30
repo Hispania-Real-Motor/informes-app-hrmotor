@@ -6241,6 +6241,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 
 ## 2026-10-30 — Evidencia manual de citas y entregas de Contact Center
 
+- Corrección posterior: cada ejecución usa un token y solo limpia filas no
+  vistas tras una lectura Salesforce completa; errores parciales no eliminan
+  evidencia. La reconciliación muestra `DUPLICATE_PRODUCT2_LINK` para todas
+  las Opportunities que comparten Product2, antes de fecha/estado.
+
 - La migración
   `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
   crea tres tablas locales: evidencia de cita desde `Interes__c` por

@@ -6,6 +6,7 @@ use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class CommercialCommissionAppointmentEvidenceSyncService
 {
@@ -21,10 +22,11 @@ class CommercialCommissionAppointmentEvidenceSyncService
         $soql = $this->soql($periodStart, $periodEnd);
         $queried = 0;
         $saved = 0;
+        $syncToken = (string) Str::uuid();
 
         foreach ($this->client->queryPages($soql) as $records) {
             $rows = array_values(array_filter(array_map(
-                fn (array $record): ?array => $this->mapRecord($record),
+                fn (array $record): ?array => $this->mapRecord($record, $syncToken),
                 $records,
             )));
             $queried += count($records);
@@ -40,12 +42,19 @@ class CommercialCommissionAppointmentEvidenceSyncService
                         'salesforce_last_modified_at',
                         'raw_payload',
                         'synced_at',
+                        'sync_token',
                         'updated_at',
                     ],
                 );
                 $saved += count($chunk);
             }
         }
+
+        DB::table('commercial_commission_appointment_evidences')
+            ->whereDate('appointment_capture_date', '>=', CarbonImmutable::parse($periodStart)->toDateString())
+            ->whereDate('appointment_capture_date', '<', CarbonImmutable::parse($periodEnd)->toDateString())
+            ->where(fn ($query) => $query->whereNull('sync_token')->orWhere('sync_token', '<>', $syncToken))
+            ->delete();
 
         return compact('soql', 'queried', 'saved');
     }
@@ -70,7 +79,7 @@ SOQL;
     }
 
     /** @return array<string, mixed>|null */
-    private function mapRecord(array $record): ?array
+    private function mapRecord(array $record, string $syncToken): ?array
     {
         $id = trim((string) data_get($record, 'Id'));
         if ($id === '') {
@@ -86,6 +95,7 @@ SOQL;
             'salesforce_last_modified_at' => $this->parseDateTime(data_get($record, 'LastModifiedDate')),
             'raw_payload' => json_encode($record, JSON_THROW_ON_ERROR),
             'synced_at' => $now,
+            'sync_token' => $syncToken,
             'created_at' => $now,
             'updated_at' => $now,
         ];

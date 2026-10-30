@@ -22,6 +22,12 @@ class CommercialCommissionDeliveryReconciliationService
             ->whereDate('cv_signed_date', '<', $end)
             ->get(['salesforce_id', 'vehicle_interest_id', 'cv_signed_date']);
         $productIds = $opportunities->pluck('vehicle_interest_id')->filter()->unique()->values();
+        $duplicateProductIds = $opportunities->pluck('vehicle_interest_id')
+            ->filter()
+            ->countBy()
+            ->filter(fn (int $count): bool => $count > 1)
+            ->keys()
+            ->flip();
         $products = CommercialCommissionProductDeliveryEvidence::query()
             ->where(function ($query) use ($start, $end, $productIds): void {
                 $query->whereBetween('delivery_date', [$start, CarbonImmutable::parse($end)->subDay()->toDateString()]);
@@ -41,7 +47,7 @@ class CommercialCommissionDeliveryReconciliationService
             if ($productId !== null) {
                 $seenProducts[$productId] = true;
             }
-            $type = $this->classification($opportunity, $product);
+            $type = $this->classification($opportunity, $product, $duplicateProductIds->has($productId));
             $rows[] = $this->row($start, $end, $opportunity->salesforce_id, $productId, $product, $opportunity->cv_signed_date, $type, $now);
         }
         foreach ($products as $product) {
@@ -68,8 +74,15 @@ class CommercialCommissionDeliveryReconciliationService
         return ['rows' => count($rows), 'classifications' => $classifications];
     }
 
-    private function classification(SalesforceOpportunity $opportunity, ?CommercialCommissionProductDeliveryEvidence $product): string
+    private function classification(
+        SalesforceOpportunity $opportunity,
+        ?CommercialCommissionProductDeliveryEvidence $product,
+        bool $duplicateProductLink,
+    ): string
     {
+        if ($duplicateProductLink) {
+            return 'DUPLICATE_PRODUCT2_LINK';
+        }
         if ($product === null) {
             return 'OPPORTUNITY_ONLY';
         }

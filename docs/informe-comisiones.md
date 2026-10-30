@@ -265,6 +265,10 @@ reapertura autorizada.
 ### Evidencia manual de citas y entregas de Contact Center
 
 Esta evidencia es auxiliar de auditoría y no una fuente del cálculo vigente.
+Cada sync terminado reemplaza únicamente la evidencia de su intervalo tras
+completar toda la lectura Salesforce; un fallo parcial conserva la evidencia
+anterior. Un Product2 enlazado por más de una Opportunity se marca como
+`DUPLICATE_PRODUCT2_LINK`, con prioridad sobre fecha y estado.
 La migración `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
 crea tres réplicas locales separadas de los hechos del informe:
 

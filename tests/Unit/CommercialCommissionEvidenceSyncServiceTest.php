@@ -137,4 +137,58 @@ class CommercialCommissionEvidenceSyncServiceTest extends TestCase
         }
         $this->assertSame(5, CommercialCommissionDeliveryReconciliation::query()->count());
     }
+
+    public function test_reconciliacion_prioriza_conflicto_cuando_product2_tiene_dos_opportunities(): void
+    {
+        foreach (['006-duplicate-a', '006-duplicate-b'] as $id) {
+            SalesforceOpportunity::query()->create([
+                'salesforce_id' => $id, 'cv_signed' => true,
+                'cv_signed_date' => '2026-09-10', 'vehicle_interest_id' => '01t-duplicate',
+            ]);
+        }
+        CommercialCommissionProductDeliveryEvidence::query()->create([
+            'salesforce_product_id' => '01t-duplicate', 'state' => 'Entregado',
+            'delivery_date' => '2026-09-10', 'plate' => '1234ABC', 'synced_at' => now(),
+        ]);
+
+        app(CommercialCommissionDeliveryReconciliationService::class)->reconcile(
+            CarbonImmutable::parse('2026-09-01'), CarbonImmutable::parse('2026-10-01'),
+        );
+
+        $this->assertDatabaseCount('commercial_commission_delivery_reconciliations', 2);
+        foreach (['006-duplicate-a', '006-duplicate-b'] as $id) {
+            $this->assertDatabaseHas('commercial_commission_delivery_reconciliations', [
+                'opportunity_salesforce_id' => $id,
+                'product_salesforce_id' => '01t-duplicate',
+                'discrepancy_type' => 'DUPLICATE_PRODUCT2_LINK',
+            ]);
+        }
+        $this->assertDatabaseMissing('commercial_commission_delivery_reconciliations', ['discrepancy_type' => 'MATCH']);
+    }
+
+    public function test_sync_citas_elimina_evidencia_obsoleta_solo_despues_de_lectura_completa(): void
+    {
+        $client = new class extends SalesforceClient
+        {
+            public array $records = [[
+                'Id' => 'a0I-stale', 'IN_Fecha_Captador_de_Cita__c' => '2026-09-10',
+                'LastModifiedDate' => '2026-09-10T10:00:00.000Z',
+            ]];
+
+            public function __construct() {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): Generator
+            {
+                yield $this->records;
+            }
+        };
+        $service = new CommercialCommissionAppointmentEvidenceSyncService($client);
+        $start = CarbonImmutable::parse('2026-09-01');
+        $end = CarbonImmutable::parse('2026-10-01');
+        $service->sync($start, $end);
+        $client->records = [];
+        $service->sync($start, $end);
+
+        $this->assertDatabaseMissing('commercial_commission_appointment_evidences', ['salesforce_interest_id' => 'a0I-stale']);
+    }
 }

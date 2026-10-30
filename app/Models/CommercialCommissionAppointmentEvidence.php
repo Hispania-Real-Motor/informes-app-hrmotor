@@ -14,6 +14,7 @@ class CommercialCommissionAppointmentEvidence extends Model
         'salesforce_last_modified_at',
         'raw_payload',
         'synced_at',
+        'sync_token',
     ];
 
     protected $casts = [
