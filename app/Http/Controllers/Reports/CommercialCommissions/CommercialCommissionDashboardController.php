@@ -615,7 +615,10 @@ class CommercialCommissionDashboardController extends Controller
             unset($callCenterPayload);
             gc_collect_cycles();
 
-            $contactCenterPayload = $contactCenterDashboard->build($month, includeDetails: false);
+            $contactCenterSnapshot = in_array('contact_center', $closureService->availableScopes($month), true)
+                ? $closureService->definitiveSnapshot($month, 'contact_center')
+                : null;
+            $contactCenterPayload = $contactCenterSnapshot['contact_center'] ?? $contactCenterDashboard->build($month, includeDetails: false);
             $sheets[] = $this->commissionSheet(
                 'Contact Center',
                 'Agente / captador',
@@ -623,6 +626,9 @@ class CommercialCommissionDashboardController extends Controller
                 'agent_name',
                 'final_total',
             );
+            if (is_array($contactCenterPayload['responsible_contact_center'] ?? null)) {
+                $sheets[] = $this->responsibleContactCenterSheet($contactCenterPayload['responsible_contact_center']);
+            }
             unset($contactCenterPayload);
             gc_collect_cycles();
 
@@ -694,6 +700,29 @@ class CommercialCommissionDashboardController extends Controller
         ];
     }
 
+    /** @param array<string, mixed> $responsible
+     *  @return array{name: string, headers: array<int, string>, rows: array<int, array<int, string|float|int>} */
+    private function responsibleContactCenterSheet(array $responsible): array
+    {
+        return [
+            'name' => 'Responsable Contact Center',
+            'headers' => ['Responsable', 'Mes liquidado', 'Mes referencia', 'Entregas actuales', 'Entregas referencia', 'Cumplimiento %', 'Tramo', 'Entregas adicionales', 'Importe base', 'Importe adicional', 'Total final'],
+            'rows' => [[
+                (string) ($responsible['responsible_name'] ?? '-'),
+                (string) ($responsible['month'] ?? '-'),
+                (string) ($responsible['reference_month'] ?? '-'),
+                (int) ($responsible['actual_deliveries'] ?? 0),
+                (int) ($responsible['reference_deliveries'] ?? 0),
+                $responsible['compliance_percent'] === null ? '-' : (float) $responsible['compliance_percent'],
+                (string) ($responsible['bracket'] ?? '-'),
+                (int) ($responsible['additional_deliveries'] ?? 0),
+                (float) ($responsible['base_amount'] ?? 0),
+                (float) ($responsible['additional_amount'] ?? 0),
+                (float) ($responsible['final_total'] ?? 0),
+            ]],
+        ];
+    }
+
     /** @return array<int, array<string, mixed>> */
     private function globalAreaManagerExportRows(array $payload): array
     {
@@ -755,6 +784,7 @@ class CommercialCommissionDashboardController extends Controller
             'warnings' => [],
             'diagnostics' => [],
             'summary_rows' => [],
+            'responsible_contact_center' => null,
             'commercial_director' => null,
             'global_incidents' => [],
         ];

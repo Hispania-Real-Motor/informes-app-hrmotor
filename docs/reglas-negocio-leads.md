@@ -14,11 +14,21 @@ El informe usa exclusivamente estas fuentes locales:
 - `salesforce_interest_activity_runs` y `salesforce_interest_activities`:
   evidencia FOUNDATION-5 de Task/Event relacionados directamente mediante
   `WhatId → Interes__c`;
-- `salesforce_users`: elegibilidad y dimensión comercial del owner;
+- `salesforce_users`: elegibilidad y dimensión comercial del owner. Su
+  `created_date` materializa `User.CreatedDate` para trazabilidad futura; no
+  participa actualmente en la elegibilidad, filtros, universos, KPI, cálculos
+  ni presentación del informe;
 - `report_sync_runs`: estado, run y cutoff F2 auditables.
 
 El render HTTP no consulta Salesforce. No recupera atributos desde Lead,
 Account o Contact y no utiliza PII como fallback.
+
+El refresco mensual de Users puede incluir en un batch adicional los Salesforce
+User IDs configurados en el roster de Contact Center. Ese roster no altera los
+perfiles ni la elegibilidad de Interests y no tiene FK física a
+`salesforce_users`, pues admite preparación previa al primer sync. Sus rangos de
+vigencia y nombres visibles son metadatos del roster de Comisiones; no se usan
+en filtros, universos, KPI, cálculos ni presentación de Interests.
 
 ## Disponibilidad del dashboard
 

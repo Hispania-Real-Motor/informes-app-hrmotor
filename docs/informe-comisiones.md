@@ -23,6 +23,11 @@ El mes solicitado se conserva en URL y selector. El mes actual puede consultarse
 y siempre se muestra como `Provisional`; ninguna pestaña cambia por su cuenta al
 último mes cerrado.
 
+La proyección local de Opportunity conserva `Captador_de_cita__c` y el nombre
+relacionado como `appointment_setter_id` y `appointment_setter_name` para una
+atribución futura. Esta materialización no activa ni altera planes, fórmulas,
+cierres, filtros ni cálculos económicos de Comisiones.
+
 ## API mensual de Comerciales
 
 `GET /api/comisiones_comercial` exige `salesforce_id` y acepta opcionalmente
@@ -58,7 +63,22 @@ pendientes o reabiertos usan una única construcción viva
 `CommercialCommissionDashboardService::build($month, true, false, true)`: no se
 construyen Delegaciones ni otras pestañas y no existe una segunda fórmula.
 
-## Cierre económico por bloque
+## Readiness de fuentes y cierre económico por bloque
+
+Para un mes natural cerrado, cada fuente exigida conserva una ejecución
+`completed` verificable que cubra íntegramente `[inicio de mes, inicio del mes
+siguiente)` y respete la frescura configurada. No se acepta una cobertura parcial
+ni se marca como cubierta una fecha futura.
+
+En el mes actual provisional la evidencia se evalúa de forma distinta: se unen
+solo intervalos de ejecuciones `completed` desde el primer día y se conserva el
+último extremo cubierto (`coveredUntil`). No se exige que `period_end_at` alcance
+la hora del render: una ejecución fija ese fin antes de completar. La cola entre
+`coveredUntil` y el instante actual se trata como frescura y debe ser menor que
+`closure_source_max_age_hours` (48 horas por defecto). Varias ejecuciones
+solapadas o contiguas pueden cubrir el mes; un hueco entre intervalos sigue
+bloqueando con **Revisar** y no queda oculto por la tolerancia final. Que aún no
+haya terminado el mes no es por sí mismo una incidencia.
 
 Estados persistentes:
 
@@ -67,11 +87,10 @@ Estados persistentes:
 - `definitive`;
 - `reopened`.
 
-Solo pueden cerrarse `Comerciales`, `Delegaciones` y `Área Manager`. Cada cierre
-tiene estado, aprobación, reapertura, eventos y versión de snapshot propios por
-combinación `month + closure_scope`. Call Center, Contact Center y Financieros
-siguen siendo operativos/provisionales y no se incluyen como requisito ni como
-payload de los cierres económicos.
+Desde julio de 2026, los seis scopes (Comerciales, Delegaciones, Área Manager,
+Financieros, Call Center y Contact Center) disponen de cierre independiente. Cada
+cierre tiene estado, aprobación, reapertura, eventos y versión de snapshot propios
+por combinación `month + closure_scope`.
 
 Un bloque solo puede pasar a definitivo cuando ha terminado el mes natural, están confirmados sus componentes y aprueba Dirección o Administrador/IT.
 
@@ -106,7 +125,9 @@ Resumen funcional:
 - Delegaciones: entregas y rentabilidad según sus reglas de tienda.
 - Call Center: ventas/compras/cambios, German y Facilitea según captador y
   configuración.
-- Contact Center: citas y resultados con su ventana funcional vigente.
+- Contact Center: citas y resultados por agente con su ventana funcional vigente;
+  desde septiembre de 2026 incluye además un bloque independiente de Responsable
+  Contact Center basado en entregas de toda la empresa.
 - Área Manager: ámbito de zona y delegaciones normalizadas.
 - Financieros: ventas/cambios por fecha de firma y zona financiera. Los bloques 1
   y 3 usan todo el universo elegible; el bloque 2 usa solo operaciones con interés
@@ -116,6 +137,22 @@ Resumen funcional:
 
 La identidad principal de una persona es Salesforce User ID; el nombre es solo
 una etiqueta y no debe usarse para unir registros.
+
+### Roster administrativo de Contact Center
+
+La configuración de Comisiones incorpora un roster persistente de Contact Center
+para conservar qué Salesforce User IDs deben refrescarse aunque su perfil no esté
+incluido en la consulta principal de Users. Administración gestiona ID, nombre
+visible y tramos de vigencia inclusivos (`effective_from` y opcionalmente
+`effective_until`); no se admiten tramos solapados para un mismo ID. El bootstrap
+registra siete IDs a partir de `2026-09-01`.
+
+El roster no tiene FK física a `salesforce_users`: puede configurarse antes del
+primer sync de Users. El refresco mensual solicita sus IDs en un batch trazable
+separado y no amplía el filtro de perfiles de la consulta principal. Es una
+configuración de identidad y actualización local, no una regla económica: no
+modifica fórmulas, KPI, universos, cierres, snapshots, exportaciones ni el bloque
+Responsable Contact Center.
 
 ## Reseñas
 
@@ -224,6 +261,69 @@ php artisan salesforce:sync-tasaciones --all
 
 Los reprocesados de datos operativos no modifican snapshots definitivos salvo
 reapertura autorizada.
+
+### Evidencia manual de citas y entregas de Contact Center
+
+Esta evidencia es auxiliar de auditoría y no una fuente del cálculo vigente.
+Cada sync terminado reemplaza únicamente la evidencia de su intervalo tras
+completar toda la lectura Salesforce; un fallo parcial conserva la evidencia
+anterior. Un Product2 enlazado por más de una Opportunity se marca como
+`DUPLICATE_PRODUCT2_LINK`, con prioridad sobre fecha y estado.
+La migración `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
+crea tres réplicas locales separadas de los hechos del informe:
+
+- `commercial_commission_appointment_evidences` conserva, por `Interes__c.Id`,
+  el captador de cita, su nombre, `IN_Fecha_Captador_de_Cita__c`, la última
+  modificación Salesforce, payload y corte de sincronización. Su consulta se
+  acota por la fecha de captación con intervalo `[from, to)`.
+- `commercial_commission_product_delivery_evidences` conserva, por `Product2.Id`,
+  estado, `Fecha_entregado__c`, matrícula, última modificación, payload y corte.
+  La carga incluye tanto Product2 con fecha de entrega en `[from, to)` como los
+  IDs referidos por Opportunities locales con CV firmada en ese intervalo; no
+  modifica `salesforce_vehicles`.
+- `commercial_commission_delivery_reconciliations` guarda por período la
+  comparación de esas evidencias contra Opportunities CV firmadas, con IDs,
+  fechas, estado y clasificación `MATCH`, `OPPORTUNITY_ONLY`, `PRODUCT2_ONLY`,
+  `DATE_MISMATCH`, `STATE_MISMATCH` o `DUPLICATE_PRODUCT2_LINK`. Esta última
+  prevalece cuando más de una Opportunity CV firmada del período referencia el
+  mismo Product2, antes de evaluar fecha o estado.
+
+La migración
+`2026_10_30_151000_add_sync_token_to_commercial_commission_evidence_tables.php`
+añade un UUID `sync_token` por ejecución a las dos tablas de evidencia. Tras
+leer y persistir íntegramente el intervalo, cada sincronización elimina sólo las
+filas de ese intervalo no vistas por su token; si una lectura o persistencia
+falla parcialmente, no se ejecuta esa limpieza. En Product2, la limpieza
+conserva además los IDs aún requeridos por Opportunities CV firmadas del
+período, aunque su fecha de entrega quede fuera del intervalo.
+
+Las ejecuciones son manuales y requieren `--from=YYYY-MM-DD` y
+`--to=YYYY-MM-DD` (fin exclusivo):
+
+```bash
+php artisan salesforce:sync-commercial-commission-appointments --from=YYYY-MM-DD --to=YYYY-MM-DD
+php artisan salesforce:sync-commercial-commission-product-deliveries --from=YYYY-MM-DD --to=YYYY-MM-DD
+```
+
+Ambas registran su ejecución en `report_sync_runs`; no hay scheduler, escritura
+en Salesforce, publicación/recuperación de generaciones de Interests ni cambio
+en fórmulas, KPIs, filtros, universos, cierres, snapshots o XLSX. Las
+conciliaciones son evidencia de revisión y no certifican ni recalculan una
+comisión por sí solas.
+
+Para poder preparar o cerrar el Responsable Contact Center desde `2026-09`, debe
+existir una ejecución `completed` de `salesforce_opportunities` que cubra por
+completo el mismo mes natural del año anterior. Por ejemplo, septiembre de 2026
+requiere `[2025-09-01, 2025-10-01)`. Si falta, se debe generar la evidencia con
+un rango explícito, sin ejecutar el comando desde el dashboard:
+
+```bash
+php artisan salesforce:sync-opportunities --from=2025-09-01 --to=2025-10-01
+```
+
+Una referencia con cero entregas elegibles tampoco certifica la comisión ni
+permite el cierre definitivo. Este procedimiento no reabre ni altera snapshots
+ya definitivos.
 
 Archivos principales:
 

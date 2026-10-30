@@ -32,6 +32,9 @@
                 <h1>Coeficientes de comisiones</h1>
                 <p class="sub">Solo el rol administrador puede editar coeficientes. El mes en curso permanece abierto y cualquier mes cerrado puede abrirse temporalmente para revision.</p>
             </div>
+            <div class="filter-actions">
+                <a class="main-tab" href="{{ route('reports.commission-settings.contact-center-roster.index') }}">Roster Contact Center</a>
+            </div>
         </section>
 
         @if (session('status'))
@@ -91,6 +94,18 @@
             @csrf
             @method('PUT')
             <input type="hidden" name="month" value="{{ $selectedMonthKey }}">
+            <section class="card panel">
+                <div class="panel-title compact">
+                    <div>
+                        <h3>Objetivo general de compañía</h3>
+                        <div class="small">Aún no se utiliza en fórmulas; vacío significa pendiente de configurar.</div>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label for="company_delivery_target">Objetivo entregas compañía</label>
+                    <input id="company_delivery_target" name="company_delivery_target" type="number" step="1" min="1" value="{{ old('company_delivery_target', $settings['company_delivery_target'] ?? '') }}" @disabled(! $isEditableMonth)>
+                </div>
+            </section>
 
             <section class="card panel">
                 <div class="panel-title">

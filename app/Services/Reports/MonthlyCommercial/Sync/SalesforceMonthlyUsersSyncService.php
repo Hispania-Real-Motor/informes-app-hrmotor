@@ -3,8 +3,10 @@
 namespace App\Services\Reports\MonthlyCommercial\Sync;
 
 use App\Models\CommercialDelegationSnapshot;
+use App\Models\ContactCenterCommissionRosterMember;
 use App\Models\SalesforceUser;
 use App\Services\Salesforce\SalesforceClient;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 class SalesforceMonthlyUsersSyncService
@@ -46,6 +48,7 @@ class SalesforceMonthlyUsersSyncService
                 'salesforce_id' => data_get($record, 'Id'),
                 'name' => data_get($record, 'Name'),
                 'email' => data_get($record, 'Email'),
+                'created_date' => $this->parseDateTime(data_get($record, 'CreatedDate')),
                 'profile_name' => data_get($record, 'Profile.Name'),
                 'user_delegation' => data_get($record, 'USR_SEL_Delegacion__c'),
                 'is_active' => (bool) data_get($record, 'IsActive', true),
@@ -73,7 +76,7 @@ class SalesforceMonthlyUsersSyncService
 
     private function trackedUserIds(): Collection
     {
-        return SalesforceUser::query()
+        $existingTrackedIds = SalesforceUser::query()
             ->where(function ($query): void {
                 $query->whereIn('profile_name', self::COMMERCIAL_PROFILES)
                     ->orWhere('commission_appraiser', true)
@@ -82,6 +85,15 @@ class SalesforceMonthlyUsersSyncService
                         ->select('salesforce_user_id'));
             })
             ->pluck('salesforce_id');
+
+        $contactCenterRosterIds = ContactCenterCommissionRosterMember::query()
+            ->pluck('salesforce_user_id');
+
+        return $existingTrackedIds
+            ->merge($contactCenterRosterIds)
+            ->filter()
+            ->unique()
+            ->values();
     }
 
     private function trackedUsersSoql(Collection $ids): string
@@ -95,6 +107,7 @@ SELECT
     Id,
     Name,
     Email,
+    CreatedDate,
     Profile.Name,
     USR_SEL_Delegacion__c,
     Comision_Tasador__c,
@@ -113,6 +126,7 @@ SELECT
     Id,
     Name,
     Email,
+    CreatedDate,
     Profile.Name,
     USR_SEL_Delegacion__c,
     Comision_Tasador__c,
@@ -125,5 +139,10 @@ WHERE
         OR Comision_Tasador__c = true
     )
 SOQL;
+    }
+
+    private function parseDateTime(mixed $value): ?CarbonImmutable
+    {
+        return blank($value) ? null : CarbonImmutable::parse($value);
     }
 }

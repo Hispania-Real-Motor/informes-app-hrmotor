@@ -135,6 +135,16 @@ Auditoría inicial pendiente en cada una de las seis pestañas reales:
 | Área Manager | Pendiente | [Comisiones](informe-comisiones.md) |
 | Financieros | Pendiente | [Comisiones](informe-comisiones.md) y [guía financiera](informe-comisiones-financieras.md) |
 
+#### Corrección focalizada — Responsable Contact Center (2026-09)
+
+| Contrato comprobado | Evidencia implementada y límites |
+| --- | --- |
+| KPI / pestaña | `Responsable Contact Center`, bloque independiente dentro de Contact Center; no pertenece a la tabla de agentes. |
+| Fuente, réplica y fecha pivote | `salesforce_opportunities`, por `cv_signed_date` en dos intervalos `[M, M+1)` y `[M-1 año, M-1 año+1)`. No hay consulta Salesforce en el render. |
+| Universo, exclusiones y deduplicación | CV firmado, no Cerrada Perdida, Venta/Cambio o Facilitea por nombre; sin filtro de owner, delegación, zona o captador; deduplicación por `salesforce_id`. La consulta compartida es `EligibleDeliveryOpportunityQuery`. |
+| Fórmula, nulos y redondeo | Con referencia cero o cobertura histórica incompleta: no certificable y cierre bloqueado. Si no, `a*100 < r*90`: 0 EUR; `a<r`: 350 EUR; `a>=r`: 500 EUR + `5*(a-r)`. Los umbrales usan contadores enteros; el porcentaje se redondea sólo al mostrarlo. |
+| Auditoría, snapshot y exportación | Se conservan ambas cohortes con campos de auditoría; el snapshot definitivo de Contact Center congela bloque, fórmula y detalle. XLSX definitivo lee ese snapshot y genera hoja separada. Pruebas: `ContactCenterCommissionDashboardTest` y `CommissionMonthClosureTest` (la auditoría integral de los seis informes continúa pendiente). |
+
 ### Stock
 
 Auditoría inicial pendiente. Secciones y KPIs concretos por verificar contra

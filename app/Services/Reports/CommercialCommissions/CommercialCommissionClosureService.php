@@ -454,7 +454,9 @@ class CommercialCommissionClosureService
             CommercialCommissionClosure::SCOPE_AREA_MANAGER => collect($dashboard['summary_rows'] ?? [])->sum('final_total')
                 + (float) data_get($dashboard, 'commercial_director.final_total', 0),
             CommercialCommissionClosure::SCOPE_FINANCIALS => collect($dashboard['summary_rows'] ?? [])->sum('final_commission'),
-            CommercialCommissionClosure::SCOPE_CALL_CENTER, CommercialCommissionClosure::SCOPE_CONTACT_CENTER => collect($dashboard['summary_rows'] ?? [])->sum('final_total'),
+            CommercialCommissionClosure::SCOPE_CALL_CENTER => collect($dashboard['summary_rows'] ?? [])->sum('final_total'),
+            CommercialCommissionClosure::SCOPE_CONTACT_CENTER => collect($dashboard['summary_rows'] ?? [])->sum('final_total')
+                + (float) data_get($dashboard, 'responsible_contact_center.final_total', 0),
         }, 2);
     }
 

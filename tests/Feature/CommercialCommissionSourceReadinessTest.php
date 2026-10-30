@@ -32,6 +32,92 @@ class CommercialCommissionSourceReadinessTest extends TestCase
         $this->assertSame('ready', data_get($state, 'components.tasaciones.status'));
     }
 
+    public function test_current_month_accepts_contiguous_incremental_coverage_without_future_end_date(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-30 09:07:00');
+        foreach (['salesforce_opportunities', 'salesforce_tasaciones'] as $dataset) {
+            $this->completedRunFor($dataset, '2026-10-01 00:00:00', '2026-10-15 00:00:00');
+            $this->completedRunFor($dataset, '2026-10-15 00:00:00', '2026-10-30 08:42:00');
+        }
+
+        $state = app(CommercialCommissionSourceReadinessService::class)->inspect('call_center', '2026-10', ['issues' => []]);
+
+        $this->assertTrue($state['ready']);
+        $this->assertSame('ready', data_get($state, 'components.sales.status'));
+        $this->assertSame(
+            CarbonImmutable::parse('2026-10-30 08:42:00')->toIso8601String(),
+            data_get($state, 'components.sales.updated_at')
+        );
+    }
+
+    public function test_current_month_accepts_a_thirty_minute_tail_using_configured_freshness(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-30 09:07:00');
+        foreach (['salesforce_opportunities', 'salesforce_tasaciones'] as $dataset) {
+            $this->completedRunFor($dataset, '2026-10-01 00:00:00', '2026-10-30 08:37:00');
+        }
+
+        $state = app(CommercialCommissionSourceReadinessService::class)->inspect('call_center', '2026-10', ['issues' => []]);
+
+        $this->assertTrue($state['ready']);
+        $this->assertSame('ready', data_get($state, 'components.tasaciones.status'));
+    }
+
+    public function test_current_month_marks_an_old_final_cut_as_stale(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-30 09:07:00');
+        foreach (['salesforce_opportunities', 'salesforce_tasaciones'] as $dataset) {
+            $this->completedRunFor($dataset, '2026-10-01 00:00:00', '2026-10-28 09:06:00');
+        }
+
+        $state = app(CommercialCommissionSourceReadinessService::class)->inspect('call_center', '2026-10', ['issues' => []]);
+
+        $this->assertFalse($state['ready']);
+        $this->assertSame('stale', data_get($state, 'components.sales.status'));
+        $this->assertStringContainsString('último corte', data_get($state, 'components.sales.message'));
+    }
+
+    public function test_current_month_accepts_overlapping_runs_when_the_union_is_continuous(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-30 09:07:00');
+        foreach (['salesforce_opportunities', 'salesforce_tasaciones'] as $dataset) {
+            $this->completedRunFor($dataset, '2026-10-01 00:00:00', '2026-10-20 00:00:00');
+            $this->completedRunFor($dataset, '2026-10-15 00:00:00', '2026-10-30 08:42:00');
+        }
+
+        $state = app(CommercialCommissionSourceReadinessService::class)->inspect('call_center', '2026-10', ['issues' => []]);
+
+        $this->assertTrue($state['ready']);
+    }
+
+    public function test_current_month_real_gap_blocks_readiness(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-30 09:07:00');
+        foreach (['salesforce_opportunities', 'salesforce_tasaciones'] as $dataset) {
+            $this->completedRunFor($dataset, '2026-10-01 00:00:00', '2026-10-10 00:00:00');
+            $this->completedRunFor($dataset, '2026-10-11 00:00:00', '2026-10-30 08:42:00');
+        }
+
+        $state = app(CommercialCommissionSourceReadinessService::class)->inspect('call_center', '2026-10', ['issues' => []]);
+
+        $this->assertFalse($state['ready']);
+        $this->assertStringContainsString('hueco real', data_get($state, 'components.sales.message'));
+    }
+
+    public function test_closed_month_still_requires_one_completed_run_covering_the_full_natural_month(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-30 12:00:00');
+        foreach (['salesforce_opportunities', 'salesforce_tasaciones'] as $dataset) {
+            $this->completedRunFor($dataset, '2026-09-01 00:00:00', '2026-09-15 00:00:00');
+            $this->completedRunFor($dataset, '2026-09-15 00:00:00', '2026-10-01 00:00:00');
+        }
+
+        $state = app(CommercialCommissionSourceReadinessService::class)->inspect('call_center', '2026-09', ['issues' => []]);
+
+        $this->assertFalse($state['ready']);
+        $this->assertStringContainsString('cubra el mes', data_get($state, 'components.sales.message'));
+    }
+
     public function test_delegation_reviews_use_internal_endpoint_status_not_salesforce_reviews(): void
     {
         CarbonImmutable::setTestNow('2026-08-10 10:00:00');
@@ -218,12 +304,17 @@ class CommercialCommissionSourceReadinessTest extends TestCase
 
     private function completedRun(string $dataset, array $stats = ['queried' => 1, 'stored' => 1]): void
     {
+        $this->completedRunFor($dataset, '2026-07-01 00:00:00', '2026-08-01 00:00:00', $stats);
+    }
+
+    private function completedRunFor(string $dataset, string $periodStart, string $periodEnd, array $stats = ['queried' => 1, 'stored' => 1]): void
+    {
         ReportSyncRun::query()->create([
             'dataset' => $dataset,
             'source' => 'salesforce',
             'status' => 'completed',
-            'period_start_at' => '2026-07-01 00:00:00',
-            'period_end_at' => '2026-08-01 00:00:00',
+            'period_start_at' => $periodStart,
+            'period_end_at' => $periodEnd,
             'started_at' => now()->subMinute(),
             'completed_at' => now(),
             'timezone' => config('app.timezone'),

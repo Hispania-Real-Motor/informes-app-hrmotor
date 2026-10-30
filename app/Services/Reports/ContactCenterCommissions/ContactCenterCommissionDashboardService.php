@@ -2,9 +2,11 @@
 
 namespace App\Services\Reports\ContactCenterCommissions;
 
-use App\Services\Reports\CommercialCommissions\CommissionMonthResolver;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
+use App\Services\Reports\CommercialCommissions\CommercialCommissionSourceReadinessService;
+use App\Services\Reports\CommercialCommissions\CommissionMonthResolver;
+use App\Services\Reports\CommercialCommissions\EligibleDeliveryOpportunityQuery;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -13,7 +15,11 @@ use Illuminate\Support\Str;
 
 class ContactCenterCommissionDashboardService
 {
-    public function __construct(private readonly CommissionMonthResolver $monthResolver) {}
+    public function __construct(
+        private readonly CommissionMonthResolver $monthResolver,
+        private readonly EligibleDeliveryOpportunityQuery $deliveryOpportunities,
+        private readonly CommercialCommissionSourceReadinessService $sourceReadiness,
+    ) {}
 
     private const CLOSURE_DAY = 10;
 
@@ -22,6 +28,15 @@ class ContactCenterCommissionDashboardService
     private const SALE_COMMISSION = 12.0;
 
     private const RATIO_BONUS_PER_SALE = 2.0;
+
+    private const RESPONSIBLE_CONTACT_CENTER_EFFECTIVE_FROM = '2026-09-01';
+
+    private const RESPONSIBLE_CONTACT_CENTER_NAME = 'Vanesa Germán';
+
+    private const RESPONSIBLE_DELIVERY_COLUMNS = [
+        'salesforce_id', 'name', 'cv_signed_date', 'record_type_name', 'stage_name',
+        'owner_name', 'owner_delegation', 'delivery_store',
+    ];
 
     private const CONTACT_CENTER_AGENT_ALIASES = [
         'jose ignacio palomo casas' => 'Jose Ignacio Palomo Casas',
@@ -54,6 +69,7 @@ class ContactCenterCommissionDashboardService
 
         $summaryRows = [];
         $globalIncidents = [];
+        $responsibleCommission = null;
         $diagnostics = [
             'appointments_count' => 0,
             'sales_count' => 0,
@@ -113,20 +129,20 @@ class ContactCenterCommissionDashboardService
 
                 if ($includeDetails) {
                     $summaryRows[$rowKey]['details']['appointments'][] = [
-                    'lead_id' => $appointment->salesforce_id,
-                    'lead_name' => (string) ($appointment->name ?? ''),
-                    'phone_normalized' => implode(' / ', $appointmentPhones),
-                    'agent_name' => $agentName,
-                    'capture_date' => optional($appointment->appointment_capture_date)?->toDateString(),
-                    'appointment_call' => (bool) $appointment->appointment_call,
-                    'appointment_store' => (bool) $appointment->appointment_store,
-                    'attended_status' => (string) ($appointment->appointment_attended_status ?? ''),
-                    'candidate_status' => (string) ($appointment->candidate_status_formula ?? ''),
-                    'owner_name' => (string) ($appointment->owner_name ?? ''),
-                    'store_commercial_name' => (string) ($appointment->store_commercial_name ?? ''),
-                    'portal' => (string) ($appointment->portal_text ?? ''),
-                    'delegation' => (string) ($appointment->delegacion_encargada_text ?? ''),
-                    'inclusion_reason' => $this->appointmentReason($appointment),
+                        'lead_id' => $appointment->salesforce_id,
+                        'lead_name' => (string) ($appointment->name ?? ''),
+                        'phone_normalized' => implode(' / ', $appointmentPhones),
+                        'agent_name' => $agentName,
+                        'capture_date' => optional($appointment->appointment_capture_date)?->toDateString(),
+                        'appointment_call' => (bool) $appointment->appointment_call,
+                        'appointment_store' => (bool) $appointment->appointment_store,
+                        'attended_status' => (string) ($appointment->appointment_attended_status ?? ''),
+                        'candidate_status' => (string) ($appointment->candidate_status_formula ?? ''),
+                        'owner_name' => (string) ($appointment->owner_name ?? ''),
+                        'store_commercial_name' => (string) ($appointment->store_commercial_name ?? ''),
+                        'portal' => (string) ($appointment->portal_text ?? ''),
+                        'delegation' => (string) ($appointment->delegacion_encargada_text ?? ''),
+                        'inclusion_reason' => $this->appointmentReason($appointment),
                     ];
                 }
                 $linkedOpportunities = $this->linkedOpportunitiesForAppointment(
@@ -146,19 +162,19 @@ class ContactCenterCommissionDashboardService
                     $diagnostics['opportunity_links_count']++;
                     if ($includeDetails) {
                         $summaryRows[$rowKey]['details']['opportunities'][] = [
-                        'lead_id' => $appointment->salesforce_id,
-                        'opportunity_id' => $opportunity->salesforce_id,
-                        'opportunity_name' => (string) ($opportunity->name ?? ''),
-                        'phone_normalized' => implode(' / ', $this->phonesForOpportunity($opportunity)),
-                        'agent_name' => $agentName,
-                        'capture_date' => $captureDate,
-                        'opportunity_created_date' => optional($opportunity->created_date)?->toDateString(),
-                        'stage_name' => (string) ($opportunity->stage_name ?? ''),
-                        'owner_name' => (string) ($opportunity->owner_name ?? ''),
-                        'delegation' => (string) ($opportunity->owner_delegation ?? ''),
-                        'record_type_name' => (string) ($opportunity->record_type_name ?? ''),
-                        'link_origin' => $bestOutcome['link_origin'],
-                        'commission_amount' => self::OPPORTUNITY_COMMISSION,
+                            'lead_id' => $appointment->salesforce_id,
+                            'opportunity_id' => $opportunity->salesforce_id,
+                            'opportunity_name' => (string) ($opportunity->name ?? ''),
+                            'phone_normalized' => implode(' / ', $this->phonesForOpportunity($opportunity)),
+                            'agent_name' => $agentName,
+                            'capture_date' => $captureDate,
+                            'opportunity_created_date' => optional($opportunity->created_date)?->toDateString(),
+                            'stage_name' => (string) ($opportunity->stage_name ?? ''),
+                            'owner_name' => (string) ($opportunity->owner_name ?? ''),
+                            'delegation' => (string) ($opportunity->owner_delegation ?? ''),
+                            'record_type_name' => (string) ($opportunity->record_type_name ?? ''),
+                            'link_origin' => $bestOutcome['link_origin'],
+                            'commission_amount' => self::OPPORTUNITY_COMMISSION,
                         ];
                     }
 
@@ -167,17 +183,17 @@ class ContactCenterCommissionDashboardService
                         $diagnostics['reservation_links_count']++;
                         if ($includeDetails) {
                             $summaryRows[$rowKey]['details']['reservations'][] = [
-                            'opportunity_id' => $opportunity->salesforce_id,
-                            'opportunity_name' => (string) ($opportunity->name ?? ''),
-                            'reservation_date' => optional($opportunity->reservation_date)?->toDateString(),
-                            'agent_name' => $agentName,
-                            'phone_normalized' => implode(' / ', $this->phonesForOpportunity($opportunity)),
-                            'vehicle_plate' => (string) ($opportunity->vehicle_plate ?? ''),
-                            'account_name' => (string) ($opportunity->account_name ?? ''),
-                            'stage_name' => (string) ($opportunity->stage_name ?? ''),
-                            'portal' => (string) ($opportunity->portal_resolved ?? $opportunity->portal_original ?? ''),
-                            'pending_contract' => (bool) $opportunity->reservation && ! (bool) $opportunity->cv_signed,
-                            'observations' => $bestOutcome['link_origin'],
+                                'opportunity_id' => $opportunity->salesforce_id,
+                                'opportunity_name' => (string) ($opportunity->name ?? ''),
+                                'reservation_date' => optional($opportunity->reservation_date)?->toDateString(),
+                                'agent_name' => $agentName,
+                                'phone_normalized' => implode(' / ', $this->phonesForOpportunity($opportunity)),
+                                'vehicle_plate' => (string) ($opportunity->vehicle_plate ?? ''),
+                                'account_name' => (string) ($opportunity->account_name ?? ''),
+                                'stage_name' => (string) ($opportunity->stage_name ?? ''),
+                                'portal' => (string) ($opportunity->portal_resolved ?? $opportunity->portal_original ?? ''),
+                                'pending_contract' => (bool) $opportunity->reservation && ! (bool) $opportunity->cv_signed,
+                                'observations' => $bestOutcome['link_origin'],
                             ];
                         }
                     }
@@ -207,21 +223,21 @@ class ContactCenterCommissionDashboardService
                 $summaryRows[$rowKey]['sales_count']++;
                 if ($includeDetails) {
                     $summaryRows[$rowKey]['details']['sales'][] = [
-                    'opportunity_id' => $sale->salesforce_id,
-                    'opportunity_name' => (string) ($sale->name ?? ''),
-                    'phone_normalized' => implode(' / ', $this->phonesForOpportunity($sale)),
-                    'agent_name' => $agentName,
-                    'contract_signed_date' => optional($sale->cv_signed_date)?->toDateString(),
-                    'cv_signed' => (bool) $sale->cv_signed,
-                    'stage_name' => (string) ($sale->stage_name ?? ''),
-                    'owner_name' => (string) ($sale->owner_name ?? ''),
-                    'delegation' => (string) ($sale->owner_delegation ?? ''),
-                    'vehicle_plate' => (string) ($sale->vehicle_plate ?? ''),
-                    'record_type_name' => (string) ($sale->record_type_name ?? ''),
-                    'month_imputed' => $selectedMonth->format('Y-m'),
-                    'sale_commission_amount' => self::SALE_COMMISSION,
-                    'ratio_bonus_applied' => false,
-                    'observations' => $bestAppointment['reason'],
+                        'opportunity_id' => $sale->salesforce_id,
+                        'opportunity_name' => (string) ($sale->name ?? ''),
+                        'phone_normalized' => implode(' / ', $this->phonesForOpportunity($sale)),
+                        'agent_name' => $agentName,
+                        'contract_signed_date' => optional($sale->cv_signed_date)?->toDateString(),
+                        'cv_signed' => (bool) $sale->cv_signed,
+                        'stage_name' => (string) ($sale->stage_name ?? ''),
+                        'owner_name' => (string) ($sale->owner_name ?? ''),
+                        'delegation' => (string) ($sale->owner_delegation ?? ''),
+                        'vehicle_plate' => (string) ($sale->vehicle_plate ?? ''),
+                        'record_type_name' => (string) ($sale->record_type_name ?? ''),
+                        'month_imputed' => $selectedMonth->format('Y-m'),
+                        'sale_commission_amount' => self::SALE_COMMISSION,
+                        'ratio_bonus_applied' => false,
+                        'observations' => $bestAppointment['reason'],
                     ];
                 }
             }
@@ -296,6 +312,13 @@ class ContactCenterCommissionDashboardService
             $warnings[] = 'No hay citas efectivas del Contact Center para el mes seleccionado. Re-sincroniza leads con salesforce:sync-monthly-commercial si esperabas actividad.';
         }
 
+        if ($issues === []) {
+            $responsibleCommission = $this->responsibleContactCenterCommission($selectedMonth, $includeDetails);
+            if (is_array($responsibleCommission)) {
+                $issues = array_values(array_unique(array_merge($issues, $responsibleCommission['issues'] ?? [])));
+            }
+        }
+
         return [
             'ready' => $issues === [],
             'month' => $selectedMonth->format('Y-m'),
@@ -305,6 +328,8 @@ class ContactCenterCommissionDashboardService
             'warnings' => array_values(array_unique(array_filter($warnings))),
             'diagnostics' => $diagnostics,
             'summary_rows' => $summaryRows,
+            // summary_rows remains exclusively the agent/captador universe.
+            'responsible_contact_center' => $responsibleCommission,
             'global_incidents' => collect($globalIncidents)
                 ->sortByDesc(fn (array $row) => $row['event_date'] ?? '')
                 ->values()
@@ -365,6 +390,102 @@ class ContactCenterCommissionDashboardService
             ->whereDate('cv_signed_date', '>=', $periodStart->toDateString())
             ->whereDate('cv_signed_date', '<', $periodEnd->toDateString())
             ->whereRaw('LOWER(COALESCE(stage_name, \'\')) <> ?', ['cerrada perdida']);
+    }
+
+    /** @return array<string, mixed>|null */
+    private function responsibleContactCenterCommission(CarbonImmutable $selectedMonth, bool $includeDetails): ?array
+    {
+        if ($selectedMonth->lt(CarbonImmutable::parse(self::RESPONSIBLE_CONTACT_CENTER_EFFECTIVE_FROM))) {
+            return null;
+        }
+
+        $periodStart = $selectedMonth->startOfMonth();
+        $periodEnd = $periodStart->addMonth();
+        $referenceStart = $periodStart->subYearNoOverflow();
+        $referenceEnd = $referenceStart->addMonth();
+        $coverage = $this->sourceReadiness->historicalFullMonthCoverageState(
+            'salesforce_opportunities',
+            'Oportunidades del mes de referencia Contact Center',
+            $referenceStart,
+        );
+
+        $currentDeliveries = $this->deliveryOpportunities
+            ->forPeriod($periodStart, $periodEnd, self::RESPONSIBLE_DELIVERY_COLUMNS)
+            ->get()->unique('salesforce_id')->values();
+        $referenceDeliveries = $this->deliveryOpportunities
+            ->forPeriod($referenceStart, $referenceEnd, self::RESPONSIBLE_DELIVERY_COLUMNS)
+            ->get()->unique('salesforce_id')->values();
+        $actual = $currentDeliveries->count();
+        $reference = $referenceDeliveries->count();
+        $issues = [];
+
+        if (($coverage['blocking'] ?? true) === true) {
+            $issues[] = (string) ($coverage['message'] ?? 'No existe cobertura verificable del mes de referencia.');
+        }
+        if ($reference === 0) {
+            $issues[] = 'El mes de referencia no tiene entregas elegibles; la comisión de Responsable Contact Center no es certificable.';
+        }
+
+        $formula = $issues === [] ? $this->responsibleCommissionFormula($actual, $reference) : [
+            'compliance_percent' => null,
+            'bracket' => 'No certificable',
+            'additional_deliveries' => 0,
+            'base_amount' => 0.0,
+            'additional_amount' => 0.0,
+            'final_total' => 0.0,
+        ];
+
+        return [
+            'responsible_name' => self::RESPONSIBLE_CONTACT_CENTER_NAME,
+            'month' => $periodStart->format('Y-m'),
+            'reference_month' => $referenceStart->format('Y-m'),
+            'actual_deliveries' => $actual,
+            'reference_deliveries' => $reference,
+            'reference_coverage' => $coverage,
+            'certifiable' => $issues === [],
+            'issues' => $issues,
+            ...$formula,
+            'actual_delivery_details' => $includeDetails ? $this->responsibleDeliveryDetails($currentDeliveries) : [],
+            'reference_delivery_details' => $includeDetails ? $this->responsibleDeliveryDetails($referenceDeliveries) : [],
+        ];
+    }
+
+    /** @return array{compliance_percent: float, bracket: string, additional_deliveries: int, base_amount: float, additional_amount: float, final_total: float} */
+    private function responsibleCommissionFormula(int $actual, int $reference): array
+    {
+        // Cross multiplication keeps the 90% threshold deterministic.
+        if ($actual * 100 < $reference * 90) {
+            return ['compliance_percent' => round(($actual / $reference) * 100, 2), 'bracket' => '< 90 %', 'additional_deliveries' => 0, 'base_amount' => 0.0, 'additional_amount' => 0.0, 'final_total' => 0.0];
+        }
+        if ($actual < $reference) {
+            return ['compliance_percent' => round(($actual / $reference) * 100, 2), 'bracket' => '90 % - 99,99 %', 'additional_deliveries' => 0, 'base_amount' => 350.0, 'additional_amount' => 0.0, 'final_total' => 350.0];
+        }
+
+        $additionalDeliveries = $actual - $reference;
+        $additionalAmount = $additionalDeliveries * 5.0;
+
+        return ['compliance_percent' => round(($actual / $reference) * 100, 2), 'bracket' => '>= 100 %', 'additional_deliveries' => $additionalDeliveries, 'base_amount' => 500.0, 'additional_amount' => $additionalAmount, 'final_total' => 500.0 + $additionalAmount];
+    }
+
+    /** @param Collection<int, SalesforceOpportunity> $opportunities
+     *  @return array<int, array<string, string|bool|null>> */
+    private function responsibleDeliveryDetails(Collection $opportunities): array
+    {
+        return $opportunities->map(function (SalesforceOpportunity $opportunity): array {
+            $isFacilitea = str_contains($this->normalizedText($opportunity->name), 'facilitea');
+
+            return [
+                'opportunity_id' => $opportunity->salesforce_id,
+                'opportunity_name' => $opportunity->name,
+                'contract_signed_date' => $opportunity->cv_signed_date?->toDateString(),
+                'record_type_name' => $opportunity->record_type_name,
+                'stage_name' => $opportunity->stage_name,
+                'owner_name' => $opportunity->owner_name,
+                'delegation' => $opportunity->delivery_store ?: $opportunity->owner_delegation,
+                'is_facilitea' => $isFacilitea,
+                'inclusion_reason' => $isFacilitea ? 'Facilitea con contrato CV firmado' : 'Tipo '.($opportunity->record_type_name ?: 'Venta/Cambio').' con contrato CV firmado',
+            ];
+        })->sortBy('opportunity_id')->values()->all();
     }
 
     private function contactCenterAgentName(?string $rawValue): ?string

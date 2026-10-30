@@ -2,16 +2,24 @@
 
 namespace Tests\Feature;
 
+use App\Models\ReportSyncRun;
 use App\Models\ReportUser;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Services\Reports\ContactCenterCommissions\ContactCenterCommissionDashboardService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ContactCenterCommissionDashboardTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        CarbonImmutable::setTestNow();
+        parent::tearDown();
+    }
 
     public function test_dashboard_calcula_contact_center_por_citas_oportunidades_reservas_y_ventas(): void
     {
@@ -159,6 +167,108 @@ class ContactCenterCommissionDashboardTest extends TestCase
             ->assertSee('Contact Center')
             ->assertSee('Comisiones Contact Center')
             ->assertSee('Citas concertadas');
+    }
+
+    public function test_responsable_contact_center_uses_company_deliveries_and_keeps_agents_separate(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $this->completeOpportunityCoverage('2025-09-01', '2025-10-01');
+
+        foreach (range(1, 100) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-reference-'.$index, 'name' => 'Venta referencia '.$index, 'cv_signed' => true, 'cv_signed_date' => '2025-09-15']);
+        }
+        foreach (range(1, 101) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-current-'.$index, 'name' => $index === 1 ? 'Facilitea actual' : 'Venta actual '.$index, 'record_type_name' => $index === 1 ? 'Otro' : 'Venta', 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+        }
+        $this->createOpportunity(['salesforce_id' => '006-lost', 'name' => 'Cerrada perdida', 'stage_name' => 'Cerrada Perdida', 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+        $this->createOpportunity(['salesforce_id' => '006-unsigned', 'name' => 'No firmada', 'cv_signed' => false, 'cv_signed_date' => '2026-09-15']);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+        $responsible = $payload['responsible_contact_center'];
+
+        $this->assertTrue($payload['ready']);
+        $this->assertSame([], $payload['summary_rows']);
+        $this->assertSame('Vanesa Germán', $responsible['responsible_name']);
+        $this->assertSame(101, $responsible['actual_deliveries']);
+        $this->assertSame(100, $responsible['reference_deliveries']);
+        $this->assertSame(505.0, $responsible['final_total']);
+        $this->assertSame(1, $responsible['additional_deliveries']);
+        $this->assertTrue(collect($responsible['actual_delivery_details'])->contains('is_facilitea', true));
+    }
+
+    public function test_responsable_contact_center_is_not_active_before_september_2026(): void
+    {
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-08');
+
+        $this->assertNull($payload['responsible_contact_center']);
+    }
+
+    public function test_responsable_contact_center_blocks_when_reference_coverage_is_missing(): void
+    {
+        $this->createOpportunity(['salesforce_id' => '006-reference', 'cv_signed' => true, 'cv_signed_date' => '2025-09-15']);
+        $this->createOpportunity(['salesforce_id' => '006-current', 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+
+        $this->assertFalse($payload['ready']);
+        $this->assertFalse($payload['responsible_contact_center']['certifiable']);
+        $this->assertSame(0.0, $payload['responsible_contact_center']['final_total']);
+    }
+
+    public function test_responsable_contact_center_applies_all_integer_thresholds_without_float_rounding(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $this->completeOpportunityCoverage('2025-09-01', '2025-10-01');
+
+        foreach ([89 => 0.0, 90 => 350.0, 99 => 350.0, 100 => 500.0, 101 => 505.0, 150 => 750.0] as $actual => $expected) {
+            SalesforceOpportunity::query()->delete();
+            $this->createResponsibleDeliveries(100, $actual);
+
+            $responsible = app(ContactCenterCommissionDashboardService::class)->build('2026-09')['responsible_contact_center'];
+
+            $this->assertSame($expected, $responsible['final_total'], 'Actual='.$actual);
+        }
+
+        SalesforceOpportunity::query()->delete();
+        $this->createResponsibleDeliveries(101, 91);
+        $responsible = app(ContactCenterCommissionDashboardService::class)->build('2026-09')['responsible_contact_center'];
+        $this->assertSame(350.0, $responsible['final_total']);
+    }
+
+    public function test_responsable_contact_center_blocks_a_zero_reference_despite_complete_coverage(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $this->completeOpportunityCoverage('2025-09-01', '2025-10-01');
+        $this->createResponsibleDeliveries(0, 1);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+
+        $this->assertFalse($payload['ready']);
+        $this->assertFalse($payload['responsible_contact_center']['certifiable']);
+        $this->assertStringContainsString('no tiene entregas elegibles', $payload['issues'][0]);
+    }
+
+    private function createResponsibleDeliveries(int $reference, int $actual): void
+    {
+        if ($reference > 0) {
+            foreach (range(1, $reference) as $index) {
+                $this->createOpportunity(['salesforce_id' => '006-threshold-reference-'.$index, 'cv_signed' => true, 'cv_signed_date' => '2025-09-15']);
+            }
+        }
+        if ($actual > 0) {
+            foreach (range(1, $actual) as $index) {
+                $this->createOpportunity(['salesforce_id' => '006-threshold-current-'.$index, 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+            }
+        }
+    }
+
+    private function completeOpportunityCoverage(string $from, string $to): void
+    {
+        ReportSyncRun::query()->create([
+            'dataset' => 'salesforce_opportunities', 'source' => 'salesforce', 'status' => 'completed',
+            'period_start_at' => $from, 'period_end_at' => $to, 'started_at' => now()->subMinute(),
+            'completed_at' => now(), 'timezone' => config('app.timezone'), 'stats' => ['queried' => 0, 'stored' => 0],
+        ]);
     }
 
     private function createLead(array $attributes): void

@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class CommercialCommissionFormulaConfigService
 {
-    public const VERSION = '2026-08-05.1';
+    public const VERSION = '2026-09-01.1';
 
     private const AREA_MANAGER_DEFINITIONS = [
         'david-baeza' => 'David Baeza',
@@ -222,6 +222,8 @@ class CommercialCommissionFormulaConfigService
     public function defaults(): array
     {
         return [
+            // Explicitly nullable until the company-level target is approved.
+            'company_delivery_target' => null,
             'sales' => [
                 'solo_delivery_amount' => 60.0,
                 'shared_owner_delivery_amount' => 30.0,
@@ -604,6 +606,13 @@ class CommercialCommissionFormulaConfigService
 
     private function normalizeSettings(array $settings): array
     {
+        $target = $settings['company_delivery_target'] ?? null;
+        $settings['company_delivery_target'] = filter_var(
+            $target,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        ) ?: null;
+
         $goals = [];
 
         foreach (($settings['delegations']['goals'] ?? []) as $goalKey => $goal) {

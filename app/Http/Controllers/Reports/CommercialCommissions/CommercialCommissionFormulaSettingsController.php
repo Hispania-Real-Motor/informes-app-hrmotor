@@ -54,6 +54,7 @@ class CommercialCommissionFormulaSettingsController extends Controller
 
         $data = $request->validate([
             'month' => ['required', 'date_format:Y-m'],
+            'company_delivery_target' => ['nullable', 'integer', 'min:1'],
             'sales.solo_delivery_amount' => ['required', 'numeric', 'min:0'],
             'sales.shared_owner_delivery_amount' => ['required', 'numeric', 'min:0'],
             'sales.shared_secondary_delivery_amount' => ['required', 'numeric', 'min:0'],
@@ -107,6 +108,9 @@ class CommercialCommissionFormulaSettingsController extends Controller
         ] + $this->productBracketRules('financing_product_brackets', 8) + $this->productBracketRules('guarantee_product_brackets', 6));
 
         $settings = [
+            'company_delivery_target' => array_key_exists('company_delivery_target', $data) && $data['company_delivery_target'] !== null
+                ? (int) $data['company_delivery_target']
+                : null,
             'sales' => $data['sales'],
             'purchases' => $data['purchases'],
             'stock' => $data['stock'],

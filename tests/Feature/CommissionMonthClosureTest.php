@@ -357,6 +357,34 @@ class CommissionMonthClosureTest extends TestCase
         $this->assertSame(6, CommercialCommissionSnapshot::query()->where('month', '2026-07')->count());
     }
 
+    public function test_contact_center_closure_adds_responsible_and_freezes_its_payload(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $contactCenter = Mockery::mock(ContactCenterCommissionDashboardService::class);
+        $contactCenter->shouldReceive('build')->once()->with('2026-09', true)->andReturn([
+            'month' => '2026-09', 'ready' => true, 'issues' => [], 'warnings' => [],
+            'summary_rows' => [['agent_name' => 'Agente', 'final_total' => 100.0]],
+            'responsible_contact_center' => [
+                'responsible_name' => 'Vanesa Germán', 'final_total' => 505.0,
+                'actual_deliveries' => 101, 'reference_deliveries' => 100,
+                'actual_delivery_details' => [['opportunity_id' => '006-A']],
+                'reference_delivery_details' => [['opportunity_id' => '006-R']],
+            ],
+        ]);
+        $this->app->instance(ContactCenterCommissionDashboardService::class, $contactCenter);
+        $service = app(CommercialCommissionClosureService::class);
+        $components = array_fill_keys(array_keys($service->requiredComponents(CommercialCommissionClosure::SCOPE_CONTACT_CENTER)), true);
+
+        $service->prepare('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $components, $admin);
+        $service->approve('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $admin);
+
+        $snapshot = $service->definitiveSnapshot('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER);
+        $this->assertEquals(505.0, data_get($snapshot, 'contact_center.responsible_contact_center.final_total'));
+        $this->assertSame('006-A', data_get($snapshot, 'contact_center.responsible_contact_center.actual_delivery_details.0.opportunity_id'));
+        $this->assertSame(605.0, $service->approvalSummary('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER)['final_total']);
+    }
+
     public function test_delegation_snapshot_freezes_manager_and_three_manager_alert_against_future_changes(): void
     {
         CarbonImmutable::setTestNow('2026-08-05 10:00:00');

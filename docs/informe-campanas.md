@@ -13,6 +13,15 @@ Google Ads y Meta Ads siguen aportando inversión, impresiones, clics y métrica
 diarias. Opportunity continúa aportando reservas, ventas, compras e importes.
 No se consulta Salesforce durante una petición HTTP ni durante el builder.
 
+La réplica local de Opportunity materializa `Captador_de_cita__c` y el nombre de
+su relación como `appointment_setter_id` y `appointment_setter_name` para
+atribuciones futuras. No modifica KPIs, filtros, fórmulas ni cálculos de
+Campañas.
+
+La ruta administrativa del roster de Contact Center está restringida a
+administradores y solo mantiene identidad/vigencia para el refresco local de
+Users; no altera las fuentes, cálculos ni KPIs de Campañas.
+
 ### Fechas de campaña en la sincronización económica Google Ads v25
 
 `GoogleAdsClient::searchDailyMetrics()` consulta `campaign.start_date_time` y

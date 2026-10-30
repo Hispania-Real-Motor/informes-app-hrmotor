@@ -79,6 +79,8 @@ EXACT = {
     "app/Console/Commands/PruneTransversalDataCommand.php": ALL,
     "app/Console/Commands/RefreshMonthlyCommercialReportCommand.php": {"interests", "reservations"},
     "app/Console/Commands/SalesforceSyncOpportunitiesCommand.php": {"reservations", "campaigns", "commissions", "stock"},
+    "app/Console/Commands/SalesforceSyncCommercialCommissionAppointmentEvidenceCommand.php": {"commissions"},
+    "app/Console/Commands/SalesforceSyncCommercialCommissionProductDeliveriesCommand.php": {"commissions"},
     "config/campaign_current_status.php": {"campaigns"},
     "config/commercial_commissions.php": {"commissions"},
     "config/stock.php": {"stock"},
