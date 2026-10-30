@@ -11,6 +11,10 @@ Actualizado: 2026-09-21.
 - Capacidades: importación CSV/XLSX y `stock_delegations`.
 - Histórico: `stock_daily_snapshots`.
 
+La ruta administrativa del roster de Contact Center está restringida a
+administradores y solo mantiene identidad/vigencia para el refresco local de
+Users; no altera las fuentes, cálculos ni KPIs de Stock.
+
 El stock actual considera `Disponible`, `Reservado` y `Bloqueado`. Las ventas no
 se reconstruyen con el Product2 actual: el snapshot conserva los valores
 económicos del momento de la venta y posteriormente solo se reconcilia su

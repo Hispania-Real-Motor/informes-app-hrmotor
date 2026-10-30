@@ -197,6 +197,8 @@ class SalesforceUsersDelegationSyncTest extends TestCase
             ]);
         }
 
+        $this->assertDatabaseMissing('salesforce_users', ['salesforce_id' => '005Qx00000RosterA1']);
+
         $client = new class extends SalesforceClient
         {
             public array $queries = [];

@@ -76,16 +76,24 @@ class SalesforceMonthlyUsersSyncService
 
     private function trackedUserIds(): Collection
     {
-        return SalesforceUser::query()
+        $existingTrackedIds = SalesforceUser::query()
             ->where(function ($query): void {
                 $query->whereIn('profile_name', self::COMMERCIAL_PROFILES)
                     ->orWhere('commission_appraiser', true)
-                    ->orWhereIn('salesforce_id', ContactCenterCommissionRosterMember::query()->select('salesforce_user_id'))
                     ->orWhereIn('salesforce_id', CommercialDelegationSnapshot::query()
                         ->whereNull('observed_until')
                         ->select('salesforce_user_id'));
             })
             ->pluck('salesforce_id');
+
+        $contactCenterRosterIds = ContactCenterCommissionRosterMember::query()
+            ->pluck('salesforce_user_id');
+
+        return $existingTrackedIds
+            ->merge($contactCenterRosterIds)
+            ->filter()
+            ->unique()
+            ->values();
     }
 
     private function trackedUsersSoql(Collection $ids): string

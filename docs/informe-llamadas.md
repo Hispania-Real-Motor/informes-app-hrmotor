@@ -13,6 +13,10 @@ Actualizado: 2026-10-08.
 - Tablas: `salesforce_calls`, `salesforce_interests`, `salesforce_users`,
   `call_agent_mappings` y `salesforce_call_classification_history`.
 
+La ruta administrativa del roster de Contact Center está restringida a
+administradores y solo mantiene identidad/vigencia para el refresco local de
+Users; no altera las fuentes, cálculos ni KPIs de Llamadas.
+
 ## Clasificación vigente
 
 Versión de reglas: `2026-10-08.1`.
