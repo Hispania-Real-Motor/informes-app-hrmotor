@@ -6259,6 +6259,14 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   entrega y por IDs referidos desde Opportunities CV firmadas del período. No
   hay scheduler, escrituras en Salesforce, cambios en `salesforce_vehicles` ni
   generación, recuperación o publicación de Interests.
+- La migración `2026_10_30_151000_add_sync_token_to_commercial_commission_evidence_tables.php`
+  añade un UUID por ejecución en ambas tablas de evidencia. La purga de filas
+  no vistas se realiza sólo después de leer y persistir por completo el
+  intervalo; un fallo parcial no limpia. En Product2 se conservan también IDs
+  exigidos por Opportunities CV firmadas del período aunque la fecha de entrega
+  no esté dentro del intervalo. La conciliación añade
+  `DUPLICATE_PRODUCT2_LINK`, con precedencia sobre discrepancias de fecha o
+  estado cuando varias Opportunities del período comparten Product2.
 - Es evidencia de auditoría de Comisiones: no cambia fórmulas, KPIs, filtros,
   universos, cierres, snapshots, XLSX ni presentación. Se documentó en
   Comisiones; la matriz de trazabilidad no cambia porque no se modifica ningún

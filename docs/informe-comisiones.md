@@ -284,7 +284,18 @@ crea tres réplicas locales separadas de los hechos del informe:
 - `commercial_commission_delivery_reconciliations` guarda por período la
   comparación de esas evidencias contra Opportunities CV firmadas, con IDs,
   fechas, estado y clasificación `MATCH`, `OPPORTUNITY_ONLY`, `PRODUCT2_ONLY`,
-  `DATE_MISMATCH` o `STATE_MISMATCH`.
+  `DATE_MISMATCH`, `STATE_MISMATCH` o `DUPLICATE_PRODUCT2_LINK`. Esta última
+  prevalece cuando más de una Opportunity CV firmada del período referencia el
+  mismo Product2, antes de evaluar fecha o estado.
+
+La migración
+`2026_10_30_151000_add_sync_token_to_commercial_commission_evidence_tables.php`
+añade un UUID `sync_token` por ejecución a las dos tablas de evidencia. Tras
+leer y persistir íntegramente el intervalo, cada sincronización elimina sólo las
+filas de ese intervalo no vistas por su token; si una lectura o persistencia
+falla parcialmente, no se ejecuta esa limpieza. En Product2, la limpieza
+conserva además los IDs aún requeridos por Opportunities CV firmadas del
+período, aunque su fecha de entrega quede fuera del intervalo.
 
 Las ejecuciones son manuales y requieren `--from=YYYY-MM-DD` y
 `--to=YYYY-MM-DD` (fin exclusivo):
