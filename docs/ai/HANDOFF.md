@@ -6164,3 +6164,13 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   sus tests porque `python`/`py` resuelven a aliases no ejecutables de Windows.
   Deben repetirse antes de publicar con un runtime PHP/Python del proyecto; no
   se declara CI verde ni validación funcional completa.
+
+### Correctivo CI posterior
+
+- La exportación XLSX consulta el snapshot de Contact Center solo si
+  `availableScopes($month)` incluye dicho scope. Los meses históricos anteriores
+  a julio de 2026 conservan el dashboard vivo y no intentan crear ni leer un
+  cierre inexistente. Se añadió una regresión de XLSX para septiembre definitivo
+  que comprueba agentes y Responsable en hojas separadas y que el importe 505
+  procede del snapshot. La aserción de snapshot económico compara valor y no la
+  representación JSON `int`/`float`.
