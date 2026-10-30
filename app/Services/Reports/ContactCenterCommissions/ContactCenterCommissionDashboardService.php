@@ -192,7 +192,7 @@ class ContactCenterCommissionDashboardService
                             'account_name' => (string) ($opportunity->account_name ?? ''),
                             'stage_name' => (string) ($opportunity->stage_name ?? ''),
                             'portal' => (string) ($opportunity->portal_resolved ?? $opportunity->portal_original ?? ''),
-                            'pending_contract' => (bool) $opportunity->reservation && ! (bool) $opportunity->cv_signed,
+                            'pending_contract' => (bool) $opportunity->reservation && !(bool) $opportunity->cv_signed,
                             'observations' => $bestOutcome['link_origin'],
                             ];
                         }
@@ -214,7 +214,7 @@ class ContactCenterCommissionDashboardService
                     ? $this->contactCenterAgentName($appointment->appointment_setter_name ?: $appointment->appointment_setter_id)
                     : null;
 
-                if ($agentName === null || ! $appointment instanceof SalesforceLead) {
+                if ($agentName === null || !$appointment instanceof SalesforceLead) {
                     continue;
                 }
 
@@ -523,7 +523,7 @@ class ContactCenterCommissionDashboardService
     {
         $rawDate = $this->payloadValue($opportunity, 'Fecha_captador__c');
 
-        if (! filled($rawDate)) {
+        if (!filled($rawDate)) {
             return null;
         }
 
@@ -621,7 +621,7 @@ class ContactCenterCommissionDashboardService
 
         return $records
             ->filter(function (SalesforceOpportunity $opportunity) use ($captureDate, $closureEnd): bool {
-                if (! $this->opportunityHasOutcomeAfterDate($opportunity, $captureDate)) {
+                if (!$this->opportunityHasOutcomeAfterDate($opportunity, $captureDate)) {
                     return false;
                 }
 
@@ -844,7 +844,7 @@ class ContactCenterCommissionDashboardService
         $current = $payload;
 
         foreach ($segments as $segment) {
-            if (! is_array($current)) {
+            if (!is_array($current)) {
                 return null;
             }
 
@@ -986,11 +986,11 @@ class ContactCenterCommissionDashboardService
     {
         $issues = [];
 
-        if (! Schema::hasTable('salesforce_leads')) {
+        if (!Schema::hasTable('salesforce_leads')) {
             $issues[] = 'La tabla local salesforce_leads no existe todavia.';
         }
 
-        if (! Schema::hasTable('salesforce_opportunities')) {
+        if (!Schema::hasTable('salesforce_opportunities')) {
             $issues[] = 'La tabla local salesforce_opportunities no existe todavia.';
         }
 
@@ -1007,7 +1007,7 @@ class ContactCenterCommissionDashboardService
             'converted_opportunity_id',
             'portal_text',
         ] as $column) {
-            if (Schema::hasTable('salesforce_leads') && ! Schema::hasColumn('salesforce_leads', $column)) {
+            if (Schema::hasTable('salesforce_leads') && !Schema::hasColumn('salesforce_leads', $column)) {
                 $issues[] = "Falta la columna local salesforce_leads.{$column}. Ejecuta migrate y re-sincroniza leads.";
             }
         }
@@ -1031,7 +1031,7 @@ class ContactCenterCommissionDashboardService
             'cv_signed_date',
             'raw_payload',
         ] as $column) {
-            if (Schema::hasTable('salesforce_opportunities') && ! Schema::hasColumn('salesforce_opportunities', $column)) {
+            if (Schema::hasTable('salesforce_opportunities') && !Schema::hasColumn('salesforce_opportunities', $column)) {
                 $issues[] = "Falta la columna local salesforce_opportunities.{$column}.";
             }
         }

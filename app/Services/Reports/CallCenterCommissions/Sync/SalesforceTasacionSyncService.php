@@ -120,7 +120,7 @@ class SalesforceTasacionSyncService
                 } catch (RuntimeException $exception) {
                     $invalidField = $this->invalidFieldFromMessage($exception->getMessage());
 
-                    if ($invalidField === null || ! in_array($invalidField, $fields, true)) {
+                    if ($invalidField === null || !in_array($invalidField, $fields, true)) {
                         $errors[] = $exception->getMessage();
                         break;
                     }
@@ -233,7 +233,7 @@ SOQL;
     private function candidateValue(array $record, array $paths): mixed
     {
         foreach ($paths as $path) {
-            if (! filled($path)) {
+            if (!filled($path)) {
                 continue;
             }
 

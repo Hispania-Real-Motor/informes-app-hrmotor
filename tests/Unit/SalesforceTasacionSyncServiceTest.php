@@ -19,9 +19,7 @@ class SalesforceTasacionSyncServiceTest extends TestCase
         {
             public array $queries = [];
 
-            public function __construct()
-            {
-            }
+            public function __construct() {}
 
             public function query(string $soql): array
             {
@@ -103,7 +101,9 @@ class SalesforceTasacionSyncServiceTest extends TestCase
         {
             public array $queries = [];
 
-            public function __construct() {}
+            public function __construct()
+            {
+            }
 
             public function query(string $soql): array
             {
