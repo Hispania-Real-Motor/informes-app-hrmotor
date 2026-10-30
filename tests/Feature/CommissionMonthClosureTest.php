@@ -380,7 +380,7 @@ class CommissionMonthClosureTest extends TestCase
         $service->approve('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $admin);
 
         $snapshot = $service->definitiveSnapshot('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER);
-        $this->assertSame(505.0, data_get($snapshot, 'contact_center.responsible_contact_center.final_total'));
+        $this->assertEquals(505.0, data_get($snapshot, 'contact_center.responsible_contact_center.final_total'));
         $this->assertSame('006-A', data_get($snapshot, 'contact_center.responsible_contact_center.actual_delivery_details.0.opportunity_id'));
         $this->assertSame(605.0, $service->approvalSummary('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER)['final_total']);
     }

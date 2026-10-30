@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CommercialCommissionClosure;
+use App\Models\CommercialCommissionSnapshot;
 use App\Models\ReportSyncRun;
 use App\Models\ReportUser;
 use App\Models\SalesforceOpportunity;
@@ -605,6 +606,46 @@ class CommercialCommissionDashboardTest extends TestCase
             '<v>'.number_format((float) $row['final_commission'], 2, '.', '').'</v>',
             $sheet
         );
+    }
+
+    public function test_export_contact_center_definitive_uses_snapshot_and_separates_responsible_sheet(): void
+    {
+        $closure = CommercialCommissionClosure::query()->create([
+            'month' => '2026-09', 'closure_scope' => CommercialCommissionClosure::SCOPE_CONTACT_CENTER,
+            'status' => CommercialCommissionClosure::STATUS_DEFINITIVE, 'snapshot_version' => 1,
+            'formula_version' => 'test', 'data_cutoff_at' => now(),
+        ]);
+        CommercialCommissionSnapshot::query()->create([
+            'closure_id' => $closure->id, 'month' => '2026-09', 'version' => 1,
+            'formula_version' => 'test', 'data_cutoff_at' => now(), 'created_at' => now(),
+            'payload' => ['contact_center' => [
+                'month' => '2026-09', 'summary_rows' => [['agent_name' => 'Agente congelado', 'final_total' => 100.0]],
+                'responsible_contact_center' => [
+                    'responsible_name' => 'Vanesa Germán', 'month' => '2026-09', 'reference_month' => '2025-09',
+                    'actual_deliveries' => 101, 'reference_deliveries' => 100, 'compliance_percent' => 101.0,
+                    'bracket' => '>= 100 %', 'additional_deliveries' => 1, 'base_amount' => 500.0,
+                    'additional_amount' => 5.0, 'final_total' => 505.0,
+                ],
+            ]],
+        ]);
+        SalesforceOpportunity::query()->create(['salesforce_id' => 'LIVE-CHANGED', 'name' => 'Dato vivo', 'created_at' => now(), 'updated_at' => now()]);
+
+        $response = $this->withSession($this->authenticatedSession(ReportUser::ROLE_DIRECTOR))
+            ->get('/informes/comisiones-comerciales/export/comisiones.xlsx?month=2026-09');
+
+        $response->assertOk();
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($response->baseResponse->getFile()->getPathname()) === true);
+        $workbook = (string) $zip->getFromName('xl/workbook.xml');
+        $contactSheet = (string) $zip->getFromName('xl/worksheets/sheet4.xml');
+        $responsibleSheet = (string) $zip->getFromName('xl/worksheets/sheet5.xml');
+        $zip->close();
+
+        $this->assertStringContainsString('Responsable Contact Center', $workbook);
+        $this->assertStringContainsString('Agente congelado', $contactSheet);
+        $this->assertStringContainsString('Vanesa Germán', $responsibleSheet);
+        $this->assertStringContainsString('<v>505.00</v>', $responsibleSheet);
+        $this->assertStringNotContainsString('Dato vivo', $responsibleSheet);
     }
 
     public function test_dashboard_calcula_resumen_real_de_comisiones(): void

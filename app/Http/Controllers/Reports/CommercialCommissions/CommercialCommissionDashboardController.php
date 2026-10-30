@@ -615,7 +615,9 @@ class CommercialCommissionDashboardController extends Controller
             unset($callCenterPayload);
             gc_collect_cycles();
 
-            $contactCenterSnapshot = $closureService->definitiveSnapshot($month, 'contact_center');
+            $contactCenterSnapshot = in_array('contact_center', $closureService->availableScopes($month), true)
+                ? $closureService->definitiveSnapshot($month, 'contact_center')
+                : null;
             $contactCenterPayload = $contactCenterSnapshot['contact_center'] ?? $contactCenterDashboard->build($month, includeDetails: false);
             $sheets[] = $this->commissionSheet(
                 'Contact Center',
