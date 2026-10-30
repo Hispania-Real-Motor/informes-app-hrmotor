@@ -16,11 +16,6 @@ nombre relacionado como `appointment_setter_id` y `appointment_setter_name` para
 atribuciones futuras. No intervienen en fuentes, cálculos, KPIs ni presentación
 de Stock.
 
-Las réplicas manuales de Product2 y las conciliaciones de entregas de Contact
-Center se almacenan separadamente como evidencia de Comisiones. No modifican
-`salesforce_vehicles`, el inventario, ventas válidas, snapshots, filtros, KPIs
-ni presentación de Stock.
-
 La ruta administrativa del roster de Contact Center está restringida a
 administradores y solo mantiene identidad/vigencia para el refresco local de
 Users; no altera las fuentes, cálculos ni KPIs de Stock.

@@ -6255,9 +6255,9 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   hay scheduler, escrituras en Salesforce, cambios en `salesforce_vehicles` ni
   generación, recuperación o publicación de Interests.
 - Es evidencia de auditoría de Comisiones: no cambia fórmulas, KPIs, filtros,
-  universos, cierres, snapshots, XLSX ni presentación. Se documentó el
-  aislamiento en Comisiones, Reservas/Ventas, Campañas y Stock; la matriz de
-  trazabilidad no cambia porque no se modifica ningún contrato KPI.
+  universos, cierres, snapshots, XLSX ni presentación. Se documentó en
+  Comisiones; la matriz de trazabilidad no cambia porque no se modifica ningún
+  contrato KPI.
 - Pendiente de registrar por el agente principal: resultados de PHPUnit, Pint y
   del validador documental sobre el SHA y cuerpo de PR finales. Esta nota no
   declara pruebas locales ni CI satisfactorias.
