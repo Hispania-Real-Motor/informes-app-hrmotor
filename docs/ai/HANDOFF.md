@@ -6174,3 +6174,17 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   que comprueba agentes y Responsable en hojas separadas y que el importe 505
   procede del snapshot. La aserción de snapshot económico compara valor y no la
   representación JSON `int`/`float`.
+
+## 2026-10-30 — Configuración fundacional de objetivo global de entregas
+
+- `settings.company_delivery_target` queda disponible por mes en Configuración
+  de Comisiones para Administrador. Acepta únicamente un entero positivo o
+  `null`; no tiene valor por defecto ni derivación automática.
+- No participa todavía en fórmulas, KPIs, readiness, cierres, snapshots,
+  exportación XLSX ni en el bloque Responsable Contact Center. No se documenta
+  como objetivo económico vigente ni se actualiza la matriz de trazabilidad.
+- Sin cambios de esquema, migraciones, dependencias, permisos de informe ni
+  configuración de entorno. Las pruebas del cambio validan persistencia,
+  limpieza a nulo y rechazo de enteros no positivos/decimales. `git diff
+  --check` pasó. No se pudieron ejecutar Pint ni PHPUnit porque el entorno no
+  dispone de un ejecutable `php`; CI debe ejecutar la suite objetivo.
