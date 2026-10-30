@@ -23,6 +23,11 @@ El mes solicitado se conserva en URL y selector. El mes actual puede consultarse
 y siempre se muestra como `Provisional`; ninguna pestaña cambia por su cuenta al
 último mes cerrado.
 
+La proyección local de Opportunity conserva `Captador_de_cita__c` y el nombre
+relacionado como `appointment_setter_id` y `appointment_setter_name` para una
+atribución futura. Esta materialización no activa ni altera planes, fórmulas,
+cierres, filtros ni cálculos económicos de Comisiones.
+
 ## API mensual de Comerciales
 
 `GET /api/comisiones_comercial` exige `salesforce_id` y acepta opcionalmente

@@ -14,6 +14,10 @@ Actualizado: 2026-10-09.
   temporal en Opportunity↔Interest. La fotografía legacy `portal_resolved`
   permanece por compatibilidad con Campañas, pero no es autoridad del informe.
 - Tabla principal: `salesforce_opportunities`.
+- La réplica de Opportunity materializa `Captador_de_cita__c` y
+  `Captador_de_cita__r.Name` como `appointment_setter_id` y
+  `appointment_setter_name`, respectivamente, para atribuciones futuras. No
+  cambian los filtros, universos, KPI ni cálculos de Reservas/Ventas.
 - Evidencia CRM local: `salesforce_opportunity_interest_direct_runs`,
   `salesforce_opportunity_interest_directs` y `salesforce_interests`.
 - Dimensión compartida de User: `salesforce_users.created_date` materializa

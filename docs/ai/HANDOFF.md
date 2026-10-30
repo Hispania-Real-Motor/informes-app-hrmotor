@@ -6217,3 +6217,24 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   comisión Responsable Contact Center. La matriz no cambia. El agente principal
   no pudo ejecutar localmente PHPUnit ni Pint por ausencia de `php`; `git diff
   --check` pasó y CI debe ejecutar las validaciones restantes.
+
+## 2026-10-30 — Materialización de captador de cita en Opportunities
+
+- La migración
+  `2026_10_30_140000_add_appointment_setter_fields_to_salesforce_opportunities_table.php`
+  añade a `salesforce_opportunities` los campos nullable
+  `appointment_setter_id` (Salesforce User ID) y `appointment_setter_name`.
+  La sincronización existente de Opportunities los proyecta desde
+  `Opportunity.Captador_de_cita__c` y `Captador_de_cita__r.Name`; no introduce
+  un sincronizador ni una consulta Salesforce nuevos y no modifica
+  `raw_payload`.
+- Los índices locales `(appointment_setter_id, reservation_date)` y
+  `(appointment_setter_id, cv_signed_date)` acompañan esa materialización. No
+  crean por sí mismos un criterio de informe ni un contrato económico.
+- No cambian fórmulas, KPIs, filtros, universos, roster, presentación, cierres,
+  snapshots ni XLSX. Por ello se mantienen sin cambios las fichas de la matriz
+  de trazabilidad; las notas de no impacto se incorporaron en Reservas/Ventas,
+  Campañas, Comisiones y Stock.
+- Pendiente de registrar por el agente principal: ejecución de PHPUnit/Pint y
+  del validador documental sobre el SHA y cuerpo final de la PR. Esta nota no
+  declara esas validaciones como satisfactorias.
