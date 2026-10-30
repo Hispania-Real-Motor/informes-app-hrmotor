@@ -14,7 +14,10 @@ El informe usa exclusivamente estas fuentes locales:
 - `salesforce_interest_activity_runs` y `salesforce_interest_activities`:
   evidencia FOUNDATION-5 de Task/Event relacionados directamente mediante
   `WhatId → Interes__c`;
-- `salesforce_users`: elegibilidad y dimensión comercial del owner;
+- `salesforce_users`: elegibilidad y dimensión comercial del owner. Su
+  `created_date` materializa `User.CreatedDate` para trazabilidad futura; no
+  participa actualmente en la elegibilidad, filtros, universos, KPI, cálculos
+  ni presentación del informe;
 - `report_sync_runs`: estado, run y cutoff F2 auditables.
 
 El render HTTP no consulta Salesforce. No recupera atributos desde Lead,

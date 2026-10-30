@@ -16,6 +16,10 @@ Actualizado: 2026-10-09.
 - Tabla principal: `salesforce_opportunities`.
 - Evidencia CRM local: `salesforce_opportunity_interest_direct_runs`,
   `salesforce_opportunity_interest_directs` y `salesforce_interests`.
+- Dimensión compartida de User: `salesforce_users.created_date` materializa
+  `User.CreatedDate` para trazabilidad futura. No participa actualmente en la
+  elegibilidad, filtros, universos, KPI, cálculos ni presentación de
+  Reservas/Ventas.
 - Fechas sincronizadas: `CreatedDate`, `OPO_FEC_Fecha_de_reserva__c` y
   `Fecha_firma_contrato__c`.
 - Vehículo: `OPP_BUS_Vehiculo_de_interes__c` y matrícula de la relación ya
