@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class CommercialCommissionProductDeliveryEvidence extends Model
 {
+    protected $table = 'commercial_commission_product_delivery_evidences';
+
     protected $fillable = [
         'salesforce_product_id',
         'state',

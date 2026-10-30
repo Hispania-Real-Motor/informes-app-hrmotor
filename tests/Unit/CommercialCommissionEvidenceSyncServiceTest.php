@@ -19,6 +19,25 @@ class CommercialCommissionEvidenceSyncServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_modelos_evidence_usan_las_tablas_plurales_reales(): void
+    {
+        CommercialCommissionAppointmentEvidence::query()->create([
+            'salesforce_interest_id' => 'a0I000000000000099',
+            'synced_at' => now(),
+        ]);
+        CommercialCommissionProductDeliveryEvidence::query()->create([
+            'salesforce_product_id' => '01t000000000000099',
+            'synced_at' => now(),
+        ]);
+
+        $this->assertDatabaseHas('commercial_commission_appointment_evidences', [
+            'salesforce_interest_id' => 'a0I000000000000099',
+        ]);
+        $this->assertDatabaseHas('commercial_commission_product_delivery_evidences', [
+            'salesforce_product_id' => '01t000000000000099',
+        ]);
+    }
+
     public function test_sync_citas_acotado_materializa_id_fecha_null_y_actualiza_sin_duplicar(): void
     {
         $client = new class extends SalesforceClient

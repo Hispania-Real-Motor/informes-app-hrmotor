@@ -6241,6 +6241,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 
 ## 2026-10-30 — Evidencia manual de citas y entregas de Contact Center
 
+- Corrección de integridad: los modelos de evidencia de cita y Product2 declaran
+  explícitamente sus tablas plurales reales. Una regresión persiste ambas vía
+  Eloquent; no cambia la sincronización, la limpieza por token, la
+  reconciliación ni el contrato económico.
+
 - Corrección posterior: cada ejecución usa un token y solo limpia filas no
   vistas tras una lectura Salesforce completa; errores parciales no eliminan
   evidencia. La reconciliación muestra `DUPLICATE_PRODUCT2_LINK` para todas
