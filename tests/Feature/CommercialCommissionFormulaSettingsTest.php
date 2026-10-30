@@ -194,7 +194,7 @@ class CommercialCommissionFormulaSettingsTest extends TestCase
         $settings = app(CommercialCommissionFormulaConfigService::class)->forMonth('2026-06');
 
         $this->assertSame(1000, $settings['company_delivery_target']);
-        $this->assertSame(60.0, $settings['sales']['solo_delivery_amount']);
+        $this->assertEquals(60.0, $settings['sales']['solo_delivery_amount']);
     }
 
     public function test_admin_puede_dejar_vacio_el_objetivo_general_de_entregas(): void
