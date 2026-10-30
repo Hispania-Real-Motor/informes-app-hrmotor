@@ -6130,3 +6130,35 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   regresión entre preflight y aplicación. Pendiente PHPUnit completo en CI por
   ausencia de `vendor/` completo en este worktree; sintaxis, Pint, diff y
   documentación deben repetirse antes de publicar el hotfix.
+
+## 2026-10-30 — Comisiones: readiness, Tasaciones y Responsable Contact Center
+
+- Alcance: se corrige la readiness de fuentes para el mes provisional, la SOQL de
+  `Tasacion__c` y se incorpora desde `2026-09` el bloque independiente Responsable
+  Contact Center. No se ejecutaron sincronizaciones ni se consultó Salesforce o producción.
+- Reglas vigentes: el mes actual combina únicamente runs `completed` contiguos o
+  solapados desde el día 1 hasta el corte actual y exige frescura configurada;
+  meses cerrados mantienen cobertura completa verificable. Un hueco real sigue
+  bloqueando. Tasaciones usa `Oportunidad__c`/`Oportunidad__r` y los campos
+  `Negociaci_n_*` confirmados; el fallback no reintroduce los campos retirados.
+- Responsable Contact Center: no forma parte de `summary_rows`, no depende de
+  citas, llamadas, captador ni Tasaciones, y usa las entregas compartidas de
+  empresa (CV firmado, fecha de firma mensual, no Cerrada Perdida y Venta/Cambio
+  o Facilitea). Compara el mismo mes del año anterior, bloquea con referencia
+  incompleta o cero y conserva cohortes, fórmula e importe en snapshot. El XLSX
+  definitivo lee el snapshot y genera una hoja separada.
+- Documentación modificada: `docs/informe-comisiones.md`,
+  `docs/Calculo_comisiones_comerciales.txt`, `docs/matriz-trazabilidad-kpi.md`,
+  `docs/operaciones-produccion.md` y este handoff. `PROJECT_CONTEXT.md` y
+  `DECISIONS.md` no cambian: no hay nueva arquitectura, tabla, dependencia ni
+  decisión transversal irreversible.
+- Base revisada: `db2d9f2948887d18dc604afaa9543799826938da`. Validación
+  documental pendiente de repetir sobre el SHA final y con el cuerpo de PR que
+  declare `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`. El resultado
+  de las pruebas funcionales y de Pint lo debe registrar el agente principal.
+- Verificaciones de esta sesión: `git diff --check` correcto y diff revisado.
+  No se pudo ejecutar Pest/Pint ni el lint PHP: no hay un ejecutable `php` ni
+  `vendor/` utilizable en el entorno local. Tampoco se ejecutó el validador ni
+  sus tests porque `python`/`py` resuelven a aliases no ejecutables de Windows.
+  Deben repetirse antes de publicar con un runtime PHP/Python del proyecto; no
+  se declara CI verde ni validación funcional completa.

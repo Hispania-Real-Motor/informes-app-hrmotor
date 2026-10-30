@@ -58,7 +58,20 @@ pendientes o reabiertos usan una única construcción viva
 `CommercialCommissionDashboardService::build($month, true, false, true)`: no se
 construyen Delegaciones ni otras pestañas y no existe una segunda fórmula.
 
-## Cierre económico por bloque
+## Readiness de fuentes y cierre económico por bloque
+
+Para un mes natural cerrado, cada fuente exigida conserva una ejecución
+`completed` verificable que cubra íntegramente `[inicio de mes, inicio del mes
+siguiente)` y respete la frescura configurada. No se acepta una cobertura parcial
+ni se marca como cubierta una fecha futura.
+
+En el mes actual provisional la evidencia se evalúa de forma distinta: se unen
+solo intervalos de ejecuciones `completed`, se exige continuidad desde el primer
+día hasta el corte actual y una ejecución reciente según
+`closure_source_max_age_hours` (48 horas por defecto). Varias ejecuciones
+solapadas o contiguas pueden cubrir el mes; un hueco entre intervalos o un corte
+final antiguo bloquea con **Revisar**. Que aún no haya terminado el mes no es por
+sí mismo una incidencia.
 
 Estados persistentes:
 
@@ -67,11 +80,10 @@ Estados persistentes:
 - `definitive`;
 - `reopened`.
 
-Solo pueden cerrarse `Comerciales`, `Delegaciones` y `Área Manager`. Cada cierre
-tiene estado, aprobación, reapertura, eventos y versión de snapshot propios por
-combinación `month + closure_scope`. Call Center, Contact Center y Financieros
-siguen siendo operativos/provisionales y no se incluyen como requisito ni como
-payload de los cierres económicos.
+Desde julio de 2026, los seis scopes (Comerciales, Delegaciones, Área Manager,
+Financieros, Call Center y Contact Center) disponen de cierre independiente. Cada
+cierre tiene estado, aprobación, reapertura, eventos y versión de snapshot propios
+por combinación `month + closure_scope`.
 
 Un bloque solo puede pasar a definitivo cuando ha terminado el mes natural, están confirmados sus componentes y aprueba Dirección o Administrador/IT.
 
@@ -106,7 +118,9 @@ Resumen funcional:
 - Delegaciones: entregas y rentabilidad según sus reglas de tienda.
 - Call Center: ventas/compras/cambios, German y Facilitea según captador y
   configuración.
-- Contact Center: citas y resultados con su ventana funcional vigente.
+- Contact Center: citas y resultados por agente con su ventana funcional vigente;
+  desde septiembre de 2026 incluye además un bloque independiente de Responsable
+  Contact Center basado en entregas de toda la empresa.
 - Área Manager: ámbito de zona y delegaciones normalizadas.
 - Financieros: ventas/cambios por fecha de firma y zona financiera. Los bloques 1
   y 3 usan todo el universo elegible; el bloque 2 usa solo operaciones con interés
@@ -224,6 +238,20 @@ php artisan salesforce:sync-tasaciones --all
 
 Los reprocesados de datos operativos no modifican snapshots definitivos salvo
 reapertura autorizada.
+
+Para poder preparar o cerrar el Responsable Contact Center desde `2026-09`, debe
+existir una ejecución `completed` de `salesforce_opportunities` que cubra por
+completo el mismo mes natural del año anterior. Por ejemplo, septiembre de 2026
+requiere `[2025-09-01, 2025-10-01)`. Si falta, se debe generar la evidencia con
+un rango explícito, sin ejecutar el comando desde el dashboard:
+
+```bash
+php artisan salesforce:sync-opportunities --from=2025-09-01 --to=2025-10-01
+```
+
+Una referencia con cero entregas elegibles tampoco certifica la comisión ni
+permite el cierre definitivo. Este procedimiento no reabre ni altera snapshots
+ya definitivos.
 
 Archivos principales:
 

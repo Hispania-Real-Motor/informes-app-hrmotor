@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 
 class CommercialCommissionFormulaConfigService
 {
-    public const VERSION = '2026-08-05.1';
+    public const VERSION = '2026-09-01.1';
 
     private const AREA_MANAGER_DEFINITIONS = [
         'david-baeza' => 'David Baeza',

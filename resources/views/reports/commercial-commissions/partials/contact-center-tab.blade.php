@@ -2,6 +2,7 @@
     $contactCenterMonthStart = \Carbon\CarbonImmutable::parse(($contactCenterDashboard['month'] ?? $dashboard['month']).'-01');
     $contactCenterMonthEnd = $contactCenterMonthStart->addMonth();
     $contactCenterSummaryRows = collect($contactCenterDashboard['summary_rows'] ?? []);
+    $contactCenterResponsible = $contactCenterDashboard['responsible_contact_center'] ?? null;
     $contactCenterGlobalIncidents = collect($contactCenterDashboard['global_incidents'] ?? []);
     $contactCenterDefaultAgentKey = $contactCenterSummaryRows->first()['agent_key'] ?? null;
     $contactCenterTotalAppointments = (int) $contactCenterSummaryRows->sum('appointment_count');
@@ -46,6 +47,48 @@
         <strong>{{ number_format($contactCenterTotalAutomatic, 2, ',', '.') }} EUR</strong>
     </article>
 </section>
+
+@if (is_array($contactCenterResponsible))
+    <section class="card panel contact-center-responsible-panel">
+        <div class="panel-title compact">
+            <div>
+                <h3>Responsable Contact Center</h3>
+                <div class="small">Comisión independiente de agentes, basada exclusivamente en entregas elegibles de toda la empresa.</div>
+            </div>
+            <strong>{{ number_format((float) ($contactCenterResponsible['final_total'] ?? 0), 2, ',', '.') }} EUR</strong>
+        </div>
+        @if (!empty($contactCenterResponsible['issues']))
+            <div class="notice">{{ implode(' ', $contactCenterResponsible['issues']) }}</div>
+        @endif
+        <div class="platform-comparison-metrics">
+            <div class="platform-metric-item"><span>Responsable</span><strong>{{ $contactCenterResponsible['responsible_name'] }}</strong></div>
+            <div class="platform-metric-item"><span>Mes liquidado</span><strong>{{ $contactCenterResponsible['month'] }}</strong></div>
+            <div class="platform-metric-item"><span>Mes referencia</span><strong>{{ $contactCenterResponsible['reference_month'] }}</strong></div>
+            <div class="platform-metric-item"><span>Entregas actuales</span><strong>{{ number_format((int) $contactCenterResponsible['actual_deliveries'], 0, ',', '.') }}</strong></div>
+            <div class="platform-metric-item"><span>Entregas referencia</span><strong>{{ number_format((int) $contactCenterResponsible['reference_deliveries'], 0, ',', '.') }}</strong></div>
+            <div class="platform-metric-item"><span>Cumplimiento</span><strong>{{ $contactCenterResponsible['compliance_percent'] === null ? 'No calculable' : number_format((float) $contactCenterResponsible['compliance_percent'], 2, ',', '.').'%' }}</strong></div>
+            <div class="platform-metric-item"><span>Tramo</span><strong>{{ $contactCenterResponsible['bracket'] }}</strong></div>
+            <div class="platform-metric-item"><span>Entregas adicionales</span><strong>{{ number_format((int) $contactCenterResponsible['additional_deliveries'], 0, ',', '.') }}</strong></div>
+            <div class="platform-metric-item"><span>Importe base</span><strong>{{ number_format((float) $contactCenterResponsible['base_amount'], 2, ',', '.') }} EUR</strong></div>
+            <div class="platform-metric-item"><span>Importe adicional</span><strong>{{ number_format((float) $contactCenterResponsible['additional_amount'], 2, ',', '.') }} EUR</strong></div>
+        </div>
+        @foreach (['actual' => 'Entregas del mes liquidado', 'reference' => 'Entregas del mismo mes del año anterior'] as $cohort => $title)
+            <div class="table-shell">
+                <h4>{{ $title }}</h4>
+                <table data-sortable-table="contact-center-responsible-{{ $cohort }}">
+                    <thead><tr><th>Opportunity ID</th><th>Nombre</th><th>Fecha firma</th><th>Tipo</th><th>Etapa</th><th>Owner</th><th>Tienda / Delegación</th><th>Facilitea</th><th>Motivo inclusión</th></tr></thead>
+                    <tbody data-sort-body="contact-center-responsible-{{ $cohort }}">
+                    @forelse (($contactCenterResponsible[$cohort.'_delivery_details'] ?? []) as $detail)
+                        <tr><td>{{ $detail['opportunity_id'] }}</td><td>{{ $detail['opportunity_name'] ?: '-' }}</td><td>{{ $detail['contract_signed_date'] ?? '-' }}</td><td>{{ $detail['record_type_name'] ?: '-' }}</td><td>{{ $detail['stage_name'] ?: '-' }}</td><td>{{ $detail['owner_name'] ?: '-' }}</td><td>{{ $detail['delegation'] ?: '-' }}</td><td>{{ $detail['is_facilitea'] ? 'Sí' : 'No' }}</td><td>{{ $detail['inclusion_reason'] }}</td></tr>
+                    @empty
+                        <tr><td colspan="9">Sin entregas elegibles.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        @endforeach
+    </section>
+@endif
 
 <section class="platform-comparison-grid commission-overview-grid contact-center-overview-grid">
     <article class="card platform-comparison-card">

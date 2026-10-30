@@ -1005,6 +1005,16 @@ Rutas reales inspeccionadas:
   publicar su stdout bruto, que el ledger operacional descarta; hardening general
   de CLI legacy queda fuera de este correctivo y sigue siendo riesgo residual.
 
+Para la comisión de Responsable Contact Center vigente desde septiembre de 2026,
+el cierre de M requiere cobertura completa de `salesforce_opportunities` para el
+mismo mes del año anterior. Si falta evidencia, un operador autorizado debe
+planificar fuera del request web un rango explícito, por ejemplo
+`php artisan salesforce:sync-opportunities --from=2025-09-01 --to=2025-10-01`,
+y verificar después el `report_sync_runs` `completed`; no se deben falsear fechas
+futuras, crear datos históricos artificiales ni ejecutar este comando como parte
+del despliegue. Referencia con cero entregas es una incidencia bloqueante, no un
+objetivo cero.
+
 Los comandos crean report_sync_runs con running, completan con cutoff/completed_at
 o fallan con error_message sanitizado por ReportSyncRunService. Un fallo previo al
 inicio del run de fuente puede tener solo evidencia operacional. El wrapper guarda

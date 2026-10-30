@@ -20,24 +20,8 @@ class SalesforceTasacionSyncService
             'opportunity_contract_signed_date' => 'Oportunidad__r.Fecha_firma_contrato__c',
             'opportunity_cv_signed' => 'Oportunidad__r.OPO_CAS_Contrato_CV_firmado__c',
         ],
-        'opportunity_relation' => [
-            'opportunity_id' => 'Opportunity__c',
-            'opportunity_name' => 'Opportunity__r.Name',
-            'opportunity_contract_signed_date' => 'Opportunity__r.Fecha_firma_contrato__c',
-            'opportunity_cv_signed' => 'Opportunity__r.OPO_CAS_Contrato_CV_firmado__c',
-        ],
-        'res_bus_oportunidad_relation' => [
-            'opportunity_id' => 'RES_BUS_Oportunidad__c',
-            'opportunity_name' => 'RES_BUS_Oportunidad__r.Name',
-            'opportunity_contract_signed_date' => 'RES_BUS_Oportunidad__r.Fecha_firma_contrato__c',
-            'opportunity_cv_signed' => 'RES_BUS_Oportunidad__r.OPO_CAS_Contrato_CV_firmado__c',
-        ],
-        'tas_bus_oportunidad_relation' => [
-            'opportunity_id' => 'TAS_BUS_Oportunidad__c',
-            'opportunity_name' => 'TAS_BUS_Oportunidad__r.Name',
-            'opportunity_contract_signed_date' => 'TAS_BUS_Oportunidad__r.Fecha_firma_contrato__c',
-            'opportunity_cv_signed' => 'TAS_BUS_Oportunidad__r.OPO_CAS_Contrato_CV_firmado__c',
-        ],
+        // Safe forward-compatible fallback: only fields confirmed in the
+        // Tasacion__c schema are queried when the relationship is unavailable.
         'without_relation' => [
             'opportunity_id' => null,
             'opportunity_name' => null,
@@ -50,13 +34,7 @@ class SalesforceTasacionSyncService
         'Id',
         'Name',
         'CreatedDate',
-        'Fecha_firma_contrato__c',
-        'Contrato_CV_firmado__c',
         'Seguimiento__c',
-        'Negociacion_1__c',
-        'Negociacion_2__c',
-        'Negociacion_3__c',
-        'Negociacion_4__c',
         'Negociaci_n_1__c',
         'Negociaci_n_2__c',
         'Negociaci_n_3__c',
@@ -192,11 +170,7 @@ class SalesforceTasacionSyncService
         ];
 
         foreach ([
-            'Fecha_firma_contrato__c',
             'Oportunidad__r.Fecha_firma_contrato__c',
-            'Opportunity__r.Fecha_firma_contrato__c',
-            'RES_BUS_Oportunidad__r.Fecha_firma_contrato__c',
-            'TAS_BUS_Oportunidad__r.Fecha_firma_contrato__c',
         ] as $field) {
             if (in_array($field, $fields, true)) {
                 $whereClauses[] = "({$field} >= {$startDate} AND {$field} < {$endDate})";
@@ -230,38 +204,24 @@ SOQL;
                 'opportunity_salesforce_id' => $this->candidateValue($record, [
                     $profile['opportunity_id'] ?? null,
                     'Oportunidad__c',
-                    'Opportunity__c',
-                    'RES_BUS_Oportunidad__c',
-                    'TAS_BUS_Oportunidad__c',
                 ]),
                 'opportunity_name' => $this->candidateValue($record, [
                     $profile['opportunity_name'] ?? null,
                     'Oportunidad__r.Name',
-                    'Opportunity__r.Name',
-                    'RES_BUS_Oportunidad__r.Name',
-                    'TAS_BUS_Oportunidad__r.Name',
                 ]),
                 'contract_signed_date' => $this->candidateValue($record, [
-                    'Fecha_firma_contrato__c',
                     $profile['opportunity_contract_signed_date'] ?? null,
                     'Oportunidad__r.Fecha_firma_contrato__c',
-                    'Opportunity__r.Fecha_firma_contrato__c',
-                    'RES_BUS_Oportunidad__r.Fecha_firma_contrato__c',
-                    'TAS_BUS_Oportunidad__r.Fecha_firma_contrato__c',
                 ]),
                 'cv_signed' => (bool) $this->candidateValue($record, [
-                    'Contrato_CV_firmado__c',
                     $profile['opportunity_cv_signed'] ?? null,
                     'Oportunidad__r.OPO_CAS_Contrato_CV_firmado__c',
-                    'Opportunity__r.OPO_CAS_Contrato_CV_firmado__c',
-                    'RES_BUS_Oportunidad__r.OPO_CAS_Contrato_CV_firmado__c',
-                    'TAS_BUS_Oportunidad__r.OPO_CAS_Contrato_CV_firmado__c',
                 ]),
                 'tracking_name' => $this->candidateValue($record, ['Seguimiento__c']),
-                'negotiation_1' => $this->candidateValue($record, ['Negociaci_n_1__c', 'Negociacion_1__c']),
-                'negotiation_2' => $this->candidateValue($record, ['Negociaci_n_2__c', 'Negociacion_2__c']),
-                'negotiation_3' => $this->candidateValue($record, ['Negociaci_n_3__c', 'Negociacion_3__c']),
-                'negotiation_4' => $this->candidateValue($record, ['Negociaci_n_4__c', 'Negociacion_4__c']),
+                'negotiation_1' => $this->candidateValue($record, ['Negociaci_n_1__c']),
+                'negotiation_2' => $this->candidateValue($record, ['Negociaci_n_2__c']),
+                'negotiation_3' => $this->candidateValue($record, ['Negociaci_n_3__c']),
+                'negotiation_4' => $this->candidateValue($record, ['Negociaci_n_4__c']),
                 'source_query_profile' => $profileName,
                 'raw_payload' => $record,
             ]

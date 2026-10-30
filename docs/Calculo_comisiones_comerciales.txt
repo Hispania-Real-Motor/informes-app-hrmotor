@@ -577,28 +577,23 @@ SELECT
     Id,
     Name,
     CreatedDate,
-    Fecha_firma_contrato__c,
-    Contrato_CV_firmado__c,
     Seguimiento__c,
-    Negociacion_1__c,
-    Negociacion_2__c,
-    Negociacion_3__c,
-    Negociacion_4__c,
-    Opportunity__c,
-    Opportunity__r.Name,
-    Opportunity__r.Fecha_firma_contrato__c,
-    Opportunity__r.OPO_CAS_Contrato_CV_firmado__c
+    Negociaci_n_1__c,
+    Negociaci_n_2__c,
+    Negociaci_n_3__c,
+    Negociaci_n_4__c,
+    Oportunidad__c,
+    Oportunidad__r.Name,
+    Oportunidad__r.Fecha_firma_contrato__c,
+    Oportunidad__r.OPO_CAS_Contrato_CV_firmado__c
 FROM Tasacion__c
 WHERE IsDeleted = FALSE
   AND (
       (CreatedDate >= 2026-07-01T00:00:00Z
        AND CreatedDate < 2026-08-01T00:00:00Z)
       OR
-      (Fecha_firma_contrato__c >= 2026-07-01
-       AND Fecha_firma_contrato__c < 2026-08-01)
-      OR
-      (Opportunity__r.Fecha_firma_contrato__c >= 2026-07-01
-       AND Opportunity__r.Fecha_firma_contrato__c < 2026-08-01)
+      (Oportunidad__r.Fecha_firma_contrato__c >= 2026-07-01
+       AND Oportunidad__r.Fecha_firma_contrato__c < 2026-08-01)
   )
 ORDER BY CreatedDate
 
@@ -609,11 +604,14 @@ ORDER BY CreatedDate
     + negociaciones_alemania
     + facilitlea
 
-El sincronizador prueba perfiles de relación alternativos
-(`Opportunity__c`, `RES_BUS_Oportunidad__c`, `TAS_BUS_Oportunidad__c` o sin
-relación) y elimina de la query los campos que Salesforce declare inválidos. Los
-nombres de Facilitea pueden estar configurados. Para conciliar se debe consultar
-el SOQL y el payload crudo registrados, no inferirlos por la etiqueta visual.
+El perfil principal usa exclusivamente `Oportunidad__c` y `Oportunidad__r`,
+verificados contra el esquema actual. Si la relación deja de estar disponible, el
+fallback consulta solo los campos propios confirmados de `Tasacion__c` y no vuelve
+a introducir campos eliminados. La respuesta remota HTTP sanitizada no permite
+identificar campos inválidos, por lo que el fallback no depende de parsear dicho
+mensaje. Los nombres de Facilitea pueden estar configurados. Para conciliar se
+debe consultar el SOQL y el payload crudo registrados, no inferirlos por la
+etiqueta visual.
 
 
 7. PESTAÑA CONTACT CENTER
@@ -657,6 +655,29 @@ En términos de intervalo exclusivo, el cierre termina el día 11 a las 00:00.
     + bonus_volumen
 
 Las ventas deben estar firmadas en el mes y no estar Cerrada Perdida.
+
+7.4 Responsable Contact Center (vigente desde 2026-09)
+--------------------------------------------------------
+
+Este bloque pertenece a **Vanesa Germán** como etiqueta de presentación y no se
+mezcla con `summary_rows` ni con las fórmulas de agentes. No usa citas, llamadas,
+captador, tasaciones ni coincidencias por nombre. Cuenta exclusivamente las
+entregas totales de empresa de la réplica local: contrato CV firmado, fecha de
+firma en el mes, etapa distinta de Cerrada Perdida y RecordType Venta o Cambio,
+o nombre que identifica Facilitea. La misma definición compartida la usan
+Delegaciones y Área Manager; no filtra owner, delegación, zona ni tienda.
+
+Para el mes M se compara con el mismo mes M del año anterior. Sea `a` el número
+de entregas actuales y `r` el de referencia. Con `r = 0` el importe no es
+certificable. Con `r > 0`, los tramos se comparan como enteros, sin redondear el
+porcentaje: `a * 100 < r * 90` paga 0 EUR; `a < r` paga 350 EUR; `a >= r` paga
+500 EUR más `5 EUR * (a-r)`. El porcentaje solo se redondea al presentarlo.
+
+El detalle de ambas cohortes conserva Opportunity ID, nombre, fecha de firma,
+tipo, etapa, owner, tienda/delegación disponible, marca Facilitea y motivo de
+inclusión. Se deriva de esas mismas consultas locales y se congela en el snapshot
+definitivo. El XLSX mantiene la hoja Contact Center para agentes y añade la hoja
+separada `Responsable Contact Center` desde la fecha efectiva.
 
 
 8. PESTAÑA AREA MANAGER

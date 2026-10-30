@@ -56,7 +56,12 @@ class SalesforceTasacionSyncServiceTest extends TestCase
         $this->assertSame(1, $result['saved']);
         $this->assertStringContainsString('FROM Tasacion__c', $result['soql']);
         $this->assertStringContainsString('Oportunidad__r.Fecha_firma_contrato__c', $result['soql']);
+        $this->assertStringContainsString('Oportunidad__r.OPO_CAS_Contrato_CV_firmado__c', $result['soql']);
         $this->assertStringContainsString('Negociaci_n_1__c', $result['soql']);
+        $this->assertStringContainsString('Negociaci_n_4__c', $result['soql']);
+        foreach (["\n    Fecha_firma_contrato__c", "\n    Contrato_CV_firmado__c", 'Negociacion_1__c', 'Opportunity__c', 'RES_BUS_Oportunidad__c', 'TAS_BUS_Oportunidad__c'] as $invalidField) {
+            $this->assertStringNotContainsString($invalidField, $result['soql']);
+        }
         $this->assertContains('oportunidad_relation', $result['profiles']);
         $this->assertDatabaseHas('salesforce_tasaciones', [
             'salesforce_id' => 'a02-1',
@@ -90,5 +95,33 @@ class SalesforceTasacionSyncServiceTest extends TestCase
 
         $this->assertNotEmpty($client->queries);
         $this->assertStringContainsString('2020-01-01T00:00:00Z', $client->queries[0]);
+    }
+
+    public function test_fallback_without_relation_never_reintroduces_invalid_salesforce_fields(): void
+    {
+        $client = new class extends SalesforceClient
+        {
+            public array $queries = [];
+
+            public function __construct() {}
+
+            public function query(string $soql): array
+            {
+                $this->queries[] = $soql;
+                if (count($this->queries) === 1) {
+                    throw new \RuntimeException('Salesforce SOQL: error remoto HTTP 400.');
+                }
+
+                return [];
+            }
+        };
+
+        $service = new SalesforceTasacionSyncService($client);
+        $result = $service->sync(CarbonImmutable::parse('2026-05-01', 'UTC'), CarbonImmutable::parse('2026-06-01', 'UTC'));
+
+        $this->assertSame(['without_relation'], $result['profiles']);
+        $this->assertCount(2, $client->queries);
+        $this->assertStringNotContainsString('Oportunidad__r.', $client->queries[1]);
+        $this->assertStringNotContainsString('Negociacion_1__c', $client->queries[1]);
     }
 }
