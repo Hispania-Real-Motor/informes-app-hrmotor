@@ -10,8 +10,8 @@ use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfig
 use App\Services\Reports\CommercialCommissions\CommercialCommissionDashboardService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class CommercialCommissionFormulaSettingsTest extends TestCase
