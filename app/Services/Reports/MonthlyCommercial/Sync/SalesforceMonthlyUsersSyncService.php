@@ -5,6 +5,7 @@ namespace App\Services\Reports\MonthlyCommercial\Sync;
 use App\Models\CommercialDelegationSnapshot;
 use App\Models\SalesforceUser;
 use App\Services\Salesforce\SalesforceClient;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 class SalesforceMonthlyUsersSyncService
@@ -46,6 +47,7 @@ class SalesforceMonthlyUsersSyncService
                 'salesforce_id' => data_get($record, 'Id'),
                 'name' => data_get($record, 'Name'),
                 'email' => data_get($record, 'Email'),
+                'created_date' => $this->parseDateTime(data_get($record, 'CreatedDate')),
                 'profile_name' => data_get($record, 'Profile.Name'),
                 'user_delegation' => data_get($record, 'USR_SEL_Delegacion__c'),
                 'is_active' => (bool) data_get($record, 'IsActive', true),
@@ -95,6 +97,7 @@ SELECT
     Id,
     Name,
     Email,
+    CreatedDate,
     Profile.Name,
     USR_SEL_Delegacion__c,
     Comision_Tasador__c,
@@ -113,6 +116,7 @@ SELECT
     Id,
     Name,
     Email,
+    CreatedDate,
     Profile.Name,
     USR_SEL_Delegacion__c,
     Comision_Tasador__c,
@@ -125,5 +129,10 @@ WHERE
         OR Comision_Tasador__c = true
     )
 SOQL;
+    }
+
+    private function parseDateTime(mixed $value): ?CarbonImmutable
+    {
+        return blank($value) ? null : CarbonImmutable::parse($value);
     }
 }

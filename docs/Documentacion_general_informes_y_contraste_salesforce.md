@@ -779,8 +779,10 @@ está en `Calculo_comisiones_comerciales.txt`.
 
 - `Opportunity`: operaciones, importes, productos, propietarios, tiendas,
   financiación y contratos.
-- `User`: identidad, email, perfil, delegación, activo y
-  `Comision_Tasador__c`.
+- `User`: identidad, email, fecha de creación, perfil, delegación, activo y
+  `Comision_Tasador__c`. `CreatedDate` se materializa en
+  `salesforce_users.created_date` como dato fundacional; no participa todavía
+  en un KPI, filtro, universo o cálculo económico.
 - `Resena__c`: reseñas por oportunidad/comercial.
 - `Tasacion__c`: negociaciones German.
 - Endpoint interno de reseñas: bonus/penalización de delegaciones.
@@ -836,7 +838,7 @@ Usuarios:
 
 ```sql
 SELECT
-    Id, Name, Email, Profile.Name, USR_SEL_Delegacion__c,
+    Id, Name, Email, CreatedDate, Profile.Name, USR_SEL_Delegacion__c,
     Comision_Tasador__c, IsActive
 FROM User
 WHERE IsActive = true

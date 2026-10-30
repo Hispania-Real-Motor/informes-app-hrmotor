@@ -219,6 +219,7 @@ SELECT
     Id,
     Name,
     Email,
+    CreatedDate,
     IsActive,
     Profile.Name,
     USR_SEL_Delegacion__c,
@@ -231,6 +232,10 @@ WHERE IsActive = TRUE
       OR Comision_Tasador__c = TRUE
   )
 ORDER BY Name
+
+`User.CreatedDate` se persiste como `salesforce_users.created_date` para
+trazabilidad futura. No interviene actualmente en la elegibilidad, los filtros,
+los universos, las fórmulas, los cierres ni las exportaciones de Comisiones.
 
 
 4. PESTAÑA COMERCIALES

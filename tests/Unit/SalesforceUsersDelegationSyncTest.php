@@ -8,6 +8,7 @@ use App\Services\Reports\MonthlyCommercial\Sync\SalesforceMonthlyUsersSyncServic
 use App\Services\Reports\ReservationsSales\CommercialDelegationSnapshotService;
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -19,14 +20,19 @@ class SalesforceUsersDelegationSyncTest extends TestCase
     {
         $client = new class extends SalesforceClient
         {
+            public string $soql = '';
+
             public function __construct() {}
 
             public function query(string $soql): array
             {
+                $this->soql = $soql;
+
                 return [[
                     'Id' => '005-commercial',
                     'Name' => 'Comercial Madrid',
                     'Email' => 'comercial.madrid@hrmotor.com',
+                    'CreatedDate' => '2026-04-10T14:11:59.000+0000',
                     'Profile' => ['Name' => 'Compra/Venta'],
                     'USR_SEL_Delegacion__c' => 'HR MOTOR MADRID',
                     'Comision_Tasador__c' => true,
@@ -42,9 +48,15 @@ class SalesforceUsersDelegationSyncTest extends TestCase
             'salesforce_id' => '005-commercial',
             'user_delegation' => 'HR MOTOR MADRID',
         ]);
-        $this->assertSame('HR MOTOR MADRID', SalesforceUser::first()->user_delegation);
-        $this->assertSame('comercial.madrid@hrmotor.com', SalesforceUser::first()->email);
-        $this->assertTrue(SalesforceUser::first()->commission_appraiser);
+        $user = SalesforceUser::firstOrFail();
+
+        $this->assertSame('HR MOTOR MADRID', $user->user_delegation);
+        $this->assertSame('comercial.madrid@hrmotor.com', $user->email);
+        $this->assertTrue($user->is_active);
+        $this->assertTrue($user->commission_appraiser);
+        $this->assertInstanceOf(CarbonInterface::class, $user->created_date);
+        $this->assertSame('2026-04-10 14:11:59', $user->created_date->utc()->format('Y-m-d H:i:s'));
+        $this->assertStringContainsString('CreatedDate', $client->soql);
     }
 
     public function test_no_reescribe_usuario_identico_y_actualiza_un_cambio_real(): void
@@ -59,6 +71,7 @@ class SalesforceUsersDelegationSyncTest extends TestCase
                 'USR_SEL_Delegacion__c' => 'MADRID',
                 'Comision_Tasador__c' => false,
                 'IsActive' => true,
+                'CreatedDate' => '2026-04-10T14:11:59.000+0000',
                 'attributes' => ['type' => 'User', 'url' => '/users/005-stable'],
                 'OptionalNull' => null,
             ];
@@ -121,6 +134,7 @@ class SalesforceUsersDelegationSyncTest extends TestCase
             'salesforce_id' => '005-inactive-history',
             'is_active' => false,
         ]);
+        $this->assertNull(SalesforceUser::query()->firstOrFail()->created_date);
         $this->assertStringNotContainsString('IsActive = true', $client->soql);
     }
 
@@ -150,6 +164,7 @@ class SalesforceUsersDelegationSyncTest extends TestCase
 
                 return [[
                     'Id' => '005-profile-change', 'Name' => 'Cambio perfil', 'Email' => null,
+                    'CreatedDate' => '2026-04-10T14:11:59.000+0000',
                     'Profile' => ['Name' => 'Marketing'], 'USR_SEL_Delegacion__c' => 'HR MOTOR ALICANTE',
                     'Comision_Tasador__c' => false, 'IsActive' => true,
                 ]];
@@ -162,7 +177,12 @@ class SalesforceUsersDelegationSyncTest extends TestCase
         $this->assertSame(1, $result['tracked_refresh_queries']);
         $this->assertSame('Marketing', SalesforceUser::query()->value('profile_name'));
         $this->assertTrue(SalesforceUser::query()->firstOrFail()->is_active);
+        $this->assertSame(
+            '2026-04-10 14:11:59',
+            SalesforceUser::query()->firstOrFail()->created_date->utc()->format('Y-m-d H:i:s')
+        );
         $this->assertSame(0, CommercialDelegationSnapshot::query()->whereNull('observed_until')->count());
         $this->assertStringContainsString("Id IN ('005-profile-change')", implode("\n", $client->queries));
+        $this->assertStringContainsString('CreatedDate', implode("\n", $client->queries));
     }
 }

@@ -6188,3 +6188,18 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   limpieza a nulo y rechazo de enteros no positivos/decimales. `git diff
   --check` pasó. No se pudieron ejecutar Pint ni PHPUnit porque el entorno no
   dispone de un ejecutable `php`; CI debe ejecutar la suite objetivo.
+
+## 2026-10-30 — Materialización de `User.CreatedDate`
+
+- La sincronización mensual de Users selecciona `CreatedDate` y lo persiste como
+  `salesforce_users.created_date` nullable mediante una migración aditiva. El
+  modelo lo expone como fecha/hora; la prueba cubre SOQL y normalización UTC.
+- No hay cambio de KPI, fórmula, universo, UI, cierres, snapshots, XLSX ni
+  incorporación de CALL COMUNIDAD. El campo es base de trazabilidad futura y no
+  debe interpretarse como criterio de elegibilidad hasta que exista una regla
+  aprobada y documentada.
+- Documentación focal actualizada: las dos SOQL publicadas de `User` incluyen el
+  campo. La matriz de trazabilidad no cambia por no existir todavía un KPI o
+  contrato económico nuevo. `git diff --check` pasó; Pint, PHPUnit y
+  Documentation Integrity no se pudieron ejecutar localmente porque el entorno
+  no dispone de ejecutables `php` ni `python` utilizables.
