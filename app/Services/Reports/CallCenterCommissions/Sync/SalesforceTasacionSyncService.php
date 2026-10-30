@@ -11,6 +11,7 @@ use RuntimeException;
 class SalesforceTasacionSyncService
 {
     private const SYNC_CHUNK_DAYS = 31;
+
     private const HISTORY_START = '2020-01-01';
 
     private const QUERY_PROFILES = [
@@ -43,8 +44,7 @@ class SalesforceTasacionSyncService
 
     public function __construct(
         private readonly SalesforceClient $client,
-    ) {
-    }
+    ) {}
 
     public function sync(CarbonInterface $periodStart, CarbonInterface $periodEnd): array
     {
@@ -120,7 +120,7 @@ class SalesforceTasacionSyncService
                 } catch (RuntimeException $exception) {
                     $invalidField = $this->invalidFieldFromMessage($exception->getMessage());
 
-                    if ($invalidField === null || !in_array($invalidField, $fields, true)) {
+                    if ($invalidField === null || ! in_array($invalidField, $fields, true)) {
                         $errors[] = $exception->getMessage();
                         break;
                     }
@@ -233,7 +233,7 @@ SOQL;
     private function candidateValue(array $record, array $paths): mixed
     {
         foreach ($paths as $path) {
-            if (!filled($path)) {
+            if (! filled($path)) {
                 continue;
             }
 

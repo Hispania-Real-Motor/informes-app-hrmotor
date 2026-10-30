@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Models\SalesforceTasacion;
 use App\Services\Reports\CallCenterCommissions\Sync\SalesforceTasacionSyncService;
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
@@ -76,9 +75,7 @@ class SalesforceTasacionSyncServiceTest extends TestCase
         {
             public array $queries = [];
 
-            public function __construct()
-            {
-            }
+            public function __construct() {}
 
             public function query(string $soql): array
             {
@@ -101,9 +98,7 @@ class SalesforceTasacionSyncServiceTest extends TestCase
         {
             public array $queries = [];
 
-            public function __construct()
-            {
-            }
+            public function __construct() {}
 
             public function query(string $soql): array
             {

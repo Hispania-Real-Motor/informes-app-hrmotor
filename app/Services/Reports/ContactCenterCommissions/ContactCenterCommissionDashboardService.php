@@ -4,8 +4,8 @@ namespace App\Services\Reports\ContactCenterCommissions;
 
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
-use App\Services\Reports\CommercialCommissions\CommissionMonthResolver;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionSourceReadinessService;
+use App\Services\Reports\CommercialCommissions\CommissionMonthResolver;
 use App\Services\Reports\CommercialCommissions\EligibleDeliveryOpportunityQuery;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -129,20 +129,20 @@ class ContactCenterCommissionDashboardService
 
                 if ($includeDetails) {
                     $summaryRows[$rowKey]['details']['appointments'][] = [
-                    'lead_id' => $appointment->salesforce_id,
-                    'lead_name' => (string) ($appointment->name ?? ''),
-                    'phone_normalized' => implode(' / ', $appointmentPhones),
-                    'agent_name' => $agentName,
-                    'capture_date' => optional($appointment->appointment_capture_date)?->toDateString(),
-                    'appointment_call' => (bool) $appointment->appointment_call,
-                    'appointment_store' => (bool) $appointment->appointment_store,
-                    'attended_status' => (string) ($appointment->appointment_attended_status ?? ''),
-                    'candidate_status' => (string) ($appointment->candidate_status_formula ?? ''),
-                    'owner_name' => (string) ($appointment->owner_name ?? ''),
-                    'store_commercial_name' => (string) ($appointment->store_commercial_name ?? ''),
-                    'portal' => (string) ($appointment->portal_text ?? ''),
-                    'delegation' => (string) ($appointment->delegacion_encargada_text ?? ''),
-                    'inclusion_reason' => $this->appointmentReason($appointment),
+                        'lead_id' => $appointment->salesforce_id,
+                        'lead_name' => (string) ($appointment->name ?? ''),
+                        'phone_normalized' => implode(' / ', $appointmentPhones),
+                        'agent_name' => $agentName,
+                        'capture_date' => optional($appointment->appointment_capture_date)?->toDateString(),
+                        'appointment_call' => (bool) $appointment->appointment_call,
+                        'appointment_store' => (bool) $appointment->appointment_store,
+                        'attended_status' => (string) ($appointment->appointment_attended_status ?? ''),
+                        'candidate_status' => (string) ($appointment->candidate_status_formula ?? ''),
+                        'owner_name' => (string) ($appointment->owner_name ?? ''),
+                        'store_commercial_name' => (string) ($appointment->store_commercial_name ?? ''),
+                        'portal' => (string) ($appointment->portal_text ?? ''),
+                        'delegation' => (string) ($appointment->delegacion_encargada_text ?? ''),
+                        'inclusion_reason' => $this->appointmentReason($appointment),
                     ];
                 }
                 $linkedOpportunities = $this->linkedOpportunitiesForAppointment(
@@ -162,19 +162,19 @@ class ContactCenterCommissionDashboardService
                     $diagnostics['opportunity_links_count']++;
                     if ($includeDetails) {
                         $summaryRows[$rowKey]['details']['opportunities'][] = [
-                        'lead_id' => $appointment->salesforce_id,
-                        'opportunity_id' => $opportunity->salesforce_id,
-                        'opportunity_name' => (string) ($opportunity->name ?? ''),
-                        'phone_normalized' => implode(' / ', $this->phonesForOpportunity($opportunity)),
-                        'agent_name' => $agentName,
-                        'capture_date' => $captureDate,
-                        'opportunity_created_date' => optional($opportunity->created_date)?->toDateString(),
-                        'stage_name' => (string) ($opportunity->stage_name ?? ''),
-                        'owner_name' => (string) ($opportunity->owner_name ?? ''),
-                        'delegation' => (string) ($opportunity->owner_delegation ?? ''),
-                        'record_type_name' => (string) ($opportunity->record_type_name ?? ''),
-                        'link_origin' => $bestOutcome['link_origin'],
-                        'commission_amount' => self::OPPORTUNITY_COMMISSION,
+                            'lead_id' => $appointment->salesforce_id,
+                            'opportunity_id' => $opportunity->salesforce_id,
+                            'opportunity_name' => (string) ($opportunity->name ?? ''),
+                            'phone_normalized' => implode(' / ', $this->phonesForOpportunity($opportunity)),
+                            'agent_name' => $agentName,
+                            'capture_date' => $captureDate,
+                            'opportunity_created_date' => optional($opportunity->created_date)?->toDateString(),
+                            'stage_name' => (string) ($opportunity->stage_name ?? ''),
+                            'owner_name' => (string) ($opportunity->owner_name ?? ''),
+                            'delegation' => (string) ($opportunity->owner_delegation ?? ''),
+                            'record_type_name' => (string) ($opportunity->record_type_name ?? ''),
+                            'link_origin' => $bestOutcome['link_origin'],
+                            'commission_amount' => self::OPPORTUNITY_COMMISSION,
                         ];
                     }
 
@@ -183,17 +183,17 @@ class ContactCenterCommissionDashboardService
                         $diagnostics['reservation_links_count']++;
                         if ($includeDetails) {
                             $summaryRows[$rowKey]['details']['reservations'][] = [
-                            'opportunity_id' => $opportunity->salesforce_id,
-                            'opportunity_name' => (string) ($opportunity->name ?? ''),
-                            'reservation_date' => optional($opportunity->reservation_date)?->toDateString(),
-                            'agent_name' => $agentName,
-                            'phone_normalized' => implode(' / ', $this->phonesForOpportunity($opportunity)),
-                            'vehicle_plate' => (string) ($opportunity->vehicle_plate ?? ''),
-                            'account_name' => (string) ($opportunity->account_name ?? ''),
-                            'stage_name' => (string) ($opportunity->stage_name ?? ''),
-                            'portal' => (string) ($opportunity->portal_resolved ?? $opportunity->portal_original ?? ''),
-                            'pending_contract' => (bool) $opportunity->reservation && !(bool) $opportunity->cv_signed,
-                            'observations' => $bestOutcome['link_origin'],
+                                'opportunity_id' => $opportunity->salesforce_id,
+                                'opportunity_name' => (string) ($opportunity->name ?? ''),
+                                'reservation_date' => optional($opportunity->reservation_date)?->toDateString(),
+                                'agent_name' => $agentName,
+                                'phone_normalized' => implode(' / ', $this->phonesForOpportunity($opportunity)),
+                                'vehicle_plate' => (string) ($opportunity->vehicle_plate ?? ''),
+                                'account_name' => (string) ($opportunity->account_name ?? ''),
+                                'stage_name' => (string) ($opportunity->stage_name ?? ''),
+                                'portal' => (string) ($opportunity->portal_resolved ?? $opportunity->portal_original ?? ''),
+                                'pending_contract' => (bool) $opportunity->reservation && ! (bool) $opportunity->cv_signed,
+                                'observations' => $bestOutcome['link_origin'],
                             ];
                         }
                     }
@@ -214,7 +214,7 @@ class ContactCenterCommissionDashboardService
                     ? $this->contactCenterAgentName($appointment->appointment_setter_name ?: $appointment->appointment_setter_id)
                     : null;
 
-                if ($agentName === null || !$appointment instanceof SalesforceLead) {
+                if ($agentName === null || ! $appointment instanceof SalesforceLead) {
                     continue;
                 }
 
@@ -223,21 +223,21 @@ class ContactCenterCommissionDashboardService
                 $summaryRows[$rowKey]['sales_count']++;
                 if ($includeDetails) {
                     $summaryRows[$rowKey]['details']['sales'][] = [
-                    'opportunity_id' => $sale->salesforce_id,
-                    'opportunity_name' => (string) ($sale->name ?? ''),
-                    'phone_normalized' => implode(' / ', $this->phonesForOpportunity($sale)),
-                    'agent_name' => $agentName,
-                    'contract_signed_date' => optional($sale->cv_signed_date)?->toDateString(),
-                    'cv_signed' => (bool) $sale->cv_signed,
-                    'stage_name' => (string) ($sale->stage_name ?? ''),
-                    'owner_name' => (string) ($sale->owner_name ?? ''),
-                    'delegation' => (string) ($sale->owner_delegation ?? ''),
-                    'vehicle_plate' => (string) ($sale->vehicle_plate ?? ''),
-                    'record_type_name' => (string) ($sale->record_type_name ?? ''),
-                    'month_imputed' => $selectedMonth->format('Y-m'),
-                    'sale_commission_amount' => self::SALE_COMMISSION,
-                    'ratio_bonus_applied' => false,
-                    'observations' => $bestAppointment['reason'],
+                        'opportunity_id' => $sale->salesforce_id,
+                        'opportunity_name' => (string) ($sale->name ?? ''),
+                        'phone_normalized' => implode(' / ', $this->phonesForOpportunity($sale)),
+                        'agent_name' => $agentName,
+                        'contract_signed_date' => optional($sale->cv_signed_date)?->toDateString(),
+                        'cv_signed' => (bool) $sale->cv_signed,
+                        'stage_name' => (string) ($sale->stage_name ?? ''),
+                        'owner_name' => (string) ($sale->owner_name ?? ''),
+                        'delegation' => (string) ($sale->owner_delegation ?? ''),
+                        'vehicle_plate' => (string) ($sale->vehicle_plate ?? ''),
+                        'record_type_name' => (string) ($sale->record_type_name ?? ''),
+                        'month_imputed' => $selectedMonth->format('Y-m'),
+                        'sale_commission_amount' => self::SALE_COMMISSION,
+                        'ratio_bonus_applied' => false,
+                        'observations' => $bestAppointment['reason'],
                     ];
                 }
             }
@@ -523,7 +523,7 @@ class ContactCenterCommissionDashboardService
     {
         $rawDate = $this->payloadValue($opportunity, 'Fecha_captador__c');
 
-        if (!filled($rawDate)) {
+        if (! filled($rawDate)) {
             return null;
         }
 
@@ -621,7 +621,7 @@ class ContactCenterCommissionDashboardService
 
         return $records
             ->filter(function (SalesforceOpportunity $opportunity) use ($captureDate, $closureEnd): bool {
-                if (!$this->opportunityHasOutcomeAfterDate($opportunity, $captureDate)) {
+                if (! $this->opportunityHasOutcomeAfterDate($opportunity, $captureDate)) {
                     return false;
                 }
 
@@ -844,7 +844,7 @@ class ContactCenterCommissionDashboardService
         $current = $payload;
 
         foreach ($segments as $segment) {
-            if (!is_array($current)) {
+            if (! is_array($current)) {
                 return null;
             }
 
@@ -986,11 +986,11 @@ class ContactCenterCommissionDashboardService
     {
         $issues = [];
 
-        if (!Schema::hasTable('salesforce_leads')) {
+        if (! Schema::hasTable('salesforce_leads')) {
             $issues[] = 'La tabla local salesforce_leads no existe todavia.';
         }
 
-        if (!Schema::hasTable('salesforce_opportunities')) {
+        if (! Schema::hasTable('salesforce_opportunities')) {
             $issues[] = 'La tabla local salesforce_opportunities no existe todavia.';
         }
 
@@ -1007,7 +1007,7 @@ class ContactCenterCommissionDashboardService
             'converted_opportunity_id',
             'portal_text',
         ] as $column) {
-            if (Schema::hasTable('salesforce_leads') && !Schema::hasColumn('salesforce_leads', $column)) {
+            if (Schema::hasTable('salesforce_leads') && ! Schema::hasColumn('salesforce_leads', $column)) {
                 $issues[] = "Falta la columna local salesforce_leads.{$column}. Ejecuta migrate y re-sincroniza leads.";
             }
         }
@@ -1031,7 +1031,7 @@ class ContactCenterCommissionDashboardService
             'cv_signed_date',
             'raw_payload',
         ] as $column) {
-            if (Schema::hasTable('salesforce_opportunities') && !Schema::hasColumn('salesforce_opportunities', $column)) {
+            if (Schema::hasTable('salesforce_opportunities') && ! Schema::hasColumn('salesforce_opportunities', $column)) {
                 $issues[] = "Falta la columna local salesforce_opportunities.{$column}.";
             }
         }

@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\ReportUser;
 use App\Models\ReportSyncRun;
+use App\Models\ReportUser;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Services\Reports\ContactCenterCommissions\ContactCenterCommissionDashboardService;
