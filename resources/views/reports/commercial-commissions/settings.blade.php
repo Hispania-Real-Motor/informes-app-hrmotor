@@ -32,6 +32,9 @@
                 <h1>Coeficientes de comisiones</h1>
                 <p class="sub">Solo el rol administrador puede editar coeficientes. El mes en curso permanece abierto y cualquier mes cerrado puede abrirse temporalmente para revision.</p>
             </div>
+            <div class="filter-actions">
+                <a class="main-tab" href="{{ route('reports.commission-settings.contact-center-roster.index') }}">Roster Contact Center</a>
+            </div>
         </section>
 
         @if (session('status'))

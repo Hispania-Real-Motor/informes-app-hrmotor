@@ -6203,3 +6203,17 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   contrato económico nuevo. `git diff --check` pasó; Pint, PHPUnit y
   Documentation Integrity no se pudieron ejecutar localmente porque el entorno
   no dispone de ejecutables `php` ni `python` utilizables.
+
+## 2026-10-30 — Roster persistente de Contact Center
+
+- Administración de Comisiones puede mantener el roster por Salesforce User ID,
+  nombre visible y rango inclusivo de vigencia. El bootstrap inserta siete IDs
+  con vigencia desde `2026-09-01`; un ID no puede tener tramos solapados.
+- La tabla no tiene FK física a `salesforce_users` deliberadamente: permite
+  preparar el roster antes del primer sync. El sync mensual refresca esos IDs en
+  un batch aparte, sin ampliar la query principal de perfiles de Users.
+- No es una regla económica ni incluye CALL COMUNIDAD como perfil: no cambia
+  fórmulas, KPI, universos, UI del informe, cierres, snapshots, XLSX o la
+  comisión Responsable Contact Center. La matriz no cambia. El agente principal
+  no pudo ejecutar localmente PHPUnit ni Pint por ausencia de `php`; `git diff
+  --check` pasó y CI debe ejecutar las validaciones restantes.

@@ -3,6 +3,7 @@
 namespace App\Services\Reports\MonthlyCommercial\Sync;
 
 use App\Models\CommercialDelegationSnapshot;
+use App\Models\ContactCenterCommissionRosterMember;
 use App\Models\SalesforceUser;
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
@@ -79,6 +80,7 @@ class SalesforceMonthlyUsersSyncService
             ->where(function ($query): void {
                 $query->whereIn('profile_name', self::COMMERCIAL_PROFILES)
                     ->orWhere('commission_appraiser', true)
+                    ->orWhereIn('salesforce_id', ContactCenterCommissionRosterMember::query()->select('salesforce_user_id'))
                     ->orWhereIn('salesforce_id', CommercialDelegationSnapshot::query()
                         ->whereNull('observed_until')
                         ->select('salesforce_user_id'));

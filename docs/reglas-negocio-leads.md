@@ -23,6 +23,13 @@ El informe usa exclusivamente estas fuentes locales:
 El render HTTP no consulta Salesforce. No recupera atributos desde Lead,
 Account o Contact y no utiliza PII como fallback.
 
+El refresco mensual de Users puede incluir en un batch adicional los Salesforce
+User IDs configurados en el roster de Contact Center. Ese roster no altera los
+perfiles ni la elegibilidad de Interests y no tiene FK física a
+`salesforce_users`, pues admite preparación previa al primer sync. Sus rangos de
+vigencia y nombres visibles son metadatos del roster de Comisiones; no se usan
+en filtros, universos, KPI, cálculos ni presentación de Interests.
+
 ## Disponibilidad del dashboard
 
 La fuente es la generación publicada mediante puntero transaccional, con F2/F5

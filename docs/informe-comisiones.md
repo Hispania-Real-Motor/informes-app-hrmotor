@@ -133,6 +133,22 @@ Resumen funcional:
 La identidad principal de una persona es Salesforce User ID; el nombre es solo
 una etiqueta y no debe usarse para unir registros.
 
+### Roster administrativo de Contact Center
+
+La configuración de Comisiones incorpora un roster persistente de Contact Center
+para conservar qué Salesforce User IDs deben refrescarse aunque su perfil no esté
+incluido en la consulta principal de Users. Administración gestiona ID, nombre
+visible y tramos de vigencia inclusivos (`effective_from` y opcionalmente
+`effective_until`); no se admiten tramos solapados para un mismo ID. El bootstrap
+registra siete IDs a partir de `2026-09-01`.
+
+El roster no tiene FK física a `salesforce_users`: puede configurarse antes del
+primer sync de Users. El refresco mensual solicita sus IDs en un batch trazable
+separado y no amplía el filtro de perfiles de la consulta principal. Es una
+configuración de identidad y actualización local, no una regla económica: no
+modifica fórmulas, KPI, universos, cierres, snapshots, exportaciones ni el bloque
+Responsable Contact Center.
+
 ## Reseñas
 
 La fórmula actual no se ha cambiado:

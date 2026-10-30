@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\CommercialDelegationSnapshot;
+use App\Models\ContactCenterCommissionRosterMember;
 use App\Models\SalesforceUser;
 use App\Services\Reports\MonthlyCommercial\Sync\SalesforceMonthlyUsersSyncService;
 use App\Services\Reports\ReservationsSales\CommercialDelegationSnapshotService;
@@ -184,5 +185,47 @@ class SalesforceUsersDelegationSyncTest extends TestCase
         $this->assertSame(0, CommercialDelegationSnapshot::query()->whereNull('observed_until')->count());
         $this->assertStringContainsString("Id IN ('005-profile-change')", implode("\n", $client->queries));
         $this->assertStringContainsString('CreatedDate', implode("\n", $client->queries));
+    }
+
+    public function test_roster_contact_center_se_refresca_en_un_unico_batch_sin_ampliar_la_query_principal(): void
+    {
+        foreach (['005Qx00000RosterA1', '005Qx00000RosterB2', '005Qx00000RosterC3'] as $id) {
+            ContactCenterCommissionRosterMember::query()->create([
+                'salesforce_user_id' => $id,
+                'display_name' => 'Agente roster',
+                'effective_from' => '2026-09-01',
+            ]);
+        }
+
+        $client = new class extends SalesforceClient
+        {
+            public array $queries = [];
+
+            public function __construct() {}
+
+            public function query(string $soql): array
+            {
+                $this->queries[] = $soql;
+
+                if (! str_contains($soql, 'WHERE Id IN')) {
+                    return [];
+                }
+
+                return [[
+                    'Id' => '005Qx00000RosterA1', 'Name' => 'Agente Salesforce', 'Email' => null,
+                    'CreatedDate' => '2026-09-09T07:42:09.000+0000', 'Profile' => ['Name' => 'CALL COMUNIDAD'],
+                    'USR_SEL_Delegacion__c' => null, 'Comision_Tasador__c' => false, 'IsActive' => true,
+                ]];
+            }
+        };
+
+        $result = (new SalesforceMonthlyUsersSyncService($client))->sync();
+        $tracked = collect($client->queries)->filter(fn (string $query): bool => str_contains($query, 'WHERE Id IN'));
+
+        $this->assertSame(1, $result['tracked_refresh_queries']);
+        $this->assertCount(1, $tracked);
+        $this->assertStringContainsString("'005Qx00000RosterA1'", $tracked->first());
+        $this->assertStringNotContainsString('CALL COMUNIDAD', $client->queries[0]);
+        $this->assertDatabaseHas('salesforce_users', ['salesforce_id' => '005Qx00000RosterA1', 'profile_name' => 'CALL COMUNIDAD']);
     }
 }
