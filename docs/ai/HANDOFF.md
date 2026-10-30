@@ -6137,9 +6137,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `Tasacion__c` y se incorpora desde `2026-09` el bloque independiente Responsable
   Contact Center. No se ejecutaron sincronizaciones ni se consultó Salesforce o producción.
 - Reglas vigentes: el mes actual combina únicamente runs `completed` contiguos o
-  solapados desde el día 1 hasta el corte actual y exige frescura configurada;
-  meses cerrados mantienen cobertura completa verificable. Un hueco real sigue
-  bloqueando. Tasaciones usa `Oportunidad__c`/`Oportunidad__r` y los campos
+  solapados desde el día 1, conserva su último `period_end_at` cubierto y mide
+  la cola hasta el instante actual con la frescura configurada; no exige un
+  `period_end_at` futuro ni igual a `now()`. Un hueco real sigue bloqueando y
+  meses cerrados mantienen cobertura completa verificable. Tasaciones usa
+  `Oportunidad__c`/`Oportunidad__r` y los campos
   `Negociaci_n_*` confirmados; el fallback no reintroduce los campos retirados.
 - Responsable Contact Center: no forma parte de `summary_rows`, no depende de
   citas, llamadas, captador ni Tasaciones, y usa las entregas compartidas de

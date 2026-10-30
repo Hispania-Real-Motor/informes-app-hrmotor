@@ -66,12 +66,14 @@ siguiente)` y respete la frescura configurada. No se acepta una cobertura parcia
 ni se marca como cubierta una fecha futura.
 
 En el mes actual provisional la evidencia se evalúa de forma distinta: se unen
-solo intervalos de ejecuciones `completed`, se exige continuidad desde el primer
-día hasta el corte actual y una ejecución reciente según
+solo intervalos de ejecuciones `completed` desde el primer día y se conserva el
+último extremo cubierto (`coveredUntil`). No se exige que `period_end_at` alcance
+la hora del render: una ejecución fija ese fin antes de completar. La cola entre
+`coveredUntil` y el instante actual se trata como frescura y debe ser menor que
 `closure_source_max_age_hours` (48 horas por defecto). Varias ejecuciones
-solapadas o contiguas pueden cubrir el mes; un hueco entre intervalos o un corte
-final antiguo bloquea con **Revisar**. Que aún no haya terminado el mes no es por
-sí mismo una incidencia.
+solapadas o contiguas pueden cubrir el mes; un hueco entre intervalos sigue
+bloqueando con **Revisar** y no queda oculto por la tolerancia final. Que aún no
+haya terminado el mes no es por sí mismo una incidencia.
 
 Estados persistentes:
 

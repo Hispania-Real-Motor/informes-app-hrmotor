@@ -127,23 +127,22 @@ class CommercialCommissionSourceReadinessService
 
     private function currentMonthSyncRunState(string $dataset, string $label, CarbonImmutable $month): array
     {
-        $cutoff = CarbonImmutable::now($month->getTimezone())->min($month->addMonth());
+        $now = CarbonImmutable::now($month->getTimezone())->min($month->addMonth());
         $runs = ReportSyncRun::query()
             ->where('dataset', $dataset)
             ->where('status', 'completed')
             ->whereNotNull('completed_at')
             ->where('period_end_at', '>', $month)
-            ->where('period_start_at', '<', $cutoff)
+            ->where('period_start_at', '<', $now)
             ->orderBy('period_start_at')
             ->orderBy('period_end_at')
-            ->get();
+            ->get(['period_start_at', 'period_end_at', 'completed_at']);
 
         if ($runs->isEmpty()) {
             return $this->state($label, 'error', true, null, 'No existe una sincronización completada que cubra el mes provisional.');
         }
 
         $coveredUntil = $month;
-        $coverageCompletedAt = null;
         foreach ($runs as $run) {
             $start = CarbonImmutable::parse($run->period_start_at);
             $end = CarbonImmutable::parse($run->period_end_at);
@@ -154,27 +153,15 @@ class CommercialCommissionSourceReadinessService
 
             if ($end->greaterThan($coveredUntil)) {
                 $coveredUntil = $end;
-                $coverageCompletedAt = $run->completed_at;
-            }
-
-            if ($coveredUntil->greaterThanOrEqualTo($cutoff)) {
-                break;
             }
         }
 
-        if ($coveredUntil->lessThan($cutoff)) {
-            $latest = $runs->sortByDesc(fn (ReportSyncRun $run): int => $run->completed_at->getTimestamp())->first();
-
-            return $this->state($label, 'error', true, $latest?->completed_at?->toIso8601String(), 'La cobertura del mes provisional no alcanza un corte actual.');
-        }
-
-        $updatedAt = $coverageCompletedAt;
         $maxAge = max(1, (int) config('commercial_commissions.closure_source_max_age_hours', 48));
-        if ($updatedAt === null || $updatedAt->lt(now()->subHours($maxAge))) {
-            return $this->state($label, 'stale', true, $updatedAt?->toIso8601String(), 'La sincronización provisional está desactualizada.');
+        if ($coveredUntil->lt($now->subHours($maxAge))) {
+            return $this->state($label, 'stale', true, $coveredUntil->toIso8601String(), 'El último corte de la sincronización provisional está desactualizado.');
         }
 
-        return $this->state($label, 'ready', false, $updatedAt->toIso8601String(), 'Cobertura continua y reciente del mes provisional verificada.');
+        return $this->state($label, 'ready', false, $coveredUntil->toIso8601String(), 'Cobertura continua y reciente del mes provisional verificada.');
     }
 
     private function localTableState(string $table, string $label, ?string $month = null): array

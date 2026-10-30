@@ -215,6 +215,53 @@ class ContactCenterCommissionDashboardTest extends TestCase
         $this->assertSame(0.0, $payload['responsible_contact_center']['final_total']);
     }
 
+    public function test_responsable_contact_center_applies_all_integer_thresholds_without_float_rounding(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $this->completeOpportunityCoverage('2025-09-01', '2025-10-01');
+
+        foreach ([89 => 0.0, 90 => 350.0, 99 => 350.0, 100 => 500.0, 101 => 505.0, 150 => 750.0] as $actual => $expected) {
+            SalesforceOpportunity::query()->delete();
+            $this->createResponsibleDeliveries(100, $actual);
+
+            $responsible = app(ContactCenterCommissionDashboardService::class)->build('2026-09')['responsible_contact_center'];
+
+            $this->assertSame($expected, $responsible['final_total'], 'Actual='.$actual);
+        }
+
+        SalesforceOpportunity::query()->delete();
+        $this->createResponsibleDeliveries(101, 91);
+        $responsible = app(ContactCenterCommissionDashboardService::class)->build('2026-09')['responsible_contact_center'];
+        $this->assertSame(350.0, $responsible['final_total']);
+    }
+
+    public function test_responsable_contact_center_blocks_a_zero_reference_despite_complete_coverage(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $this->completeOpportunityCoverage('2025-09-01', '2025-10-01');
+        $this->createResponsibleDeliveries(0, 1);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+
+        $this->assertFalse($payload['ready']);
+        $this->assertFalse($payload['responsible_contact_center']['certifiable']);
+        $this->assertStringContainsString('no tiene entregas elegibles', $payload['issues'][0]);
+    }
+
+    private function createResponsibleDeliveries(int $reference, int $actual): void
+    {
+        if ($reference > 0) {
+            foreach (range(1, $reference) as $index) {
+                $this->createOpportunity(['salesforce_id' => '006-threshold-reference-'.$index, 'cv_signed' => true, 'cv_signed_date' => '2025-09-15']);
+            }
+        }
+        if ($actual > 0) {
+            foreach (range(1, $actual) as $index) {
+                $this->createOpportunity(['salesforce_id' => '006-threshold-current-'.$index, 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+            }
+        }
+    }
+
     private function completeOpportunityCoverage(string $from, string $to): void
     {
         ReportSyncRun::query()->create([
