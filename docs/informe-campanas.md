@@ -18,6 +18,11 @@ su relación como `appointment_setter_id` y `appointment_setter_name` para
 atribuciones futuras. No modifica KPIs, filtros, fórmulas ni cálculos de
 Campañas.
 
+Las evidencias manuales de citas/entregas de Contact Center se persisten en
+tablas separadas para auditoría de Comisiones. No participan en la atribución
+ROT-4, la fuente Interest, filtros, KPIs, fórmulas, API, CSV, cierres ni
+snapshots de Campañas.
+
 La ruta administrativa del roster de Contact Center está restringida a
 administradores y solo mantiene identidad/vigencia para el refresco local de
 Users; no altera las fuentes, cálculos ni KPIs de Campañas.

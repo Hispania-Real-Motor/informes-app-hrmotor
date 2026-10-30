@@ -6238,3 +6238,26 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pendiente de registrar por el agente principal: ejecución de PHPUnit/Pint y
   del validador documental sobre el SHA y cuerpo final de la PR. Esta nota no
   declara esas validaciones como satisfactorias.
+
+## 2026-10-30 — Evidencia manual de citas y entregas de Contact Center
+
+- La migración
+  `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
+  crea tres tablas locales: evidencia de cita desde `Interes__c` por
+  `IN_Fecha_Captador_de_Cita__c`, evidencia de entrega desde `Product2` y la
+  conciliación de ambas fuentes con Opportunities CV firmadas. Conservan IDs,
+  fechas, estado/nombre cuando aplica, payload, última modificación y corte de
+  sincronización; la conciliación guarda `MATCH`, `OPPORTUNITY_ONLY`,
+  `PRODUCT2_ONLY`, `DATE_MISMATCH` o `STATE_MISMATCH`.
+- Los comandos manuales requieren un intervalo explícito `[from, to)` y
+  registran el intento en `report_sync_runs`. Product2 se consulta por fecha de
+  entrega y por IDs referidos desde Opportunities CV firmadas del período. No
+  hay scheduler, escrituras en Salesforce, cambios en `salesforce_vehicles` ni
+  generación, recuperación o publicación de Interests.
+- Es evidencia de auditoría de Comisiones: no cambia fórmulas, KPIs, filtros,
+  universos, cierres, snapshots, XLSX ni presentación. Se documentó el
+  aislamiento en Comisiones, Reservas/Ventas, Campañas y Stock; la matriz de
+  trazabilidad no cambia porque no se modifica ningún contrato KPI.
+- Pendiente de registrar por el agente principal: resultados de PHPUnit, Pint y
+  del validador documental sobre el SHA y cuerpo de PR finales. Esta nota no
+  declara pruebas locales ni CI satisfactorias.

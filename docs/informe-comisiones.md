@@ -262,6 +262,40 @@ php artisan salesforce:sync-tasaciones --all
 Los reprocesados de datos operativos no modifican snapshots definitivos salvo
 reapertura autorizada.
 
+### Evidencia manual de citas y entregas de Contact Center
+
+Esta evidencia es auxiliar de auditoría y no una fuente del cálculo vigente.
+La migración `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
+crea tres réplicas locales separadas de los hechos del informe:
+
+- `commercial_commission_appointment_evidences` conserva, por `Interes__c.Id`,
+  el captador de cita, su nombre, `IN_Fecha_Captador_de_Cita__c`, la última
+  modificación Salesforce, payload y corte de sincronización. Su consulta se
+  acota por la fecha de captación con intervalo `[from, to)`.
+- `commercial_commission_product_delivery_evidences` conserva, por `Product2.Id`,
+  estado, `Fecha_entregado__c`, matrícula, última modificación, payload y corte.
+  La carga incluye tanto Product2 con fecha de entrega en `[from, to)` como los
+  IDs referidos por Opportunities locales con CV firmada en ese intervalo; no
+  modifica `salesforce_vehicles`.
+- `commercial_commission_delivery_reconciliations` guarda por período la
+  comparación de esas evidencias contra Opportunities CV firmadas, con IDs,
+  fechas, estado y clasificación `MATCH`, `OPPORTUNITY_ONLY`, `PRODUCT2_ONLY`,
+  `DATE_MISMATCH` o `STATE_MISMATCH`.
+
+Las ejecuciones son manuales y requieren `--from=YYYY-MM-DD` y
+`--to=YYYY-MM-DD` (fin exclusivo):
+
+```bash
+php artisan salesforce:sync-commercial-commission-appointments --from=YYYY-MM-DD --to=YYYY-MM-DD
+php artisan salesforce:sync-commercial-commission-product-deliveries --from=YYYY-MM-DD --to=YYYY-MM-DD
+```
+
+Ambas registran su ejecución en `report_sync_runs`; no hay scheduler, escritura
+en Salesforce, publicación/recuperación de generaciones de Interests ni cambio
+en fórmulas, KPIs, filtros, universos, cierres, snapshots o XLSX. Las
+conciliaciones son evidencia de revisión y no certifican ni recalculan una
+comisión por sí solas.
+
 Para poder preparar o cerrar el Responsable Contact Center desde `2026-09`, debe
 existir una ejecución `completed` de `salesforce_opportunities` que cubra por
 completo el mismo mes natural del año anterior. Por ejemplo, septiembre de 2026
