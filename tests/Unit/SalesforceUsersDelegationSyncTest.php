@@ -183,7 +183,7 @@ class SalesforceUsersDelegationSyncTest extends TestCase
             SalesforceUser::query()->firstOrFail()->created_date->utc()->format('Y-m-d H:i:s')
         );
         $this->assertSame(0, CommercialDelegationSnapshot::query()->whereNull('observed_until')->count());
-        $this->assertStringContainsString("Id IN ('005-profile-change')", implode("\n", $client->queries));
+        $this->assertStringContainsString("'005-profile-change'", implode("\n", $client->queries));
         $this->assertStringContainsString('CreatedDate', implode("\n", $client->queries));
     }
 
