@@ -6221,7 +6221,7 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 ## 2026-10-30 — Materialización de captador de cita en Opportunities
 
 - La migración
-  `2026_10_30_140000_add_appointment_setter_fields_to_salesforce_opportunities_table.php`
+  `2026_10_30_140000_add_appointment_setter_fields_to_salesforce_opportunity_table.php`
   añade a `salesforce_opportunities` los campos nullable
   `appointment_setter_id` (Salesforce User ID) y `appointment_setter_name`.
   La sincronización existente de Opportunities los proyecta desde
