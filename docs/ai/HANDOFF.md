@@ -6415,3 +6415,15 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   diario y la vista provisional son diagnósticos y no pueden alimentar cálculos
   oficiales sin una fuente Interest certificada. Sin cambios de esquema,
   permisos, datos, scheduler, workers ni accesos a Salesforce/producción.
+
+## 2026-11-03 — hotfix de identificador MySQL de recuperación Interest
+
+- La FK de `source_generation_id` usa ahora el nombre explícito
+  `sf_irp_source_fk`, evitando el identificador derivado que excedía el límite
+  de 64 caracteres de MySQL. No cambia columnas, relaciones, índices ni
+  comportamiento de la recuperación.
+- La migración se verificó en una base MariaDB aislada: las tres tablas y sus
+  constraints quedaron creados con los nombres esperados. Un estado parcial de
+  prueba falla cerrado y se conserva sin limpieza automática. Sigue pendiente
+  repetir esta comprobación específica en MySQL 8 aislado antes de despliegue;
+  no se accedió a producción ni se tocaron datos o evidencias.

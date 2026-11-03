@@ -32,7 +32,8 @@ return new class extends Migration
             $table->timestamps();
             $table->unique(['source_generation_id', 'functional_start_at', 'functional_end_at'], 'sf_irp_source_window_uq');
             $table->index(['source_generation_id', 'status'], 'sf_irp_source_status_idx');
-            $table->foreign('source_generation_id')->references('id')->on('salesforce_interest_generations');
+            $table->foreign('source_generation_id', 'sf_irp_source_fk')
+                ->references('id')->on('salesforce_interest_generations');
         });
 
         Schema::create('salesforce_interest_recovery_period_seen', function (Blueprint $table): void {
