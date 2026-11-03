@@ -78,8 +78,7 @@ class CommercialCommissionDeliveryReconciliationService
         SalesforceOpportunity $opportunity,
         ?CommercialCommissionProductDeliveryEvidence $product,
         bool $duplicateProductLink,
-    ): string
-    {
+    ): string {
         if ($duplicateProductLink) {
             return 'DUPLICATE_PRODUCT2_LINK';
         }
