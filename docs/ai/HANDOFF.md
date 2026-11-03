@@ -20,10 +20,11 @@
   irreversible nueva.
 - Seguridad y rendimiento: no se exponen datos adicionales ni se relajan roles;
   el rechazo temprano evita generar un libro XLSX con evidencia inválida. No se
-  añaden consultas por agente ni llamadas Salesforce. Validaciones pendientes
-  del agente principal: PHPUnit completo, Pint, build, `docs-integrity` y
-  `git diff --check` sobre el SHA final. Sin sync, cierre, aprobación, despliegue
-  ni modificación de producción.
+  añaden consultas por agente ni llamadas Salesforce. La CI del SHA funcional
+  ejecutó PHPUnit (1.589 pruebas, 14.270 aserciones), Pint, build, whitespace y
+  `docs-integrity` correctamente; la comprobación local se limitó a sintaxis y
+  Pint focal porque este worktree no contiene `vendor`. Sin sync, cierre,
+  aprobación, despliegue ni modificación de producción.
 
 ## Comisiones — integridad de roster y readiness de Vanesa (2026-11-03)
 
