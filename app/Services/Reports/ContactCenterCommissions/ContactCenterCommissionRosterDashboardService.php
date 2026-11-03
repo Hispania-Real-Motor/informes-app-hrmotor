@@ -93,6 +93,9 @@ class ContactCenterCommissionRosterDashboardService
             'ready' => $issues === [],
             'plan' => 'roster_evidence',
             'month' => $monthKey,
+            // The closure must freeze the exact settings that were used to
+            // calculate this payload, rather than resolving them a second time.
+            'formula_settings' => $settings,
             'month_label' => $start->translatedFormat('F Y'),
             'closure_cutoff_date' => $end->subDay()->toDateString(),
             'issues' => array_values(array_unique($issues)),
@@ -278,8 +281,11 @@ class ContactCenterCommissionRosterDashboardService
         if ($target === null) {
             $issues[] = 'Falta objetivo general de entregas de compañía para el mes.';
         }
+        if (! $sourceCertifiable) {
+            $issues[] = 'La cobertura de Opportunities no permite certificar las entregas de compañía.';
+        }
         $certifiable = $sourceCertifiable && $target !== null;
-        $formula = $target === null ? [
+        $formula = ! $certifiable ? [
             'compliance_percent' => null,
             'bracket' => 'No certificable',
             'base_amount' => null,

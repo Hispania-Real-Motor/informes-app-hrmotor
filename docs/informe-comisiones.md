@@ -315,10 +315,30 @@ sólo para presentar. Su certificación requiere exclusivamente la cobertura de
 `salesforce_opportunities` y el objetivo mensual; no depende de evidencia de
 citas, reservas, conversión, `SalesforceUser` ni roster. Por ello el dashboard
 puede seguir no certificable para agentes mientras el bloque de Vanesa sí lo es.
+Si falta esa cobertura de Opportunities, o falta el objetivo, los importes de
+Vanesa dependientes de entregas (`base_amount`, adicional y total) quedan en
+`null`; no se presenta un cálculo parcial como cero válido.
 
-Este bloque no implementa cierres, snapshots ni hojas XLSX nuevas. Sigue siendo
-operativo; cualquier congelación o exportación específica requerirá un cambio
-posterior con contrato y pruebas propios.
+Desde septiembre, el cierre Contact Center exige los componentes `appointments`
+y `sales`. Al preparar se captura un candidato con `contact_center` completo
+(plan, mes, incidencias, advertencias, diagnóstico, filas, Responsable e
+incidencias globales) y `formula_settings`. El objetivo congelado se toma del
+mismo payload que calculó las filas, no de una segunda lectura. La aprobación
+no consulta fuentes vivas: rechaza un candidato si hay una fila exigible no
+certificable o con total `null`, si el Responsable no es certificable o si el
+objetivo congelado no es entero positivo y no coincide con el utilizado por las
+filas. Un cero económico certificado sigue siendo un cero válido.
+
+Un definitivo reutiliza exclusivamente su snapshot tanto en el dashboard como
+en el XLSX. La reapertura conserva la versión definitiva anterior y permite
+preparar/aprobar una versión posterior con sus propios datos y settings; no
+reescribe snapshots históricos. Desde septiembre, el XLSX incorpora una hoja
+detallada de Contact Center (identidad Salesforce, CreatedDate, umbral, hechos,
+tramos, objetivo, importes, certificación e incidencias) y una hoja de
+Responsable basada en el objetivo mensual, sin columnas de referencia anual.
+Sin definitivo, la exportación exige cálculo live certificable y devuelve HTTP
+409 con un mensaje controlado si no lo hay. Julio y agosto mantienen el
+dashboard, componentes, snapshots y formato XLSX legacy.
 La migración `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
 crea tres réplicas locales separadas de los hechos del informe:
 
@@ -363,6 +383,16 @@ para `salesforce_opportunities`. La falta de cobertura bloquea la certificación
 un resultado de cero con cobertura válida se conserva como cero. Las
 conciliaciones son evidencia de revisión y no certifican ni recalculan una
 comisión por sí solas.
+
+Procedimiento posterior al despliegue para septiembre: tras autorización, usar
+el intervalo `[2026-09-01, 2026-10-01)` en los comandos de Opportunities,
+evidencia de citas y Product2/conciliación aplicables; comprobar en
+`report_sync_runs` que `commercial_commission_appointment_evidence` y
+`salesforce_opportunities` tienen un run `completed` que cubre el intervalo;
+configurar el objetivo mensual positivo; revisar filas de agentes, incidencias y
+Responsable; y solo entonces preparar y aprobar con un rol autorizado. Ninguno
+de estos pasos acredita por sí mismo nóminas ni comisiones pagadas: requieren
+conciliación externa.
 
 Archivos principales:
 

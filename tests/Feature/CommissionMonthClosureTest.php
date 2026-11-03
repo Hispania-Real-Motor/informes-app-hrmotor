@@ -31,8 +31,9 @@ class CommissionMonthClosureTest extends TestCase
     {
         parent::setUp();
         $readiness = Mockery::mock(CommercialCommissionSourceReadinessService::class);
-        $readiness->shouldReceive('inspect')->andReturnUsing(function (string $scope): array {
-            $components = collect(CommercialCommissionClosureService::REQUIRED_COMPONENTS_BY_SCOPE[$scope])
+        $readiness->shouldReceive('inspect')->andReturnUsing(function (string $scope, string $month): array {
+            $components = collect(app(CommercialCommissionClosureService::class)->requiredComponents($scope, $month))
+                ->keys()
                 ->mapWithKeys(fn (string $key): array => [$key => [
                     'label' => $key, 'status' => 'ready', 'blocking' => false,
                     'updated_at' => now()->toIso8601String(), 'checked_at' => now()->toIso8601String(), 'message' => 'Fuente de prueba lista.',
@@ -363,10 +364,12 @@ class CommissionMonthClosureTest extends TestCase
         $admin = $this->user(ReportUser::ROLE_ADMIN);
         $contactCenter = Mockery::mock(ContactCenterCommissionDashboardService::class);
         $contactCenter->shouldReceive('build')->once()->with('2026-09', true)->andReturn([
-            'month' => '2026-09', 'ready' => true, 'issues' => [], 'warnings' => [],
-            'summary_rows' => [['agent_name' => 'Agente', 'final_total' => 100.0]],
+            'month' => '2026-09', 'plan' => 'roster_evidence', 'ready' => true, 'issues' => [], 'warnings' => [],
+            'formula_settings' => ['company_delivery_target' => 1000],
+            'summary_rows' => [['agent_name' => 'Agente', 'company_delivery_target' => 1000, 'certifiable' => true, 'final_total' => 100.0]],
             'responsible_contact_center' => [
                 'responsible_name' => 'Vanesa Germán', 'final_total' => 505.0,
+                'company_delivery_target' => 1000, 'certifiable' => true,
                 'actual_deliveries' => 101, 'reference_deliveries' => 100,
                 'actual_delivery_details' => [['opportunity_id' => '006-A']],
                 'reference_delivery_details' => [['opportunity_id' => '006-R']],
@@ -383,6 +386,30 @@ class CommissionMonthClosureTest extends TestCase
         $this->assertEquals(505.0, data_get($snapshot, 'contact_center.responsible_contact_center.final_total'));
         $this->assertSame('006-A', data_get($snapshot, 'contact_center.responsible_contact_center.actual_delivery_details.0.opportunity_id'));
         $this->assertSame(605.0, $service->approvalSummary('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER)['final_total']);
+    }
+
+    public function test_contact_center_approval_rejects_a_persisted_candidate_with_a_null_economic_total(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $contactCenter = Mockery::mock(ContactCenterCommissionDashboardService::class);
+        $contactCenter->shouldReceive('build')->once()->with('2026-09', true)->andReturn([
+            'month' => '2026-09', 'plan' => 'roster_evidence', 'ready' => true, 'issues' => [], 'warnings' => [],
+            'formula_settings' => ['company_delivery_target' => 1000],
+            'summary_rows' => [['agent_name' => 'Agente', 'company_delivery_target' => 1000, 'certifiable' => true, 'final_total' => 10.0]],
+            'responsible_contact_center' => ['company_delivery_target' => 1000, 'certifiable' => true, 'final_total' => 500.0],
+        ]);
+        $this->app->instance(ContactCenterCommissionDashboardService::class, $contactCenter);
+        $service = app(CommercialCommissionClosureService::class);
+        $components = array_fill_keys(array_keys($service->requiredComponents(CommercialCommissionClosure::SCOPE_CONTACT_CENTER, '2026-09')), true);
+        $closure = $service->prepare('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $components, $admin);
+        $snapshot = $closure->snapshots()->where('version', 1)->firstOrFail();
+        $payload = $snapshot->payload;
+        $payload['contact_center']['summary_rows'][0]['final_total'] = null;
+        $snapshot->update(['payload' => $payload]);
+
+        $this->expectException(ValidationException::class);
+        $service->approve('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $admin);
     }
 
     public function test_delegation_snapshot_freezes_manager_and_three_manager_alert_against_future_changes(): void

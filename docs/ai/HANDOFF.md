@@ -6252,6 +6252,43 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   del validador documental sobre el SHA y cuerpo final de la PR. Esta nota no
   declara esas validaciones como satisfactorias.
 
+## 2026-11-03 — Cierre productivo del plan Contact Center desde septiembre de 2026
+
+- Alcance: se completa la certificación económica, protección de cierre,
+  congelación, exportación XLSX y regresiones del plan `roster_evidence` de
+  Contact Center para septiembre de 2026 y meses posteriores. No se cambia la
+  matemática de agentes ni de Responsable, el roster, Product2, permisos,
+  sincronizadores o esquema; no se ejecutaron sincronizaciones, cierres o
+  aprobaciones reales.
+- Certificación: una fila de agente no certificable convierte el dashboard en no
+  listo; cero citas con cobertura completa continúa siendo un cero certificable.
+  Vanesa requiere únicamente Opportunities completas y objetivo mensual
+  positivo: ante cobertura incompleta o target ausente, importes dependientes y
+  total son `null`, nunca cero parcial. El total del scope también queda no
+  presentable si existe un operando económico no certificable.
+- Cierre: desde septiembre los componentes son `appointments` y `sales`.
+  Preparar captura `contact_center` completo y los settings utilizados por el
+  cálculo; aprobar valida exclusivamente el candidato persistido (estructura,
+  certificación, nulos y coincidencia del objetivo), sin consultar Salesforce
+  ni recalcular. Reabrir no altera V1 y permite V2 con su propio corte/settings.
+- Exportación: el XLSX definitivo de septiembre consume solo el snapshot y usa
+  hojas detalladas de agentes y Responsable sin referencia anual. Sin definitivo
+  requiere cálculo live certificable; de lo contrario responde HTTP 409. Julio
+  y agosto conservan dashboard, cierre y XLSX legacy. Commission Auditor sigue
+  sin descarga autorizada.
+- Operación posterior autorizada: cubrir `[2026-09-01, 2026-10-01)` con los
+  comandos existentes de Opportunities, citas y Product2/conciliación; verificar
+  los runs `completed` en `report_sync_runs`, configurar target, revisar
+  incidencias/agentes/Responsable y preparar/aprobar con rol autorizado. No
+  concluye conciliación externa de nómina o pago.
+- Documentación focal: `docs/informe-comisiones.md`,
+  `docs/Documentacion_general_informes_y_contraste_salesforce.md`,
+  `docs/matriz-trazabilidad-kpi.md` y este handoff. `PROJECT_CONTEXT.md` y
+  `DECISIONS.md` no cambian: no hay módulo, convención o decisión arquitectónica
+  nueva. Pendiente del agente principal: registrar resultados efectivos de
+  PHPUnit, Pint, build si aplica, `docs-integrity` y `git diff --check` del SHA
+  final; esta entrada no los declara aprobados.
+
 ## 2026-10-30 — Evidencia manual de citas y entregas de Contact Center
 
 - Corrección de integridad: los modelos de evidencia de cita y Product2 declaran

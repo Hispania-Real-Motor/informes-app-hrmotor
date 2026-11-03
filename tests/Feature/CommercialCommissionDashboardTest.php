@@ -619,14 +619,21 @@ class CommercialCommissionDashboardTest extends TestCase
             'closure_id' => $closure->id, 'month' => '2026-09', 'version' => 1,
             'formula_version' => 'test', 'data_cutoff_at' => now(), 'created_at' => now(),
             'payload' => ['contact_center' => [
-                'month' => '2026-09', 'summary_rows' => [['agent_name' => 'Agente congelado', 'final_total' => 100.0]],
+                'month' => '2026-09', 'plan' => 'roster_evidence', 'summary_rows' => [[
+                    'agent_name' => 'Agente congelado', 'salesforce_user_id' => '005-CC', 'salesforce_created_date' => '2026-01-01T00:00:00+00:00',
+                    'conversion_threshold' => 7, 'appointment_count' => 10, 'reservation_count' => 1, 'conversion_percent' => 10.0,
+                    'conversion_passed' => true, 'delivery_count' => 12, 'deliveries_1_9' => 9, 'deliveries_10_20' => 3,
+                    'deliveries_21_plus' => 0, 'delivery_incentive' => 135.0, 'company_delivery_target' => 1000,
+                    'company_deliveries' => 1012, 'company_compliance_percent' => 101.2, 'company_bonus' => 50.0,
+                    'certifiable' => true, 'observations' => 'Sin incidencias', 'final_total' => 100.0,
+                ]],
                 'responsible_contact_center' => [
-                    'responsible_name' => 'Vanesa Germán', 'month' => '2026-09', 'reference_month' => '2025-09',
-                    'actual_deliveries' => 101, 'reference_deliveries' => 100, 'compliance_percent' => 101.0,
+                    'responsible_name' => 'Vanesa Germán', 'month' => '2026-09', 'company_delivery_target' => 1000,
+                    'actual_deliveries' => 1012, 'compliance_percent' => 101.2,
                     'bracket' => '>= 100 %', 'additional_deliveries' => 1, 'base_amount' => 500.0,
-                    'additional_amount' => 5.0, 'final_total' => 505.0,
+                    'additional_amount' => 5.0, 'certifiable' => true, 'final_total' => 505.0,
                 ],
-            ]],
+            ], 'formula_settings' => ['company_delivery_target' => 1000]],
         ]);
         SalesforceOpportunity::query()->create(['salesforce_id' => 'LIVE-CHANGED', 'name' => 'Dato vivo', 'created_at' => now(), 'updated_at' => now()]);
 
@@ -643,9 +650,19 @@ class CommercialCommissionDashboardTest extends TestCase
 
         $this->assertStringContainsString('Responsable Contact Center', $workbook);
         $this->assertStringContainsString('Agente congelado', $contactSheet);
+        $this->assertStringContainsString('Objetivo compañía', $contactSheet);
         $this->assertStringContainsString('Vanesa Germán', $responsibleSheet);
         $this->assertStringContainsString('<v>505.00</v>', $responsibleSheet);
+        $this->assertStringNotContainsString('Entregas referencia', $responsibleSheet);
         $this->assertStringNotContainsString('Dato vivo', $responsibleSheet);
+    }
+
+    public function test_export_contact_center_september_without_a_certifiable_live_calculation_returns_conflict(): void
+    {
+        $this->withSession($this->authenticatedSession(ReportUser::ROLE_DIRECTOR))
+            ->get('/informes/comisiones-comerciales/export/comisiones.xlsx?month=2026-09')
+            ->assertStatus(409)
+            ->assertSee('Contact Center no dispone de un cálculo económico certificable para el mes seleccionado.');
     }
 
     public function test_dashboard_calcula_resumen_real_de_comisiones(): void

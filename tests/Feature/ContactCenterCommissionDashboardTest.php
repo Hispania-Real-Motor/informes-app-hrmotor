@@ -298,6 +298,23 @@ class ContactCenterCommissionDashboardTest extends TestCase
         $this->assertSame(560.0, $payload['responsible_contact_center']['final_total']);
     }
 
+    public function test_responsible_does_not_calculate_a_partial_amount_without_opportunity_coverage(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-09', ['company_delivery_target' => 1000]);
+        $this->completeAppointmentEvidenceCoverage('2026-09-01', '2026-10-01');
+        foreach (range(1, 1012) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-unverified-'.$index, 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+        }
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+
+        $this->assertFalse($payload['ready']);
+        $this->assertFalse($payload['responsible_contact_center']['certifiable']);
+        $this->assertNull($payload['responsible_contact_center']['final_total']);
+        $this->assertNull($payload['responsible_contact_center']['base_amount']);
+    }
+
     public function test_multiple_roster_periods_aggregate_one_monthly_row_and_audit_the_gap(): void
     {
         CarbonImmutable::setTestNow('2026-10-15 10:00:00');
