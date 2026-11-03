@@ -6285,9 +6285,13 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `docs/Documentacion_general_informes_y_contraste_salesforce.md`,
   `docs/matriz-trazabilidad-kpi.md` y este handoff. `PROJECT_CONTEXT.md` y
   `DECISIONS.md` no cambian: no hay módulo, convención o decisión arquitectónica
-  nueva. Pendiente del agente principal: registrar resultados efectivos de
-  PHPUnit, Pint, build si aplica, `docs-integrity` y `git diff --check` del SHA
-  final; esta entrada no los declara aprobados.
+  nueva.
+- Validación: CI del commit de implementación ejecutó PHPUnit con **1.587
+  pruebas correctas y 14.251 aserciones**, Pint sobre 49 archivos, `npm run
+  build` y `git diff --check`, todos correctos. `docs-integrity` también fue
+  correcto. La verificación local de Pint sobre los PHP modificados y el diff de
+  espacios pasó; no se ejecutó PHPUnit localmente porque este worktree aislado
+  no contiene `vendor` propio.
 
 ## 2026-10-30 — Evidencia manual de citas y entregas de Contact Center
 
