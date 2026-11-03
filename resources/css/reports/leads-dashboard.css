@@ -1059,6 +1059,90 @@ th.num {
     color: #166534;
 }
 
+.lead-load-state {
+    position: relative;
+    overflow: hidden;
+    margin: 18px 0;
+    padding: clamp(28px, 5vw, 56px);
+    border: 1px solid rgba(31, 41, 68, .14);
+    border-radius: 28px;
+    background:
+        radial-gradient(circle at top right, rgba(229, 26, 46, .13), transparent 34%),
+        linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+    box-shadow: var(--shadow);
+}
+
+.lead-load-state::before {
+    content: "";
+    display: block;
+    width: 44px;
+    height: 6px;
+    margin-bottom: 20px;
+    border-radius: 999px;
+    background: var(--brand-accent);
+}
+
+.lead-load-state h2 {
+    max-width: 720px;
+    font-size: clamp(26px, 4vw, 36px);
+    line-height: 1.12;
+}
+
+.lead-load-state p {
+    max-width: 760px;
+    margin: 16px 0 0;
+    color: var(--brand-primary);
+    font-size: 16px;
+    line-height: 1.65;
+}
+
+.lead-load-state__eyebrow {
+    display: block;
+    margin-bottom: 10px;
+    color: var(--brand-accent);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.lead-load-state__spinner {
+    display: block;
+    width: 30px;
+    height: 30px;
+    margin-bottom: 18px;
+    border: 3px solid rgba(31, 41, 68, .15);
+    border-top-color: var(--brand-accent);
+    border-radius: 50%;
+    animation: lead-load-spin .8s linear infinite;
+}
+
+.lead-load-state__secondary {
+    color: var(--muted) !important;
+}
+
+.lead-load-state__retry {
+    min-height: 44px;
+    margin-top: 28px;
+}
+
+.lead-load-state__retry:disabled {
+    cursor: wait;
+    opacity: .65;
+}
+
+@keyframes lead-load-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lead-load-state__spinner {
+        animation: none;
+    }
+}
+
 .period-strip {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1276,6 +1360,15 @@ th.num {
 @media (max-width: 650px) {
     .wrap {
         padding: 16px;
+    }
+
+    .lead-load-state {
+        padding: 28px 22px;
+        border-radius: 24px;
+    }
+
+    .lead-load-state__retry {
+        width: 100%;
     }
 
     .app-header {
