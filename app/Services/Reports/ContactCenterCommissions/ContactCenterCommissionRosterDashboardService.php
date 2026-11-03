@@ -346,6 +346,7 @@ class ContactCenterCommissionRosterDashboardService
         foreach ($requirements as $table => $columns) {
             if (! Schema::hasTable($table)) {
                 $issues[] = "Falta la tabla local {$table}.";
+
                 continue;
             }
             foreach ($columns as $column) {
