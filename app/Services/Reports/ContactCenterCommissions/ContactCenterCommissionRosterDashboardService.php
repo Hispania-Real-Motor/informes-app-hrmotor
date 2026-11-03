@@ -159,8 +159,8 @@ class ContactCenterCommissionRosterDashboardService
         }
 
         return CommercialCommissionDeliveryReconciliation::query()
-            ->where('period_start', $start->toDateString())
-            ->where('period_end', $end->toDateString())
+            ->whereDate('period_start', $start->toDateString())
+            ->whereDate('period_end', $end->toDateString())
             ->get(['opportunity_salesforce_id', 'product_salesforce_id', 'discrepancy_type', 'plate', 'product_delivery_date', 'product_state']);
     }
 
