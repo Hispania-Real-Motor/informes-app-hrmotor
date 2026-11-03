@@ -87,6 +87,67 @@ class InterestPeriodRecoveryTest extends TestCase
         $this->assertDatabaseHas('salesforce_interest_recovery_period_differences', ['recovery_period_id' => $period, 'kind' => 'candidate_only']);
     }
 
+    public function test_period_recovery_marks_a_logged_deletion_without_counting_it_as_an_unexplained_absence(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-09-20T08:00:00Z');
+        $source = $this->source([$record]);
+        $this->app->instance(SalesforceClient::class, new class($record['Id']) extends SalesforceClient
+        {
+            public function __construct(private readonly string $id) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield [];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return [
+                    'earliestDateAvailable' => $start->subDay()->toIso8601String(),
+                    'latestDateCovered' => $end->addDay()->toIso8601String(),
+                    'deletedRecords' => [['id' => $this->id]],
+                ];
+            }
+        });
+
+        $service = app(InterestPeriodRecoveryService::class);
+        $period = $service->prepare($source, CarbonImmutable::parse('2026-09-01', 'Europe/Madrid'), CarbonImmutable::parse('2026-10-01', 'Europe/Madrid'), 'Verify a logged September deletion safely.');
+        $status = $service->run($period);
+
+        $this->assertSame(1, $status['counters']['deleted']);
+        $this->assertSame(0, $status['counters']['candidate_only']);
+        $this->assertSame('covered', $status['diagnostics']['deletion_coverage']);
+        $this->assertDatabaseHas('salesforce_interest_recovery_period_differences', ['recovery_period_id' => $period, 'kind' => 'deleted_verified']);
+    }
+
+    public function test_period_recovery_detects_an_interest_entering_from_an_older_functional_period(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-08-20T08:00:00Z');
+        $source = $this->source([$record]);
+        $remote = $this->record($record['Id'], '2026-09-20T08:00:00Z');
+        $this->app->instance(SalesforceClient::class, new class($remote) extends SalesforceClient
+        {
+            public function __construct(private readonly array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield [$this->record];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => $start->subDay()->toIso8601String(), 'latestDateCovered' => $end->addDay()->toIso8601String(), 'deletedRecords' => []];
+            }
+        });
+
+        $service = app(InterestPeriodRecoveryService::class);
+        $period = $service->prepare($source, CarbonImmutable::parse('2026-09-01', 'Europe/Madrid'), CarbonImmutable::parse('2026-10-01', 'Europe/Madrid'), 'Detect an Interest entering September safely.');
+        $status = $service->run($period);
+
+        $this->assertSame(1, $status['counters']['modified']);
+        $this->assertDatabaseHas('salesforce_interest_recovery_period_differences', ['recovery_period_id' => $period, 'kind' => 'entered_period']);
+    }
+
     /** @param list<array<string, mixed>> $records */
     private function source(array $records): int
     {

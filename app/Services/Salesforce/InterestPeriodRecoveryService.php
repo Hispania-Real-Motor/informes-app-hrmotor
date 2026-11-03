@@ -294,7 +294,16 @@ final class InterestPeriodRecoveryService
                 'observed_at' => now('UTC'),
             ])->all();
             if ($inserts !== []) {
-                DB::table('salesforce_interest_recovery_period_differences')->insertOrIgnore($inserts);
+                DB::transaction(function () use ($periodId, $lease, $inserts): void {
+                    $locked = DB::table('salesforce_interest_recovery_periods')->where('id', $periodId)->lockForUpdate()->first();
+                    if ($locked === null || $locked->status !== 'running' || $locked->lease_token !== $lease) {
+                        throw new RuntimeException('Period recovery lease changed concurrently.');
+                    }
+                    DB::table('salesforce_interest_recovery_period_differences')->insertOrIgnore($inserts);
+                    DB::table('salesforce_interest_recovery_periods')->where('id', $periodId)->where('lease_token', $lease)->update([
+                        'heartbeat_at' => now('UTC'), 'updated_at' => now(),
+                    ]);
+                });
             }
         }
         DB::transaction(function () use ($periodId, $lease, $covered, $earliest, $latest): void {
