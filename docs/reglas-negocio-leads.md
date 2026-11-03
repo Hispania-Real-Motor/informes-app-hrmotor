@@ -164,3 +164,19 @@ Descripción histórica de ROT-1, no aplicable al estado actual de PR #92: Campa
 Lead históricas. Esa semántica no aplica al informe `/informes/leads`, a Monthly
 Commercial ni a la métrica ejecutiva rotada. ROT-1 no modifica Campañas,
 Llamadas ni Reservas/Ventas.
+
+## Presentación durante indisponibilidad de datos certificados
+
+Cuando el backend responde HTTP 503 con el código
+`interest_dataset_unavailable`, el frontend de Intereses presenta
+un estado accesible de indisponibilidad temporal.
+
+- No muestra indicadores ni tablas procedentes de cargas anteriores.
+- Distingue entre carga, indisponibilidad de datos certificados y errores genéricos.
+- Permite reintentar manualmente sin polling automático.
+- Respeta las solicitudes canceladas y el pinning de generación.
+- Mantiene disponible la navegación general de la aplicación.
+- No utiliza la tabla legacy ni generaciones pendientes de publicación.
+
+El cambio es exclusivamente visual: no altera las fuentes, filtros,
+fórmulas, universos ni trazabilidad de los KPIs.

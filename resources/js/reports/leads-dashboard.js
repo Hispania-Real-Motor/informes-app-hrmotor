@@ -69,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initLeadCommercialDelegationColumns();
     bindLeadCommercialSearch();
     bindReconciliationAudit();
+    bindLeadReloadRetry();
     toggleCustomPeriods();
     await reloadAllData();
 });
@@ -216,10 +217,9 @@ async function reloadAllData() {
         renderCommercials(commercials.commercials || commercials.items || []);
         renderDelegations(delegations.items || []);
         renderPortals(portals.items || []);
+        setLeadDashboardState('success');
     } catch (error) {
         if (error?.name !== 'AbortError' && requestId === latestLeadReloadRequestId) {
-            setLoadingState(true);
-            document.getElementById('updatedBadge').textContent = 'Datos no disponibles';
             showLoadError(error);
         }
     } finally {
@@ -227,6 +227,18 @@ async function reloadAllData() {
             setLoadingState(false);
         }
     }
+}
+
+function bindLeadReloadRetry() {
+    document.getElementById('retryLeadLoad')?.addEventListener('click', async (event) => {
+        event.preventDefault();
+
+        if (event.currentTarget.disabled) {
+            return;
+        }
+
+        await reloadAllData();
+    });
 }
 
 function renderSummary(data) {
@@ -770,34 +782,77 @@ function kpiAuditLinkHtml(metric, label) {
 }
 
 function setLoadingState(isLoading) {
-    const loading = document.getElementById('loadingMessage');
-
-    loading?.classList.toggle('is-hidden', !isLoading);
-
     if (isLoading) {
         document.getElementById('updatedBadge').textContent = 'Cargando fotografía local...';
+        document.getElementById('updatedBadge').title = '';
         document.getElementById('emptyMessage')?.classList.add('is-hidden');
-        [
-            'kpiGrid',
-            'comparisonRows',
-            'insights',
-            'actionableInsights',
-            'commercialZoneRows',
-            'commercialDelegationRows',
-            'commercialRows',
-            'delegationRows',
-            'portalRows',
-        ].forEach((id) => {
-            const element = document.getElementById(id);
-            if (element) element.innerHTML = '';
-        });
+        clearLeadDashboardData();
+        setLeadDashboardState('loading');
     }
 }
 
 function showLoadError(error) {
-    const empty = document.getElementById('emptyMessage');
-    empty.classList.remove('is-hidden');
-    empty.textContent = error?.message || 'No se han podido cargar los datos de Salesforce.';
+    const isDatasetUnavailable = error?.code === 'interest_dataset_unavailable';
+    pinnedInterestGeneration = null;
+    document.getElementById('updatedBadge').textContent = isDatasetUnavailable
+        ? 'Información temporalmente no disponible'
+        : 'Información no disponible';
+    document.getElementById('updatedBadge').title = '';
+    clearLeadDashboardData();
+    setLeadDashboardState(isDatasetUnavailable ? 'unavailable' : 'error');
+}
+
+function clearLeadDashboardData() {
+    [
+        'summaryKpis',
+        'comparisonRows',
+        'insights',
+        'actionableInsights',
+        'commercialZoneRows',
+        'commercialDelegationRows',
+        'commercialRows',
+        'delegationRows',
+        'portalRows',
+    ].forEach((id) => {
+        const element = document.getElementById(id);
+
+        if (element) {
+            element.innerHTML = '';
+        }
+    });
+
+    ['currentPeriodLabel', 'comparisonPeriodLabel'].forEach((id) => {
+        const element = document.getElementById(id);
+
+        if (element) {
+            element.textContent = '-';
+        }
+    });
+}
+
+function setLeadDashboardState(state) {
+    const stateRoot = document.getElementById('leadLoadState');
+    const dashboard = document.getElementById('leadReportContent');
+    const loading = document.getElementById('leadLoadingState');
+    const unavailable = document.getElementById('leadUnavailableState');
+    const genericError = document.getElementById('leadGenericErrorState');
+    const retry = document.getElementById('retryLeadLoad');
+    const isError = state === 'unavailable' || state === 'error';
+    const isLoading = state === 'loading';
+
+    stateRoot?.classList.toggle('is-hidden', !isLoading && !isError);
+    stateRoot?.setAttribute?.('aria-busy', isLoading ? 'true' : 'false');
+    loading?.classList.toggle('is-hidden', !isLoading);
+    unavailable?.classList.toggle('is-hidden', state !== 'unavailable');
+    genericError?.classList.toggle('is-hidden', state !== 'error');
+    dashboard?.classList.toggle('is-hidden', state !== 'success');
+    dashboard?.setAttribute?.('aria-busy', state === 'loading' ? 'true' : 'false');
+    dashboard?.setAttribute?.('aria-hidden', state === 'success' ? 'false' : 'true');
+
+    if (retry) {
+        retry.classList.toggle('is-hidden', !isError);
+        retry.disabled = isLoading;
+    }
 }
 
 function setParam(params, key, value) {
@@ -823,10 +878,16 @@ async function fetchJson(url, options = {}) {
         if (response.status === 503) {
             const payload = await response.json().catch(() => null);
             if (payload?.error === 'interest_dataset_unavailable') {
-                throw new Error('El informe de intereses no está disponible porque sus datos todavía no están certificados.');
+                const error = new Error('Interest dataset unavailable.');
+                error.code = 'interest_dataset_unavailable';
+                error.status = response.status;
+                throw error;
             }
         }
-        throw new Error(`Error cargando ${url}`);
+
+        const error = new Error('Unable to load interests report.');
+        error.status = response.status;
+        throw error;
     }
 
     return response.json();
