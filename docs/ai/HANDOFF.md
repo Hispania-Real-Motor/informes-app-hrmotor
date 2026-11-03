@@ -6144,3 +6144,20 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Despliegue: actualizar frontend sin reiniciar la recuperación F2/F5.
 - Pendiente: validar visualmente la pantalla en producción.
 - Revisión documental realizada directamente, sin subagente documental.
+
+## 2026-11-03 — recuperación progresiva septiembre/octubre: bloqueo de cobertura
+
+- No se implementó ni habilitó una publicación parcial. La revisión de
+  `SalesforceInterestFoundationResolver::functionalCreatedAt()` confirma que el
+  período funcional deriva de `IN_Fecha_Creacion_Origen__c` o `CreatedDate`;
+  `SalesforceClient` solo aporta estado actual de SOQL y `getDeleted`.
+- Sin Field Audit Trail/historial de esos campos, CDC retenido desde el cutoff
+  o un snapshot independiente verificable, no es posible detectar de forma
+  completa los Interests que abandonaron o entraron en septiembre/octubre. La
+  observación de que todo el universo tiene `SystemModstamp` reciente impide
+  usarlo para acotar un delta y no reconstruye valores anteriores.
+- Se documentó el fallo cerrado: `getDeleted` puede justificar hard-deletes,
+  pero no transiciones de fecha funcional ni relaciones F5. Mantener informes,
+  comparativas y exportaciones de períodos sin esa evidencia indisponibles. No
+  hubo acceso a producción ni a Salesforce, migraciones, publicación, scheduler
+  o workers.

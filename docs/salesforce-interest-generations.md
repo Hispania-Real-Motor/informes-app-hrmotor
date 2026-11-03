@@ -131,3 +131,33 @@ watermark queda limitado por la cobertura de borrados comunicada por Salesforce;
 no acredita por sí solo la integridad de toda la replicación ni una fotografía
 histórica exacta. La evidencia registra `requested_watermark` y el watermark
 efectivo para que puedan contrastarse.
+
+## Recuperación progresiva por período: bloqueo de certificación
+
+No existe todavía una vía certificable para publicar únicamente septiembre y
+octubre de 2026. La fecha funcional de un Interest se deriva de
+`IN_Fecha_Creacion_Origen__c` y, si falta, de `CreatedDate`; no es un campo de
+control de cambios. El cliente Salesforce disponible solo expone una consulta
+del estado actual (`query`/`queryAll`) y el log de borrados `getDeleted`. No
+expone historial de esos campos, Change Data Capture retenido ni una extracción
+as-of para identificar un Interest que entró o salió posteriormente de un
+período funcional.
+
+Por tanto, un SOQL filtrado por la fecha funcional actual no puede probar que
+contenga los registros que antes pertenecían al período, ni que excluya los que
+han entrado después. Filtrar por `SystemModstamp` tampoco resuelve el problema:
+la observación operativa indica que todos los Interests de la semilla aparecen
+modificados desde octubre de 2026. Usarlo como delta haría que el candidato
+elegible fuera de nuevo el universo completo y seguiría sin aportar los valores
+históricos previos al cambio.
+
+No se debe añadir una publicación parcial ni un puntero de cobertura hasta
+disponer, para los dos meses, de una fuente independiente con retención
+suficiente: Field Audit Trail/historial de los campos funcionales, CDC
+conservado desde el cutoff, o un snapshot verificable con identidad, contenido,
+borrados y relaciones F5. Esa fuente debe permitir contrastar tanto las
+entradas como las salidas del rango y cubrir Task/Event. `getDeleted` por sí
+solo solo justifica purgados dentro de su ventana de retención. Sin ella, el
+procedimiento correcto es fallar cerrado y mantener el 503 para intervalos no
+certificados; no se presentarán KPIs, comparativas ni exportaciones parciales
+como consistentes.
