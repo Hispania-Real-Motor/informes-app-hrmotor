@@ -2,15 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Models\CommercialCommissionMonthSetting;
 use App\Models\ReportUser;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceUser;
-use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfigService;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionDashboardService;
+use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfigService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class CommercialCommissionFormulaSettingsTest extends TestCase
@@ -177,6 +178,59 @@ class CommercialCommissionFormulaSettingsTest extends TestCase
         $this->assertSame('Llica de Valls', $service->normalizeDelegationLabel('Lliça de Vall'));
         $this->assertSame('Llica de Valls', $service->normalizeDelegationLabel('HR MOTOR LLIÇA DE VALL'));
         $this->assertSame('Llica de Valls', $service->normalizeDelegationLabel('llica'));
+    }
+
+    public function test_admin_puede_guardar_objetivo_general_de_entregas_del_mes_abierto(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-06-26 12:00:00'));
+        config()->set('services.informes_auth.enabled', true);
+
+        $this->withSession($this->administratorSession())
+            ->put('/informes/configuracion-comisiones', $this->validPayload('2026-06', [
+                'company_delivery_target' => 1000,
+            ]))
+            ->assertRedirect('/informes/configuracion-comisiones?month=2026-06');
+
+        $settings = app(CommercialCommissionFormulaConfigService::class)->forMonth('2026-06');
+
+        $this->assertSame(1000, $settings['company_delivery_target']);
+        $this->assertEquals(60.0, $settings['sales']['solo_delivery_amount']);
+    }
+
+    public function test_admin_puede_dejar_vacio_el_objetivo_general_de_entregas(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-06-26 12:00:00'));
+        config()->set('services.informes_auth.enabled', true);
+
+        $this->withSession($this->administratorSession())
+            ->put('/informes/configuracion-comisiones', $this->validPayload('2026-06', [
+                'company_delivery_target' => '',
+            ]))
+            ->assertRedirect('/informes/configuracion-comisiones?month=2026-06');
+
+        $stored = CommercialCommissionMonthSetting::query()
+            ->where('month', '2026-06')
+            ->sole();
+
+        $this->assertNull($stored->settings['company_delivery_target']);
+    }
+
+    public function test_objetivo_general_de_entregas_rechaza_valores_no_positivos_o_no_enteros(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-06-26 12:00:00'));
+        config()->set('services.informes_auth.enabled', true);
+
+        $session = $this->administratorSession();
+
+        foreach ([-1, 0, 1.5] as $target) {
+            $this->withSession($session)
+                ->from('/informes/configuracion-comisiones?month=2026-06')
+                ->put('/informes/configuracion-comisiones', $this->validPayload('2026-06', [
+                    'company_delivery_target' => $target,
+                ]))
+                ->assertRedirect('/informes/configuracion-comisiones?month=2026-06')
+                ->assertSessionHasErrors('company_delivery_target');
+        }
     }
 
     public function test_unifica_a_coruna_por_clave_estable_en_configuracion_area_manager(): void
@@ -405,6 +459,7 @@ class CommercialCommissionFormulaSettingsTest extends TestCase
     {
         $payload = [
             'month' => $month,
+            'company_delivery_target' => null,
             'sales' => [
                 'solo_delivery_amount' => 60.0,
                 'shared_owner_delivery_amount' => 30.0,
@@ -475,5 +530,23 @@ class CommercialCommissionFormulaSettingsTest extends TestCase
         ];
 
         return array_replace_recursive($payload, $overrides);
+    }
+
+    private function administratorSession(): array
+    {
+        $administrator = ReportUser::query()->create([
+            'name' => 'Admin',
+            'email' => 'admin@hrmotor.com',
+            'password' => Hash::make('secret'),
+            'role' => ReportUser::ROLE_ADMIN,
+            'is_active' => true,
+        ]);
+
+        return [
+            'informes_authenticated' => true,
+            'report_user_id' => $administrator->id,
+            'report_user_role' => ReportUser::ROLE_ADMIN,
+            'report_user_email' => $administrator->email,
+        ];
     }
 }

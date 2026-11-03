@@ -615,14 +615,32 @@ class CommercialCommissionDashboardController extends Controller
             unset($callCenterPayload);
             gc_collect_cycles();
 
-            $contactCenterPayload = $contactCenterDashboard->build($month, includeDetails: false);
-            $sheets[] = $this->commissionSheet(
-                'Contact Center',
-                'Agente / captador',
-                $contactCenterPayload['summary_rows'] ?? [],
-                'agent_name',
-                'final_total',
-            );
+            $contactCenterSnapshot = in_array('contact_center', $closureService->availableScopes($month), true)
+                ? $closureService->definitiveSnapshot($month, 'contact_center')
+                : null;
+            $contactCenterPayload = $contactCenterSnapshot !== null
+                ? ($contactCenterSnapshot['contact_center'] ?? [])
+                : $contactCenterDashboard->build($month, includeDetails: false);
+            if ($this->usesContactCenterRosterPlan($month)) {
+                if (! $this->hasCertifiableContactCenterExport($contactCenterPayload, $contactCenterSnapshot)) {
+                    return response('Contact Center no dispone de un cálculo económico certificable para el mes seleccionado.', 409);
+                }
+                $sheets[] = $this->contactCenterRosterSheet($contactCenterPayload['summary_rows'] ?? []);
+            } else {
+                $sheets[] = $this->commissionSheet(
+                    'Contact Center',
+                    'Agente / captador',
+                    $contactCenterPayload['summary_rows'] ?? [],
+                    'agent_name',
+                    'final_total',
+                );
+            }
+            if (is_array($contactCenterPayload['responsible_contact_center'] ?? null)) {
+                $sheets[] = $this->responsibleContactCenterSheet(
+                    $contactCenterPayload['responsible_contact_center'],
+                    $this->usesContactCenterRosterPlan($month),
+                );
+            }
             unset($contactCenterPayload);
             gc_collect_cycles();
 
@@ -694,6 +712,127 @@ class CommercialCommissionDashboardController extends Controller
         ];
     }
 
+    /** @param array<int, array<string, mixed>> $rows
+     *  @return array{name: string, headers: array<int, string>, rows: array<int, array<int, string|float|int>}
+     */
+    private function contactCenterRosterSheet(array $rows): array
+    {
+        return [
+            'name' => 'Contact Center',
+            'headers' => ['Agente', 'Salesforce UserId', 'CreatedDate', 'Umbral %', 'Citas', 'Reservas', 'Conversión %', 'Supera conversión', 'Entregas', 'Entregas 1-9', 'Entregas 10-20', 'Entregas 21+', 'Importe progresivo', 'Objetivo compañía', 'Entregas compañía', 'Cumplimiento compañía %', 'Bonus compañía', 'Comisión final', 'Certificable', 'Incidencias / observaciones'],
+            'rows' => collect($rows)->map(fn (array $row): array => [
+                (string) ($row['agent_name'] ?? '-'),
+                (string) ($row['salesforce_user_id'] ?? '-'),
+                (string) ($row['salesforce_created_date'] ?? '-'),
+                $row['conversion_threshold'] === null ? '-' : (int) $row['conversion_threshold'],
+                (int) ($row['appointment_count'] ?? 0),
+                (int) ($row['reservation_count'] ?? 0),
+                $row['conversion_percent'] === null ? '-' : (float) $row['conversion_percent'],
+                ($row['conversion_passed'] ?? false) === true ? 'Sí' : 'No',
+                (int) ($row['delivery_count'] ?? 0),
+                (int) ($row['deliveries_1_9'] ?? 0),
+                (int) ($row['deliveries_10_20'] ?? 0),
+                (int) ($row['deliveries_21_plus'] ?? 0),
+                $row['delivery_incentive'] === null ? '-' : (float) $row['delivery_incentive'],
+                $row['company_delivery_target'] === null ? '-' : (int) $row['company_delivery_target'],
+                (int) ($row['company_deliveries'] ?? 0),
+                $row['company_compliance_percent'] === null ? '-' : (float) $row['company_compliance_percent'],
+                $row['company_bonus'] === null ? '-' : (float) $row['company_bonus'],
+                $row['final_total'] === null ? 'No certificable' : (float) $row['final_total'],
+                ($row['certifiable'] ?? false) === true ? 'Sí' : 'No',
+                (string) ($row['observations'] ?? '-'),
+            ])->values()->all(),
+        ];
+    }
+
+    /** @param array<string, mixed> $responsible
+     *  @return array{name: string, headers: array<int, string>, rows: array<int, array<int, string|float|int>} */
+    private function responsibleContactCenterSheet(array $responsible, bool $rosterPlan): array
+    {
+        if ($rosterPlan) {
+            return [
+                'name' => 'Responsable Contact Center',
+                'headers' => ['Responsable', 'Mes', 'Objetivo compañía', 'Entregas reales', 'Cumplimiento %', 'Tramo', 'Importe base', 'Entregas adicionales', 'Importe adicional', 'Total final', 'Certificable'],
+                'rows' => [[
+                    (string) ($responsible['responsible_name'] ?? '-'),
+                    (string) ($responsible['month'] ?? '-'),
+                    $responsible['company_delivery_target'] === null ? '-' : (int) $responsible['company_delivery_target'],
+                    (int) ($responsible['actual_deliveries'] ?? 0),
+                    $responsible['compliance_percent'] === null ? '-' : (float) $responsible['compliance_percent'],
+                    (string) ($responsible['bracket'] ?? '-'),
+                    $responsible['base_amount'] === null ? '-' : (float) $responsible['base_amount'],
+                    $responsible['additional_deliveries'] === null ? '-' : (int) $responsible['additional_deliveries'],
+                    $responsible['additional_amount'] === null ? '-' : (float) $responsible['additional_amount'],
+                    $responsible['final_total'] === null ? 'No certificable' : (float) $responsible['final_total'],
+                    ($responsible['certifiable'] ?? false) === true ? 'Sí' : 'No',
+                ]],
+            ];
+        }
+
+        return [
+            'name' => 'Responsable Contact Center',
+            'headers' => ['Responsable', 'Mes liquidado', 'Mes referencia', 'Entregas actuales', 'Entregas referencia', 'Cumplimiento %', 'Tramo', 'Entregas adicionales', 'Importe base', 'Importe adicional', 'Total final'],
+            'rows' => [[
+                (string) ($responsible['responsible_name'] ?? '-'),
+                (string) ($responsible['month'] ?? '-'),
+                (string) ($responsible['reference_month'] ?? '-'),
+                (int) ($responsible['actual_deliveries'] ?? 0),
+                (int) ($responsible['reference_deliveries'] ?? 0),
+                $responsible['compliance_percent'] === null ? '-' : (float) $responsible['compliance_percent'],
+                (string) ($responsible['bracket'] ?? '-'),
+                (int) ($responsible['additional_deliveries'] ?? 0),
+                (float) ($responsible['base_amount'] ?? 0),
+                (float) ($responsible['additional_amount'] ?? 0),
+                (float) ($responsible['final_total'] ?? 0),
+            ]],
+        ];
+    }
+
+    private function usesContactCenterRosterPlan(string $month): bool
+    {
+        return CarbonImmutable::parse($month.'-01')->greaterThanOrEqualTo(CarbonImmutable::parse('2026-09-01'));
+    }
+
+    /** @param array<string, mixed> $payload
+     * @param  array<string, mixed>|null  $snapshot
+     */
+    private function hasCertifiableContactCenterExport(array $payload, ?array $snapshot): bool
+    {
+        if ($snapshot === null && ($payload['ready'] ?? false) !== true) {
+            return false;
+        }
+
+        $rows = $payload['summary_rows'] ?? null;
+        $responsible = $payload['responsible_contact_center'] ?? null;
+        if (! is_array($rows) || ! is_array($responsible)) {
+            return false;
+        }
+
+        if ($rows === []) {
+            return false;
+        }
+
+        if (! collect($rows)->every(fn (mixed $row): bool => is_array($row))) {
+            return false;
+        }
+
+        if ($snapshot !== null) {
+            $target = data_get($snapshot, 'formula_settings.company_delivery_target');
+            if (! is_array($snapshot['formula_settings'] ?? null)
+                || ! is_int($target)
+                || ! collect($rows)->every(fn (array $row): bool => ($row['company_delivery_target'] ?? null) === $target)
+                || ($responsible['company_delivery_target'] ?? null) !== $target) {
+                return false;
+            }
+        }
+
+        return collect($rows)->every(fn (mixed $row): bool => is_array($row)
+            && ($row['certifiable'] ?? false) === true
+            && is_numeric($row['final_total'] ?? null))
+            && ($responsible['certifiable'] ?? false) === true
+            && is_numeric($responsible['final_total'] ?? null);
+    }
+
     /** @return array<int, array<string, mixed>> */
     private function globalAreaManagerExportRows(array $payload): array
     {
@@ -755,6 +894,7 @@ class CommercialCommissionDashboardController extends Controller
             'warnings' => [],
             'diagnostics' => [],
             'summary_rows' => [],
+            'responsible_contact_center' => null,
             'commercial_director' => null,
             'global_incidents' => [],
         ];

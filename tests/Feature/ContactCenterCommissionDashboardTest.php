@@ -2,16 +2,35 @@
 
 namespace Tests\Feature;
 
+use App\Models\CommercialCommissionAppointmentEvidence;
+use App\Models\CommercialCommissionClosure;
+use App\Models\CommercialCommissionDeliveryReconciliation;
+use App\Models\ContactCenterCommissionRosterMember;
+use App\Models\ReportSyncRun;
 use App\Models\ReportUser;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
+use App\Models\SalesforceUser;
+use App\Services\Reports\CommercialCommissions\CommercialCommissionClosureService;
+use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfigService;
 use App\Services\Reports\ContactCenterCommissions\ContactCenterCommissionDashboardService;
+use App\Services\Reports\FinancialCommissions\FinancialCommissionDashboardService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Mockery;
 use Tests\TestCase;
+use ZipArchive;
 
 class ContactCenterCommissionDashboardTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        CarbonImmutable::setTestNow();
+        parent::tearDown();
+    }
 
     public function test_dashboard_calcula_contact_center_por_citas_oportunidades_reservas_y_ventas(): void
     {
@@ -159,6 +178,356 @@ class ContactCenterCommissionDashboardTest extends TestCase
             ->assertSee('Contact Center')
             ->assertSee('Comisiones Contact Center')
             ->assertSee('Citas concertadas');
+    }
+
+    public function test_september_uses_the_roster_evidence_plan_and_company_target_without_leads(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-09', ['company_delivery_target' => 1000]);
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        ReportSyncRun::query()->create([
+            'dataset' => 'commercial_commission_appointment_evidence', 'source' => 'salesforce', 'status' => 'completed',
+            'period_start_at' => '2026-09-01', 'period_end_at' => '2026-10-01', 'started_at' => now()->subMinute(),
+            'completed_at' => now(), 'timezone' => config('app.timezone'), 'stats' => ['queried' => 0, 'stored' => 0],
+        ]);
+
+        $agents = [
+            '005Qx00000GTjweIAD' => ['Maria Paz Vidal', '2026-04-10 14:11:59'],
+            '005Qx00000Hf7gYIAR' => ['Estefany Taborda', '2026-06-02 08:26:54'],
+            '005Qx00000I63X7IAJ' => ['Rafael Polanco', '2026-06-22 07:24:25'],
+            '005Qx00000JfwwLIAR' => ['Aaron Bordas', '2026-09-09 13:54:40'],
+            '005Qx00000HauJdIAJ' => ['Maria German', '2026-05-29 11:59:45'],
+            '005Qx00000HEQyXIAX' => ['Yuleidis Garcia', '2026-05-18 08:56:47'],
+            '005Qx00000JfETuIAN' => ['Sandra Royo', '2026-09-09 07:42:09'],
+        ];
+        foreach ($agents as $id => [$name, $createdDate]) {
+            SalesforceUser::query()->create(['salesforce_id' => $id, 'name' => $name, 'created_date' => $createdDate, 'is_active' => true, 'commission_appraiser' => false]);
+        }
+        foreach (range(1, 20) as $index) {
+            CommercialCommissionAppointmentEvidence::query()->create(['salesforce_interest_id' => 'a0I-maria-'.$index, 'appointment_setter_id' => '005Qx00000GTjweIAD', 'appointment_setter_name' => 'Maria Vidal Perez', 'appointment_capture_date' => '2026-09-'.str_pad((string) min($index, 28), 2, '0', STR_PAD_LEFT), 'synced_at' => now()]);
+        }
+        CommercialCommissionAppointmentEvidence::query()->create(['salesforce_interest_id' => 'a0I-same-name-wrong-id', 'appointment_setter_id' => '005-not-in-roster', 'appointment_setter_name' => 'Maria Paz Vidal', 'appointment_capture_date' => '2026-09-20', 'synced_at' => now()]);
+        $this->createLead([
+            'salesforce_id' => '00Q-LEGACY-MARIA',
+            'appointment_setter_id' => '005Qx00000GTjweIAD',
+            'appointment_setter_name' => 'Maria Paz Vidal',
+            'appointment_capture_date' => '2026-09-20',
+            'appointment_call' => true,
+        ]);
+        foreach (range(1, 2) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-reservation-'.$index, 'appointment_setter_id' => '005Qx00000GTjweIAD', 'reservation' => true, 'reservation_date' => '2026-09-10', 'cv_signed' => false]);
+        }
+        foreach (range(1, 1012) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-company-'.$index, 'name' => 'Venta compañía '.$index, 'appointment_setter_id' => $index <= 12 ? '005Qx00000GTjweIAD' : null, 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+        }
+        CommercialCommissionDeliveryReconciliation::query()->create(['reconciliation_key' => str_repeat('a', 64), 'period_start' => '2026-09-01', 'period_end' => '2026-10-01', 'opportunity_salesforce_id' => '006-company-1', 'discrepancy_type' => 'DATE_MISMATCH', 'reconciled_at' => now()]);
+        CommercialCommissionDeliveryReconciliation::query()->create(['reconciliation_key' => str_repeat('b', 64), 'period_start' => '2026-09-01', 'period_end' => '2026-10-01', 'opportunity_salesforce_id' => '006-company-2', 'discrepancy_type' => 'DUPLICATE_PRODUCT2_LINK', 'reconciled_at' => now()]);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+        $maria = collect($payload['summary_rows'])->firstWhere('salesforce_user_id', '005Qx00000GTjweIAD');
+
+        $this->assertTrue($payload['ready']);
+        $this->assertSame('roster_evidence', $payload['plan']);
+        $this->assertCount(7, $payload['summary_rows']);
+        $thresholds = [
+            '005Qx00000GTjweIAD' => 7,
+            '005Qx00000Hf7gYIAR' => 5,
+            '005Qx00000I63X7IAJ' => 5,
+            '005Qx00000JfwwLIAR' => 5,
+            '005Qx00000HauJdIAJ' => 7,
+            '005Qx00000HEQyXIAX' => 7,
+            '005Qx00000JfETuIAN' => 5,
+        ];
+        foreach ($thresholds as $salesforceUserId => $threshold) {
+            $this->assertSame($threshold, collect($payload['summary_rows'])->firstWhere('salesforce_user_id', $salesforceUserId)['conversion_threshold']);
+        }
+        $this->assertSame(7, $maria['conversion_threshold']);
+        $this->assertSame(20, $maria['appointment_count']);
+        $this->assertSame(2, $maria['reservation_count']);
+        $this->assertTrue($maria['conversion_passed']);
+        $this->assertSame(12, $maria['delivery_count']);
+        $this->assertSame(135.0, $maria['delivery_incentive']);
+        $this->assertSame(50.0, $maria['company_bonus']);
+        $this->assertSame(185.0, $maria['final_total']);
+        $this->assertArrayHasKey('product2_statuses', $maria['details']['deliveries'][0]);
+        $this->assertSame(560.0, $payload['responsible_contact_center']['final_total']);
+        $this->assertSame(1012, $payload['diagnostics']['company_deliveries']);
+        $this->assertSame(['005-not-in-roster'], $payload['diagnostics']['unrostered_appointment_setters']);
+    }
+
+    public function test_august_keeps_the_legacy_contact_center_plan(): void
+    {
+        $this->createLead([
+            'salesforce_id' => '00Q-LEGACY-AUGUST',
+            'appointment_setter_name' => 'Maria Vidal',
+            'appointment_capture_date' => '2026-08-10',
+            'appointment_call' => true,
+        ]);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-08');
+
+        $this->assertArrayNotHasKey('plan', $payload);
+        $this->assertNull($payload['responsible_contact_center']);
+        $this->assertSame(1, $payload['summary_rows'][0]['appointment_count']);
+    }
+
+    public function test_missing_company_target_is_never_presented_as_a_zero_bonus(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        $this->completeAppointmentEvidenceCoverage('2026-09-01', '2026-10-01');
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+        $row = $payload['summary_rows'][0];
+
+        $this->assertFalse($payload['ready']);
+        $this->assertNull($row['company_bonus']);
+        $this->assertNull($row['final_total']);
+        $this->assertFalse($row['certifiable']);
+        $this->assertNull($payload['responsible_contact_center']['final_total']);
+        $this->assertStringContainsString('Falta objetivo general', implode(' ', $payload['issues']));
+    }
+
+    public function test_responsible_remains_certifiable_when_appointment_evidence_is_unavailable(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-09', ['company_delivery_target' => 1000]);
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        foreach (range(1, 1012) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-vanesa-'.$index, 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+        }
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+
+        $this->assertFalse($payload['ready']);
+        $this->assertTrue($payload['responsible_contact_center']['certifiable']);
+        $this->assertSame(560.0, $payload['responsible_contact_center']['final_total']);
+    }
+
+    public function test_responsible_does_not_calculate_a_partial_amount_without_opportunity_coverage(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-09', ['company_delivery_target' => 1000]);
+        $this->completeAppointmentEvidenceCoverage('2026-09-01', '2026-10-01');
+        foreach (range(1, 1012) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-unverified-'.$index, 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+        }
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+
+        $this->assertFalse($payload['ready']);
+        $this->assertFalse($payload['responsible_contact_center']['certifiable']);
+        $this->assertNull($payload['responsible_contact_center']['final_total']);
+        $this->assertNull($payload['responsible_contact_center']['base_amount']);
+    }
+
+    public function test_contact_center_reopen_creates_v2_without_mutating_v1_or_its_export(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $month = '2026-09';
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth($month, ['company_delivery_target' => 1000]);
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        $this->completeAppointmentEvidenceCoverage('2026-09-01', '2026-10-01');
+        ContactCenterCommissionRosterMember::query()->get()->each(function (ContactCenterCommissionRosterMember $member): void {
+            SalesforceUser::query()->create([
+                'salesforce_id' => $member->salesforce_user_id,
+                'name' => $member->display_name,
+                'created_date' => '2026-01-01 00:00:00',
+                'is_active' => true,
+                'commission_appraiser' => false,
+            ]);
+        });
+        foreach (range(1, 1012) as $index) {
+            $this->createOpportunity([
+                'salesforce_id' => '006-freeze-'.$index,
+                'name' => 'Venta congelada '.$index,
+                'cv_signed' => true,
+                'cv_signed_date' => '2026-09-15',
+            ]);
+        }
+        $admin = ReportUser::query()->create([
+            'name' => 'Admin cierre',
+            'email' => 'admin-cierre@example.test',
+            'password' => Hash::make('closure-test-password'),
+            'role' => ReportUser::ROLE_ADMIN,
+            'is_active' => true,
+        ]);
+        $closureService = app(CommercialCommissionClosureService::class);
+        $components = array_fill_keys(array_keys($closureService->requiredComponents(CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $month)), true);
+
+        $closureService->prepare($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $components, $admin);
+        $closureService->approve($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $admin);
+        $v1 = $closureService->definitiveSnapshot($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER);
+        $this->assertSame(1000, data_get($v1, 'formula_settings.company_delivery_target'));
+        $this->assertSame(1012, data_get($v1, 'contact_center.responsible_contact_center.actual_deliveries'));
+        $this->assertEquals(560.0, data_get($v1, 'contact_center.responsible_contact_center.final_total'));
+
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth($month, ['company_delivery_target' => 900]);
+        $this->createOpportunity([
+            'salesforce_id' => '006-freeze-v2',
+            'name' => 'Venta nueva V2',
+            'cv_signed' => true,
+            'cv_signed_date' => '2026-09-20',
+        ]);
+        $this->assertSame(1000, data_get($closureService->definitiveSnapshot($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER), 'formula_settings.company_delivery_target'));
+        $this->assertEquals(560.0, data_get($closureService->definitiveSnapshot($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER), 'contact_center.responsible_contact_center.final_total'));
+
+        $closureService->reopen($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, 'Corrección auditada del objetivo mensual', $admin);
+        $closureService->prepare($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $components, $admin);
+        $closureService->approve($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $admin);
+        $closure = CommercialCommissionClosure::query()->where(['month' => $month, 'closure_scope' => CommercialCommissionClosure::SCOPE_CONTACT_CENTER])->firstOrFail();
+        $v1Stored = $closure->snapshots()->where('version', 1)->firstOrFail()->payload;
+        $v2 = $closureService->definitiveSnapshot($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER);
+
+        $this->assertSame(2, $closure->snapshot_version);
+        $this->assertSame(1000, data_get($v1Stored, 'formula_settings.company_delivery_target'));
+        $this->assertEquals(560.0, data_get($v1Stored, 'contact_center.responsible_contact_center.final_total'));
+        $this->assertSame(900, data_get($v2, 'formula_settings.company_delivery_target'));
+        $this->assertSame(1013, data_get($v2, 'contact_center.responsible_contact_center.actual_deliveries'));
+        $this->assertEquals(1065.0, data_get($v2, 'contact_center.responsible_contact_center.final_total'));
+
+        $financial = Mockery::mock(FinancialCommissionDashboardService::class);
+        $financial->shouldReceive('build')->with($month)->andReturn(['ready' => true, 'issues' => [], 'summary_rows' => []]);
+        $this->app->instance(FinancialCommissionDashboardService::class, $financial);
+        $export = $this->withSession([
+            'informes_authenticated' => true,
+            'report_user_id' => $admin->id,
+            'report_user_role' => $admin->role,
+            'report_user_email' => $admin->email,
+        ])->get('/informes/comisiones-comerciales/export/comisiones.xlsx?month='.$month)->assertOk();
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($export->baseResponse->getFile()->getPathname()) === true);
+        $responsibleSheet = (string) $zip->getFromName('xl/worksheets/sheet5.xml');
+        $zip->close();
+
+        $this->assertStringContainsString('<v>900.00</v>', $responsibleSheet);
+        $this->assertStringContainsString('<v>1065.00</v>', $responsibleSheet);
+        $this->assertStringNotContainsString('<v>560.00</v>', $responsibleSheet);
+    }
+
+    public function test_multiple_roster_periods_aggregate_one_monthly_row_and_audit_the_gap(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $userId = '005Qx00000GTjweIAD';
+        ContactCenterCommissionRosterMember::query()->where('salesforce_user_id', $userId)->delete();
+        ContactCenterCommissionRosterMember::query()->create(['salesforce_user_id' => $userId, 'display_name' => 'Nombre A', 'effective_from' => '2026-09-01', 'effective_until' => '2026-09-10']);
+        ContactCenterCommissionRosterMember::query()->create(['salesforce_user_id' => $userId, 'display_name' => 'Nombre B', 'effective_from' => '2026-09-20', 'effective_until' => '2026-09-30']);
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-09', ['company_delivery_target' => 100]);
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        $this->completeAppointmentEvidenceCoverage('2026-09-01', '2026-10-01');
+        SalesforceUser::query()->create(['salesforce_id' => $userId, 'name' => 'Maria Paz Vidal', 'created_date' => '2026-04-10 14:11:59', 'is_active' => true, 'commission_appraiser' => false]);
+        foreach (['2026-09-05', '2026-09-25', '2026-09-15'] as $index => $date) {
+            CommercialCommissionAppointmentEvidence::query()->create(['salesforce_interest_id' => 'a0I-period-'.$index, 'appointment_setter_id' => $userId, 'appointment_capture_date' => $date, 'synced_at' => now()]);
+        }
+        foreach (range(1, 10) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-period-'.$index, 'appointment_setter_id' => $userId, 'reservation' => $index === 1, 'reservation_date' => $index === 1 ? '2026-09-05' : null, 'cv_signed' => true, 'cv_signed_date' => $index <= 5 ? '2026-09-05' : '2026-09-25']);
+        }
+        $this->createOpportunity(['salesforce_id' => '006-period-gap', 'appointment_setter_id' => $userId, 'reservation' => true, 'reservation_date' => '2026-09-15', 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+        $row = collect($payload['summary_rows'])->firstWhere('salesforce_user_id', $userId);
+
+        $this->assertSame('Nombre B', $row['agent_name']);
+        $this->assertSame(2, $row['appointment_count']);
+        $this->assertSame(1, $row['reservation_count']);
+        $this->assertSame(10, $row['delivery_count']);
+        $this->assertSame(105.0, $row['delivery_incentive']);
+        $this->assertCount(2, $row['roster_periods']);
+        $this->assertTrue(collect($payload['global_incidents'])->contains('type', 'EVENT_OUTSIDE_ROSTER_EFFECTIVE_RANGE'));
+    }
+
+    public function test_roster_events_are_counted_only_in_their_own_month_and_inactive_users_remain_eligible(): void
+    {
+        CarbonImmutable::setTestNow('2026-12-15 10:00:00');
+        foreach (['2026-09', '2026-10', '2026-11'] as $month) {
+            app(CommercialCommissionFormulaConfigService::class)->saveForMonth($month, ['company_delivery_target' => 100]);
+            $start = CarbonImmutable::createFromFormat('!Y-m', $month)->startOfMonth();
+            $this->completeOpportunityCoverage($start->toDateString(), $start->addMonth()->toDateString());
+            $this->completeAppointmentEvidenceCoverage($start->toDateString(), $start->addMonth()->toDateString());
+        }
+
+        SalesforceUser::query()->create([
+            'salesforce_id' => '005Qx00000GTjweIAD',
+            'name' => 'Maria Paz Vidal',
+            'created_date' => '2026-04-10 14:11:59',
+            'is_active' => false,
+            'commission_appraiser' => false,
+        ]);
+        CommercialCommissionAppointmentEvidence::query()->create([
+            'salesforce_interest_id' => 'a0I-month-separation',
+            'appointment_setter_id' => '005Qx00000GTjweIAD',
+            'appointment_setter_name' => 'Maria Vidal Perez',
+            'appointment_capture_date' => '2026-09-25',
+            'synced_at' => now(),
+        ]);
+        $this->createOpportunity([
+            'salesforce_id' => '006-month-reservation',
+            'appointment_setter_id' => '005Qx00000GTjweIAD',
+            'reservation' => true,
+            'reservation_date' => '2026-10-03',
+            'cv_signed' => false,
+        ]);
+        $this->createOpportunity([
+            'salesforce_id' => '006-month-delivery',
+            'appointment_setter_id' => '005Qx00000GTjweIAD',
+            'cv_signed' => true,
+            'cv_signed_date' => '2026-11-07',
+        ]);
+
+        $september = collect(app(ContactCenterCommissionDashboardService::class)->build('2026-09')['summary_rows'])->firstWhere('salesforce_user_id', '005Qx00000GTjweIAD');
+        $october = collect(app(ContactCenterCommissionDashboardService::class)->build('2026-10')['summary_rows'])->firstWhere('salesforce_user_id', '005Qx00000GTjweIAD');
+        $november = collect(app(ContactCenterCommissionDashboardService::class)->build('2026-11')['summary_rows'])->firstWhere('salesforce_user_id', '005Qx00000GTjweIAD');
+
+        $this->assertSame(1, $september['appointment_count']);
+        $this->assertSame(0, $september['reservation_count']);
+        $this->assertSame(0, $september['delivery_count']);
+        $this->assertSame(0, $october['appointment_count']);
+        $this->assertSame(1, $october['reservation_count']);
+        $this->assertSame(0, $october['delivery_count']);
+        $this->assertSame(0, $november['appointment_count']);
+        $this->assertSame(0, $november['reservation_count']);
+        $this->assertSame(1, $november['delivery_count']);
+    }
+
+    public function test_missing_salesforce_user_created_date_leaves_the_roster_row_non_certifiable(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-09', ['company_delivery_target' => 100]);
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        $this->completeAppointmentEvidenceCoverage('2026-09-01', '2026-10-01');
+        SalesforceUser::query()->create([
+            'salesforce_id' => '005Qx00000GTjweIAD',
+            'name' => 'Maria Paz Vidal',
+            'created_date' => null,
+            'is_active' => true,
+            'commission_appraiser' => false,
+        ]);
+
+        $row = collect(app(ContactCenterCommissionDashboardService::class)->build('2026-09')['summary_rows'])
+            ->firstWhere('salesforce_user_id', '005Qx00000GTjweIAD');
+
+        $this->assertNull($row['conversion_threshold']);
+        $this->assertFalse($row['certifiable']);
+        $this->assertNull($row['final_total']);
+        $this->assertStringContainsString('Falta Salesforce User.CreatedDate', $row['observations']);
+    }
+
+    private function completeOpportunityCoverage(string $from, string $to): void
+    {
+        ReportSyncRun::query()->create([
+            'dataset' => 'salesforce_opportunities', 'source' => 'salesforce', 'status' => 'completed',
+            'period_start_at' => $from, 'period_end_at' => $to, 'started_at' => now()->subMinute(),
+            'completed_at' => now(), 'timezone' => config('app.timezone'), 'stats' => ['queried' => 0, 'stored' => 0],
+        ]);
+    }
+
+    private function completeAppointmentEvidenceCoverage(string $from, string $to): void
+    {
+        ReportSyncRun::query()->create([
+            'dataset' => 'commercial_commission_appointment_evidence', 'source' => 'salesforce', 'status' => 'completed',
+            'period_start_at' => $from, 'period_end_at' => $to, 'started_at' => now()->subMinute(),
+            'completed_at' => now(), 'timezone' => config('app.timezone'), 'stats' => ['queried' => 0, 'stored' => 0],
+        ]);
     }
 
     private function createLead(array $attributes): void

@@ -14,8 +14,20 @@ Actualizado: 2026-10-09.
   temporal en Opportunity↔Interest. La fotografía legacy `portal_resolved`
   permanece por compatibilidad con Campañas, pero no es autoridad del informe.
 - Tabla principal: `salesforce_opportunities`.
+- La réplica de Opportunity materializa `Captador_de_cita__c` y
+  `Captador_de_cita__r.Name` como `appointment_setter_id` y
+  `appointment_setter_name`, respectivamente, para atribuciones futuras. No
+  cambian los filtros, universos, KPI ni cálculos de Reservas/Ventas.
 - Evidencia CRM local: `salesforce_opportunity_interest_direct_runs`,
   `salesforce_opportunity_interest_directs` y `salesforce_interests`.
+- Dimensión compartida de User: `salesforce_users.created_date` materializa
+  `User.CreatedDate` para trazabilidad futura. No participa actualmente en la
+  elegibilidad, filtros, universos, KPI, cálculos ni presentación de
+  Reservas/Ventas.
+- El refresco de Users puede cargar aparte IDs del roster de Contact Center,
+  incluso antes de que existan en `salesforce_users` (por eso el roster no usa
+  FK física). Sus vigencias y nombre visible no intervienen en filtros,
+  universos, KPI, cálculos ni presentación de Reservas/Ventas.
 - Fechas sincronizadas: `CreatedDate`, `OPO_FEC_Fecha_de_reserva__c` y
   `Fecha_firma_contrato__c`.
 - Vehículo: `OPP_BUS_Vehiculo_de_interes__c` y matrícula de la relación ya

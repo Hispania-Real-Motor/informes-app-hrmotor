@@ -1,5 +1,44 @@
 # Handoff para agentes
 
+## 2026-11-03 — Cierre de observaciones de revisión de Contact Center
+
+- Alcance: se alinean fixtures de regresión con el contrato económico vigente
+  (`company_delivery_target=1000`, 1.012 entregas, 12 adicionales y 560 EUR
+  para Responsable), se cubre V1/V2 tras reapertura y se refuerza la validación
+  del XLSX ante filas de snapshot malformadas. No cambian fórmulas, roster,
+  fuentes, permisos, esquema ni snapshots reales.
+- Exportación: antes de leer campos tipados, cada fila del snapshot definitivo
+  debe ser una estructura válida. Una fila inválida devuelve HTTP 409 controlado
+  y no activa fallback a datos vivos; el mismo contrato ya protege un cálculo
+  live no certificable. V1 sigue inmutable tras cambio de target/datos locales,
+  mientras V2 se calcula y exporta exclusivamente desde su snapshot.
+- Archivos funcionales y de prueba: `CommercialCommissionDashboardController`,
+  `CommercialCommissionDashboardTest`, `CommissionMonthClosureTest` y
+  `ContactCenterCommissionDashboardTest`. Documentación focal: este handoff,
+  `docs/informe-comisiones.md`, documentación general y matriz KPI. No cambian
+  `PROJECT_CONTEXT.md` ni `DECISIONS.md`: no hay arquitectura ni decisión
+  irreversible nueva.
+- Seguridad y rendimiento: no se exponen datos adicionales ni se relajan roles;
+  el rechazo temprano evita generar un libro XLSX con evidencia inválida. No se
+  añaden consultas por agente ni llamadas Salesforce. La CI del SHA funcional
+  ejecutó PHPUnit (1.589 pruebas, 14.270 aserciones), Pint, build, whitespace y
+  `docs-integrity` correctamente; la comprobación local se limitó a sintaxis y
+  Pint focal porque este worktree no contiene `vendor`. Sin sync, cierre,
+  aprobación, despliegue ni modificación de producción.
+
+## Comisiones — integridad de roster y readiness de Vanesa (2026-11-03)
+
+- Base `f3b2e6a0e46801451baaccaf2caba551d76354d9`. El bloque 2/3 separa la certificación del Responsable Contact Center de la de agentes: Vanesa solo depende de la cobertura mensual de Opportunities y de `company_delivery_target`; la ausencia de evidencia de citas mantiene el dashboard de agentes no listo, pero no invalida su total si sus dependencias están completas.
+- Los tramos no solapados de un mismo `salesforce_user_id` se agrupan antes de calcular conversión, progresivo, bonus y total. Se emite una única fila mensual por User ID; todos los períodos reales se exponen y el nombre visible procede del tramo más reciente, sin afectar atribución económica.
+- La auditoría global distingue `USER_NOT_IN_ROSTER` de `EVENT_OUTSIDE_ROSTER_EFFECTIVE_RANGE` y conserva tipo de evento, User ID, referencia y fecha. No hay migraciones, syncs reales, Salesforce, cierres, snapshots ni XLSX. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian.
+
+## Comisiones — plan Contact Center por roster y evidencia (2026-11-03)
+
+- Base de trabajo `cf18adc7bfd20ac343cc930c2142a227bb5ecc34`. Desde `2026-09`, `ContactCenterCommissionDashboardService` delega en el plan de roster: la identidad económica es únicamente `salesforce_user_id`; no hay fallback por nombre, alias, teléfono ni Lead. Los meses anteriores mantienen el dashboard legado.
+- Las citas salen de `commercial_commission_appointment_evidences` por fecha de captación, y reservas/entregas de `salesforce_opportunities` por fecha de evento. La certificación requiere cobertura completada del mes de ambas fuentes. Product2 se conserva para contraste con sus clasificaciones, sin alterar el universo económico de Opportunities.
+- El objetivo mensual entero positivo `company_delivery_target` no tiene default: si falta, bonus y totales quedan nulos/no certificables. La fórmula de agentes usa conversión exacta con umbral 5/7 % por `SalesforceUser.created_date`, incentivo incremental 10/15/20 EUR y bonus de compañía. Vanesa German Bielsa usa el mismo objetivo y entregas elegibles, sin año previo: <90 %=0, 90--<100 %=350, >=100 %=500 + 5 EUR por excedente. Los porcentajes se redondean sólo en presentación.
+- No hay migraciones, cambios de configuración de entorno, sincronizaciones reales, Salesforce, cierre, snapshot ni XLSX en esta entrega. Documentación actualizada: `docs/informe-comisiones.md`, `docs/Documentacion_general_informes_y_contraste_salesforce.md`, `docs/matriz-trazabilidad-kpi.md` y este archivo. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian: no hay una convención ni decisión arquitectónica nueva. Pendiente: validación final de la suite/Pint/CI por el agente principal y cualquier bloque posterior de cierres/exportación bajo encargo independiente.
+
 ## Campañas — comparativa Google Venta y agregación por contexto (2026-10-27)
 
 - Rama/worktree de esta iteración: base `aa23c2d3acc0a1f9e380ceb4fb967e28bbee1cfd`, commit funcional `78536fe2bcb1c35b37a09e5080b808f1c9484fae` (PR #91). Cambian `CampaignDashboardDatasetService::attributionRows()` y sus tests: el contexto se aplica a cada `campaign_lead_attributions` antes de agrupar por plataforma/Campaign ID/nombre. En una campaña sintética mixta Venta/Tasación, el `MIN(campaign_type)` agregado podía excluir del detalle y de la comparativa Venta todas las atribuciones, aunque quedara inversión Google y el KPI deduplicado contara la venta. Otro test conserva un cero Google real sin Interests y Meta con venta. No se cambian first touch, matching, atribuciones persistidas, métricas históricas, fórmulas, snapshots ni cierres.
@@ -6130,6 +6169,196 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   regresión entre preflight y aplicación. Pendiente PHPUnit completo en CI por
   ausencia de `vendor/` completo en este worktree; sintaxis, Pint, diff y
   documentación deben repetirse antes de publicar el hotfix.
+
+## 2026-10-30 — Comisiones: readiness, Tasaciones y Responsable Contact Center
+
+- Alcance: se corrige la readiness de fuentes para el mes provisional, la SOQL de
+  `Tasacion__c` y se incorpora desde `2026-09` el bloque independiente Responsable
+  Contact Center. No se ejecutaron sincronizaciones ni se consultó Salesforce o producción.
+- Reglas vigentes: el mes actual combina únicamente runs `completed` contiguos o
+  solapados desde el día 1, conserva su último `period_end_at` cubierto y mide
+  la cola hasta el instante actual con la frescura configurada; no exige un
+  `period_end_at` futuro ni igual a `now()`. Un hueco real sigue bloqueando y
+  meses cerrados mantienen cobertura completa verificable. Tasaciones usa
+  `Oportunidad__c`/`Oportunidad__r` y los campos
+  `Negociaci_n_*` confirmados; el fallback no reintroduce los campos retirados.
+- Responsable Contact Center: no forma parte de `summary_rows`, no depende de
+  citas, llamadas, captador ni Tasaciones, y usa las entregas compartidas de
+  empresa (CV firmado, fecha de firma mensual, no Cerrada Perdida y Venta/Cambio
+  o Facilitea). Compara el mismo mes del año anterior, bloquea con referencia
+  incompleta o cero y conserva cohortes, fórmula e importe en snapshot. El XLSX
+  definitivo lee el snapshot y genera una hoja separada.
+- Documentación modificada: `docs/informe-comisiones.md`,
+  `docs/Calculo_comisiones_comerciales.txt`, `docs/matriz-trazabilidad-kpi.md`,
+  `docs/operaciones-produccion.md` y este handoff. `PROJECT_CONTEXT.md` y
+  `DECISIONS.md` no cambian: no hay nueva arquitectura, tabla, dependencia ni
+  decisión transversal irreversible.
+- Base revisada: `db2d9f2948887d18dc604afaa9543799826938da`. Validación
+  documental pendiente de repetir sobre el SHA final y con el cuerpo de PR que
+  declare `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`. El resultado
+  de las pruebas funcionales y de Pint lo debe registrar el agente principal.
+- Verificaciones de esta sesión: `git diff --check` correcto y diff revisado.
+  No se pudo ejecutar Pest/Pint ni el lint PHP: no hay un ejecutable `php` ni
+  `vendor/` utilizable en el entorno local. Tampoco se ejecutó el validador ni
+  sus tests porque `python`/`py` resuelven a aliases no ejecutables de Windows.
+  Deben repetirse antes de publicar con un runtime PHP/Python del proyecto; no
+  se declara CI verde ni validación funcional completa.
+
+### Correctivo CI posterior
+
+- La exportación XLSX consulta el snapshot de Contact Center solo si
+  `availableScopes($month)` incluye dicho scope. Los meses históricos anteriores
+  a julio de 2026 conservan el dashboard vivo y no intentan crear ni leer un
+  cierre inexistente. Se añadió una regresión de XLSX para septiembre definitivo
+  que comprueba agentes y Responsable en hojas separadas y que el importe 505
+  procede del snapshot. La aserción de snapshot económico compara valor y no la
+  representación JSON `int`/`float`.
+
+## 2026-10-30 — Configuración fundacional de objetivo global de entregas
+
+- `settings.company_delivery_target` queda disponible por mes en Configuración
+  de Comisiones para Administrador. Acepta únicamente un entero positivo o
+  `null`; no tiene valor por defecto ni derivación automática.
+- No participa todavía en fórmulas, KPIs, readiness, cierres, snapshots,
+  exportación XLSX ni en el bloque Responsable Contact Center. No se documenta
+  como objetivo económico vigente ni se actualiza la matriz de trazabilidad.
+- Sin cambios de esquema, migraciones, dependencias, permisos de informe ni
+  configuración de entorno. Las pruebas del cambio validan persistencia,
+  limpieza a nulo y rechazo de enteros no positivos/decimales. `git diff
+  --check` pasó. No se pudieron ejecutar Pint ni PHPUnit porque el entorno no
+  dispone de un ejecutable `php`; CI debe ejecutar la suite objetivo.
+
+## 2026-10-30 — Materialización de `User.CreatedDate`
+
+- La sincronización mensual de Users selecciona `CreatedDate` y lo persiste como
+  `salesforce_users.created_date` nullable mediante una migración aditiva. El
+  modelo lo expone como fecha/hora; la prueba cubre SOQL y normalización UTC.
+- No hay cambio de KPI, fórmula, universo, UI, cierres, snapshots, XLSX ni
+  incorporación de CALL COMUNIDAD. El campo es base de trazabilidad futura y no
+  debe interpretarse como criterio de elegibilidad hasta que exista una regla
+  aprobada y documentada.
+- Documentación focal actualizada: las dos SOQL publicadas de `User` incluyen el
+  campo. La matriz de trazabilidad no cambia por no existir todavía un KPI o
+  contrato económico nuevo. `git diff --check` pasó; Pint, PHPUnit y
+  Documentation Integrity no se pudieron ejecutar localmente porque el entorno
+  no dispone de ejecutables `php` ni `python` utilizables.
+
+## 2026-10-30 — Roster persistente de Contact Center
+
+- Administración de Comisiones puede mantener el roster por Salesforce User ID,
+  nombre visible y rango inclusivo de vigencia. El bootstrap inserta siete IDs
+  con vigencia desde `2026-09-01`; un ID no puede tener tramos solapados.
+- La tabla no tiene FK física a `salesforce_users` deliberadamente: permite
+  preparar el roster antes del primer sync. El sync mensual refresca esos IDs en
+  un batch aparte, sin ampliar la query principal de perfiles de Users.
+- No es una regla económica ni incluye CALL COMUNIDAD como perfil: no cambia
+  fórmulas, KPI, universos, UI del informe, cierres, snapshots, XLSX o la
+  comisión Responsable Contact Center. La matriz no cambia. El agente principal
+  no pudo ejecutar localmente PHPUnit ni Pint por ausencia de `php`; `git diff
+  --check` pasó y CI debe ejecutar las validaciones restantes.
+
+## 2026-10-30 — Materialización de captador de cita en Opportunities
+
+- La migración
+  `2026_10_30_140000_add_appointment_setter_fields_to_salesforce_opportunity_table.php`
+  añade a `salesforce_opportunities` los campos nullable
+  `appointment_setter_id` (Salesforce User ID) y `appointment_setter_name`.
+  La sincronización existente de Opportunities los proyecta desde
+  `Opportunity.Captador_de_cita__c` y `Captador_de_cita__r.Name`; no introduce
+  un sincronizador ni una consulta Salesforce nuevos y no modifica
+  `raw_payload`.
+- Los índices locales `(appointment_setter_id, reservation_date)` y
+  `(appointment_setter_id, cv_signed_date)` acompañan esa materialización. No
+  crean por sí mismos un criterio de informe ni un contrato económico.
+- No cambian fórmulas, KPIs, filtros, universos, roster, presentación, cierres,
+  snapshots ni XLSX. Por ello se mantienen sin cambios las fichas de la matriz
+  de trazabilidad; las notas de no impacto se incorporaron en Reservas/Ventas,
+  Campañas, Comisiones y Stock.
+- Pendiente de registrar por el agente principal: ejecución de PHPUnit/Pint y
+  del validador documental sobre el SHA y cuerpo final de la PR. Esta nota no
+  declara esas validaciones como satisfactorias.
+
+## 2026-11-03 — Cierre productivo del plan Contact Center desde septiembre de 2026
+
+- Alcance: se completa la certificación económica, protección de cierre,
+  congelación, exportación XLSX y regresiones del plan `roster_evidence` de
+  Contact Center para septiembre de 2026 y meses posteriores. No se cambia la
+  matemática de agentes ni de Responsable, el roster, Product2, permisos,
+  sincronizadores o esquema; no se ejecutaron sincronizaciones, cierres o
+  aprobaciones reales.
+- Certificación: una fila de agente no certificable convierte el dashboard en no
+  listo; cero citas con cobertura completa continúa siendo un cero certificable.
+  Vanesa requiere únicamente Opportunities completas y objetivo mensual
+  positivo: ante cobertura incompleta o target ausente, importes dependientes y
+  total son `null`, nunca cero parcial. El total del scope también queda no
+  presentable si existe un operando económico no certificable.
+- Cierre: desde septiembre los componentes son `appointments` y `sales`.
+  Preparar captura `contact_center` completo y los settings utilizados por el
+  cálculo; aprobar valida exclusivamente el candidato persistido (estructura,
+  certificación, nulos y coincidencia del objetivo), sin consultar Salesforce
+  ni recalcular. Reabrir no altera V1 y permite V2 con su propio corte/settings.
+- Exportación: el XLSX definitivo de septiembre consume solo el snapshot y usa
+  hojas detalladas de agentes y Responsable sin referencia anual. Sin definitivo
+  requiere cálculo live certificable; de lo contrario responde HTTP 409. Julio
+  y agosto conservan dashboard, cierre y XLSX legacy. Commission Auditor sigue
+  sin descarga autorizada.
+- Operación posterior autorizada: cubrir `[2026-09-01, 2026-10-01)` con los
+  comandos existentes de Opportunities, citas y Product2/conciliación; verificar
+  los runs `completed` en `report_sync_runs`, configurar target, revisar
+  incidencias/agentes/Responsable y preparar/aprobar con rol autorizado. No
+  concluye conciliación externa de nómina o pago.
+- Documentación focal: `docs/informe-comisiones.md`,
+  `docs/Documentacion_general_informes_y_contraste_salesforce.md`,
+  `docs/matriz-trazabilidad-kpi.md` y este handoff. `PROJECT_CONTEXT.md` y
+  `DECISIONS.md` no cambian: no hay módulo, convención o decisión arquitectónica
+  nueva.
+- Validación: CI del commit de implementación ejecutó PHPUnit con **1.587
+  pruebas correctas y 14.251 aserciones**, Pint sobre 49 archivos, `npm run
+  build` y `git diff --check`, todos correctos. `docs-integrity` también fue
+  correcto. La verificación local de Pint sobre los PHP modificados y el diff de
+  espacios pasó; no se ejecutó PHPUnit localmente porque este worktree aislado
+  no contiene `vendor` propio.
+
+## 2026-10-30 — Evidencia manual de citas y entregas de Contact Center
+
+- Corrección de integridad: los modelos de evidencia de cita y Product2 declaran
+  explícitamente sus tablas plurales reales. Una regresión persiste ambas vía
+  Eloquent; no cambia la sincronización, la limpieza por token, la
+  reconciliación ni el contrato económico.
+
+- Corrección posterior: cada ejecución usa un token y solo limpia filas no
+  vistas tras una lectura Salesforce completa; errores parciales no eliminan
+  evidencia. La reconciliación muestra `DUPLICATE_PRODUCT2_LINK` para todas
+  las Opportunities que comparten Product2, antes de fecha/estado.
+
+- La migración
+  `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
+  crea tres tablas locales: evidencia de cita desde `Interes__c` por
+  `IN_Fecha_Captador_de_Cita__c`, evidencia de entrega desde `Product2` y la
+  conciliación de ambas fuentes con Opportunities CV firmadas. Conservan IDs,
+  fechas, estado/nombre cuando aplica, payload, última modificación y corte de
+  sincronización; la conciliación guarda `MATCH`, `OPPORTUNITY_ONLY`,
+  `PRODUCT2_ONLY`, `DATE_MISMATCH` o `STATE_MISMATCH`.
+- Los comandos manuales requieren un intervalo explícito `[from, to)` y
+  registran el intento en `report_sync_runs`. Product2 se consulta por fecha de
+  entrega y por IDs referidos desde Opportunities CV firmadas del período. No
+  hay scheduler, escrituras en Salesforce, cambios en `salesforce_vehicles` ni
+  generación, recuperación o publicación de Interests.
+- La migración `2026_10_30_151000_add_sync_token_to_commercial_commission_evidence_tables.php`
+  añade un UUID por ejecución en ambas tablas de evidencia. La purga de filas
+  no vistas se realiza sólo después de leer y persistir por completo el
+  intervalo; un fallo parcial no limpia. En Product2 se conservan también IDs
+  exigidos por Opportunities CV firmadas del período aunque la fecha de entrega
+  no esté dentro del intervalo. La conciliación añade
+  `DUPLICATE_PRODUCT2_LINK`, con precedencia sobre discrepancias de fecha o
+  estado cuando varias Opportunities del período comparten Product2.
+- Es evidencia de auditoría de Comisiones: no cambia fórmulas, KPIs, filtros,
+  universos, cierres, snapshots, XLSX ni presentación. Se documentó en
+  Comisiones; la matriz de trazabilidad no cambia porque no se modifica ningún
+  contrato KPI.
+- Pendiente de registrar por el agente principal: resultados de PHPUnit, Pint y
+  del validador documental sobre el SHA y cuerpo de PR finales. Esta nota no
+  declara pruebas locales ni CI satisfactorias.
 
 ## PR #98 - Estados visuales del informe de Intereses
 

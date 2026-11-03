@@ -6,6 +6,7 @@ use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceUser;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfigService;
 use App\Services\Reports\CommercialCommissions\CommissionMonthResolver;
+use App\Services\Reports\CommercialCommissions\EligibleDeliveryOpportunityQuery;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,6 +40,7 @@ class AreaManagerCommissionDashboardService
         private readonly CommercialCommissionFormulaConfigService $formulaConfig,
         private readonly CommissionMonthResolver $monthResolver,
         private readonly LeadDelegationNormalizer $delegationNormalizer,
+        private readonly EligibleDeliveryOpportunityQuery $deliveryOpportunities,
     ) {}
 
     public function build(?string $month, ?string $zoneLabel = null): array
@@ -427,19 +429,7 @@ class AreaManagerCommissionDashboardService
 
     private function monthlyDeliveryOperations(CarbonImmutable $periodStart, CarbonImmutable $periodEnd): Builder
     {
-        $query = SalesforceOpportunity::query()
-            ->select(self::OPPORTUNITY_COLUMNS)
-            ->where('cv_signed', true)
-            ->whereDate('cv_signed_date', '>=', $periodStart->toDateString())
-            ->whereDate('cv_signed_date', '<', $periodEnd->toDateString())
-            ->whereRaw("LOWER(COALESCE(stage_name, '')) <> ?", ['cerrada perdida']);
-
-        $query->where(function (Builder $builder): void {
-            $this->applyRecordTypeFilter($builder, ['venta', 'cambio']);
-            $builder->orWhereRaw("LOWER(COALESCE(name, '')) LIKE ?", ['%facilitea%']);
-        });
-
-        return $query;
+        return $this->deliveryOpportunities->forPeriod($periodStart, $periodEnd, self::OPPORTUNITY_COLUMNS);
     }
 
     private function monthlyPurchaseOperations(CarbonImmutable $periodStart, CarbonImmutable $periodEnd): Builder

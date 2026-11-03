@@ -25,6 +25,8 @@ class SalesforceOpportunity extends Model
         'record_type_name',
         'owner_id',
         'owner_name',
+        'appointment_setter_id',
+        'appointment_setter_name',
         'owner_is_active',
         'owner_delegation',
         'report_owner_delegation',
