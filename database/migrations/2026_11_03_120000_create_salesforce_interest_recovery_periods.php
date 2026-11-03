@@ -62,7 +62,7 @@ return new class extends Migration
     public function down(): void
     {
         if (DB::table('salesforce_interest_recovery_periods')->exists()) {
-            throw new \RuntimeException('Recovery evidence must be retained during application rollback.');
+            throw new RuntimeException('Recovery evidence must be retained during application rollback.');
         }
 
         Schema::dropIfExists('salesforce_interest_recovery_period_differences');

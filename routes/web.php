@@ -11,9 +11,9 @@ use App\Http\Controllers\Reports\CommercialCommissions\CommercialCommissionClosu
 use App\Http\Controllers\Reports\CommercialCommissions\CommercialCommissionDashboardController;
 use App\Http\Controllers\Reports\CommercialCommissions\CommercialCommissionFormulaSettingsController;
 use App\Http\Controllers\Reports\CommercialCommissions\CommercialFinancingPenaltyImportController;
+use App\Http\Controllers\Reports\Leads\InterestProvisionalPreviewController;
 use App\Http\Controllers\Reports\Leads\LeadDashboardController;
 use App\Http\Controllers\Reports\Leads\LeadDashboardDataController;
-use App\Http\Controllers\Reports\Leads\InterestProvisionalPreviewController;
 use App\Http\Controllers\Reports\Leads\MonthlyCommercialReportDataController;
 use App\Http\Controllers\Reports\Operations\OperationalAlertController;
 use App\Http\Controllers\Reports\ReservationsSales\ReservationsSalesDashboardController;
