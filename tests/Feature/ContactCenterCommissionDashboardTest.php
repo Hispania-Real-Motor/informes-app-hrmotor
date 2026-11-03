@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CommercialCommissionAppointmentEvidence;
+use App\Models\CommercialCommissionClosure;
 use App\Models\CommercialCommissionDeliveryReconciliation;
 use App\Models\ContactCenterCommissionRosterMember;
 use App\Models\ReportSyncRun;
@@ -10,11 +11,16 @@ use App\Models\ReportUser;
 use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceUser;
+use App\Services\Reports\CommercialCommissions\CommercialCommissionClosureService;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfigService;
 use App\Services\Reports\ContactCenterCommissions\ContactCenterCommissionDashboardService;
+use App\Services\Reports\FinancialCommissions\FinancialCommissionDashboardService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Mockery;
 use Tests\TestCase;
+use ZipArchive;
 
 class ContactCenterCommissionDashboardTest extends TestCase
 {
@@ -313,6 +319,90 @@ class ContactCenterCommissionDashboardTest extends TestCase
         $this->assertFalse($payload['responsible_contact_center']['certifiable']);
         $this->assertNull($payload['responsible_contact_center']['final_total']);
         $this->assertNull($payload['responsible_contact_center']['base_amount']);
+    }
+
+    public function test_contact_center_reopen_creates_v2_without_mutating_v1_or_its_export(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $month = '2026-09';
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth($month, ['company_delivery_target' => 1000]);
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        $this->completeAppointmentEvidenceCoverage('2026-09-01', '2026-10-01');
+        ContactCenterCommissionRosterMember::query()->get()->each(function (ContactCenterCommissionRosterMember $member): void {
+            SalesforceUser::query()->create([
+                'salesforce_id' => $member->salesforce_user_id,
+                'name' => $member->display_name,
+                'created_date' => '2026-01-01 00:00:00',
+                'is_active' => true,
+                'commission_appraiser' => false,
+            ]);
+        });
+        foreach (range(1, 1012) as $index) {
+            $this->createOpportunity([
+                'salesforce_id' => '006-freeze-'.$index,
+                'name' => 'Venta congelada '.$index,
+                'cv_signed' => true,
+                'cv_signed_date' => '2026-09-15',
+            ]);
+        }
+        $admin = ReportUser::query()->create([
+            'name' => 'Admin cierre',
+            'email' => 'admin-cierre@example.test',
+            'password' => Hash::make('closure-test-password'),
+            'role' => ReportUser::ROLE_ADMIN,
+            'is_active' => true,
+        ]);
+        $closureService = app(CommercialCommissionClosureService::class);
+        $components = array_fill_keys(array_keys($closureService->requiredComponents(CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $month)), true);
+
+        $closureService->prepare($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $components, $admin);
+        $closureService->approve($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $admin);
+        $v1 = $closureService->definitiveSnapshot($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER);
+        $this->assertSame(1000, data_get($v1, 'formula_settings.company_delivery_target'));
+        $this->assertSame(1012, data_get($v1, 'contact_center.responsible_contact_center.actual_deliveries'));
+        $this->assertEquals(560.0, data_get($v1, 'contact_center.responsible_contact_center.final_total'));
+
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth($month, ['company_delivery_target' => 900]);
+        $this->createOpportunity([
+            'salesforce_id' => '006-freeze-v2',
+            'name' => 'Venta nueva V2',
+            'cv_signed' => true,
+            'cv_signed_date' => '2026-09-20',
+        ]);
+        $this->assertSame(1000, data_get($closureService->definitiveSnapshot($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER), 'formula_settings.company_delivery_target'));
+        $this->assertEquals(560.0, data_get($closureService->definitiveSnapshot($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER), 'contact_center.responsible_contact_center.final_total'));
+
+        $closureService->reopen($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, 'Corrección auditada del objetivo mensual', $admin);
+        $closureService->prepare($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $components, $admin);
+        $closureService->approve($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $admin);
+        $closure = CommercialCommissionClosure::query()->where(['month' => $month, 'closure_scope' => CommercialCommissionClosure::SCOPE_CONTACT_CENTER])->firstOrFail();
+        $v1Stored = $closure->snapshots()->where('version', 1)->firstOrFail()->payload;
+        $v2 = $closureService->definitiveSnapshot($month, CommercialCommissionClosure::SCOPE_CONTACT_CENTER);
+
+        $this->assertSame(2, $closure->snapshot_version);
+        $this->assertSame(1000, data_get($v1Stored, 'formula_settings.company_delivery_target'));
+        $this->assertEquals(560.0, data_get($v1Stored, 'contact_center.responsible_contact_center.final_total'));
+        $this->assertSame(900, data_get($v2, 'formula_settings.company_delivery_target'));
+        $this->assertSame(1013, data_get($v2, 'contact_center.responsible_contact_center.actual_deliveries'));
+        $this->assertEquals(1065.0, data_get($v2, 'contact_center.responsible_contact_center.final_total'));
+
+        $financial = Mockery::mock(FinancialCommissionDashboardService::class);
+        $financial->shouldReceive('build')->with($month)->andReturn(['ready' => true, 'issues' => [], 'summary_rows' => []]);
+        $this->app->instance(FinancialCommissionDashboardService::class, $financial);
+        $export = $this->withSession([
+            'informes_authenticated' => true,
+            'report_user_id' => $admin->id,
+            'report_user_role' => $admin->role,
+            'report_user_email' => $admin->email,
+        ])->get('/informes/comisiones-comerciales/export/comisiones.xlsx?month='.$month)->assertOk();
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($export->baseResponse->getFile()->getPathname()) === true);
+        $responsibleSheet = (string) $zip->getFromName('xl/worksheets/sheet5.xml');
+        $zip->close();
+
+        $this->assertStringContainsString('<v>900.00</v>', $responsibleSheet);
+        $this->assertStringContainsString('<v>1065.00</v>', $responsibleSheet);
+        $this->assertStringNotContainsString('<v>560.00</v>', $responsibleSheet);
     }
 
     public function test_multiple_roster_periods_aggregate_one_monthly_row_and_audit_the_gap(): void

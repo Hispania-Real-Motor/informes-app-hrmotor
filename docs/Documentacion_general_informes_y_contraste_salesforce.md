@@ -939,8 +939,10 @@ funcional.
   ajuste del siguiente mes abierto o exige reapertura manual con motivo.
 - El XLSX de Contact Center de septiembre o posterior consume solo ese snapshot
   definitivo. Sin él, exige un cálculo live certificable y responde HTTP 409 si
-  falta; los formatos de julio/agosto no cambian. Los permisos de descarga no
-  se amplían y Commission Auditor sigue sin poder descargar el XLSX.
+  falta; un definitivo malformado o no certificable recibe el mismo rechazo y
+  nunca se reconstruye desde datos vivos. Los formatos de julio/agosto no
+  cambian. Los permisos de descarga no se amplían y Commission Auditor sigue
+  sin poder descargar el XLSX.
 - El libro de ajustes conserva operación, mes original/aplicación, importe,
   motivo, usuario, fecha y estado.
 

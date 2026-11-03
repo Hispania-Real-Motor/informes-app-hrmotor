@@ -1,5 +1,30 @@
 # Handoff para agentes
 
+## 2026-11-03 — Cierre de observaciones de revisión de Contact Center
+
+- Alcance: se alinean fixtures de regresión con el contrato económico vigente
+  (`company_delivery_target=1000`, 1.012 entregas, 12 adicionales y 560 EUR
+  para Responsable), se cubre V1/V2 tras reapertura y se refuerza la validación
+  del XLSX ante filas de snapshot malformadas. No cambian fórmulas, roster,
+  fuentes, permisos, esquema ni snapshots reales.
+- Exportación: antes de leer campos tipados, cada fila del snapshot definitivo
+  debe ser una estructura válida. Una fila inválida devuelve HTTP 409 controlado
+  y no activa fallback a datos vivos; el mismo contrato ya protege un cálculo
+  live no certificable. V1 sigue inmutable tras cambio de target/datos locales,
+  mientras V2 se calcula y exporta exclusivamente desde su snapshot.
+- Archivos funcionales y de prueba: `CommercialCommissionDashboardController`,
+  `CommercialCommissionDashboardTest`, `CommissionMonthClosureTest` y
+  `ContactCenterCommissionDashboardTest`. Documentación focal: este handoff,
+  `docs/informe-comisiones.md`, documentación general y matriz KPI. No cambian
+  `PROJECT_CONTEXT.md` ni `DECISIONS.md`: no hay arquitectura ni decisión
+  irreversible nueva.
+- Seguridad y rendimiento: no se exponen datos adicionales ni se relajan roles;
+  el rechazo temprano evita generar un libro XLSX con evidencia inválida. No se
+  añaden consultas por agente ni llamadas Salesforce. Validaciones pendientes
+  del agente principal: PHPUnit completo, Pint, build, `docs-integrity` y
+  `git diff --check` sobre el SHA final. Sin sync, cierre, aprobación, despliegue
+  ni modificación de producción.
+
 ## Comisiones — integridad de roster y readiness de Vanesa (2026-11-03)
 
 - Base `f3b2e6a0e46801451baaccaf2caba551d76354d9`. El bloque 2/3 separa la certificación del Responsable Contact Center de la de agentes: Vanesa solo depende de la cobertura mensual de Opportunities y de `company_delivery_target`; la ausencia de evidencia de citas mantiene el dashboard de agentes no listo, pero no invalida su total si sus dependencias están completas.

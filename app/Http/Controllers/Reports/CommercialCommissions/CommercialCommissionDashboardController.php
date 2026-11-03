@@ -812,6 +812,10 @@ class CommercialCommissionDashboardController extends Controller
             return false;
         }
 
+        if (! collect($rows)->every(fn (mixed $row): bool => is_array($row))) {
+            return false;
+        }
+
         if ($snapshot !== null) {
             $target = data_get($snapshot, 'formula_settings.company_delivery_target');
             if (! is_array($snapshot['formula_settings'] ?? null)

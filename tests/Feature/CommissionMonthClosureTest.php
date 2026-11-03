@@ -368,11 +368,10 @@ class CommissionMonthClosureTest extends TestCase
             'formula_settings' => ['company_delivery_target' => 1000],
             'summary_rows' => [['agent_name' => 'Agente', 'company_delivery_target' => 1000, 'certifiable' => true, 'final_total' => 100.0]],
             'responsible_contact_center' => [
-                'responsible_name' => 'Vanesa Germán', 'final_total' => 505.0,
+                'responsible_name' => 'Vanesa Germán', 'final_total' => 560.0,
                 'company_delivery_target' => 1000, 'certifiable' => true,
-                'actual_deliveries' => 101, 'reference_deliveries' => 100,
+                'actual_deliveries' => 1012, 'additional_deliveries' => 12, 'additional_amount' => 60.0,
                 'actual_delivery_details' => [['opportunity_id' => '006-A']],
-                'reference_delivery_details' => [['opportunity_id' => '006-R']],
             ],
         ]);
         $this->app->instance(ContactCenterCommissionDashboardService::class, $contactCenter);
@@ -383,9 +382,9 @@ class CommissionMonthClosureTest extends TestCase
         $service->approve('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER, $admin);
 
         $snapshot = $service->definitiveSnapshot('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER);
-        $this->assertEquals(505.0, data_get($snapshot, 'contact_center.responsible_contact_center.final_total'));
+        $this->assertEquals(560.0, data_get($snapshot, 'contact_center.responsible_contact_center.final_total'));
         $this->assertSame('006-A', data_get($snapshot, 'contact_center.responsible_contact_center.actual_delivery_details.0.opportunity_id'));
-        $this->assertSame(605.0, $service->approvalSummary('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER)['final_total']);
+        $this->assertSame(660.0, $service->approvalSummary('2026-09', CommercialCommissionClosure::SCOPE_CONTACT_CENTER)['final_total']);
     }
 
     public function test_contact_center_approval_rejects_a_persisted_candidate_with_a_null_economic_total(): void

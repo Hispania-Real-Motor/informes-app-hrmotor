@@ -625,13 +625,13 @@ class CommercialCommissionDashboardTest extends TestCase
                     'conversion_passed' => true, 'delivery_count' => 12, 'deliveries_1_9' => 9, 'deliveries_10_20' => 3,
                     'deliveries_21_plus' => 0, 'delivery_incentive' => 135.0, 'company_delivery_target' => 1000,
                     'company_deliveries' => 1012, 'company_compliance_percent' => 101.2, 'company_bonus' => 50.0,
-                    'certifiable' => true, 'observations' => 'Sin incidencias', 'final_total' => 100.0,
+                    'certifiable' => true, 'observations' => 'Sin incidencias', 'final_total' => 185.0,
                 ]],
                 'responsible_contact_center' => [
                     'responsible_name' => 'Vanesa Germán', 'month' => '2026-09', 'company_delivery_target' => 1000,
                     'actual_deliveries' => 1012, 'compliance_percent' => 101.2,
-                    'bracket' => '>= 100 %', 'additional_deliveries' => 1, 'base_amount' => 500.0,
-                    'additional_amount' => 5.0, 'certifiable' => true, 'final_total' => 505.0,
+                    'bracket' => '>= 100 %', 'additional_deliveries' => 12, 'base_amount' => 500.0,
+                    'additional_amount' => 60.0, 'certifiable' => true, 'final_total' => 560.0,
                 ],
             ], 'formula_settings' => ['company_delivery_target' => 1000]],
         ]);
@@ -651,14 +651,45 @@ class CommercialCommissionDashboardTest extends TestCase
         $this->assertStringContainsString('Responsable Contact Center', $workbook);
         $this->assertStringContainsString('Agente congelado', $contactSheet);
         $this->assertStringContainsString('Objetivo compañía', $contactSheet);
+        $this->assertStringContainsString('<v>185.00</v>', $contactSheet);
         $this->assertStringContainsString('Vanesa Germán', $responsibleSheet);
-        $this->assertStringContainsString('<v>505.00</v>', $responsibleSheet);
+        $this->assertStringContainsString('<v>560.00</v>', $responsibleSheet);
         $this->assertStringNotContainsString('Entregas referencia', $responsibleSheet);
         $this->assertStringNotContainsString('Dato vivo', $responsibleSheet);
     }
 
     public function test_export_contact_center_september_without_a_certifiable_live_calculation_returns_conflict(): void
     {
+        $this->withSession($this->authenticatedSession(ReportUser::ROLE_DIRECTOR))
+            ->get('/informes/comisiones-comerciales/export/comisiones.xlsx?month=2026-09')
+            ->assertStatus(409)
+            ->assertSee('Contact Center no dispone de un cálculo económico certificable para el mes seleccionado.');
+    }
+
+    public function test_export_contact_center_rejects_a_malformed_definitive_snapshot_with_controlled_conflict(): void
+    {
+        $closure = CommercialCommissionClosure::query()->create([
+            'month' => '2026-09', 'closure_scope' => CommercialCommissionClosure::SCOPE_CONTACT_CENTER,
+            'status' => CommercialCommissionClosure::STATUS_DEFINITIVE, 'snapshot_version' => 1,
+            'formula_version' => 'test', 'data_cutoff_at' => now(),
+        ]);
+        CommercialCommissionSnapshot::query()->create([
+            'closure_id' => $closure->id, 'month' => '2026-09', 'version' => 1,
+            'formula_version' => 'test', 'data_cutoff_at' => now(), 'created_at' => now(),
+            'payload' => [
+                'formula_settings' => ['company_delivery_target' => 1000],
+                'contact_center' => [
+                    'plan' => 'roster_evidence',
+                    'summary_rows' => ['malformed-row'],
+                    'responsible_contact_center' => [
+                        'company_delivery_target' => 1000,
+                        'certifiable' => true,
+                        'final_total' => 560.0,
+                    ],
+                ],
+            ],
+        ]);
+
         $this->withSession($this->authenticatedSession(ReportUser::ROLE_DIRECTOR))
             ->get('/informes/comisiones-comerciales/export/comisiones.xlsx?month=2026-09')
             ->assertStatus(409)

@@ -337,8 +337,10 @@ detallada de Contact Center (identidad Salesforce, CreatedDate, umbral, hechos,
 tramos, objetivo, importes, certificación e incidencias) y una hoja de
 Responsable basada en el objetivo mensual, sin columnas de referencia anual.
 Sin definitivo, la exportación exige cálculo live certificable y devuelve HTTP
-409 con un mensaje controlado si no lo hay. Julio y agosto mantienen el
-dashboard, componentes, snapshots y formato XLSX legacy.
+409 con un mensaje controlado si no lo hay. Un snapshot definitivo malformado
+o económicamente no certificable también devuelve ese 409; nunca se sustituye
+silenciosamente por datos vivos. Julio y agosto mantienen el dashboard,
+componentes, snapshots y formato XLSX legacy.
 La migración `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
 crea tres réplicas locales separadas de los hechos del informe:
 
