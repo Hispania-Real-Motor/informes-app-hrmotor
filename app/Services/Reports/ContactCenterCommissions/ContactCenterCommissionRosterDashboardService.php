@@ -85,6 +85,9 @@ class ContactCenterCommissionRosterDashboardService
 
         $globalIncidents = $this->globalIncidents($start, $end, $membersByUserId, $appointments, $reservations, $deliveries);
         $responsible = $this->responsibleRow($monthKey, $target, $companyCount, $companyCompliance, $companyDeliveries, $responsibleSourcesCertifiable, $includeDetails);
+        foreach (collect($rows)->where('certifiable', false) as $row) {
+            $issues[] = 'Miembro Contact Center no certificable: '.$row['salesforce_user_id'].' ('.$row['agent_name'].'). '.$row['observations'];
+        }
 
         return [
             'ready' => $issues === [],

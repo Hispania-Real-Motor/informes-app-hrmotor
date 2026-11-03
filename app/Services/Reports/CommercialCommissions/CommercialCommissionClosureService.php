@@ -37,6 +37,7 @@ class CommercialCommissionClosureService
         'incentives' => 'Tramos de incentivos',
         'tasaciones' => 'Tasaciones',
         'leads' => 'Leads/citas',
+        'appointments' => 'Evidencia de citas Contact Center',
     ];
 
     public function __construct(
@@ -85,11 +86,11 @@ class CommercialCommissionClosureService
     }
 
     /** @return array<string, string> */
-    public function requiredComponents(string $scope): array
+    public function requiredComponents(string $scope, ?string $month = null): array
     {
         $this->assertClosableScope($scope);
 
-        return collect(self::REQUIRED_COMPONENTS_BY_SCOPE[$scope])
+        return collect($this->componentsFor($scope, $month))
             ->mapWithKeys(fn (string $component): array => [$component => self::COMPONENT_LABELS[$component] ?? $component])
             ->all();
     }
@@ -170,7 +171,7 @@ class CommercialCommissionClosureService
             if (! $closure || $closure->status !== CommercialCommissionClosure::STATUS_PENDING_APPROVAL) {
                 throw ValidationException::withMessages(['month' => 'El bloque debe estar pendiente de aprobación antes de hacerlo definitivo.']);
             }
-            if (collect(self::REQUIRED_COMPONENTS_BY_SCOPE[$scope])->contains(fn (string $component): bool => ! data_get($closure->component_statuses, $component, false))) {
+            if (collect($this->componentsFor($scope, $monthKey))->contains(fn (string $component): bool => ! data_get($closure->component_statuses, $component, false))) {
                 throw ValidationException::withMessages(['components' => 'Faltan componentes confirmados para este bloque.']);
             }
             $version = (int) $closure->snapshot_version;
@@ -364,7 +365,7 @@ class CommercialCommissionClosureService
             CommercialCommissionClosure::SCOPE_AREA_MANAGER => $this->areaManagerSnapshot($month),
             CommercialCommissionClosure::SCOPE_FINANCIALS => ['financials' => $this->buildLiveDashboard($month, $scope)],
             CommercialCommissionClosure::SCOPE_CALL_CENTER => ['call_center' => $this->buildLiveDashboard($month, $scope)],
-            CommercialCommissionClosure::SCOPE_CONTACT_CENTER => ['contact_center' => $this->buildLiveDashboard($month, $scope)],
+            CommercialCommissionClosure::SCOPE_CONTACT_CENTER => ['contact_center' => $this->buildLiveDashboard($month, $scope), 'formula_settings' => $this->formulaConfig->forMonth($month)],
         };
         $issues = collect($dashboard)
             ->flatMap(fn (mixed $value): array => is_array($value) ? ($value['issues'] ?? []) : [])
@@ -408,9 +409,9 @@ class CommercialCommissionClosureService
         return [
             'month' => $selected->format('Y-m'), 'closure_scope' => $scope, 'status' => $closure?->status ?? $default,
             'is_prepared' => $closure !== null,
-            'is_current_month' => $selected->isCurrentMonth(), 'component_statuses' => $closure?->component_statuses ?? array_fill_keys(self::REQUIRED_COMPONENTS_BY_SCOPE[$scope], false),
-            'required_components' => array_keys($this->requiredComponents($scope)),
-            'component_labels' => $this->requiredComponents($scope),
+            'is_current_month' => $selected->isCurrentMonth(), 'component_statuses' => $closure?->component_statuses ?? array_fill_keys($this->componentsFor($scope, $selected->format('Y-m')), false),
+            'required_components' => array_keys($this->requiredComponents($scope, $selected->format('Y-m'))),
+            'component_labels' => $this->requiredComponents($scope, $selected->format('Y-m')),
             'issues' => $closure?->issues ?? [], 'data_cutoff_at' => $closure?->data_cutoff_at?->toIso8601String(),
             'formula_version' => $closure?->formula_version ?? CommercialCommissionFormulaConfigService::VERSION,
             'approved_by' => $closure?->approver ? ['id' => $closure->approver->id, 'name' => $closure->approver->name] : null,
@@ -458,6 +459,18 @@ class CommercialCommissionClosureService
             CommercialCommissionClosure::SCOPE_CONTACT_CENTER => collect($dashboard['summary_rows'] ?? [])->sum('final_total')
                 + (float) data_get($dashboard, 'responsible_contact_center.final_total', 0),
         }, 2);
+    }
+
+    /** @return array<int, string> */
+    private function componentsFor(string $scope, ?string $month): array
+    {
+        if ($scope === CommercialCommissionClosure::SCOPE_CONTACT_CENTER
+            && $month !== null
+            && CarbonImmutable::parse($month.'-01')->greaterThanOrEqualTo(CarbonImmutable::parse('2026-09-01'))) {
+            return ['appointments', 'sales'];
+        }
+
+        return self::REQUIRED_COMPONENTS_BY_SCOPE[$scope];
     }
 
     private function scopeLabel(string $scope): string
