@@ -53,7 +53,7 @@ class InterestPeriodRecoveryTest extends TestCase
         $this->assertNull(app(InterestGenerationStore::class)->published());
     }
 
-    public function test_period_recovery_records_remote_and_seed_only_differences_without_writing_versions(): void
+    public function test_period_recovery_records_new_and_seed_only_differences_without_writing_versions(): void
     {
         $sourceRecord = $this->record('a01000000000000001', '2026-09-20T08:00:00Z');
         $remoteRecord = $this->record('a01000000000000002', '2026-09-21T08:00:00Z');
@@ -83,7 +83,7 @@ class InterestPeriodRecoveryTest extends TestCase
         $this->assertSame(2, $status['counters']['discrepancies']);
         $this->assertSame(1, app(InterestGenerationStore::class)->rows($source)->count());
         $this->assertSame($versions, app(InterestGenerationStore::class)->rows($source)->count());
-        $this->assertDatabaseHas('salesforce_interest_recovery_period_differences', ['recovery_period_id' => $period, 'kind' => 'remote_only']);
+        $this->assertDatabaseHas('salesforce_interest_recovery_period_differences', ['recovery_period_id' => $period, 'kind' => 'new']);
         $this->assertDatabaseHas('salesforce_interest_recovery_period_differences', ['recovery_period_id' => $period, 'kind' => 'candidate_only']);
     }
 
