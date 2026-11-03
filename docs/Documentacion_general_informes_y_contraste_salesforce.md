@@ -904,7 +904,11 @@ detalles y exportaciones. El mes actual se permite y es siempre Provisional.
   septiembre, las citas se materializan en
   `commercial_commission_appointment_evidences` por User ID y fecha de
   captación; reservas y entregas se leen de Opportunities por su fecha de
-  evento. El objetivo de compañía es mensual y Product2 sólo aporta contraste.
+  evento. Los tramos de roster de un mismo User ID se agregan en una única fila
+  mensual y los eventos fuera de vigencia se auditan sin reasignación. El
+  objetivo de compañía es mensual; Product2 sólo aporta contraste. El bloque de
+  Responsable Contact Center certifica con Opportunities y objetivo, de forma
+  independiente de la evidencia de citas requerida por los agentes.
 
 Cada pestaña puede tener un universo diferente y expone el puente
 `base - exclusiones + inclusiones = total`. La conciliación interna se muestra
