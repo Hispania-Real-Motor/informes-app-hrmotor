@@ -153,8 +153,13 @@ primer sync de Users. El refresco mensual solicita sus IDs en un batch trazable
 separado y no amplía el filtro de perfiles de la consulta principal. Desde
 `2026-09` es también la única identidad de imputación del plan económico de
 Contact Center: no hay fallback por nombre, alias, teléfono o Lead. La etiqueta
-visible no cambia la atribución; un evento con User ID fuera del roster queda
-como incidencia global y no genera comisión.
+visible no cambia la atribución. Si el mismo User ID tiene varios tramos no
+solapados que intersectan el mes, se agrupan antes de calcular: existe una sola
+fila económica mensual y cada hecho cuenta solo si su fecha cae en alguno de
+esos tramos. La etiqueta mostrada procede determinísticamente del tramo con
+`effective_from` más reciente. Un evento con User ID ausente del roster, o con
+fecha fuera de todos sus tramos, queda como incidencia global y no genera
+comisión.
 
 ## Reseñas
 
@@ -279,7 +284,11 @@ Para un miembro vigente del roster, las citas proceden de
 proceden de `salesforce_opportunities` por el mismo User ID y, respectivamente,
 `reservation_date` y `cv_signed_date`. Cada hecho usa el mes natural de su
 propia fecha de evento, se deduplica por su ID Salesforce y debe caer en el
-tramo vigente del roster. El detalle conserva IDs y fechas. `Product2` y sus
+alguno de los tramos vigentes del roster. El detalle conserva IDs, fechas y la
+colección de vigencias reales; no reduce un mes a un único tramo ficticio.
+Los eventos se auditan como `USER_NOT_IN_ROSTER` o
+`EVENT_OUTSIDE_ROSTER_EFFECTIVE_RANGE`, con tipo, User ID, referencia y fecha.
+`Product2` y sus
 reconciliaciones son sólo contraste informativo: no recalculan ni excluyen una
 entrega económica de Opportunity.
 
@@ -302,7 +311,10 @@ El bloque Responsable Contact Center muestra a Vanesa German Bielsa sobre el
 mismo objetivo y universo de compañía, sin referencia al año anterior: menos de
 90 % paga 0 EUR; de 90 % a menos de 100 %, 350 EUR; desde 100 %, 500 EUR más
 5 EUR por cada entrega que exceda el objetivo. Los porcentajes se redondean
-sólo para presentar.
+sólo para presentar. Su certificación requiere exclusivamente la cobertura de
+`salesforce_opportunities` y el objetivo mensual; no depende de evidencia de
+citas, reservas, conversión, `SalesforceUser` ni roster. Por ello el dashboard
+puede seguir no certificable para agentes mientras el bloque de Vanesa sí lo es.
 
 Este bloque no implementa cierres, snapshots ni hojas XLSX nuevas. Sigue siendo
 operativo; cualquier congelación o exportación específica requerirá un cambio

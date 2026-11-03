@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\CommercialCommissionAppointmentEvidence;
 use App\Models\CommercialCommissionDeliveryReconciliation;
+use App\Models\ContactCenterCommissionRosterMember;
 use App\Models\ReportSyncRun;
 use App\Models\ReportUser;
 use App\Models\SalesforceLead;
@@ -279,6 +280,53 @@ class ContactCenterCommissionDashboardTest extends TestCase
         $this->assertFalse($row['certifiable']);
         $this->assertNull($payload['responsible_contact_center']['final_total']);
         $this->assertStringContainsString('Falta objetivo general', implode(' ', $payload['issues']));
+    }
+
+    public function test_responsible_remains_certifiable_when_appointment_evidence_is_unavailable(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-09', ['company_delivery_target' => 1000]);
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        foreach (range(1, 1012) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-vanesa-'.$index, 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+        }
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+
+        $this->assertFalse($payload['ready']);
+        $this->assertTrue($payload['responsible_contact_center']['certifiable']);
+        $this->assertSame(560.0, $payload['responsible_contact_center']['final_total']);
+    }
+
+    public function test_multiple_roster_periods_aggregate_one_monthly_row_and_audit_the_gap(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $userId = '005Qx00000GTjweIAD';
+        ContactCenterCommissionRosterMember::query()->where('salesforce_user_id', $userId)->delete();
+        ContactCenterCommissionRosterMember::query()->create(['salesforce_user_id' => $userId, 'display_name' => 'Nombre A', 'effective_from' => '2026-09-01', 'effective_until' => '2026-09-10']);
+        ContactCenterCommissionRosterMember::query()->create(['salesforce_user_id' => $userId, 'display_name' => 'Nombre B', 'effective_from' => '2026-09-20', 'effective_until' => '2026-09-30']);
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-09', ['company_delivery_target' => 100]);
+        $this->completeOpportunityCoverage('2026-09-01', '2026-10-01');
+        $this->completeAppointmentEvidenceCoverage('2026-09-01', '2026-10-01');
+        SalesforceUser::query()->create(['salesforce_id' => $userId, 'name' => 'Maria Paz Vidal', 'created_date' => '2026-04-10 14:11:59', 'is_active' => true, 'commission_appraiser' => false]);
+        foreach (['2026-09-05', '2026-09-25', '2026-09-15'] as $index => $date) {
+            CommercialCommissionAppointmentEvidence::query()->create(['salesforce_interest_id' => 'a0I-period-'.$index, 'appointment_setter_id' => $userId, 'appointment_capture_date' => $date, 'synced_at' => now()]);
+        }
+        foreach (range(1, 10) as $index) {
+            $this->createOpportunity(['salesforce_id' => '006-period-'.$index, 'appointment_setter_id' => $userId, 'reservation' => $index === 1, 'reservation_date' => $index === 1 ? '2026-09-05' : null, 'cv_signed' => true, 'cv_signed_date' => $index <= 5 ? '2026-09-05' : '2026-09-25']);
+        }
+        $this->createOpportunity(['salesforce_id' => '006-period-gap', 'appointment_setter_id' => $userId, 'reservation' => true, 'reservation_date' => '2026-09-15', 'cv_signed' => true, 'cv_signed_date' => '2026-09-15']);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-09');
+        $row = collect($payload['summary_rows'])->firstWhere('salesforce_user_id', $userId);
+
+        $this->assertSame('Nombre B', $row['agent_name']);
+        $this->assertSame(2, $row['appointment_count']);
+        $this->assertSame(1, $row['reservation_count']);
+        $this->assertSame(10, $row['delivery_count']);
+        $this->assertSame(105.0, $row['delivery_incentive']);
+        $this->assertCount(2, $row['roster_periods']);
+        $this->assertTrue(collect($payload['global_incidents'])->contains('type', 'EVENT_OUTSIDE_ROSTER_EFFECTIVE_RANGE'));
     }
 
     public function test_roster_events_are_counted_only_in_their_own_month_and_inactive_users_remain_eligible(): void

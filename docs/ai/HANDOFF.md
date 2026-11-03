@@ -1,5 +1,11 @@
 # Handoff para agentes
 
+## Comisiones — integridad de roster y readiness de Vanesa (2026-11-03)
+
+- Base `f3b2e6a0e46801451baaccaf2caba551d76354d9`. El bloque 2/3 separa la certificación del Responsable Contact Center de la de agentes: Vanesa solo depende de la cobertura mensual de Opportunities y de `company_delivery_target`; la ausencia de evidencia de citas mantiene el dashboard de agentes no listo, pero no invalida su total si sus dependencias están completas.
+- Los tramos no solapados de un mismo `salesforce_user_id` se agrupan antes de calcular conversión, progresivo, bonus y total. Se emite una única fila mensual por User ID; todos los períodos reales se exponen y el nombre visible procede del tramo más reciente, sin afectar atribución económica.
+- La auditoría global distingue `USER_NOT_IN_ROSTER` de `EVENT_OUTSIDE_ROSTER_EFFECTIVE_RANGE` y conserva tipo de evento, User ID, referencia y fecha. No hay migraciones, syncs reales, Salesforce, cierres, snapshots ni XLSX. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian.
+
 ## Comisiones — plan Contact Center por roster y evidencia (2026-11-03)
 
 - Base de trabajo `cf18adc7bfd20ac343cc930c2142a227bb5ecc34`. Desde `2026-09`, `ContactCenterCommissionDashboardService` delega en el plan de roster: la identidad económica es únicamente `salesforce_user_id`; no hay fallback por nombre, alias, teléfono ni Lead. Los meses anteriores mantienen el dashboard legado.
