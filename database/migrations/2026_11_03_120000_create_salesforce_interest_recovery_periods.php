@@ -19,6 +19,8 @@ return new class extends Migration
             $table->string('status', 32)->index();
             $table->string('phase', 48)->index();
             $table->string('checkpoint_salesforce_id', 18)->nullable();
+            $table->uuid('lease_token')->nullable();
+            $table->dateTime('heartbeat_at')->nullable();
             $table->unsignedInteger('pages_completed')->default(0);
             $table->unsignedBigInteger('rows_expected')->nullable();
             $table->json('counters');

@@ -10,6 +10,7 @@ use App\Services\Salesforce\InterestPeriodRecoveryService;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -30,6 +31,11 @@ class InterestPeriodRecoveryTest extends TestCase
             public function queryPages(string $soql, bool $includeDeleted = false): \Generator
             {
                 yield [$this->record];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => $start->subDay()->toIso8601String(), 'latestDateCovered' => $end->addDay()->toIso8601String(), 'deletedRecords' => []];
             }
         });
 
@@ -60,6 +66,11 @@ class InterestPeriodRecoveryTest extends TestCase
             public function queryPages(string $soql, bool $includeDeleted = false): \Generator
             {
                 yield [$this->record];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => $start->subDay()->toIso8601String(), 'latestDateCovered' => $end->addDay()->toIso8601String(), 'deletedRecords' => []];
             }
         });
 

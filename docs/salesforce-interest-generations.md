@@ -155,6 +155,14 @@ declara `reconciled_unverified`: la evidencia histórica de entradas/salidas y
 F5 sigue siendo insuficiente, así que no existe transición a `certified` ni
 publicación parcial.
 
+Antes de la lectura de activos, el diario consulta `getDeleted` desde el cutoff
+de la semilla. Un ID de la semilla que aparezca en el log se marca como
+`deleted_verified`; si vuelve a aparecer activo se clasifica como `reactivated`.
+El log registra sus fronteras de cobertura, pero una retención incompleta o una
+ausencia no incluida en él permanece explícitamente sin verificar. El lease del
+diario cambia en cada ejecución: un worker anterior comprueba ese token antes
+de persistir cada página y no puede continuar después de una reanudación.
+
 ### Vista provisional administrativa
 
 `/informes/leads/provisional/september-october-2026` es distinta de los
