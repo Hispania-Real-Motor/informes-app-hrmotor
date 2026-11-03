@@ -98,7 +98,7 @@
                 <div class="panel-title compact">
                     <div>
                         <h3>Objetivo general de compañía</h3>
-                        <div class="small">Aún no se utiliza en fórmulas; vacío significa pendiente de configurar.</div>
+                        <div class="small">Se utiliza en la comisión de Responsable Contact Center y en el bonus de compañía de sus agentes; vacío significa pendiente de configurar.</div>
                     </div>
                 </div>
                 <div class="filter-group">

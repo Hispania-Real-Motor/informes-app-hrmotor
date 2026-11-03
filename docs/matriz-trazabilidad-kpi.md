@@ -135,15 +135,15 @@ Auditoría inicial pendiente en cada una de las seis pestañas reales:
 | Área Manager | Pendiente | [Comisiones](informe-comisiones.md) |
 | Financieros | Pendiente | [Comisiones](informe-comisiones.md) y [guía financiera](informe-comisiones-financieras.md) |
 
-#### Corrección focalizada — Responsable Contact Center (2026-09)
+#### Plan económico de Contact Center — roster y evidencia (2026-09)
 
 | Contrato comprobado | Evidencia implementada y límites |
 | --- | --- |
-| KPI / pestaña | `Responsable Contact Center`, bloque independiente dentro de Contact Center; no pertenece a la tabla de agentes. |
-| Fuente, réplica y fecha pivote | `salesforce_opportunities`, por `cv_signed_date` en dos intervalos `[M, M+1)` y `[M-1 año, M-1 año+1)`. No hay consulta Salesforce en el render. |
-| Universo, exclusiones y deduplicación | CV firmado, no Cerrada Perdida, Venta/Cambio o Facilitea por nombre; sin filtro de owner, delegación, zona o captador; deduplicación por `salesforce_id`. La consulta compartida es `EligibleDeliveryOpportunityQuery`. |
-| Fórmula, nulos y redondeo | Con referencia cero o cobertura histórica incompleta: no certificable y cierre bloqueado. Si no, `a*100 < r*90`: 0 EUR; `a<r`: 350 EUR; `a>=r`: 500 EUR + `5*(a-r)`. Los umbrales usan contadores enteros; el porcentaje se redondea sólo al mostrarlo. |
-| Auditoría, snapshot y exportación | Se conservan ambas cohortes con campos de auditoría; el snapshot definitivo de Contact Center congela bloque, fórmula y detalle. XLSX definitivo lee ese snapshot y genera hoja separada. Pruebas: `ContactCenterCommissionDashboardTest` y `CommissionMonthClosureTest` (la auditoría integral de los seis informes continúa pendiente). |
+| KPI / pestaña | Tabla de agentes Contact Center y bloque independiente `Responsable Contact Center`; se activan desde `2026-09`. Meses anteriores conservan el plan legado. |
+| Fuente, réplica y fecha pivote | Agentes: `commercial_commission_appointment_evidences` por fecha de captación y `salesforce_opportunities` por fecha de reserva/firma. Responsable y bonus: Opportunities elegibles por `cv_signed_date` con `EligibleDeliveryOpportunityQuery`. `salesforce_users.created_date` determina el umbral. No hay consulta Salesforce durante el render. |
+| Universo, exclusiones e identidad | Sólo los User IDs vigentes de `contact_center_commission_roster_members`; no existe fallback por nombre, alias, Lead o teléfono. Cada hecho se deduplica por su ID Salesforce y por mes de su evento. Las entregas de compañía se deduplican por `salesforce_id`; Product2 es conciliación informativa. |
+| Fórmula, nulos y redondeo | Conversión entera `reservas*100 >= citas*umbral`, con 5 % antes del tercer aniversario mensual de alta y 7 % desde él. Sin User/CreatedDate o sin objetivo positivo: no certificable y total nulo. El incentivo de entregas es incremental 10/15/20 EUR por bandas 1--9/10--20/21+. El bonus de compañía requiere conversión y aplica 0/50/80/150 EUR en los tramos publicados. Vanesa: <90 %=0, 90--<100 %=350, >=100 %=500 + 5 EUR por excedente. Porcentajes sólo se redondean al presentar. |
+| Readiness, auditoría y límites | Se exige cobertura completada del mes para evidencia de citas y Opportunities; una cobertura válida con cero hechos sigue siendo un cero válido. Se exponen detalle por hecho, User ID, CreatedDate, objetivo y conciliaciones Product2. No se modifica ni se añade cierre, snapshot ni XLSX; esos contratos siguen pendientes. Pruebas: `ContactCenterCommissionDashboardTest` y `ContactCenterCommissionPlanCalculatorTest`. |
 
 ### Stock
 

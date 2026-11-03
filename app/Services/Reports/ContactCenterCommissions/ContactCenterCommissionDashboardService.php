@@ -19,6 +19,7 @@ class ContactCenterCommissionDashboardService
         private readonly CommissionMonthResolver $monthResolver,
         private readonly EligibleDeliveryOpportunityQuery $deliveryOpportunities,
         private readonly CommercialCommissionSourceReadinessService $sourceReadiness,
+        private readonly ContactCenterCommissionRosterDashboardService $rosterDashboard,
     ) {}
 
     private const CLOSURE_DAY = 10;
@@ -61,6 +62,11 @@ class ContactCenterCommissionDashboardService
     public function build(?string $month, bool $includeDetails = true): array
     {
         [$selectedMonth, $monthWarning] = $this->resolveMonth($month);
+
+        if ($selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse('2026-09-01'))) {
+            return $this->rosterDashboard->build($selectedMonth, $includeDetails);
+        }
+
         $periodStart = $selectedMonth->startOfMonth();
         $periodEnd = $periodStart->addMonth();
         $closureEnd = $this->closureEndExclusive($selectedMonth);

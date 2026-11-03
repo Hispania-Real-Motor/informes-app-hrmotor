@@ -900,8 +900,11 @@ detalles y exportaciones. El mes actual se permite y es siempre Provisional.
   oportunidades firmadas del rango; Tasación, Venta y Cambio con captador y sin
   gestión de venta; German desde `Tasacion__c`; Facilitea por regla específica.
 - Contact Center:
-  citas del mes en Leads; oportunidades hasta el día 10 del mes siguiente;
-  ventas firmadas dentro del mes.
+  hasta agosto de 2026 conserva citas en Leads y su ventana vigente. Desde
+  septiembre, las citas se materializan en
+  `commercial_commission_appointment_evidences` por User ID y fecha de
+  captación; reservas y entregas se leen de Opportunities por su fecha de
+  evento. El objetivo de compañía es mensual y Product2 sólo aporta contraste.
 
 Cada pestaña puede tener un universo diferente y expone el puente
 `base - exclusiones + inclusiones = total`. La conciliación interna se muestra

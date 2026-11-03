@@ -1,3 +1,36 @@
+@if (($contactCenterDashboard['plan'] ?? 'legacy') === 'roster_evidence')
+    @php
+        $rosterRows = collect($contactCenterDashboard['summary_rows'] ?? []);
+        $responsible = $contactCenterDashboard['responsible_contact_center'] ?? null;
+        $diagnostics = $contactCenterDashboard['diagnostics'] ?? [];
+    @endphp
+
+    <section class="platform-comparison-grid commission-overview-grid contact-center-overview-grid">
+        <article class="card platform-comparison-card"><div class="platform-comparison-head"><strong>Objetivo compañía</strong><span>Configuración mensual compartida por agentes y Responsable.</span></div><div class="platform-comparison-metrics"><div class="platform-metric-item"><span>Objetivo</span><strong>{{ $diagnostics['company_delivery_target'] ?? 'Pendiente' }}</strong></div><div class="platform-metric-item"><span>Entregas reales</span><strong>{{ $diagnostics['company_deliveries'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Cumplimiento</span><strong>{{ ($diagnostics['company_compliance_percent'] ?? null) === null ? 'No calculable' : number_format((float) $diagnostics['company_compliance_percent'], 2, ',', '.').'%' }}</strong></div></div></article>
+        <article class="card platform-comparison-card"><div class="platform-comparison-head"><strong>Plan Contact Center desde septiembre de 2026</strong><span>Identidad económica exclusiva por Salesforce UserId; citas desde Interes__c y reservas/entregas desde Opportunity.</span></div><div class="platform-comparison-metrics"><div class="platform-metric-item"><span>Roster</span><strong>{{ $diagnostics['roster_members'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Citas</span><strong>{{ $diagnostics['appointments_count'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Reservas</span><strong>{{ $diagnostics['reservations_count'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Entregas</span><strong>{{ $diagnostics['deliveries_count'] ?? 0 }}</strong></div></div></article>
+    </section>
+
+    @if (is_array($responsible))
+        <section class="card panel contact-center-responsible-panel">
+            <div class="panel-title compact"><div><h3>Responsable Contact Center</h3><div class="small">Vanesa German Bielsa: objetivo general de compañía, sin referencia al año anterior.</div></div><strong>{{ $responsible['final_total'] === null ? 'No certificable' : number_format((float) $responsible['final_total'], 2, ',', '.').' EUR' }}</strong></div>
+            @if (! empty($responsible['issues']))<div class="notice">{{ implode(' ', $responsible['issues']) }}</div>@endif
+            <div class="platform-comparison-metrics"><div class="platform-metric-item"><span>Objetivo</span><strong>{{ $responsible['company_delivery_target'] ?? 'Pendiente' }}</strong></div><div class="platform-metric-item"><span>Entregas</span><strong>{{ $responsible['actual_deliveries'] }}</strong></div><div class="platform-metric-item"><span>Cumplimiento</span><strong>{{ $responsible['compliance_percent'] === null ? 'No calculable' : number_format((float) $responsible['compliance_percent'], 2, ',', '.').'%' }}</strong></div><div class="platform-metric-item"><span>Tramo</span><strong>{{ $responsible['bracket'] }}</strong></div><div class="platform-metric-item"><span>Base / adicional</span><strong>{{ $responsible['base_amount'] === null ? '-' : number_format((float) $responsible['base_amount'], 2, ',', '.').' / '.number_format((float) $responsible['additional_amount'], 2, ',', '.') }} EUR</strong></div></div>
+            <div class="table-shell"><table data-sortable-table="contact-center-responsible-deliveries"><thead><tr><th>Opportunity ID</th><th>Nombre</th><th>Fecha firma</th><th>Captador UserId</th><th>Matrícula</th></tr></thead><tbody data-sort-body="contact-center-responsible-deliveries">@forelse (($responsible['actual_delivery_details'] ?? []) as $detail)<tr><td>{{ $detail['opportunity_id'] }}</td><td>{{ $detail['opportunity_name'] ?: '-' }}</td><td>{{ $detail['contract_signed_date'] ?? '-' }}</td><td>{{ $detail['appointment_setter_id'] ?? '-' }}</td><td>{{ $detail['plate'] ?? '-' }}</td></tr>@empty<tr><td colspan="5">Sin entregas elegibles.</td></tr>@endforelse</tbody></table></div>
+        </section>
+    @endif
+
+    <div class="table-shell call-center-summary-shell"><table data-sortable-table="contact-center-roster-summary"><thead><tr><th>Agente</th><th>Salesforce UserId</th><th>CreatedDate</th><th>Umbral</th><th>Citas</th><th>Reservas</th><th>Conversión</th><th>Supera</th><th>Entregas</th><th>1–9 / 10–20 / 21+</th><th>Progresivo</th><th>Bonus compañía</th><th>Total</th><th>Certificación</th><th>Incidencia</th></tr></thead><tbody data-sort-body="contact-center-roster-summary">@foreach ($rosterRows as $row)<tr><td>{{ $row['agent_name'] }}</td><td>{{ $row['salesforce_user_id'] }}</td><td>{{ $row['salesforce_created_date'] ?? '-' }}</td><td>{{ $row['conversion_threshold'] === null ? '-' : $row['conversion_threshold'].'%' }}</td><td class="num">{{ $row['appointment_count'] }}</td><td class="num">{{ $row['reservation_count'] }}</td><td class="num">{{ $row['conversion_percent'] === null ? '-' : number_format((float) $row['conversion_percent'], 2, ',', '.').'%' }}</td><td>{{ $row['conversion_passed'] ? 'Sí' : 'No' }}</td><td class="num">{{ $row['delivery_count'] }}</td><td class="num">{{ $row['deliveries_1_9'] }} / {{ $row['deliveries_10_20'] }} / {{ $row['deliveries_21_plus'] }}</td><td class="num">{{ number_format((float) $row['delivery_incentive'], 2, ',', '.') }}</td><td class="num">{{ $row['company_bonus'] === null ? '-' : number_format((float) $row['company_bonus'], 2, ',', '.') }}</td><td class="num"><strong>{{ $row['final_total'] === null ? '-' : number_format((float) $row['final_total'], 2, ',', '.') }}</strong></td><td>{{ $row['certifiable'] ? 'Certificable' : 'No certificable' }}</td><td>{{ $row['observations'] }}</td></tr>@endforeach</tbody></table></div>
+
+    @foreach ($rosterRows as $row)
+        <section class="card panel"><div class="panel-title compact"><div><h3>{{ $row['agent_name'] }}</h3><div class="small">{{ $row['salesforce_user_id'] }} · vigencia {{ $row['roster_effective_from'] }}{{ $row['roster_effective_until'] ? ' a '.$row['roster_effective_until'] : '' }}</div></div></div>
+            @foreach (['appointments' => ['Citas', ['interest_id', 'capture_date', 'appointment_setter_id', 'appointment_setter_name']], 'reservations' => ['Reservas', ['opportunity_id', 'opportunity_name', 'reservation_date', 'appointment_setter_id', 'vehicle_interest_id']], 'deliveries' => ['Entregas', ['opportunity_id', 'opportunity_name', 'cv_signed_date', 'appointment_setter_id', 'vehicle_interest_id', 'plate', 'product2_statuses']]] as $key => [$title, $columns])
+                <div class="table-shell"><h4>{{ $title }}</h4><table data-sortable-table="contact-center-{{ $key }}-{{ $row['agent_key'] }}"><thead><tr>@foreach ($columns as $column)<th>{{ str_replace('_', ' ', $column) }}</th>@endforeach</tr></thead><tbody data-sort-body="contact-center-{{ $key }}-{{ $row['agent_key'] }}">@forelse (($row['details'][$key] ?? []) as $detail)<tr>@foreach ($columns as $column)<td>{{ is_array($detail[$column] ?? null) ? implode(', ', $detail[$column]) : ($detail[$column] ?? '-') }}</td>@endforeach</tr>@empty<tr><td colspan="{{ count($columns) }}">Sin {{ strtolower($title) }} imputables.</td></tr>@endforelse</tbody></table></div>
+            @endforeach
+        </section>
+    @endforeach
+
+    @if (collect($contactCenterDashboard['global_incidents'] ?? [])->isNotEmpty())<section class="card panel"><div class="panel-title compact"><div><h3>Incidencias globales</h3><div class="small">Eventos con UserId fuera del roster; nunca se corrigen por nombre.</div></div></div><div class="table-shell"><table><thead><tr><th>Tipo</th><th>UserId</th><th>Motivo</th></tr></thead><tbody>@foreach ($contactCenterDashboard['global_incidents'] as $incident)<tr><td>{{ $incident['type'] }}</td><td>{{ $incident['reference_id'] }}</td><td>{{ $incident['reason'] }}</td></tr>@endforeach</tbody></table></div></section>@endif
+@else
 @php
     $contactCenterMonthStart = \Carbon\CarbonImmutable::parse(($contactCenterDashboard['month'] ?? $dashboard['month']).'-01');
     $contactCenterMonthEnd = $contactCenterMonthStart->addMonth();
@@ -478,11 +511,12 @@
                         <td>{{ $incident['reference_name'] !== '' ? $incident['reference_name'] : '-' }}</td>
                         <td>{{ $incident['phone_normalized'] !== '' ? $incident['phone_normalized'] : '-' }}</td>
                         <td>{{ $incident['event_date'] ?? '-' }}</td>
-                        <td>{{ $incident['reason'] }}</td>
+                    <td>{{ $incident['reason'] }}</td>
                     </tr>
                 @endforeach
                 </tbody>
             </table>
         </div>
     </section>
+@endif
 @endif

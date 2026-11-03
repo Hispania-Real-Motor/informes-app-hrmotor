@@ -125,9 +125,10 @@ Resumen funcional:
 - Delegaciones: entregas y rentabilidad según sus reglas de tienda.
 - Call Center: ventas/compras/cambios, German y Facilitea según captador y
   configuración.
-- Contact Center: citas y resultados por agente con su ventana funcional vigente;
-  desde septiembre de 2026 incluye además un bloque independiente de Responsable
-  Contact Center basado en entregas de toda la empresa.
+- Contact Center: hasta agosto de 2026 conserva el cálculo legado. Desde
+  septiembre de 2026 usa roster por Salesforce User ID, evidencia local de
+  citas y Opportunity por mes de evento; incluye además un bloque independiente
+  de Responsable Contact Center basado en las entregas elegibles de compañía.
 - Área Manager: ámbito de zona y delegaciones normalizadas.
 - Financieros: ventas/cambios por fecha de firma y zona financiera. Los bloques 1
   y 3 usan todo el universo elegible; el bloque 2 usa solo operaciones con interés
@@ -149,10 +150,11 @@ registra siete IDs a partir de `2026-09-01`.
 
 El roster no tiene FK física a `salesforce_users`: puede configurarse antes del
 primer sync de Users. El refresco mensual solicita sus IDs en un batch trazable
-separado y no amplía el filtro de perfiles de la consulta principal. Es una
-configuración de identidad y actualización local, no una regla económica: no
-modifica fórmulas, KPI, universos, cierres, snapshots, exportaciones ni el bloque
-Responsable Contact Center.
+separado y no amplía el filtro de perfiles de la consulta principal. Desde
+`2026-09` es también la única identidad de imputación del plan económico de
+Contact Center: no hay fallback por nombre, alias, teléfono o Lead. La etiqueta
+visible no cambia la atribución; un evento con User ID fuera del roster queda
+como incidencia global y no genera comisión.
 
 ## Reseñas
 
@@ -262,13 +264,49 @@ php artisan salesforce:sync-tasaciones --all
 Los reprocesados de datos operativos no modifican snapshots definitivos salvo
 reapertura autorizada.
 
-### Evidencia manual de citas y entregas de Contact Center
+### Plan de Contact Center desde septiembre de 2026
 
-Esta evidencia es auxiliar de auditoría y no una fuente del cálculo vigente.
+Desde `2026-09`, la evidencia de citas es fuente económica del plan de Contact
+Center. El mes anterior conserva su cálculo legado.
 Cada sync terminado reemplaza únicamente la evidencia de su intervalo tras
 completar toda la lectura Salesforce; un fallo parcial conserva la evidencia
 anterior. Un Product2 enlazado por más de una Opportunity se marca como
 `DUPLICATE_PRODUCT2_LINK`, con prioridad sobre fecha y estado.
+
+Para un miembro vigente del roster, las citas proceden de
+`commercial_commission_appointment_evidences` por
+`appointment_setter_id` y `appointment_capture_date`; reservas y entregas
+proceden de `salesforce_opportunities` por el mismo User ID y, respectivamente,
+`reservation_date` y `cv_signed_date`. Cada hecho usa el mes natural de su
+propia fecha de evento, se deduplica por su ID Salesforce y debe caer en el
+tramo vigente del roster. El detalle conserva IDs y fechas. `Product2` y sus
+reconciliaciones son sólo contraste informativo: no recalculan ni excluyen una
+entrega económica de Opportunity.
+
+La conversión es `reservas * 100 >= citas * umbral`, con comparaciones enteras
+y al menos una cita. El umbral es 5 % si el primer día del mes es anterior al
+tercer aniversario mensual de `SalesforceUser.created_date`, o 7 % en caso
+contrario. Si falta el User local o su `CreatedDate`, la fila es no certificable.
+Al superar la conversión, las entregas pagan progresivamente 10 EUR (1--9),
+15 EUR (10--20) y 20 EUR (21+); si no la superan, el incentivo es 0 EUR.
+
+El objetivo entero positivo `company_delivery_target` se configura para cada
+mes y no tiene default. Las entregas de compañía son las de
+`EligibleDeliveryOpportunityQuery`, deduplicadas por `salesforce_id`. Con el
+objetivo ausente, el bonus, el total final y la certificación quedan en nulo/no
+certificable, nunca en cero calculado. Con conversión superada, el bonus es
+0 EUR por debajo del objetivo, 50 EUR desde 100 % hasta menos de 105 %, 80 EUR
+desde 105 % hasta 110 % inclusive y 150 EUR por encima de 110 %.
+
+El bloque Responsable Contact Center muestra a Vanesa German Bielsa sobre el
+mismo objetivo y universo de compañía, sin referencia al año anterior: menos de
+90 % paga 0 EUR; de 90 % a menos de 100 %, 350 EUR; desde 100 %, 500 EUR más
+5 EUR por cada entrega que exceda el objetivo. Los porcentajes se redondean
+sólo para presentar.
+
+Este bloque no implementa cierres, snapshots ni hojas XLSX nuevas. Sigue siendo
+operativo; cualquier congelación o exportación específica requerirá un cambio
+posterior con contrato y pruebas propios.
 La migración `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
 crea tres réplicas locales separadas de los hechos del informe:
 
@@ -307,23 +345,12 @@ php artisan salesforce:sync-commercial-commission-product-deliveries --from=YYYY
 
 Ambas registran su ejecución en `report_sync_runs`; no hay scheduler, escritura
 en Salesforce, publicación/recuperación de generaciones de Interests ni cambio
-en fórmulas, KPIs, filtros, universos, cierres, snapshots o XLSX. Las
+en snapshots o XLSX. Desde `2026-09`, el dashboard requiere una ejecución
+completada que cubra el mes seleccionado tanto para esta evidencia de citas como
+para `salesforce_opportunities`. La falta de cobertura bloquea la certificación;
+un resultado de cero con cobertura válida se conserva como cero. Las
 conciliaciones son evidencia de revisión y no certifican ni recalculan una
 comisión por sí solas.
-
-Para poder preparar o cerrar el Responsable Contact Center desde `2026-09`, debe
-existir una ejecución `completed` de `salesforce_opportunities` que cubra por
-completo el mismo mes natural del año anterior. Por ejemplo, septiembre de 2026
-requiere `[2025-09-01, 2025-10-01)`. Si falta, se debe generar la evidencia con
-un rango explícito, sin ejecutar el comando desde el dashboard:
-
-```bash
-php artisan salesforce:sync-opportunities --from=2025-09-01 --to=2025-10-01
-```
-
-Una referencia con cero entregas elegibles tampoco certifica la comisión ni
-permite el cierre definitivo. Este procedimiento no reabre ni altera snapshots
-ya definitivos.
 
 Archivos principales:
 

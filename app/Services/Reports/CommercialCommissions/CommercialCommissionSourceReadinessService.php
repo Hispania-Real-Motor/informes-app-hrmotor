@@ -37,7 +37,10 @@ class CommercialCommissionSourceReadinessService
                 'sales' => $this->syncRunState('salesforce_opportunities', 'Oportunidades', $period),
                 'tasaciones' => $this->syncRunState('salesforce_tasaciones', 'Tasaciones', $period),
             ],
-            'contact_center' => [
+            'contact_center' => $period->greaterThanOrEqualTo(CarbonImmutable::parse('2026-09-01')) ? [
+                'appointments' => $this->syncRunState('commercial_commission_appointment_evidence', 'Evidencia de citas Contact Center', $period),
+                'sales' => $this->syncRunState('salesforce_opportunities', 'Oportunidades', $period),
+            ] : [
                 'leads' => $this->syncRunState('leads_dashboard', 'Leads y citas', $period),
                 'sales' => $this->syncRunState('salesforce_opportunities', 'Oportunidades', $period),
             ],
