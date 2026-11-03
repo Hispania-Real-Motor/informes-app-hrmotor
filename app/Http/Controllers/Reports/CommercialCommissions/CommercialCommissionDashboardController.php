@@ -622,11 +622,9 @@ class CommercialCommissionDashboardController extends Controller
                 ? ($contactCenterSnapshot['contact_center'] ?? [])
                 : $contactCenterDashboard->build($month, includeDetails: false);
             if ($this->usesContactCenterRosterPlan($month)) {
-                abort_if(
-                    ! $this->hasCertifiableContactCenterExport($contactCenterPayload, $contactCenterSnapshot),
-                    409,
-                    'Contact Center no dispone de un cálculo económico certificable para el mes seleccionado.'
-                );
+                if (! $this->hasCertifiableContactCenterExport($contactCenterPayload, $contactCenterSnapshot)) {
+                    return response('Contact Center no dispone de un cálculo económico certificable para el mes seleccionado.', 409);
+                }
                 $sheets[] = $this->contactCenterRosterSheet($contactCenterPayload['summary_rows'] ?? []);
             } else {
                 $sheets[] = $this->commissionSheet(
