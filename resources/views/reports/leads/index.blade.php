@@ -10,6 +10,27 @@
         window.reportUserCanExport = @json($reportUserCanExport ?? false);
         window.reportUserCanAudit = @json($reportUserCanAudit ?? false);
     </script>
+    <section class="lead-load-state is-hidden" id="leadLoadState" aria-live="polite">
+        <div class="is-hidden" id="leadLoadingState" role="status">
+            <span class="lead-load-state__spinner" aria-hidden="true"></span>
+            <span class="lead-load-state__eyebrow">Informe de Intereses</span>
+            <h2>Cargando información</h2>
+            <p>Estamos consultando la última información certificada.</p>
+        </div>
+        <div class="is-hidden" id="leadUnavailableState">
+            <span class="lead-load-state__eyebrow">Informe de Intereses</span>
+            <h2>Información temporalmente no disponible</h2>
+            <p>Estamos realizando un proceso de reconstrucción y validación de los datos de Salesforce para garantizar la fiabilidad de los indicadores.</p>
+            <p class="lead-load-state__secondary">Los resultados volverán a mostrarse cuando la información esté correctamente verificada.</p>
+        </div>
+        <div class="is-hidden" id="leadGenericErrorState" role="alert">
+            <span class="lead-load-state__eyebrow">Informe de Intereses</span>
+            <h2>No se ha podido cargar la información. Inténtalo de nuevo.</h2>
+        </div>
+        <button class="main-tab lead-load-state__retry is-hidden" id="retryLeadLoad" type="button">Volver a intentar</button>
+    </section>
+
+    <div id="leadReportContent" aria-busy="true" aria-hidden="true">
     <section class="filters card">
         <div class="filter-group">
             <label for="period">Periodo</label>
@@ -101,7 +122,6 @@
 
     <main>
         <section id="panel-resumen" class="tab-panel active">
-            <div class="notice" id="loadingMessage">Cargando fotografía local...</div>
             <div class="notice is-hidden" id="emptyMessage">No hay datos sincronizados para el periodo seleccionado.</div>
 
             <section class="card panel">
@@ -319,5 +339,6 @@
             </section>
         </section>
     </main>
+    </div>
 </div>
 </x-reports.app-shell>

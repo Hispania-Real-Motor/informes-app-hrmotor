@@ -6279,3 +6279,17 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pendiente de registrar por el agente principal: resultados de PHPUnit, Pint y
   del validador documental sobre el SHA y cuerpo de PR finales. Esta nota no
   declara pruebas locales ni CI satisfactorias.
+
+## PR #98 - Estados visuales del informe de Intereses
+
+- Objetivo: sustituir los errores técnicos por estados accesibles de carga,
+  indisponibilidad y reintento.
+- Archivos: frontend de Intereses, prueba JavaScript, manifiesto y assets Vite.
+- Decisión: conservar HTTP 503 y la certificación obligatoria del backend.
+- Base de datos: sin cambios ni migraciones.
+- Seguridad: no mostrar datos anteriores, parciales o no certificados.
+- Rendimiento: sin polling ni consultas adicionales.
+- Pruebas: 11/11 pruebas JavaScript correctas; build Vite y diff check correctos.
+- Despliegue: actualizar frontend sin reiniciar la recuperación F2/F5.
+- Pendiente: validar visualmente la pantalla en producción.
+- Revisión documental realizada directamente, sin subagente documental.
