@@ -40,6 +40,12 @@ certificada. Pruebas: `InterestGenerationTest`,
 `SalesforceInterestDashboardDatasetTest` y `leads-unavailable.test.mjs`.
 Véase [arquitectura, recuperación y límites](salesforce-interest-generations.md).
 
+Existe además una [vista provisional administrativa](salesforce-interest-generations.md#vista-provisional-administrativa),
+desactivada por defecto y separada del informe oficial. Muestra recuentos de
+la semilla no certificada para septiembre y octubre de 2026; el total incluye
+eliminados, que se muestran también por separado. No representa el KPI activo
+ni habilita los endpoints, comparativas o exportaciones oficiales.
+
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
 Sus lecturas no prueban una fotografía histórica al watermark; los límites y

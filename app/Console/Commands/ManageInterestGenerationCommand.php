@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\Salesforce\InterestExternalEvidenceService;
 use App\Services\Salesforce\InterestGenerationStore;
 use App\Services\Salesforce\InterestInitialCurrentRecoveryService;
+use App\Services\Salesforce\InterestPeriodRecoveryService;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
 use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
@@ -15,9 +16,13 @@ use RuntimeException;
 class ManageInterestGenerationCommand extends Command
 {
     protected $signature = 'salesforce:interest-generation
-        {action : prepare-initial, recover-initial, manifest, external-evidence, or publish-initial}
+        {action : prepare-initial, recover-initial, period-prepare, period-run, period-status, manifest, external-evidence, or publish-initial}
         {--generation= : Candidate identifier}
         {--source-generation= : Unpublished initial seed identifier for recover-initial}
+        {--period-id= : Prepared period recovery identifier}
+        {--resume : Resume only a period whose running heartbeat is stale}
+        {--functional-start= : Inclusive YYYY-MM-DD date in Europe/Madrid}
+        {--functional-end= : Exclusive YYYY-MM-DD date in Europe/Madrid}
         {--evidence= : Local reviewed JSON evidence file}
         {--reason= : Operational reason, 10 to 500 characters}
         {--allow-salesforce-read : Explicitly authorize isolated initial extraction}
@@ -29,6 +34,7 @@ class ManageInterestGenerationCommand extends Command
         InterestGenerationStore $store,
         InterestExternalEvidenceService $externalEvidence,
         InterestInitialCurrentRecoveryService $recovery,
+        InterestPeriodRecoveryService $periodRecovery,
     ): int {
         try {
             $action = $this->argument('action');
@@ -61,6 +67,36 @@ class ManageInterestGenerationCommand extends Command
                 $result = $recovery->recover((int) $source, $reason);
                 $this->line(json_encode($result['evidence'], JSON_THROW_ON_ERROR));
                 $this->info('Recovery candidate certified but not published. Scheduler state was not changed.');
+
+                return self::SUCCESS;
+            }
+            if (in_array($action, ['period-prepare', 'period-run', 'period-status'], true)) {
+                if ($action === 'period-prepare') {
+                    $reason = trim((string) $this->option('reason'));
+                    $source = (string) $this->option('source-generation');
+                    $start = (string) $this->option('functional-start');
+                    $end = (string) $this->option('functional-end');
+                    if ($this->option('allow-salesforce-read') !== true || ctype_digit($source) === false
+                        || preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $start) !== 1 || preg_match('/^\\d{4}-\\d{2}-\\d{2}$/', $end) !== 1) {
+                        throw new RuntimeException('Period preparation requires a source, bounded dates, and read authorization.');
+                    }
+                    $id = $periodRecovery->prepare((int) $source, CarbonImmutable::parse($start, 'Europe/Madrid'), CarbonImmutable::parse($end, 'Europe/Madrid'), $reason);
+                    $this->line(json_encode($periodRecovery->status($id), JSON_THROW_ON_ERROR));
+
+                    return self::SUCCESS;
+                }
+                $period = (string) $this->option('period-id');
+                if (ctype_digit($period) === false || (int) $period < 1) {
+                    throw new RuntimeException('A valid period recovery identifier is required.');
+                }
+                if ($action === 'period-run') {
+                    if ($this->option('allow-salesforce-read') !== true) {
+                        throw new RuntimeException('Period recovery requires explicit Salesforce read authorization.');
+                    }
+                    $this->line(json_encode($periodRecovery->run((int) $period, $this->option('resume') === true), JSON_THROW_ON_ERROR));
+                } else {
+                    $this->line(json_encode($periodRecovery->status((int) $period), JSON_THROW_ON_ERROR));
+                }
 
                 return self::SUCCESS;
             }

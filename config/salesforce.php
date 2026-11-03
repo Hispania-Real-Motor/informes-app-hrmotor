@@ -6,6 +6,9 @@ return [
     'api_version' => env('SALESFORCE_API_VERSION', 'v60.0'),
     'timeout' => (int) env('SALESFORCE_TIMEOUT', 120),
     'interest_sync_overlap_seconds' => (int) env('SALESFORCE_INTEREST_SYNC_OVERLAP_SECONDS', 300),
+    // Deliberately off by default. This admin-only screen is never a certified source.
+    'interest_provisional_preview_enabled' => (bool) env('SALESFORCE_INTEREST_PROVISIONAL_PREVIEW_ENABLED', false),
+    'interest_provisional_preview_generation_id' => (int) env('SALESFORCE_INTEREST_PROVISIONAL_PREVIEW_GENERATION_ID', 1),
 
     'token_url' => env('SALESFORCE_TOKEN_URL', 'https://login.salesforce.com/services/oauth2/token'),
     'authorize_url' => env('SALESFORCE_AUTHORIZE_URL', 'https://login.salesforce.com/services/oauth2/authorize'),

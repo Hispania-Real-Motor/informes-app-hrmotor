@@ -6161,3 +6161,22 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   comparativas y exportaciones de períodos sin esa evidencia indisponibles. No
   hubo acceso a producción ni a Salesforce, migraciones, publicación, scheduler
   o workers.
+
+## 2026-11-03 — diario recuperable por período y vista provisional aislada
+
+- `InterestPeriodRecoveryService` prepara y reanuda una comparación remota
+  delimitada por período funcional contra una semilla inicial. Conserva
+  checkpoint por `Id`, IDs observados y diferencias por hash; no escribe
+  versiones/memberships, no toca la tabla legacy y nunca publica. Al terminar
+  declara `reconciled_unverified` y deja explícita la falta de cobertura
+  histórica de entradas/salidas y F5.
+- La CLI incorpora `period-prepare`, `period-run` y `period-status`. Las dos
+  acciones que pueden leer Salesforce exigen `--allow-salesforce-read`; no se
+  ejecutaron contra Salesforce ni producción durante el desarrollo.
+- Se añadió una pantalla separada y apagada por defecto para administradores:
+  `/informes/leads/provisional/september-october-2026`. Solo muestra agregados
+  de la semilla configurada para septiembre/octubre, responde sin caché y no
+  comparte el lector ni endpoints/exportaciones oficiales. Habilitarla exige
+  aprobación operativa y `SALESFORCE_INTEREST_PROVISIONAL_PREVIEW_ENABLED=true`.
+- Base de datos: migración `2026_11_03_120000_create_salesforce_interest_recovery_periods.php`; preservar diarios y diferencias durante rollback. Sigue pendiente una fuente histórica verificable para certificación y F5 por período. No se modificaron comisiones, scheduler ni workers.
+- Revisión documental: `docs/reglas-negocio-leads.md` y `docs/salesforce-interest-generations.md` distinguen el total provisional, que incluye eliminados, de la comparación del diario, limitada a activos. Un diario `running` solo se reanuda mediante `--resume` cuando su heartbeat tiene al menos quince minutos; no se reanuda automáticamente. El validador mapea `routes/web.php` y `config/salesforce.php` a los seis informes, por lo que debe resolverse y verificarse su alcance conservador en la PR completa.
