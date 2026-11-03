@@ -20,7 +20,7 @@ class InterestProvisionalPreviewTest extends TestCase
     {
         config()->set('services.informes_auth.enabled', true);
         config()->set('salesforce.interest_provisional_preview_enabled', true);
-        $this->seed();
+        $this->seedProvisionalGeneration();
         $admin = $this->user(ReportUser::ROLE_ADMIN);
         $viewer = $this->user(ReportUser::ROLE_VIEWER);
 
@@ -35,13 +35,13 @@ class InterestProvisionalPreviewTest extends TestCase
     public function test_provisional_preview_is_disabled_by_default(): void
     {
         config()->set('services.informes_auth.enabled', true);
-        $this->seed();
+        $this->seedProvisionalGeneration();
 
         $this->session($this->user(ReportUser::ROLE_ADMIN))
             ->get('/informes/leads/provisional/september-october-2026')->assertNotFound();
     }
 
-    private function seed(): void
+    private function seedProvisionalGeneration(): void
     {
         $store = app(InterestGenerationStore::class);
         $cutoff = CarbonImmutable::parse('2026-10-28 15:57:00', 'UTC');

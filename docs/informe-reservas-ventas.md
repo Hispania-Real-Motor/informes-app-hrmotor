@@ -774,3 +774,11 @@ ello las otras fuentes ni se modifican cierres. Pruebas adaptadas:
 regresión integral y contratos de varias peticiones siguen sujetos a validación.
 Las notas anteriores sobre tabla viva describen la fase previa.
 [Contrato transversal y límites](salesforce-interest-generations.md).
+
+### Recuperación diagnóstica progresiva de Interests (2026-11-03)
+
+La recuperación diagnóstica por períodos de Interests no modifica la
+atribución, filtros, universo ni resultados oficiales de Reservas/Ventas. Sus
+diferencias y vista provisional son aisladas; mientras la fuente no esté
+certificada y publicada, no puede alimentar este informe ni reemplazar la
+generación Interest publicada.
