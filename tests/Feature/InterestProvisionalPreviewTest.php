@@ -24,11 +24,11 @@ class InterestProvisionalPreviewTest extends TestCase
         $admin = $this->user(ReportUser::ROLE_ADMIN);
         $viewer = $this->user(ReportUser::ROLE_VIEWER);
 
-        $this->session($admin)->get('/informes/leads/provisional/september-october-2026')
+        $this->asReportUser($admin)->get('/informes/leads/provisional/september-october-2026')
             ->assertOk()->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Vista provisional no certificada');
-        $this->session($viewer)->get('/informes/leads/provisional/september-october-2026')->assertForbidden();
-        $this->session($admin)->getJson('/informes/leads/data/summary')
+        $this->asReportUser($viewer)->get('/informes/leads/provisional/september-october-2026')->assertForbidden();
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary')
             ->assertStatus(503)->assertJsonPath('error', 'interest_dataset_unavailable');
     }
 
@@ -37,7 +37,7 @@ class InterestProvisionalPreviewTest extends TestCase
         config()->set('services.informes_auth.enabled', true);
         $this->seedProvisionalGeneration();
 
-        $this->session($this->user(ReportUser::ROLE_ADMIN))
+        $this->asReportUser($this->user(ReportUser::ROLE_ADMIN))
             ->get('/informes/leads/provisional/september-october-2026')->assertNotFound();
     }
 
@@ -71,7 +71,7 @@ class InterestProvisionalPreviewTest extends TestCase
         ]);
     }
 
-    private function session(ReportUser $user): static
+    private function asReportUser(ReportUser $user): static
     {
         return $this->withSession([
             'informes_authenticated' => true, 'report_user_id' => $user->id,
