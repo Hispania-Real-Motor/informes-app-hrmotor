@@ -471,3 +471,11 @@ No certifica retroactivamente snapshots económicos. El alcance conservador del
 mapa documental incluye este informe por la fuente Opportunity compartida;
 no se ha detectado en el diff una nueva fórmula KPI de Comisiones.
 [Contrato y pendientes de regresión](salesforce-interest-generations.md).
+
+### Recuperación diagnóstica progresiva de Interests (2026-11-03)
+
+La recuperación diagnóstica por períodos de Interests no altera fórmulas,
+cierres, filtros, universos ni resultados oficiales de Comisiones. Las
+diferencias y la vista provisional permanecen aisladas; una fuente no
+certificada no puede alimentar este informe ni sustituir la generación Interest
+publicada.

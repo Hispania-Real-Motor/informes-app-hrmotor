@@ -127,6 +127,54 @@ final class SalesforceInterestSyncService
         return $this->soql(false, null, null);
     }
 
+    /**
+     * Current-state, keyset-paginated query used only by the period recovery
+     * journal. It is not historical evidence and is never used for publication.
+     */
+    public function functionalPeriodSoql(CarbonInterface $start, CarbonInterface $end, ?string $afterId = null): string
+    {
+        if ($afterId !== null && preg_match('/^[A-Za-z0-9]{18}$/', $afterId) !== 1) {
+            throw new RuntimeException('Period recovery cursor is invalid.');
+        }
+        $cursor = $afterId === null ? '' : "\n    AND Id > '".str_replace("'", "\\'", $afterId)."'";
+
+        return <<<SOQL
+SELECT
+    Id,
+    CreatedDate,
+    LastModifiedDate,
+    SystemModstamp,
+    IsDeleted,
+    IN_Lead__c,
+    IN_Account__c,
+    IN_Lead_Origen_Migracion__c,
+    IN_Fecha_Creacion_Origen__c,
+    OwnerId,
+    Owner.Name,
+    IN_Estado__c,
+    IN_Tipo__c,
+    IN_Fuente_Origen__c,
+    IN_RP_Fuente_Original__c,
+    IN_Medio_Origen__c,
+    IN_Canal__c,
+    IN_Delegacion_Procedencia__c,
+    IN_utm_campaign__c,
+    IN_utm_id__c,
+    IN_utm_source__c,
+    IN_utm_medium__c,
+    IN_utm_content__c,
+    IN_utm_term__c,
+    IN_VEN_Vehiculo__c,
+    IN_TAS_Vehiculo__c,
+    IN_VEN_Oportunidad__c
+FROM Interes__c
+WHERE IsDeleted = false
+    AND ((IN_Fecha_Creacion_Origen__c >= {$this->soqlDateTime($start)} AND IN_Fecha_Creacion_Origen__c < {$this->soqlDateTime($end)})
+        OR (IN_Fecha_Creacion_Origen__c = NULL AND CreatedDate >= {$this->soqlDateTime($start)} AND CreatedDate < {$this->soqlDateTime($end)})){$cursor}
+ORDER BY Id ASC
+SOQL;
+    }
+
     private function soql(bool $deleted, ?CarbonInterface $windowStart, ?CarbonInterface $cutoff): string
     {
         $lowerBound = $windowStart === null

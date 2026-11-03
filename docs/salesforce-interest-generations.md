@@ -131,3 +131,79 @@ watermark queda limitado por la cobertura de borrados comunicada por Salesforce;
 no acredita por sí solo la integridad de toda la replicación ni una fotografía
 histórica exacta. La evidencia registra `requested_watermark` y el watermark
 efectivo para que puedan contrastarse.
+
+### Diario de recuperación por período
+
+La migración `2026_11_03_120000_create_salesforce_interest_recovery_periods.php`
+añade un diario separado de la publicación global. `period-prepare` crea, para
+una semilla inicial íntegra y un rango semiabierto en `Europe/Madrid`, un
+registro con contadores y checkpoint; `period-run` requiere autorización
+explícita de lectura Salesforce y continúa desde el último `Id` confirmado;
+`period-status` solo consulta el estado persistido. Los IDs observados y las
+diferencias de hash se guardan por período, por lo que un reinicio no duplica
+contadores ya registrados. `period-run` admite estados `prepared` o `failed`;
+una interrupción que deje el diario en `running` se reanuda únicamente con
+`--resume` cuando el heartbeat persistido tiene al menos quince minutos, bajo
+un bloqueo transaccional. No hay recuperación automática ni dos escritores
+activos. Esta operación no crea una generación, no modifica
+memberships/versiones, no usa la tabla legacy y no publica.
+
+La consulta SOQL se restringe a la definición funcional vigente y compara cada
+fila con la versión de la semilla. Registra filas idénticas, remotas nuevas,
+cambios de contenido y filas de la semilla que ya no aparecen. Al completarse
+declara `reconciled_unverified`: la evidencia histórica de entradas/salidas y
+F5 sigue siendo insuficiente, así que no existe transición a `certified` ni
+publicación parcial.
+
+Antes de la lectura de activos, el diario consulta `getDeleted` desde el cutoff
+de la semilla. Un ID de la semilla que aparezca en el log se marca como
+`deleted_verified`; si vuelve a aparecer activo se clasifica como `reactivated`.
+El log registra sus fronteras de cobertura, pero una retención incompleta o una
+ausencia no incluida en él permanece explícitamente sin verificar. El lease del
+diario cambia en cada ejecución: un worker anterior comprueba ese token antes
+de persistir cada página y no puede continuar después de una reanudación.
+
+### Vista provisional administrativa
+
+`/informes/leads/provisional/september-october-2026` es distinta de los
+endpoints oficiales: solo admite administradores autenticados y está apagada
+por defecto mediante `SALESFORCE_INTEREST_PROVISIONAL_PREVIEW_ENABLED`. Cuando
+se habilita, la semilla configurada debe seguir siendo una generación inicial
+íntegra, no publicada y en `validating`. La pantalla solo emite agregados de
+septiembre/octubre de 2026, responde con `no-store, private` y advierte de la
+falta de certificación. No ofrece exportación, token de generación, caché
+compartida ni integración con KPIs, cierres, comisiones u otros consumidores.
+El total cuenta todas las filas de la semilla en cada período, incluidos los
+eliminados; estos se cuentan adicionalmente en su propia columna. La consulta
+del diario, en cambio, compara solo Interests no eliminados en la semilla y en
+Salesforce. Una ausencia en la comparación no demuestra un borrado.
+
+## Recuperación progresiva por período: bloqueo de certificación
+
+No existe todavía una vía certificable para publicar únicamente septiembre y
+octubre de 2026. La fecha funcional de un Interest se deriva de
+`IN_Fecha_Creacion_Origen__c` y, si falta, de `CreatedDate`; no es un campo de
+control de cambios. El cliente Salesforce disponible solo expone una consulta
+del estado actual (`query`/`queryAll`) y el log de borrados `getDeleted`. No
+expone historial de esos campos, Change Data Capture retenido ni una extracción
+as-of para identificar un Interest que entró o salió posteriormente de un
+período funcional.
+
+Por tanto, un SOQL filtrado por la fecha funcional actual no puede probar que
+contenga los registros que antes pertenecían al período, ni que excluya los que
+han entrado después. Filtrar por `SystemModstamp` tampoco resuelve el problema:
+la observación operativa indica que todos los Interests de la semilla aparecen
+modificados desde octubre de 2026. Usarlo como delta haría que el candidato
+elegible fuera de nuevo el universo completo y seguiría sin aportar los valores
+históricos previos al cambio.
+
+No se debe añadir una publicación parcial ni un puntero de cobertura hasta
+disponer, para los dos meses, de una fuente independiente con retención
+suficiente: Field Audit Trail/historial de los campos funcionales, CDC
+conservado desde el cutoff, o un snapshot verificable con identidad, contenido,
+borrados y relaciones F5. Esa fuente debe permitir contrastar tanto las
+entradas como las salidas del rango y cubrir Task/Event. `getDeleted` por sí
+solo solo justifica purgados dentro de su ventana de retención. Sin ella, el
+procedimiento correcto es fallar cerrado y mantener el 503 para intervalos no
+certificados; no se presentarán KPIs, comparativas ni exportaciones parciales
+como consistentes.

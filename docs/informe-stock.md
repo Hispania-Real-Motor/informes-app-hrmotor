@@ -246,3 +246,10 @@ antigüedad ni exportaciones de Stock. El mapeo conservador incluye Stock por su
 fuente Opportunity compartida. No se declara por ello una certificación nueva de
 KPIs o snapshots de Stock.
 [Contrato y pendientes de regresión](salesforce-interest-generations.md).
+
+### Recuperación diagnóstica progresiva de Interests (2026-11-03)
+
+La recuperación diagnóstica por períodos de Interests no modifica cálculos,
+filtros, antigüedad, universo ni resultados oficiales de Stock. Sus diferencias
+y vista provisional permanecen aisladas; una fuente no certificada continúa
+bloqueada y no puede sustituir la generación Interest publicada.

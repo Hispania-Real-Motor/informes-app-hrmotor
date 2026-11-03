@@ -12,6 +12,7 @@ use App\Http\Controllers\Reports\CommercialCommissions\CommercialCommissionDashb
 use App\Http\Controllers\Reports\CommercialCommissions\CommercialCommissionFormulaSettingsController;
 use App\Http\Controllers\Reports\CommercialCommissions\CommercialFinancingPenaltyImportController;
 use App\Http\Controllers\Reports\CommercialCommissions\ContactCenterCommissionRosterController;
+use App\Http\Controllers\Reports\Leads\InterestProvisionalPreviewController;
 use App\Http\Controllers\Reports\Leads\LeadDashboardController;
 use App\Http\Controllers\Reports\Leads\LeadDashboardDataController;
 use App\Http\Controllers\Reports\Leads\MonthlyCommercialReportDataController;
@@ -61,6 +62,8 @@ Route::middleware('reports.auth')->group(function () {
         ->middleware('report.access:leads')
         ->group(function () {
             Route::get('/', [LeadDashboardController::class, 'index'])->name('index');
+            Route::get('/provisional/september-october-2026', InterestProvisionalPreviewController::class)
+                ->name('provisional.september-october-2026');
 
             Route::get('/data/resumen', [LeadDashboardDataController::class, 'resumen'])->name('data.resumen');
             Route::get('/data/summary', [LeadDashboardDataController::class, 'resumen'])->name('data.summary');

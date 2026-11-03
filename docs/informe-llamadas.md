@@ -164,3 +164,11 @@ exportaciones de Llamadas. Sin generación certificada, el lector rechaza usar
 legacy; debe validarse la regresión de sincronización/reproceso con esas
 condiciones. Las notas anteriores sobre tabla viva son históricas.
 [Contrato transversal y límites](salesforce-interest-generations.md).
+
+### Recuperación diagnóstica progresiva de Interests (2026-11-03)
+
+La recuperación diagnóstica por períodos de Interests no cambia los cálculos,
+filtros, universo ni resultados oficiales de Llamadas. Sus diferencias y vista
+provisional permanecen aisladas; mientras la fuente no esté certificada y
+publicada, no pueden alimentar este informe ni sustituir su generación Interest
+publicada.

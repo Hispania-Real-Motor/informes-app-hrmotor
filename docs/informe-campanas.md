@@ -545,6 +545,13 @@ exportaciones. El texto anterior de la fase de transacciones por bloque describe
 el estado previo a generaciones.
 [Arquitectura y operación](salesforce-interest-generations.md).
 
+### Recuperación diagnóstica progresiva de Interests (2026-11-03)
+
+La recuperación diagnóstica por períodos de Interests no modifica atribución,
+filtros, ratios ni resultados oficiales de Campañas. Las diferencias y la vista
+provisional son aisladas; una fuente no certificada permanece bloqueada y no se
+puede usar para sustituir la generación Interest publicada.
+
 Cuando no existe base certificada o su evidencia F2 falta,
 `CampaignPublicationReadiness` conserva su contrato de publicación bloqueada:
 trata la fuente como no disponible sin adoptar legacy. No convierte un nuevo

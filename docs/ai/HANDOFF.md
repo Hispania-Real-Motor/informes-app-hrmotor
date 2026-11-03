@@ -6373,3 +6373,45 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Despliegue: actualizar frontend sin reiniciar la recuperación F2/F5.
 - Pendiente: validar visualmente la pantalla en producción.
 - Revisión documental realizada directamente, sin subagente documental.
+
+## 2026-11-03 — recuperación progresiva septiembre/octubre: bloqueo de cobertura
+
+- No se implementó ni habilitó una publicación parcial. La revisión de
+  `SalesforceInterestFoundationResolver::functionalCreatedAt()` confirma que el
+  período funcional deriva de `IN_Fecha_Creacion_Origen__c` o `CreatedDate`;
+  `SalesforceClient` solo aporta estado actual de SOQL y `getDeleted`.
+- Sin Field Audit Trail/historial de esos campos, CDC retenido desde el cutoff
+  o un snapshot independiente verificable, no es posible detectar de forma
+  completa los Interests que abandonaron o entraron en septiembre/octubre. La
+  observación de que todo el universo tiene `SystemModstamp` reciente impide
+  usarlo para acotar un delta y no reconstruye valores anteriores.
+- Se documentó el fallo cerrado: `getDeleted` puede justificar hard-deletes,
+  pero no transiciones de fecha funcional ni relaciones F5. Mantener informes,
+  comparativas y exportaciones de períodos sin esa evidencia indisponibles. No
+  hubo acceso a producción ni a Salesforce, migraciones, publicación, scheduler
+  o workers.
+
+## 2026-11-03 — diario recuperable por período y vista provisional aislada
+
+- `InterestPeriodRecoveryService` prepara y reanuda una comparación remota
+  delimitada por período funcional contra una semilla inicial. Conserva
+  checkpoint por `Id`, IDs observados y diferencias por hash; no escribe
+  versiones/memberships, no toca la tabla legacy y nunca publica. Al terminar
+  declara `reconciled_unverified` y deja explícita la falta de cobertura
+  histórica de entradas/salidas y F5.
+- La CLI incorpora `period-prepare`, `period-run` y `period-status`. Las dos
+  acciones que pueden leer Salesforce exigen `--allow-salesforce-read`; no se
+  ejecutaron contra Salesforce ni producción durante el desarrollo.
+- Se añadió una pantalla separada y apagada por defecto para administradores:
+  `/informes/leads/provisional/september-october-2026`. Solo muestra agregados
+  de la semilla configurada para septiembre/octubre, responde sin caché y no
+  comparte el lector ni endpoints/exportaciones oficiales. Habilitarla exige
+  aprobación operativa y `SALESFORCE_INTEREST_PROVISIONAL_PREVIEW_ENABLED=true`.
+- Base de datos: migración `2026_11_03_120000_create_salesforce_interest_recovery_periods.php`; preservar diarios y diferencias durante rollback. Sigue pendiente una fuente histórica verificable para certificación y F5 por período. No se modificaron comisiones, scheduler ni workers.
+- Revisión documental: `docs/reglas-negocio-leads.md` y `docs/salesforce-interest-generations.md` distinguen el total provisional, que incluye eliminados, de la comparación del diario, limitada a activos. Un diario `running` solo se reanuda mediante `--resume` cuando su heartbeat tiene al menos quince minutos; no se reanuda automáticamente. El validador mapea `routes/web.php` y `config/salesforce.php` a los seis informes, por lo que debe resolverse y verificarse su alcance conservador en la PR completa.
+- Corrección posterior: el diario toma `getDeleted` desde el cutoff de la semilla, cuantifica `deleted_verified`, detecta reactivaciones al volver a observar el ID y conserva las fronteras de cobertura. Un token de lease se rota al reanudar; los workers anteriores rechazan cualquier escritura posterior. Retención insuficiente del log y ausencias no justificadas siguen bloqueando certificación.
+- Corrección de CI: `InterestProvisionalPreviewTest` renombra su helper privado
+  para no sobrescribir `TestCase::seed()`. Los seis informes documentan que el
+  diario y la vista provisional son diagnósticos y no pueden alimentar cálculos
+  oficiales sin una fuente Interest certificada. Sin cambios de esquema,
+  permisos, datos, scheduler, workers ni accesos a Salesforce/producción.
