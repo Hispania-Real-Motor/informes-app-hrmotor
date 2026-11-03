@@ -51,7 +51,7 @@ class CommercialCommissionDeliveryReconciliationService
             $rows[] = $this->row($start, $end, $opportunity->salesforce_id, $productId, $product, $opportunity->cv_signed_date, $type, $now);
         }
         foreach ($products as $product) {
-            if (! isset($seenProducts[$product->salesforce_product_id])) {
+            if (!isset($seenProducts[$product->salesforce_product_id])) {
                 $rows[] = $this->row($start, $end, null, $product->salesforce_product_id, $product, null, 'PRODUCT2_ONLY', $now);
             }
         }
@@ -105,7 +105,8 @@ class CommercialCommissionDeliveryReconciliationService
         mixed $opportunityDate,
         string $type,
         mixed $now,
-    ): array {
+    ): array
+    {
         return [
             'reconciliation_key' => hash('sha256', implode('|', [$start, $end, $opportunityId, $productId, $type])),
             'period_start' => $start,
