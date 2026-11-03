@@ -360,6 +360,8 @@ SOQL;
                 'record_type_name' => data_get($record, 'RecordType.Name'),
                 'owner_id' => data_get($record, 'OwnerId'),
                 'owner_name' => data_get($record, 'Owner.Name'),
+                'appointment_setter_id' => data_get($record, 'Captador_de_cita__c'),
+                'appointment_setter_name' => data_get($record, 'Captador_de_cita__r.Name'),
                 'owner_is_active' => (bool) data_get($record, 'Owner.IsActive', true),
                 'owner_delegation' => data_get($record, 'Owner.USR_SEL_Delegacion__c'),
                 'report_owner_delegation' => data_get($record, 'Delegacion_del_propietario__c'),

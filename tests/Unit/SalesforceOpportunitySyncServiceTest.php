@@ -219,8 +219,8 @@ class SalesforceOpportunitySyncServiceTest extends TestCase
                             'AC_C_EMA_email__c' => null,
                         ],
                         'Portal__c' => 'Web',
-                        'Captador_de_cita__c' => '005-contact-center-1',
-                        'Captador_de_cita__r' => ['Name' => 'Maria Paz Vidal Perez'],
+                        'Captador_de_cita__c' => '005Qx00000GTjweIAD',
+                        'Captador_de_cita__r' => ['Name' => 'Maria Vidal Perez'],
                         'Captador__c' => 'Jose Mari',
                         'Comisi_n_Captador__c' => 5.0,
                         'Fecha_captador__c' => '2026-05-01',
@@ -342,6 +342,8 @@ class SalesforceOpportunitySyncServiceTest extends TestCase
             'salesforce_id' => '006-opportunity-1',
             'record_type_name' => 'Venta',
             'owner_delegation' => 'Alcobendas',
+            'appointment_setter_id' => '005Qx00000GTjweIAD',
+            'appointment_setter_name' => 'Maria Vidal Perez',
             'delivery_store' => 'HR MOTOR ALICANTE',
             'amount' => 12500.50,
             'opo_for_importe_total' => 13000.75,
@@ -375,13 +377,15 @@ class SalesforceOpportunitySyncServiceTest extends TestCase
             'portal_resolved' => 'Google Maps',
             'portal_resolution_source' => 'lead',
             'stage_name' => 'Cerrada Perdida',
+            'appointment_setter_id' => null,
+            'appointment_setter_name' => null,
         ]);
 
         $storedOpportunity = SalesforceOpportunity::query()->where('salesforce_id', '006-opportunity-1')->firstOrFail();
 
         $this->assertSame('Jose Mari', $storedOpportunity->raw_payload['Captador__c'] ?? null);
-        $this->assertSame('005-contact-center-1', $storedOpportunity->raw_payload['Captador_de_cita__c'] ?? null);
-        $this->assertSame('Maria Paz Vidal Perez', data_get($storedOpportunity->raw_payload, 'Captador_de_cita__r.Name'));
+        $this->assertSame('005Qx00000GTjweIAD', $storedOpportunity->raw_payload['Captador_de_cita__c'] ?? null);
+        $this->assertSame('Maria Vidal Perez', data_get($storedOpportunity->raw_payload, 'Captador_de_cita__r.Name'));
         $this->assertEquals(5.0, $storedOpportunity->raw_payload['Comisi_n_Captador__c'] ?? null);
         $this->assertSame('German Olsen', $storedOpportunity->raw_payload['Captador_2__c'] ?? null);
         $this->assertSame('2026-05-10', $storedOpportunity->raw_payload['OPO_FEC_Fecha_entrega__c'] ?? null);
@@ -1039,6 +1043,8 @@ class SalesforceOpportunitySyncServiceTest extends TestCase
                     'OPO_CAS_Reserva__c' => true,
                     'OPO_FEC_Fecha_de_reserva__c' => '2026-03-10',
                     'OPO_CAS_Contrato_CV_firmado__c' => false,
+                    'Captador_de_cita__c' => '005Qx00000GTjweIAD',
+                    'Captador_de_cita__r' => ['Name' => 'Maria Vidal Perez'],
                 ]];
             }
         };
@@ -1056,9 +1062,58 @@ class SalesforceOpportunitySyncServiceTest extends TestCase
             'reservation' => true,
             'reservation_date' => '2026-03-10 00:00:00',
             'owner_id' => '005-owner',
+            'appointment_setter_id' => '005Qx00000GTjweIAD',
+            'appointment_setter_name' => 'Maria Vidal Perez',
         ]);
         $this->assertStringContainsString("Id IN ('006-by-id')", $first['soql']);
         $this->assertStringNotContainsString('CreatedDate >=', $first['soql']);
+    }
+
+    public function test_resincronizacion_por_ids_actualiza_el_captador_de_cita(): void
+    {
+        $client = new class extends SalesforceClient
+        {
+            public array $record = [
+                'Id' => '006-appointment-setter-update',
+                'Name' => 'Oportunidad con cambio de captador',
+                'CreatedDate' => '2026-03-01T10:00:00.000+0000',
+                'LastModifiedDate' => '2026-03-01T10:00:00.000+0000',
+                'StageName' => 'Reserva',
+                'RecordType' => ['Name' => 'Venta'],
+                'Account' => [],
+                'Captador_de_cita__c' => '005Qx00000UserAIAA',
+                'Captador_de_cita__r' => ['Name' => 'Usuario A'],
+            ];
+
+            public function __construct() {}
+
+            public function query(string $soql): array
+            {
+                return [$this->record];
+            }
+        };
+        $service = $this->service($client);
+
+        $service->syncBySalesforceIds(['006-appointment-setter-update']);
+        $client->record['Captador_de_cita__c'] = '005Qx00000UserBIAA';
+        $client->record['Captador_de_cita__r'] = ['Name' => 'Usuario B'];
+        $service->syncBySalesforceIds(['006-appointment-setter-update']);
+
+        $this->assertDatabaseCount('salesforce_opportunities', 1);
+        $this->assertDatabaseHas('salesforce_opportunities', [
+            'salesforce_id' => '006-appointment-setter-update',
+            'appointment_setter_id' => '005Qx00000UserBIAA',
+            'appointment_setter_name' => 'Usuario B',
+        ]);
+
+        unset($client->record['Captador_de_cita__c'], $client->record['Captador_de_cita__r']);
+        $service->syncBySalesforceIds(['006-appointment-setter-update']);
+
+        $this->assertDatabaseHas('salesforce_opportunities', [
+            'salesforce_id' => '006-appointment-setter-update',
+            'appointment_setter_id' => null,
+            'appointment_setter_name' => null,
+        ]);
     }
 
     public function test_sincronizacion_por_ids_chunking_y_escapado(): void

@@ -11,6 +11,7 @@ use App\Http\Controllers\Reports\CommercialCommissions\CommercialCommissionClosu
 use App\Http\Controllers\Reports\CommercialCommissions\CommercialCommissionDashboardController;
 use App\Http\Controllers\Reports\CommercialCommissions\CommercialCommissionFormulaSettingsController;
 use App\Http\Controllers\Reports\CommercialCommissions\CommercialFinancingPenaltyImportController;
+use App\Http\Controllers\Reports\CommercialCommissions\ContactCenterCommissionRosterController;
 use App\Http\Controllers\Reports\Leads\LeadDashboardController;
 use App\Http\Controllers\Reports\Leads\LeadDashboardDataController;
 use App\Http\Controllers\Reports\Leads\MonthlyCommercialReportDataController;
@@ -192,6 +193,9 @@ Route::middleware('reports.auth')->group(function () {
             Route::get('/', [CommercialCommissionFormulaSettingsController::class, 'index'])->name('index');
             Route::post('/unlock', [CommercialCommissionFormulaSettingsController::class, 'unlock'])->name('unlock');
             Route::put('/', [CommercialCommissionFormulaSettingsController::class, 'update'])->name('update');
+            Route::get('/contact-center-roster', [ContactCenterCommissionRosterController::class, 'index'])->name('contact-center-roster.index');
+            Route::post('/contact-center-roster', [ContactCenterCommissionRosterController::class, 'store'])->name('contact-center-roster.store');
+            Route::put('/contact-center-roster/{member}', [ContactCenterCommissionRosterController::class, 'update'])->name('contact-center-roster.update');
         });
 
     Route::prefix('informes/penalizaciones-financiacion')

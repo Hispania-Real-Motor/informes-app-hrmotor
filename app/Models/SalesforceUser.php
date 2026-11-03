@@ -10,6 +10,7 @@ class SalesforceUser extends Model
         'salesforce_id',
         'name',
         'email',
+        'created_date',
         'profile_name',
         'user_delegation',
         'is_active',
@@ -18,6 +19,7 @@ class SalesforceUser extends Model
     ];
 
     protected $casts = [
+        'created_date' => 'datetime',
         'is_active' => 'boolean',
         'commission_appraiser' => 'boolean',
         'raw_payload' => 'array',

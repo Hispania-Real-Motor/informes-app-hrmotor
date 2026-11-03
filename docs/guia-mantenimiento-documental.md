@@ -224,6 +224,15 @@ evidencia permita revisar trazabilidad o contratos KPI; una nota de no impacto
 debe explicar concretamente las reglas preservadas. La prueba del validador
 debe mantener este alcance para evitar que el comando vuelva a quedar sin mapa.
 
+### Comandos de evidencia acotada de Comisiones
+
+`SalesforceSyncCommercialCommissionAppointmentEvidenceCommand.php` y
+`SalesforceSyncCommercialCommissionProductDeliveriesCommand.php` se mapean a
+`commissions`. Ejecutan réplicas manuales y acotadas para auditoría, no cambian
+por sí solos fórmulas, KPIs ni cierres. La documentación de Comisiones debe
+explicar la evidencia y sus límites; la matriz solo cambia si cambia un contrato
+KPI.
+
 ### Generaciones de Interests (PR #92)
 
 El prefijo `app/Services/Salesforce/InterestGeneration` se mapea explícitamente

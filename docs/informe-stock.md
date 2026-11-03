@@ -11,6 +11,15 @@ Actualizado: 2026-09-21.
 - Capacidades: importación CSV/XLSX y `stock_delegations`.
 - Histórico: `stock_daily_snapshots`.
 
+La réplica compartida de Opportunity materializa `Captador_de_cita__c` y su
+nombre relacionado como `appointment_setter_id` y `appointment_setter_name` para
+atribuciones futuras. No intervienen en fuentes, cálculos, KPIs ni presentación
+de Stock.
+
+La ruta administrativa del roster de Contact Center está restringida a
+administradores y solo mantiene identidad/vigencia para el refresco local de
+Users; no altera las fuentes, cálculos ni KPIs de Stock.
+
 El stock actual considera `Disponible`, `Reservado` y `Bloqueado`. Las ventas no
 se reconstruyen con el Product2 actual: el snapshot conserva los valores
 económicos del momento de la venta y posteriormente solo se reconcilia su

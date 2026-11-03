@@ -104,6 +104,7 @@ class CommercialCommissionDashboardService
         private readonly CommercialFinancingPenaltyService $financingPenalties,
         private readonly CommissionMonthResolver $monthResolver,
         private readonly DelegationManagerHistoryResolver $delegationManagers,
+        private readonly EligibleDeliveryOpportunityQuery $deliveryOpportunities,
     ) {}
 
     public function build(
@@ -1505,19 +1506,7 @@ class CommercialCommissionDashboardService
         CarbonImmutable $periodStart,
         CarbonImmutable $periodEnd
     ): Builder {
-        $query = SalesforceOpportunity::query()
-            ->select(self::OPPORTUNITY_COLUMNS)
-            ->where('cv_signed', true)
-            ->whereDate('cv_signed_date', '>=', $periodStart->toDateString())
-            ->whereDate('cv_signed_date', '<', $periodEnd->toDateString())
-            ->whereRaw('LOWER(COALESCE(stage_name, \'\')) <> ?', ['cerrada perdida']);
-
-        $query->where(function (Builder $builder): void {
-            $this->applyRecordTypeFilter($builder, ['venta', 'cambio']);
-            $builder->orWhereRaw("LOWER(COALESCE(name, '')) LIKE ?", ['%facilitea%']);
-        });
-
-        return $query;
+        return $this->deliveryOpportunities->forPeriod($periodStart, $periodEnd, self::OPPORTUNITY_COLUMNS);
     }
 
     /**

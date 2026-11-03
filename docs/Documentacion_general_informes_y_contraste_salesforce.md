@@ -779,8 +779,10 @@ está en `Calculo_comisiones_comerciales.txt`.
 
 - `Opportunity`: operaciones, importes, productos, propietarios, tiendas,
   financiación y contratos.
-- `User`: identidad, email, perfil, delegación, activo y
-  `Comision_Tasador__c`.
+- `User`: identidad, email, fecha de creación, perfil, delegación, activo y
+  `Comision_Tasador__c`. `CreatedDate` se materializa en
+  `salesforce_users.created_date` como dato fundacional; no participa todavía
+  en un KPI, filtro, universo o cálculo económico.
 - `Resena__c`: reseñas por oportunidad/comercial.
 - `Tasacion__c`: negociaciones German.
 - Endpoint interno de reseñas: bonus/penalización de delegaciones.
@@ -836,7 +838,7 @@ Usuarios:
 
 ```sql
 SELECT
-    Id, Name, Email, Profile.Name, USR_SEL_Delegacion__c,
+    Id, Name, Email, CreatedDate, Profile.Name, USR_SEL_Delegacion__c,
     Comision_Tasador__c, IsActive
 FROM User
 WHERE IsActive = true
@@ -898,8 +900,17 @@ detalles y exportaciones. El mes actual se permite y es siempre Provisional.
   oportunidades firmadas del rango; Tasación, Venta y Cambio con captador y sin
   gestión de venta; German desde `Tasacion__c`; Facilitea por regla específica.
 - Contact Center:
-  citas del mes en Leads; oportunidades hasta el día 10 del mes siguiente;
-  ventas firmadas dentro del mes.
+  hasta agosto de 2026 conserva citas en Leads y su ventana vigente. Desde
+  septiembre, las citas se materializan en
+  `commercial_commission_appointment_evidences` por User ID y fecha de
+  captación; reservas y entregas se leen de Opportunities por su fecha de
+  evento. Los tramos de roster de un mismo User ID se agregan en una única fila
+  mensual y los eventos fuera de vigencia se auditan sin reasignación. El
+  objetivo de compañía es mensual; Product2 sólo aporta contraste. El bloque de
+  Responsable Contact Center certifica con Opportunities y objetivo, de forma
+  independiente de la evidencia de citas requerida por los agentes. Desde
+  septiembre, una cobertura incompleta de Opportunities deja sus importes en
+  `null`; no se sustituye por cero ni se compone un total parcial.
 
 Cada pestaña puede tener un universo diferente y expone el puente
 `base - exclusiones + inclusiones = total`. La conciliación interna se muestra
@@ -914,14 +925,24 @@ funcional.
 
 - Estados: provisional, pendiente de aprobación, definitivo y reabierto.
 - Solo Dirección y Administrador/IT preparan, aprueban o reabren.
-- El definitivo exige mes natural terminado, cinco componentes confirmados y
-  ausencia de incidencias relevantes.
-- Los cierres se separan por `Comerciales`, `Delegaciones` y `Área Manager`; cada
-  snapshot conserva únicamente el universo y detalle de su bloque. Call Center,
-  Contact Center y Financieros siguen siendo operativos/provisionales y no se
-  congelan en esos cierres.
+- El definitivo exige mes natural terminado, los componentes del scope
+  confirmados y ausencia de incidencias relevantes. Para Contact Center, julio
+  y agosto usan `leads` + `sales`; desde septiembre usa `appointments` +
+  `sales` y, además, valida el candidato económico persistido sin recalcularlo.
+- Los cierres se separan por scope. Cada snapshot conserva únicamente el
+  universo y detalle de su bloque. Desde septiembre el de Contact Center incluye
+  `contact_center` y los `formula_settings` que se usaron para el cálculo; su
+  total no convierte importes `null` no certificables en cero. La reapertura
+  conserva la versión definitiva previa y crea una nueva versión al volver a
+  preparar/aprobar.
 - Salesforce no sobrescribe un definitivo. Una corrección se registra como
   ajuste del siguiente mes abierto o exige reapertura manual con motivo.
+- El XLSX de Contact Center de septiembre o posterior consume solo ese snapshot
+  definitivo. Sin él, exige un cálculo live certificable y responde HTTP 409 si
+  falta; un definitivo malformado o no certificable recibe el mismo rechazo y
+  nunca se reconstruye desde datos vivos. Los formatos de julio/agosto no
+  cambian. Los permisos de descarga no se amplían y Commission Auditor sigue
+  sin poder descargar el XLSX.
 - El libro de ajustes conserva operación, mes original/aplicación, importe,
   motivo, usuario, fecha y estado.
 
