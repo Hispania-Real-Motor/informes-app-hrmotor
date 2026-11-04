@@ -1,5 +1,13 @@
 # Handoff para agentes
 
+## 2026-11-04 — Comisiones — compactación visual de Preparación/Aprobación y Contact Center
+
+- Base de trabajo: `813baac7e65341144a4c09fa5c32c404abd306c6`. Se compacta exclusivamente la presentación de Comisiones: las tablas dejan de reservar una altura fija cuando su contenido es corto, conservan un máximo con desplazamiento para listados extensos y se reducen espaciados de los controles de preparación, aprobación y detalle.
+- En el plan de Contact Center desde `2026-09`, la tabla resumen del roster conserva sus mismas columnas y valores. El detalle usa ahora un selector buscable por nombre o Salesforce User ID y muestra un único panel de agente con las pestañas locales Citas, Reservas y Entregas; sustituye la repetición simultánea de los tres listados para todos los agentes. La regresión HTTP comprueba que la superficie se entrega para el mes de roster.
+- No cambian datos, consultas, filtros, identidad, reglas de roster, fórmulas, objetivo mensual, readiness, certificación, cierres, snapshots ni XLSX. Tampoco se introducen sincronizaciones, llamadas Salesforce, migraciones, configuración ni permisos. La interacción reutiliza los controles locales ya existentes y Blade mantiene su escape de contenido.
+- Documentación: se actualiza este handoff por el cambio de presentación. `docs/informe-comisiones.md`, documentación general, `docs/matriz-trazabilidad-kpi.md`, `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian: no se modifica un KPI, su trazabilidad, contrato de auditoría, arquitectura ni una decisión irreversible. Para la descripción de la PR corresponde `Docs-Impact: updated` con `Docs-Matrix-Impact: unchanged`, indicando como evidencia la vista Contact Center y que universo, filtros y cálculos permanecen iguales.
+- Validación funcional, Pint, build y `docs-integrity`: a cargo del agente principal sobre el HEAD definitivo. No se realizó sincronización, cierre, aprobación, despliegue ni modificación de producción.
+
 ## 2026-11-03 — Cierre de observaciones de revisión de Contact Center
 
 - Alcance: se alinean fixtures de regresión con el contrato económico vigente
