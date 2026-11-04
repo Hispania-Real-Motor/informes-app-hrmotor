@@ -28,15 +28,22 @@ nunca habilita una vuelta a datos vivos.
 
 Los tramos abiertos exigen, por plataforma, el run de mayor ID que cubra todo
 cada tramo y que esté `completed` con finalización. Se usa primero
-`stats.range_start`/`range_end_exclusive`, que son días de proveedor. Para
-runs históricos sin esas estadísticas, los límites solo se aceptan si forman
-un intervalo de inicio de día válido interpretado coherentemente como
-`Europe/Madrid` o como la persistencia UTC heredada convertida a esa zona. La
-fecha de fin es exclusiva. Así no se confunde el inicio civil de Madrid con su
-instante UTC ni se presupone que todos los timestamps almacenados sean UTC;
-los cambios DST quedan cubiertos por la conversión de zona. Un run incompleto,
-fallido, sin límites válidos o que deja un hueco bloquea exclusivamente esa
-plataforma, incluso si existen filas locales.
+`stats.range_start`/`range_end_exclusive`, que son días de proveedor y, cuando
+aparecen, son autoritativos: si falta uno o es inválido, no se recurre a los
+timestamps. Para runs históricos sin rango explícito, los límites solo se
+aceptan si **una única** interpretación de los `DATETIME` (civil
+`Europe/Madrid` o UTC heredado convertido a Madrid) forma ambos límites de
+inicio de día; no se escoge la interpretación más amplia. La fecha de fin es
+exclusiva. Así no se confunde el inicio civil de Madrid con su instante UTC ni
+se presupone que todos los timestamps almacenados sean UTC; los cambios DST,
+incluidos los tramos de octubre/noviembre, quedan cubiertos por la conversión
+de zona. Un run incompleto, fallido, sin límites acreditables o que deja un
+hueco bloquea exclusivamente esa plataforma, incluso si existen filas locales.
+
+`period_end_at=1970-01-01` se conserva como incidencia histórica de calidad
+del dato independiente de esta corrección: no se corrige ni se reinterpreta
+como cobertura. Debe diagnosticarse en modo solo lectura antes de aplicar una
+corrección aislada y autorizada.
 
 Los rangos mixtos agregan snapshots de meses cerrados completos y métricas
 diarias únicamente de sus tramos abiertos, sin solapar días ni sustituir
@@ -481,6 +488,29 @@ El detalle muestra **Estado actual** mediante `current_status`, sin reinterpreta
 `CampaignCurrentStatusService::sync()` persiste el inventario únicamente en `campaign_current_statuses`, con identidad única textual `(platform,account_id,campaign_id)`. El prefijo `act_` de cuenta Meta y guiones de cuenta Google se normalizan; no se unen nombres ni se convierten identificadores a números. La tabla guarda observación bruta/configurada, último par válido y sus fechas UTC. `last_observed_at`, `last_verified_at`, `created_at` y `updated_at` son DATETIME con valores civiles UTC (los dos últimos mediante `$table->datetimes()`), escritos por el servicio en UTC: se evita la conversión implícita de TIMESTAMP al cambiar la zona de sesión MariaDB. Las fechas de frescura no dependen de created_at/updated_at ni de la zona de la conexión. Un código nuevo conserva el último válido pero se presenta no disponible. Una respuesta incompleta o malformada no actualiza ninguna fila de esa cuenta; otras cuentas pueden completar. Una campaña ausente no se elimina ni se interpreta como eliminada.
 
 La auditoría reutiliza `report_sync_runs`: dataset `campaign_current_status`, source `platform:account_id`, resultado por cuenta, conteos de páginas/campañas/estados reconocidos/no verificables, operational_run_id y error genérico. No se crea una segunda tabla de ejecuciones. La migración aditiva incorpora índice único de identidad, índice `sync_source` y referencia nullable a `report_sync_runs` con `nullOnDelete`; no modifica históricos económicos.
+
+### Activación y primera verificación controladas
+
+`CAMPAIGN_CURRENT_STATUS_ENABLED=false` es el valor inicial y debe permanecer
+así hasta una autorización operacional separada; el despliegue no la activa ni
+reactiva el scheduler. El scheduler puede seguir detenido. Cuando la tarea esté
+habilitada y exista una reserva operacional válida, la primera lectura se
+ejecuta exclusivamente por `php artisan operations:run
+campaigns-sync-current-status` o por el mecanismo operacional autorizado
+equivalente. No se llama al sincronizador interno directamente ni se fabrican
+runs.
+
+Tras un intento autorizado, revisar localmente y sin exponer credenciales ni
+identificadores en canales compartidos: el run de
+`report_sync_runs` con dataset `campaign_current_status` por source
+`plataforma:cuenta`, las filas de `campaign_current_statuses` y la respuesta
+JSON `current_status` durante las 24 horas siguientes. Solo una observación
+reconocida, con run completado coherente y antigüedad menor de 24 horas se
+presenta `fresh`; un intento posterior, ausencia/inventario incompleto, código
+desconocido, identidad ambigua o falta de evidencia produce `stale` o
+`unavailable`. El estado histórico no es fallback. Este procedimiento no toca
+credenciales, workers ni scheduler, ni altera sincronizaciones económicas,
+cierres o snapshots.
 
 ### Frescura y contrato aditivo
 

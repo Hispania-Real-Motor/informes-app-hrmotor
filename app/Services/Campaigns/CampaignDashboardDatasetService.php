@@ -1094,37 +1094,62 @@ class CampaignDashboardDatasetService
     private function syncRunCoverageRanges(object $run): array
     {
         $stats = is_string($run->stats ?? null) ? json_decode($run->stats, true) : $run->stats;
-        if (is_array($stats)
-            && $this->validCoverageDate($stats['range_start'] ?? null)
-            && $this->validCoverageDate($stats['range_end_exclusive'] ?? null)
-            && $stats['range_start'] < $stats['range_end_exclusive']) {
-            return [['start' => $stats['range_start'], 'end_exclusive' => $stats['range_end_exclusive']]];
+        $hasExplicitCoverage = is_array($stats)
+            && (array_key_exists('range_start', $stats) || array_key_exists('range_end_exclusive', $stats));
+        if ($hasExplicitCoverage) {
+            if ($this->validCoverageDate($stats['range_start'] ?? null)
+                && $this->validCoverageDate($stats['range_end_exclusive'] ?? null)
+                && $stats['range_start'] < $stats['range_end_exclusive']) {
+                return [['start' => $stats['range_start'], 'end_exclusive' => $stats['range_end_exclusive']]];
+            }
+
+            // Explicit provider-day evidence is authoritative. A malformed or partial
+            // declaration must not be widened with the legacy timestamp fallback.
+            return [];
         }
 
         if (! is_string($run->period_start_at ?? null) || ! is_string($run->period_end_at ?? null)) {
             return [];
         }
 
-        $timezone = is_string($run->timezone ?? null) && $run->timezone !== '' ? $run->timezone : self::REPORT_TIMEZONE;
-        $ranges = [];
-        foreach ([$timezone, 'UTC'] as $storageTimezone) {
-            try {
-                $start = CarbonImmutable::createFromFormat('Y-m-d H:i:s', $run->period_start_at, $storageTimezone);
-                $end = CarbonImmutable::createFromFormat('Y-m-d H:i:s', $run->period_end_at, $storageTimezone);
-                if ($storageTimezone === 'UTC') {
-                    $start = $start->setTimezone($timezone);
-                    $end = $end->setTimezone($timezone);
-                }
-                if (! $start->isStartOfDay() || ! $end->isStartOfDay() || ! $start->lessThan($end)) {
-                    continue;
-                }
-                $ranges[] = ['start' => $start->toDateString(), 'end_exclusive' => $end->toDateString()];
-            } catch (\Throwable) {
-                continue;
-            }
+        // Economic campaign commands have always registered Europe/Madrid as their
+        // provider-day timezone. Their old DATETIME values were persisted either as
+        // Madrid civil time or as UTC instants. Both encodings are accepted only when
+        // exactly one validates as whole provider days; no candidate may broaden
+        // coverage merely because it happens to cover the requested dashboard range.
+        if (($run->timezone ?? self::REPORT_TIMEZONE) !== self::REPORT_TIMEZONE) {
+            return [];
         }
 
-        return array_values(array_unique($ranges, SORT_REGULAR));
+        $ranges = array_values(array_unique(array_filter([
+            $this->legacyCoverageRange($run->period_start_at, $run->period_end_at, self::REPORT_TIMEZONE),
+            $this->legacyCoverageRange($run->period_start_at, $run->period_end_at, 'UTC'),
+        ]), SORT_REGULAR));
+
+        return count($ranges) === 1 ? $ranges : [];
+    }
+
+    /** @return array{start:string, end_exclusive:string}|null */
+    private function legacyCoverageRange(string $rawStart, string $rawEnd, string $storageTimezone): ?array
+    {
+        try {
+            $start = CarbonImmutable::createFromFormat('!Y-m-d H:i:s', $rawStart, $storageTimezone);
+            $end = CarbonImmutable::createFromFormat('!Y-m-d H:i:s', $rawEnd, $storageTimezone);
+            if ($start->format('Y-m-d H:i:s') !== $rawStart || $end->format('Y-m-d H:i:s') !== $rawEnd) {
+                return null;
+            }
+            if ($storageTimezone === 'UTC') {
+                $start = $start->setTimezone(self::REPORT_TIMEZONE);
+                $end = $end->setTimezone(self::REPORT_TIMEZONE);
+            }
+            if (! $start->isStartOfDay() || ! $end->isStartOfDay() || ! $start->lessThan($end)) {
+                return null;
+            }
+
+            return ['start' => $start->toDateString(), 'end_exclusive' => $end->toDateString()];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function validCoverageDate(mixed $date): bool
