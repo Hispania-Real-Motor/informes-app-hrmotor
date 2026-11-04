@@ -19,6 +19,18 @@ test('only quantitative activity keeps a detail row; null is never coerced to co
     assert.equal(hasDetailActivity({ spend: 'invalid' }), false);
 });
 
+test('platform-only recovery never renders Interest-dependent columns or platform comparison values', () => {
+    vm.runInContext("platformOnlyMode = true; visibleColumns = columnDefinitions.map((column) => column.key);", sandbox);
+    const columns = Array.from(vm.runInContext("activeColumns('all').map((column) => column.key)", sandbox));
+    for (const dependent of ['leads_salesforce', 'opportunities', 'reservations', 'sales', 'cost_per_lead', 'roas']) {
+        assert.ok(!columns.includes(dependent), dependent);
+    }
+    const card = vm.runInContext("platformComparisonCardHtml({platform: 'meta', spend: 10, impressions: 20, clicks: 2, ctr: 0.1, cpc: 5}, 10, 0, 0, 0)", sandbox);
+    assert.ok(card.includes('Impresiones'));
+    assert.ok(!card.includes('Intereses Salesforce'));
+    vm.runInContext('platformOnlyMode = false;', sandbox);
+});
+
 test('costs distinguish zero, positive, zero denominator, unknown source and not applicable', () => {
     for (const [key, denominator] of Object.entries(costDenominators)) {
         assert.equal(costDisplay(0, { spend: 0, [denominator]: 1 }, key, money), money(0));

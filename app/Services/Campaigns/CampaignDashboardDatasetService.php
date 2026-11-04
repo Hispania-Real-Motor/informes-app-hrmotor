@@ -6,6 +6,7 @@ use App\Models\CampaignAttribution;
 use App\Models\CampaignOperationalClassification;
 use App\Models\CampaignPlatformDailyMetric;
 use App\Models\SalesforceOpportunity;
+use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
 use App\Services\Reports\ReservationsSales\OpportunityInterestAttributionService;
 use App\Services\Salesforce\InterestGenerationReader;
@@ -36,7 +37,11 @@ class CampaignDashboardDatasetService
     public function summary(Request $request): array
     {
         $includeDiagnostics = ReportUserAccess::isAdmin($request) && $request->boolean('include_diagnostics', true);
-        $payload = $this->payload($request, $includeDiagnostics, true);
+        try {
+            $payload = $this->payload($request, $includeDiagnostics, true);
+        } catch (InterestDatasetUnavailable) {
+            return $this->platformOnlySummary($request);
+        }
         $summary = $payload['summary'];
         $summary['campaigns'] = app(CampaignCurrentStatusService::class)->decorate($this->campaignEntityRows($payload['campaigns']));
         $summary['rankings'] = $payload['rankings'];
@@ -56,7 +61,18 @@ class CampaignDashboardDatasetService
 
     public function campaignRows(Request $request): array
     {
-        $payload = $this->payload($request, false, false);
+        try {
+            $payload = $this->payload($request, false, false);
+        } catch (InterestDatasetUnavailable) {
+            $summary = $this->platformOnlySummary($request);
+
+            return [
+                'ok' => $summary['ok'],
+                'availability' => $summary['availability'],
+                'items' => $summary['campaigns'],
+                'total' => count($summary['campaigns']),
+            ];
+        }
         $campaigns = $this->campaignEntityRows($payload['campaigns']);
 
         return [
@@ -68,9 +84,21 @@ class CampaignDashboardDatasetService
 
     public function rankings(Request $request): array
     {
+        try {
+            $rankings = $this->payload($request, false, false)['rankings'];
+        } catch (InterestDatasetUnavailable) {
+            $summary = $this->platformOnlySummary($request);
+
+            return [
+                'ok' => $summary['ok'],
+                'availability' => $summary['availability'],
+                'rankings' => $summary['rankings'],
+            ];
+        }
+
         return [
             'ok' => true,
-            'rankings' => $this->payload($request, false, false)['rankings'],
+            'rankings' => $rankings,
         ];
     }
 
@@ -85,6 +113,7 @@ class CampaignDashboardDatasetService
 
     public function attributionAuditRows(Request $request): array
     {
+        $this->assertCertifiedInterestDataset();
         $filters = $this->filters($request);
         $period = $this->period($filters);
         $query = DB::table('campaign_lead_attributions as cla')
@@ -230,6 +259,7 @@ class CampaignDashboardDatasetService
 
     public function kpiAudit(Request $request): array
     {
+        $this->assertCertifiedInterestDataset();
         $filters = $this->filters($request);
         $period = $this->period($filters);
         $metric = $this->resolveAuditMetric($request->string('metric')->toString(), $filters['context']);
@@ -267,6 +297,277 @@ class CampaignDashboardDatasetService
             now()->addMinutes(self::CACHE_TTL_MINUTES),
             fn () => $this->buildPayload($filters, $period, $includeDiagnostics, $includeFilters)
         );
+    }
+
+    /**
+     * Return only platform-native data when the certified Interest generation is unavailable.
+     *
+     * This path intentionally never reads attribution or Opportunity materializations: their
+     * lineage is tied to Interests and showing their stored values would imply certification.
+     *
+     * @return array<string, mixed>
+     */
+    private function platformOnlySummary(Request $request): array
+    {
+        [$filters, $blockedFilters] = $this->platformOnlyFilters($this->filters($request));
+        $period = $this->period($filters);
+        $availability = $this->platformAvailability($period);
+        $availablePlatforms = array_keys(array_filter(
+            $availability['platforms'],
+            static fn (array $platform): bool => $platform['status'] === 'available'
+        ));
+        $rows = array_values(array_filter(
+            $this->metricRows($filters, $period),
+            static fn (array $row): bool => in_array($row['platform'] ?? null, $availablePlatforms, true)
+        ));
+        $rows = $this->applyOperationalClassifications($this->mergeRows($rows, [], $filters));
+        $rows = $this->mainCampaignRows($rows, $filters);
+        $rows = array_map(fn (array $row): array => $this->withoutInterestDependentMetrics($row), $rows);
+        $campaigns = app(CampaignCurrentStatusService::class)->decorate($this->campaignEntityRows($rows));
+        $totals = $this->platformOnlyTotals($rows);
+
+        $availability['mode'] = 'platform_independent_only';
+        $availability['interest_dependent'] = [
+            'status' => 'blocked',
+            'reason' => 'No existe una generación certificada de Interests publicada.',
+        ];
+        $availability['opportunity_dependent'] = [
+            'status' => 'blocked',
+            'reason' => 'Las Opportunities se muestran únicamente junto a una atribución certificada de Interests.',
+        ];
+        $availability['attribution'] = [
+            'status' => 'blocked',
+            'reason' => 'La atribución y las conversiones requieren la generación certificada de Interests.',
+        ];
+
+        $warnings = [
+            'Modo de recuperación: se muestran exclusivamente métricas nativas de plataforma con cobertura verificada. Interests, Opportunities, atribución y conversiones atribuidas permanecen bloqueados hasta publicar una generación certificada.',
+        ];
+        foreach ($availability['platforms'] as $platform => $state) {
+            if ($state['status'] !== 'available') {
+                $warnings[] = sprintf('Las métricas de %s están bloqueadas: %s', $platform, $state['reason']);
+            }
+        }
+        if ($blockedFilters !== []) {
+            $warnings[] = 'Se han ignorado filtros dependientes de Interests: '.implode(', ', $blockedFilters).'.';
+        }
+
+        return [
+            'ok' => $campaigns !== [],
+            'selected_context' => $filters['context'],
+            'selected_context_label' => $this->contextLabel($filters['context']),
+            'period_mode' => 'platform_independent_only',
+            'periodo_actual' => ['inicio' => $period['start'], 'fin' => $period['end']],
+            'datos_actualizados' => $availability['latest_synced_at'],
+            'salesforce_interests_synced_at' => null,
+            'salesforce_leads_synced_at' => null,
+            'meta_synced_at' => $availability['platforms']['meta']['synced_at'],
+            'google_synced_at' => $availability['platforms']['google_ads']['synced_at'],
+            'attribution_built_at' => null,
+            'dataset_generated_at' => CarbonImmutable::now(self::REPORT_TIMEZONE)->toDateTimeString(),
+            'dataset_cutoff_at' => $availability['latest_synced_at'],
+            'dataset_freshness_reason' => 'Solo cobertura de plataformas verificadas; dependencias de Interests bloqueadas.',
+            'dataset_timezone' => self::REPORT_TIMEZONE,
+            'availability' => $availability,
+            'kpis' => $totals,
+            'warnings' => $warnings,
+            'public_warnings' => $warnings,
+            'charts' => [
+                'monthly_evolution' => [],
+                'daily_evolution' => [],
+                'daily_reservations_sales' => [],
+                'funnel' => [],
+                'platforms' => $this->platformOnlyBars($rows),
+            ],
+            'daily_investment_leads' => [],
+            'daily_results' => [],
+            'platform_comparison' => $this->platformOnlyBars($rows),
+            'review_campaigns' => [],
+            'source_reconciliation' => [],
+            'diagnostics' => [],
+            'filters' => $this->platformOnlyFilterOptions(),
+            'campaigns' => $campaigns,
+            'rankings' => $this->platformOnlyRankings($campaigns),
+            'investment_closure' => $this->investmentClosures->status($period['start']),
+        ];
+    }
+
+    private function assertCertifiedInterestDataset(): void
+    {
+        app(InterestGenerationReader::class)->generation();
+    }
+
+    /** @return array{0: array<string, mixed>, 1: array<int, string>} */
+    private function platformOnlyFilters(array $filters): array
+    {
+        $blocked = [];
+        foreach ([
+            'source_acquired', 'medium_acquired', 'campaign_acquired', 'delegation', 'zone', 'interest_status',
+            'lead_type', 'has_opportunity', 'has_reservation', 'has_sale', 'commercial_user', 'vehicle_interest',
+            'classification',
+        ] as $key) {
+            if (filled($filters[$key] ?? null)) {
+                $blocked[] = $key;
+            }
+            $filters[$key] = '';
+        }
+        if (($filters['campaign_source_type'] ?? '') !== '' && $filters['campaign_source_type'] !== 'platform_campaign') {
+            $blocked[] = 'campaign_source_type';
+            $filters['campaign_source_type'] = '';
+        }
+
+        return [$filters, $blocked];
+    }
+
+    /** @return array<string, mixed> */
+    private function platformAvailability(array $period): array
+    {
+        $states = [];
+        $latest = null;
+        foreach (['meta', 'google_ads'] as $platform) {
+            $run = DB::table('report_sync_runs')
+                ->where('dataset', 'campaign_platform_daily_metrics')
+                ->where('source', $platform)
+                ->whereNotNull('period_start_at')
+                ->whereNotNull('period_end_at')
+                ->where('period_start_at', '<=', $period['start_at'])
+                ->where('period_end_at', '>=', $period['end_at'])
+                ->orderByDesc('id')
+                ->first(['id', 'status', 'completed_at', 'source_cutoff_at']);
+
+            if ($run === null || $run->status !== 'completed' || $run->completed_at === null) {
+                $states[$platform] = [
+                    'status' => 'blocked',
+                    'reason' => $run === null
+                        ? 'No existe una ejecución de plataforma que cubra el período solicitado.'
+                        : 'La última ejecución de plataforma que cubre el período no terminó correctamente.',
+                    'synced_at' => null,
+                    'run_id' => null,
+                ];
+
+                continue;
+            }
+
+            $syncedAt = $this->reportDateTime($run->source_cutoff_at ?? $run->completed_at);
+            $latest = $latest === null || $syncedAt?->lessThan($latest) ? $syncedAt : $latest;
+            $states[$platform] = [
+                'status' => 'available',
+                'reason' => null,
+                'synced_at' => $syncedAt?->toDateTimeString(),
+                'run_id' => (int) $run->id,
+            ];
+        }
+
+        return [
+            'platforms' => $states,
+            'latest_synced_at' => $latest?->toDateTimeString(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function withoutInterestDependentMetrics(array $row): array
+    {
+        foreach ([
+            'interests_salesforce', 'leads_salesforce', 'opportunities', 'reservations', 'live_reservations',
+            'fallen_reservations', 'sales', 'sale_amount', 'appraisals_generated', 'purchases', 'appraisal_amount',
+            'cost_per_lead', 'cost_per_opportunity', 'cost_per_reservation', 'cost_per_sale', 'cost_per_appraisal',
+            'cost_per_purchase', 'roas', 'estimated_roi', 'result_count', 'cost_per_result', 'click_to_lead_salesforce',
+            'lead_to_opportunity', 'opportunity_to_reservation', 'reservation_to_sale', 'lead_to_sale',
+            'lead_to_purchase', 'opportunity_to_purchase',
+        ] as $field) {
+            $row[$field] = null;
+        }
+
+        return $row;
+    }
+
+    /** @return array<string, mixed> */
+    private function platformOnlyTotals(array $rows): array
+    {
+        $platformLeadsAvailable = collect($rows)->contains(static fn (array $row): bool => $row['platform_leads'] !== null);
+
+        return [
+            'spend' => round((float) array_sum(array_column($rows, 'spend')), 2),
+            'impressions' => (int) array_sum(array_column($rows, 'impressions')),
+            'clicks' => (int) array_sum(array_column($rows, 'clicks')),
+            'platform_leads' => $platformLeadsAvailable ? (int) array_sum(array_map(static fn (array $row): int => (int) ($row['platform_leads'] ?? 0), $rows)) : null,
+            'platform_conversions' => collect($rows)->contains(static fn (array $row): bool => $row['platform_conversions'] !== null)
+                ? (float) array_sum(array_map(static fn (array $row): float => (float) ($row['platform_conversions'] ?? 0), $rows)) : null,
+            'ctr' => $this->divide(array_sum(array_column($rows, 'clicks')), array_sum(array_column($rows, 'impressions'))),
+            'cpc' => $this->divide(array_sum(array_column($rows, 'spend')), array_sum(array_column($rows, 'clicks'))),
+            'interests_salesforce' => null,
+            'leads_salesforce' => null,
+            'opportunities' => null,
+            'reservations' => null,
+            'live_reservations' => null,
+            'fallen_reservations' => null,
+            'sales' => null,
+            'sale_amount' => null,
+            'appraisals_generated' => null,
+            'purchases' => null,
+            'appraisal_amount' => null,
+            'cost_per_lead' => null,
+            'cost_per_opportunity' => null,
+            'cost_per_reservation' => null,
+            'cost_per_sale' => null,
+            'cost_per_appraisal' => null,
+            'cost_per_purchase' => null,
+            'roas' => null,
+            'estimated_roi' => null,
+            'result_count' => null,
+            'cost_per_result' => null,
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function platformOnlyBars(array $rows): array
+    {
+        return collect($rows)->groupBy('platform')->map(function (Collection $items, string $platform): array {
+            $totals = $this->platformOnlyTotals($items->all());
+
+            return array_merge(['platform' => $platform], $totals);
+        })->sortByDesc('spend')->values()->all();
+    }
+
+    /** @return array<string, array<int, array<string, mixed>>> */
+    private function platformOnlyRankings(array $rows): array
+    {
+        return [
+            'top_spend' => $this->top(array_values(array_filter($rows, static fn (array $row): bool => (float) ($row['spend'] ?? 0) > 0)), 'spend'),
+            'top_impressions' => $this->top($rows, 'impressions'),
+            'best_ctr' => $this->top($rows, 'ctr', requireValue: true),
+            'best_cpc' => $this->top($rows, 'cpc', ascending: true, requireValue: true),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function platformOnlyFilterOptions(): array
+    {
+        return [
+            'campaign_types' => [
+                ['value' => 'all', 'label' => 'Todos'], ['value' => 'venta', 'label' => 'Venta'],
+                ['value' => 'tasacion', 'label' => 'Tasación'], ['value' => 'exposicion', 'label' => 'Exposición'],
+                ['value' => 'branding', 'label' => 'Branding'], ['value' => 'otros', 'label' => 'Otros'],
+            ],
+            'lead_types' => [],
+            'platforms' => CampaignPlatformDailyMetric::query()->distinct()->orderBy('platform')->pluck('platform')->all(),
+            'source_types' => [['value' => 'platform_campaign', 'label' => 'Campaña plataforma']],
+            'classifications' => ['Potenciar', 'Revisar', 'Parar', 'Revisar tracking', 'Sin datos suficientes'],
+            'campaign_statuses' => [['value' => 'active', 'label' => 'Activas'], ['value' => 'inactive', 'label' => 'Inactivas']],
+            'accounts' => DB::table('campaign_platform_daily_metrics')->select('account_id', DB::raw('MIN(account_name) as account_name'))
+                ->whereNotNull('account_id')->groupBy('account_id')->orderBy('account_id')->get()
+                ->map(fn ($row) => ['id' => $row->account_id, 'name' => $row->account_name])->all(),
+            'campaign_ids' => $this->distinctMetricField('campaign_id'),
+            'campaign_names' => $this->distinctMetricField('campaign_name'),
+            'months' => $this->monthOptions(),
+        ];
+    }
+
+    /** @return array<int, string> */
+    private function distinctMetricField(string $field): array
+    {
+        return DB::table('campaign_platform_daily_metrics')->whereNotNull($field)->where($field, '<>', '')
+            ->distinct()->orderBy($field)->pluck($field)->map(static fn ($value): string => (string) $value)->all();
     }
 
     private function buildKpiAuditPayload(array $filters, array $period, string $metric): array

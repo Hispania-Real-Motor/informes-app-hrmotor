@@ -1,5 +1,28 @@
 # Informe de Campañas
 
+## Disponibilidad con Interests no certificado
+
+Si el lector de la generación certificada de Interests devuelve
+`InterestDatasetUnavailable`, summary, campañas y rankings pueden responder en
+modo `platform_independent_only`. Para cada plataforma se selecciona por ID
+descendente el último run `campaign_platform_daily_metrics` que cubre el
+período solicitado; debe estar `completed` y tener fecha de finalización. Si no
+existe o está fallido, en curso o sin finalizar, esa plataforma queda bloqueada,
+aunque haya otro run anterior completado. Se utilizan las métricas
+económicas locales del período y filtros existentes, incluidos cierres cuando
+corresponda. La cobertura de ese run no certifica Salesforce ni atribución.
+
+La vista muestra inversión, impresiones, clics, CTR, CPC y leads propios de
+plataforma cuando existan. Los leads y conversiones nativos de plataforma no
+son Interests ni conversiones comerciales atribuidas. Interests,
+Opportunities, reservas, ventas, importes, ratios dependientes y atribución
+quedan bloqueados; sus valores no deben interpretarse como cero. Se deshabilitan
+los filtros dependientes y se ocultan las opciones de auditoría de atribución;
+si llegan en la petición se ignoran y se informa en un aviso;
+la auditoría KPI y de atribución requieren generación certificada, y el CSV de
+campañas conserva el camino ordinario y puede responder 503. El aviso y el
+metadato de disponibilidad identifican el modo parcial.
+
 Actualizado: 2026-10-27. URL: `/informes/campanas`.
 
 ## Contrato funcional ROT-4
@@ -526,7 +549,7 @@ Esta iteración no inspecciona producción ni consulta proveedores; seguir el
 
 ### Límite de integridad de la fuente compartida F2
 
-La atribución y las consultas de Campañas que usan `salesforce_interests` dependen de la tabla viva F2. Cada bloque de persistencia F2 se ejecuta en una transacción y un fallo general ya no repite filas con escrituras para diagnóstico. Un fallo posterior puede dejar persistidos bloques anteriores; no existe aislamiento por generaciones. El último run completado por sí solo no certifica el contenido actual de la tabla tras una ejecución fallida. La respuesta HTTP 503 específica del dashboard de Interests no se extiende por este cambio a este informe. No cambian las reglas de atribución, los filtros, fórmulas ni exportaciones de este informe. Véase [disponibilidad de Interests](reglas-negocio-leads.md#disponibilidad-del-dashboard).
+**Referencia histórica anterior a generaciones:** la atribución y las consultas de Campañas que usaban `salesforce_interests` dependían de la tabla viva F2. Cada bloque de persistencia F2 se ejecutaba en una transacción y un fallo posterior podía dejar persistidos bloques anteriores. El último run completado por sí solo no certificaba el contenido de esa tabla. La respuesta HTTP 503 no se extendía a Campañas en aquel cambio; el contrato vigente se describe en [disponibilidad con Interests no certificado](#disponibilidad-con-interests-no-certificado).
 
 ## Fuente Interest por generación — PR #92 (2026-10-28)
 

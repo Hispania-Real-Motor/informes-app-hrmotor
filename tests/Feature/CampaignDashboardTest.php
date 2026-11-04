@@ -15,6 +15,7 @@ use App\Services\Campaigns\CampaignPublicationReadiness;
 use App\Services\Campaigns\CampaignSaleAmountResolver;
 use App\Services\Campaigns\GoogleAdsClient;
 use App\Services\Campaigns\GoogleCampaignSyncService;
+use App\Services\Salesforce\InterestGenerationReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -52,6 +53,105 @@ class CampaignDashboardTest extends TestCase
         $this->get('/informes/leads')
             ->assertOk()
             ->assertSee('/informes/campanas', false);
+    }
+
+    public function test_platform_metrics_remain_available_without_a_published_interest_generation(): void
+    {
+        DB::table('salesforce_interest_publication')->where('id', 1)->update([
+            'generation_id' => null,
+            'watermark_at' => null,
+        ]);
+        app()->forgetInstance(InterestGenerationReader::class);
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'meta',
+            'spend' => 120,
+            'impressions' => 4000,
+            'clicks' => 80,
+            'platform_leads' => 6,
+        ]));
+        DB::table('report_sync_runs')->insert([
+            'dataset' => 'campaign_platform_daily_metrics',
+            'source' => 'meta',
+            'status' => 'completed',
+            'period_start_at' => '2026-04-30 22:00:00',
+            'period_end_at' => '2026-05-31 22:00:00',
+            'source_cutoff_at' => '2026-06-01 01:00:00',
+            'started_at' => '2026-06-01 01:00:00',
+            'completed_at' => '2026-06-01 01:01:00',
+            'timezone' => 'Europe/Madrid',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $summary = $this->getJson('/informes/campanas/data/summary?'.$this->campaignQuery().'&has_sale=yes')
+            ->assertOk()
+            ->assertJsonPath('availability.mode', 'platform_independent_only')
+            ->assertJsonPath('availability.platforms.meta.status', 'available')
+            ->assertJsonPath('availability.platforms.google_ads.status', 'blocked')
+            ->assertJsonPath('availability.interest_dependent.status', 'blocked')
+            ->json();
+
+        $this->assertSame(120.0, (float) $summary['kpis']['spend']);
+        $this->assertSame(4000, $summary['kpis']['impressions']);
+        $this->assertSame(80, $summary['kpis']['clicks']);
+        $this->assertNull($summary['kpis']['leads_salesforce']);
+        $this->assertNull($summary['campaigns'][0]['sales']);
+        $this->assertContains('Se han ignorado filtros dependientes de Interests: has_sale.', $summary['warnings']);
+        $this->getJson('/informes/campanas/data/attribution-audit?'.$this->campaignQuery())
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'interest_dataset_unavailable');
+        $this->get('/informes/campanas/export/campaigns.csv?'.$this->campaignQuery())
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'interest_dataset_unavailable');
+    }
+
+    public function test_platform_recovery_requires_a_latest_complete_run_with_full_local_period_coverage(): void
+    {
+        DB::table('salesforce_interest_publication')->where('id', 1)->update([
+            'generation_id' => null,
+            'watermark_at' => null,
+        ]);
+        app()->forgetInstance(InterestGenerationReader::class);
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'meta', 'metric_date' => '2026-09-15', 'spend' => 90,
+            'impressions' => 900, 'clicks' => 30,
+        ]));
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'metric_date' => '2026-10-15', 'campaign_id' => 'google-recovery',
+            'campaign_name' => 'Google recovery', 'spend' => 110, 'impressions' => 1100, 'clicks' => 44,
+        ]));
+        $complete = [
+            'dataset' => 'campaign_platform_daily_metrics', 'status' => 'completed',
+            'period_start_at' => '2026-08-31 22:00:00', 'period_end_at' => '2026-10-31 23:00:00',
+            'source_cutoff_at' => '2026-11-01 01:00:00', 'started_at' => '2026-11-01 01:00:00',
+            'completed_at' => '2026-11-01 01:01:00', 'timezone' => 'Europe/Madrid',
+            'created_at' => now(), 'updated_at' => now(),
+        ];
+        DB::table('report_sync_runs')->insert([...$complete, 'source' => 'meta']);
+        DB::table('report_sync_runs')->insert([
+            ...$complete,
+            'source' => 'google_ads',
+            'period_end_at' => '2026-10-01 22:00:00',
+        ]);
+
+        $query = 'start_date=2026-09-01&end_date=2026-10-31&campaign_status=';
+        $partial = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertSame('available', $partial['availability']['platforms']['meta']['status']);
+        $this->assertSame('blocked', $partial['availability']['platforms']['google_ads']['status']);
+        $this->assertSame(90.0, (float) $partial['kpis']['spend']);
+
+        DB::table('report_sync_runs')->insert([
+            ...$complete,
+            'source' => 'meta',
+            'status' => 'failed',
+            'completed_at' => null,
+            'source_cutoff_at' => null,
+        ]);
+        $failed = $this->getJson('/informes/campanas/data/summary?'.$query)->assertOk()->json();
+        $this->assertSame('blocked', $failed['availability']['platforms']['meta']['status']);
+        $this->assertSame('blocked', $failed['availability']['platforms']['google_ads']['status']);
+        $this->assertFalse($failed['ok']);
+        $this->assertSame([], $failed['campaigns']);
     }
 
     public function test_data_updated_date_requires_successful_dependencies_and_does_not_advance_after_google_failure(): void

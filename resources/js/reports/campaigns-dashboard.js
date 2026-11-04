@@ -51,6 +51,7 @@ let diagnosticsLoadingController = null;
 let latestReloadRequestId = 0;
 let lastRenderedFilterOptionsKey = '';
 let lastRenderedCampaignNamesKey = '';
+let platformOnlyMode = false;
 const ventaSubcontexts = ['ventas', 'exposicion', 'branding', 'otros'];
 const ventaContexts = ['venta', ...ventaSubcontexts];
 
@@ -682,6 +683,7 @@ async function reloadAllData() {
         }
 
         const campaignItems = Array.isArray(summary?.campaigns) ? summary.campaigns : [];
+        platformOnlyMode = summary?.availability?.mode === 'platform_independent_only';
 
         setUpdatedBadge(summary?.datos_actualizados, false, summary);
         renderSummary(summary || {});
@@ -766,6 +768,8 @@ async function loadDiagnostics() {
 }
 
 function renderSummary(data) {
+    platformOnlyMode = data?.availability?.mode === 'platform_independent_only';
+    applyAvailabilityControls();
     renderWarnings(data.warnings || []);
     renderInvestmentClosure(data.investment_closure || null);
     currentContext = data.selected_context || currentContext;
@@ -790,6 +794,17 @@ function renderSummary(data) {
     renderPlatformComparison(data.platform_comparison || []);
     renderReviewCampaigns(data.review_campaigns || []);
     renderDiagnostics(data.diagnostics || {});
+}
+
+function applyAvailabilityControls() {
+    ['leadType', 'hasOpportunity', 'hasReservation', 'hasSale', 'classification'].forEach((id) => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = platformOnlyMode;
+    });
+    ['exportCsv', 'exportAttributionAudit'].forEach((id) => {
+        const exportLink = document.getElementById(id);
+        if (exportLink) exportLink.classList.toggle('is-hidden', platformOnlyMode);
+    });
 }
 
 function renderInvestmentClosure(closure) {
@@ -823,7 +838,8 @@ function renderKpis(kpis, context = 'all') {
     }
 
     root.innerHTML = '';
-    kpiCardsForContext(context, kpis).forEach((card) => {
+    const cards = platformOnlyMode ? platformOnlyKpiCards(kpis) : kpiCardsForContext(context, kpis);
+    cards.forEach((card) => {
         root.insertAdjacentHTML('beforeend', `
             <div class="card kpi campaign-kpi">
                 <div class="kpi-copy">
@@ -1153,6 +1169,10 @@ function renderCharts(charts) {
     }
 
     currentCharts = charts || {};
+    if (platformOnlyMode) {
+        root.innerHTML = '';
+        return;
+    }
     root.innerHTML = metricChartsShellHtml(charts.monthly_evolution || []);
 }
 
@@ -1610,6 +1630,21 @@ function renderPlatformComparison(rows, emptyMessage = '') {
 }
 
 function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, maxResult) {
+    if (platformOnlyMode) {
+        return `
+            <article class="card platform-comparison-card platform-comparison-card--${row.platform === 'meta' ? 'meta' : 'google'}">
+                <div class="platform-comparison-head"><strong>${escapeHtml(formatPlatform(row.platform))}</strong></div>
+                <div class="platform-comparison-metrics">
+                    ${platformMetricItemHtml('Inversión', row.spend, formatMoney)}
+                    ${platformMetricItemHtml('Impresiones', row.impressions, formatNumber)}
+                    ${platformMetricItemHtml('Clicks', row.clicks, formatNumber)}
+                    ${platformMetricItemHtml('CTR', row.ctr, formatPercentRatio)}
+                    ${platformMetricItemHtml('CPC', row.cpc, formatMoney)}
+                </div>
+            </article>
+        `;
+    }
+
     const context = presentationCampaignContext(currentContext);
     const resultLabel = platformResultLabelForContext(context);
     const resultValue = platformResultValueForContext(row, context);
@@ -1847,6 +1882,15 @@ function kpiCardsForContext(context, kpis) {
                 },
             ];
     }
+}
+
+function platformOnlyKpiCards(kpis) {
+    return [
+        { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
+        { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
+        { label: 'Clicks', value: formatNumber(kpis.clicks), hint: 'Métrica nativa de plataforma' },
+        { label: 'Leads de plataforma', value: kpis.platform_leads === null ? 'No disponible' : formatNumber(kpis.platform_leads), hint: 'No equivale a Interests Salesforce' },
+    ];
 }
 
 function renderFilterOptions(filters, rows = []) {
@@ -2392,7 +2436,11 @@ function applyMonthlyRange(value, rows) {
 }
 
 function activeColumns(context = currentContext) {
-    return columnDefinitions.filter((column) => visibleColumns.includes(column.key) && columnAllowedInContext(column.key, context));
+    const platformOnlyColumns = ['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'campaign_end_date', 'last_spend_date'];
+
+    return columnDefinitions.filter((column) => visibleColumns.includes(column.key)
+        && columnAllowedInContext(column.key, context)
+        && (!platformOnlyMode || platformOnlyColumns.includes(column.key)));
 }
 
 function applyColumnVisibility() {
@@ -2975,7 +3023,10 @@ function renderRankings(rankings, emptyMessage = '') {
 
     currentRankings = rankings || {};
     const context = presentationCampaignContext(currentContext);
-    const visible = rankingDefinitions.filter((ranking) => visibleRankings.includes(ranking.key) && rankingAllowedInContext(ranking.key, context));
+    const platformOnlyRankings = ['top_spend', 'top_impressions', 'best_ctr', 'best_cpc'];
+    const visible = rankingDefinitions.filter((ranking) => visibleRankings.includes(ranking.key)
+        && rankingAllowedInContext(ranking.key, context)
+        && (!platformOnlyMode || platformOnlyRankings.includes(ranking.key)));
 
     if (emptyMessage) {
         root.innerHTML = `<div class="empty-state">${escapeHtml(emptyMessage)}</div>`;
