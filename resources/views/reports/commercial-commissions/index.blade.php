@@ -426,7 +426,7 @@
                             <div class="table-scrollbar-top" id="commissionSummaryTableScrollTop" aria-hidden="true">
                                 <div class="table-scrollbar-spacer" id="commissionSummaryTableScrollTopSpacer"></div>
                             </div>
-                            <div class="table-shell" id="commissionSummaryTableShell" style="height: 700px;">
+                            <div class="table-shell" id="commissionSummaryTableShell">
                                 <table id="commissionSummaryTable" data-sortable-table="commission-summary">
                                     <thead>
                                     <tr>

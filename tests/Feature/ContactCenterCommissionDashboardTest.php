@@ -253,6 +253,16 @@ class ContactCenterCommissionDashboardTest extends TestCase
         $this->assertSame(560.0, $payload['responsible_contact_center']['final_total']);
         $this->assertSame(1012, $payload['diagnostics']['company_deliveries']);
         $this->assertSame(['005-not-in-roster'], $payload['diagnostics']['unrostered_appointment_setters']);
+
+        $this->withSession([
+            'informes_authenticated' => true,
+            'report_user_role' => ReportUser::ROLE_DIRECTOR,
+            'report_user_email' => 'director@hrmotor.com',
+        ])->get('/informes/comisiones-comerciales?month=2026-09&tab=contact-center')
+            ->assertOk()
+            ->assertSee('data-agent-browser', false)
+            ->assertSee('contactCenterRosterAgentSearch', false)
+            ->assertSee('Maria Paz Vidal');
     }
 
     public function test_august_keeps_the_legacy_contact_center_plan(): void
