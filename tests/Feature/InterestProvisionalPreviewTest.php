@@ -6,6 +6,7 @@ use App\Models\ReportSyncRun;
 use App\Models\ReportUser;
 use App\Models\SalesforceInterestActivityRun;
 use App\Services\Reports\ReportSyncRunService;
+use App\Services\Reports\Leads\InterestProvisionalPreviewService;
 use App\Services\Salesforce\InterestGenerationStore;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
