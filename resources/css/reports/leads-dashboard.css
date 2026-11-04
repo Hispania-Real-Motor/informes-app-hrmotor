@@ -3562,17 +3562,32 @@ th.num {
     border: 1px solid rgba(31, 41, 68, .10);
     border-radius: 24px;
     background: #fff;
+}
+
+.commercial-commissions-report #commissionSummaryTableShell,
+.commercial-commissions-report .commission-delegation-table-shell,
+.commercial-commissions-report .call-center-summary-shell:not(.area-manager-summary-shell),
+.commercial-commissions-report .commission-closure-table-shell,
+.commercial-commissions-report .commission-contact-center-detail-shell .table-shell {
     height: auto;
     max-height: min(58vh, 560px);
 }
 
-.commercial-commissions-report .table-shell th {
+.commercial-commissions-report #commissionSummaryTableShell th,
+.commercial-commissions-report .commission-delegation-table-shell th,
+.commercial-commissions-report .call-center-summary-shell:not(.area-manager-summary-shell) th,
+.commercial-commissions-report .commission-closure-table-shell th,
+.commercial-commissions-report .commission-contact-center-detail-shell .table-shell th {
     padding: 9px 10px;
     font-size: 10px;
     line-height: 1.25;
 }
 
-.commercial-commissions-report .table-shell td {
+.commercial-commissions-report #commissionSummaryTableShell td,
+.commercial-commissions-report .commission-delegation-table-shell td,
+.commercial-commissions-report .call-center-summary-shell:not(.area-manager-summary-shell) td,
+.commercial-commissions-report .commission-closure-table-shell td,
+.commercial-commissions-report .commission-contact-center-detail-shell .table-shell td {
     padding: 8px 10px;
     font-size: 13px;
     line-height: 1.35;

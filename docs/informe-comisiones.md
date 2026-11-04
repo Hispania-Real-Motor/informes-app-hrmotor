@@ -423,6 +423,25 @@ Archivos principales:
 - Backfill unitario en validación: `php artisan commissions:record-delegation-manager-evidence <delegation-id> "<delegación>" <manager-id> "<jefe>" 2026-07 --source=it_confirmation --reference=<referencia> --recorded-by=<usuario> --evidence-type=month_end --dry-run`.
 - Backfill por lote: `php artisan commissions:import-delegation-manager-evidence <csv> --dry-run`. El CSV requiere `delegation_id,delegation_name,manager_id,manager_name,month,source,reference,recorded_by,evidence_type`. No usar `full_month` salvo evidencia real de cobertura completa.
 
+### Interacción compacta de preparación, aprobación y Contact Center
+
+Las tablas de Comisiones se presentan sin reservar altura cuando el contenido es
+corto y conservan desplazamiento en los listados extensos. Los controles de
+preparación, aprobación y selección de detalle reducen espaciado visual, sin
+alterar las acciones disponibles, el orden de aprobación ni los datos que se
+preparan o se certifican. Esta presentación no sustituye las validaciones de
+servidor ni habilita cierres, reaperturas o aprobaciones adicionales.
+
+Desde el plan de roster de Contact Center de `2026-09`, la tabla resumen sigue
+mostrando las mismas filas, importes, certificación e incidencias. El detalle
+permite buscar por nombre visible o Salesforce User ID y mantiene visible un
+único agente seleccionado; sus pestañas locales muestran Citas, Reservas y
+Entregas. Una búsqueda sin coincidencias comunica el estado vacío y una lista
+sin datos imputables conserva su mensaje de ausencia. El selector solo cambia
+la presentación ya entregada por el dashboard: no realiza consultas, no cambia
+la identidad Salesforce, el roster, filtros, cálculos, readiness ni el
+snapshot, y no expone campos adicionales.
+
 ## Evidencia operacional de reseñas (2026-10-15)
 
 OPS-1 programa salesforce:sync-commercial-reviews --months=2 a las 02:20
