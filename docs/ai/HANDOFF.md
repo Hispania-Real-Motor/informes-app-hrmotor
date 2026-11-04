@@ -6427,3 +6427,14 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   prueba falla cerrado y se conserva sin limpieza automática. Sigue pendiente
   repetir esta comprobación específica en MySQL 8 aislado antes de despliegue;
   no se accedió a producción ni se tocaron datos o evidencias.
+
+## 2026-11-04 — hotfix de agregación de vista provisional Interest
+
+- La vista administrativa provisional reemplaza la selección heredada
+  `version.*` por `COUNT(*)` y conteo de eliminados con aliases internos
+  seguros. Mantiene los campos visibles `rows` y `deleted`, los límites
+  Europe/Madrid y el comportamiento de cero para períodos vacíos.
+- No cambia generación, certificación, publicación, autorización, cabeceras de
+  caché ni informes oficiales. El SQL se comprobó bajo `ONLY_FULL_GROUP_BY` en
+  MariaDB aislado; la CI debe confirmar la regresión PHP completa antes de
+  despliegue. No hubo acceso a producción ni Salesforce.

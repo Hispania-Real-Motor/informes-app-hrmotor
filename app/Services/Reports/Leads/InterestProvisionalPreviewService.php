@@ -4,6 +4,7 @@ namespace App\Services\Reports\Leads;
 
 use App\Services\Salesforce\InterestGenerationStore;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /** Admin-only aggregate preview; it never enters the certified reader or cache. */
@@ -29,9 +30,15 @@ final class InterestProvisionalPreviewService
             $end = $start->setTimezone('Europe/Madrid')->addMonth()->startOfDay()->utc();
             $aggregate = $this->store->rows($generationId)->where('version.functional_created_at', '>=', $start)
                 ->where('version.functional_created_at', '<', $end)
-                ->selectRaw('COUNT(*) as rows')
-                ->selectRaw('SUM(CASE WHEN version.is_deleted THEN 1 ELSE 0 END) as deleted')->first();
-            $rows[] = ['period' => $month, 'rows' => (int) $aggregate->rows, 'deleted' => (int) $aggregate->deleted];
+                ->select([
+                    DB::raw('COUNT(*) AS interest_count'),
+                    DB::raw('COALESCE(SUM(CASE WHEN version.is_deleted THEN 1 ELSE 0 END), 0) AS deleted_count'),
+                ])->first();
+            $rows[] = [
+                'period' => $month,
+                'rows' => (int) ($aggregate->interest_count ?? 0),
+                'deleted' => (int) ($aggregate->deleted_count ?? 0),
+            ];
         }
 
         return [

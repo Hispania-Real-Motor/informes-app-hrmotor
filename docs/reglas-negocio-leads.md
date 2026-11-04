@@ -55,6 +55,8 @@ desactivada por defecto y separada del informe oficial. Muestra recuentos de
 la semilla no certificada para septiembre y octubre de 2026; el total incluye
 eliminados, que se muestran también por separado. No representa el KPI activo
 ni habilita los endpoints, comparativas o exportaciones oficiales.
+Un mes sin filas devuelve cero en ambas columnas; los límites mensuales se
+interpretan en `Europe/Madrid`.
 
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
