@@ -4,15 +4,17 @@
 
 | Sección / evidencia | Condición de disponibilidad | Limitación |
 |---|---|---|
-| Campañas: summary, detalle y rankings nativos | `CampaignDashboardDatasetService::platformOnlySummary()` exige que el último run por ID que cubre el período en `campaign_platform_daily_metrics` esté completado y finalizado; lee métricas locales o cierres económicos mediante `metricRows()`. | Un run posterior fallido que cubre el período bloquea la plataforma. La cobertura no certifica atribución ni estado histórico de Salesforce; leads y conversiones nativos no equivalen a Interests o conversiones atribuidas. |
+| Campañas: summary, detalle y rankings nativos | `CampaignDashboardDatasetService::{economicEvidence,platformAvailability,metricRows}` divide el intervalo civil `Europe/Madrid` en meses cerrados completos y tramos abiertos. Un cierre exige el snapshot vigente no vacío y válido; acredita solo las plataformas que contiene. Un tramo abierto exige por plataforma el run de mayor ID con cobertura completa, `completed` y finalizado; `stats.range_start/range_end_exclusive` presentes son autoritativos y, si uno es inválido/incompleto, bloquean sin fallback a timestamps. En legado sin rango explícito, una única interpretación completa (DATETIME civil Madrid o UTC convertido) debe formar ambos límites de inicio de día; no se elige la más amplia. El fin es exclusivo y la conversión cubre DST, incluidos octubre/noviembre. `availability.platforms.*.evidence` expone `closure_snapshot`, `sync_run` o `mixed`. | El fin de cobertura es exclusivo. Un snapshot ausente/vacío/inválido, un día parcial de mes cerrado, run fallido/incompleto, límites nulos/inválidos o hueco bloquean sin usar filas diarias como sustituto del cierre. `period_end_at=1970-01-01` es una incidencia histórica independiente: no se reinterpreta y solo puede diagnosticarse en lectura antes de una corrección aislada autorizada. Meta y Google se validan por separado; la evidencia económica no certifica Salesforce, atribución ni estado histórico. Leads/conversiones nativos no equivalen a Interests ni conversiones atribuidas. |
 | Campañas: Interests, Opportunities, resultados comerciales, auditoría y exportaciones dependientes | Requieren generación certificada de Interests; las auditorías la comprueban explícitamente y la exportación de campañas conserva el camino ordinario. | En recuperación se bloquean los valores dependientes, no se convierten en cero. |
 | Interests: informe y auditoría | `InterestGenerationReader` requiere publicación certificada. | El modo parcial de Campañas no publica ni certifica Interests. |
 
 El cambio introduce un contrato de disponibilidad, no audita las fichas KPI.
 La comparación de inversión, impresiones, clics, leads de plataforma, CTR y CPC
-en el modo parcial y su comportamiento con datos vacíos o filtros requiere la
-validación del test de `CampaignDashboardTest` y pruebas adicionales según el
-diff final; no se infieren fórmulas o coberturas externas no verificadas aquí.
+en el modo parcial y su comportamiento con datos vacíos o filtros se prueba en
+`CampaignDashboardTest`; la recuperación sintética cubre snapshot cerrado,
+intervalo abierto, fallo y mezcla de evidencia, sin acreditar importes ni
+cobertura productiva. No se infieren fórmulas o coberturas externas no
+verificadas aquí.
 
 ### Interests: recuperación inicial desde estado actual
 
@@ -192,7 +194,7 @@ No se audita aquí una nueva fórmula económica ni se promueven fichas KPI a ve
 | Deduplicación / identidad | Única plataforma + cuenta canónica + Campaign ID textual; duplicado de campaña en inventario invalida cuenta. No modifica deduplicación económica. |
 | Fórmula / umbral / redondeo | No aplica fórmula económica. Fresco si edad UTC desde último válido >=0 y <86400 s, código reconocido y referencias no nulas de fila/último run de cuenta coincidentes, con último run completed. Ausencia de auditoría o run fallido: stale. A 24h: stale. Sin redondeo de edad. |
 | Nulos | Desconocido/nunca verificado/fecha futura: unavailable; antiguo o intento posterior: stale. No fallback histórico ni conversión a cero. |
-| Configuración | `config/campaign_current_status.php`, `CAMPAIGN_CURRENT_STATUS_ENABLED=false`; catálogo central cada seis horas minuto37. No activa al desplegar. |
+| Configuración | `config/campaign_current_status.php`, `CAMPAIGN_CURRENT_STATUS_ENABLED=false`; catálogo central cada seis horas minuto37. No activa al desplegar. La primera lectura requiere autorización separada, tarea habilitada y reserva operacional; se ejecuta por `operations:run campaigns-sync-current-status` y se contrasta el run por plataforma/cuenta, las filas locales y `fresh`/`stale`/`unavailable` durante <24 h. No reactiva scheduler, workers ni sincronizaciones económicas. |
 | PHP / pruebas | `CampaignCurrentStatusService::{sync,decorate,identifier}`, `CampaignDashboardDatasetService::{summary,campaignRows}`; `CampaignCurrentStatusTest`, regresión `test_current_status_sync_changes_only_additive_metadata_outside_economic_cache_and_csv` y JS real del dashboard. |
 | Exportación / auditoría | Metadata solo en summary.campaigns/items; CSV no se amplía. Última observación y último válido separados en tabla; auditoría por cuenta existente reutilizada. |
 | Estado / referencia | Verificación focal de implementación y tests sintéticos; auditoría integral KPI y acceso real pendientes. Integración limpia sobre main 89282a32b79060fca671adee4bc49741c954308f (Fase A/PR #85 ya incorporados), rama feat/campaign-current-status-ready; solo commits B, sin repetir dependencia 2f3791e. Pruebas MariaDB locales aisladas adicionales; SHA y resultados finales en HANDOFF, sin promover auditoría KPI. |

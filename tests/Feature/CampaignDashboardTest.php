@@ -154,6 +154,207 @@ class CampaignDashboardTest extends TestCase
         $this->assertSame([], $failed['campaigns']);
     }
 
+    public function test_platform_recovery_explicit_provider_day_ranges_are_authoritative_over_legacy_timestamps(): void
+    {
+        $this->disableInterestPublication();
+        foreach (['meta', 'google_ads'] as $platform) {
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'platform' => $platform, 'metric_date' => '2026-10-15', 'campaign_id' => $platform.'-explicit-range', 'spend' => 10,
+            ]));
+            DB::table('report_sync_runs')->insert([
+                'dataset' => 'campaign_platform_daily_metrics', 'source' => $platform, 'status' => 'completed',
+                // These historical timestamps look broad, but the provider-day
+                // declaration proves only the first half of October.
+                'period_start_at' => '2026-10-01 00:00:00', 'period_end_at' => '2026-11-01 00:00:00',
+                'source_cutoff_at' => '2026-11-01 01:00:00', 'started_at' => '2026-11-01 01:00:00',
+                'completed_at' => '2026-11-01 01:01:00', 'timezone' => 'Europe/Madrid',
+                'stats' => json_encode(['range_start' => '2026-10-01', 'range_end_exclusive' => '2026-10-16']),
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $summary = $this->getJson('/informes/campanas/data/summary?start_date=2026-10-01&end_date=2026-10-31&campaign_status=')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('blocked', data_get($summary, 'availability.platforms.meta.status'));
+        $this->assertSame('blocked', data_get($summary, 'availability.platforms.google_ads.status'));
+        $this->assertSame([], $summary['campaigns']);
+    }
+
+    public function test_platform_recovery_legacy_utc_ranges_are_accepted_only_when_they_unambiguously_match_madrid_days(): void
+    {
+        $this->disableInterestPublication();
+        foreach (['meta', 'google_ads'] as $platform) {
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'platform' => $platform, 'metric_date' => '2026-03-15', 'campaign_id' => $platform.'-march-dst', 'spend' => 10,
+            ]));
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'platform' => $platform, 'metric_date' => '2026-10-15', 'campaign_id' => $platform.'-october-dst', 'spend' => 20,
+            ]));
+            foreach ([
+                // Midnight in Madrid persisted as UTC across the March DST shift.
+                ['2026-02-28 23:00:00', '2026-03-31 22:00:00'],
+                // The documented October/November product interval crosses the fall shift.
+                ['2026-09-30 22:00:00', '2026-10-31 23:00:00'],
+            ] as [$start, $end]) {
+                DB::table('report_sync_runs')->insert([
+                    'dataset' => 'campaign_platform_daily_metrics', 'source' => $platform, 'status' => 'completed',
+                    'period_start_at' => $start, 'period_end_at' => $end,
+                    'source_cutoff_at' => '2026-11-01 01:00:00', 'started_at' => '2026-11-01 01:00:00',
+                    'completed_at' => '2026-11-01 01:01:00', 'timezone' => 'Europe/Madrid',
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+        }
+
+        $march = $this->getJson('/informes/campanas/data/summary?start_date=2026-03-01&end_date=2026-03-31&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame('available', data_get($march, 'availability.platforms.meta.status'));
+        $this->assertSame('available', data_get($march, 'availability.platforms.google_ads.status'));
+        $this->assertSame(20.0, (float) data_get($march, 'kpis.spend'));
+
+        $october = $this->getJson('/informes/campanas/data/summary?start_date=2026-10-01&end_date=2026-10-31&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame('available', data_get($october, 'availability.platforms.meta.status'));
+        $this->assertSame('available', data_get($october, 'availability.platforms.google_ads.status'));
+        $this->assertSame(40.0, (float) data_get($october, 'kpis.spend'));
+
+        foreach (['meta', 'google_ads'] as $platform) {
+            DB::table('report_sync_runs')->insert([
+                'dataset' => 'campaign_platform_daily_metrics', 'source' => $platform, 'status' => 'completed',
+                'period_start_at' => '2026-11-01 01:00:00', 'period_end_at' => '2026-11-05 01:00:00',
+                'source_cutoff_at' => '2026-11-05 01:00:00', 'started_at' => '2026-11-05 01:00:00',
+                'completed_at' => '2026-11-05 01:01:00', 'timezone' => 'Europe/Madrid',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        Cache::flush();
+        $november = $this->getJson('/informes/campanas/data/summary?start_date=2026-11-01&end_date=2026-11-04&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame('blocked', data_get($november, 'availability.platforms.meta.status'));
+        $this->assertSame('blocked', data_get($november, 'availability.platforms.google_ads.status'));
+    }
+
+    public function test_platform_recovery_reads_a_valid_closed_snapshot_without_a_historical_sync_run(): void
+    {
+        $this->disableInterestPublication();
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'meta', 'metric_date' => '2026-09-15', 'campaign_id' => 'meta-closed', 'spend' => 14092.69,
+        ]));
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'metric_date' => '2026-09-15', 'campaign_id' => 'google-closed', 'spend' => 33595.62,
+        ]));
+        $this->postJson('/informes/campanas/investment-closure', ['month' => '2026-09-01'])->assertOk();
+        CampaignPlatformDailyMetric::query()->where('metric_date', '2026-09-15')->update(['spend' => 1]);
+
+        $summary = $this->getJson('/informes/campanas/data/summary?start_date=2026-09-01&end_date=2026-09-30&campaign_status=')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('available', data_get($summary, 'availability.platforms.meta.status'));
+        $this->assertSame('available', data_get($summary, 'availability.platforms.google_ads.status'));
+        $this->assertSame('closure_snapshot', data_get($summary, 'availability.platforms.meta.evidence'));
+        $this->assertSame('closure_snapshot', data_get($summary, 'availability.platforms.google_ads.evidence'));
+        $this->assertNull(data_get($summary, 'meta_synced_at'));
+        $this->assertNull(data_get($summary, 'google_synced_at'));
+        $this->assertSame(47688.31, (float) data_get($summary, 'kpis.spend'));
+        $this->assertNull(data_get($summary, 'kpis.leads_salesforce'));
+    }
+
+    public function test_platform_recovery_uses_local_provider_day_coverage_for_open_months_and_dst_boundaries(): void
+    {
+        $this->disableInterestPublication();
+        foreach (['meta', 'google_ads'] as $platform) {
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'platform' => $platform,
+                'metric_date' => '2026-10-15',
+                'campaign_id' => $platform.'-october',
+                'spend' => 10,
+            ]));
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'platform' => $platform,
+                'metric_date' => '2026-11-04',
+                'campaign_id' => $platform.'-november',
+                'spend' => 20,
+            ]));
+            $this->platformRun($platform, '2026-10-01 00:00:00', '2026-11-05 00:00:00', includeStats: false);
+        }
+
+        $summary = $this->getJson('/informes/campanas/data/summary?start_date=2026-10-01&end_date=2026-10-31&campaign_status=')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('available', data_get($summary, 'availability.platforms.meta.status'));
+        $this->assertSame('available', data_get($summary, 'availability.platforms.google_ads.status'));
+        $this->assertSame('sync_run', data_get($summary, 'availability.platforms.meta.evidence'));
+        $this->assertSame(20.0, (float) data_get($summary, 'kpis.spend'));
+
+        $november = $this->getJson('/informes/campanas/data/summary?start_date=2026-11-01&end_date=2026-11-04&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame('available', data_get($november, 'availability.platforms.meta.status'));
+        $this->assertSame('available', data_get($november, 'availability.platforms.google_ads.status'));
+        $this->assertSame(40.0, (float) data_get($november, 'kpis.spend'));
+
+        foreach (['meta', 'google_ads'] as $platform) {
+            $this->platformRun($platform, '2026-03-01 00:00:00', '2026-04-01 00:00:00', includeStats: false);
+        }
+        $march = $this->getJson('/informes/campanas/data/summary?start_date=2026-03-01&end_date=2026-03-31&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame('available', data_get($march, 'availability.platforms.meta.status'));
+        $this->assertSame('available', data_get($march, 'availability.platforms.google_ads.status'));
+    }
+
+    public function test_platform_recovery_blocks_invalid_closed_snapshots_and_mixes_valid_closures_with_open_coverage_without_duplication(): void
+    {
+        $this->disableInterestPublication();
+        $closureId = DB::table('campaign_investment_closures')->insertGetId([
+            'month' => '2026-08-01', 'status' => 'closed', 'snapshot_version' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('campaign_investment_closure_snapshots')->insert([
+            'closure_id' => $closureId, 'version' => 1, 'economic_rows' => '[]',
+            'source_cutoff_at' => now(), 'rule_version' => 'test', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $invalid = $this->getJson('/informes/campanas/data/summary?start_date=2026-08-01&end_date=2026-08-31&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame('blocked', data_get($invalid, 'availability.platforms.meta.status'));
+        $this->assertFalse($invalid['ok']);
+
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'meta', 'metric_date' => '2026-09-15', 'campaign_id' => 'mixed-meta', 'spend' => 100,
+        ]));
+        CampaignPlatformDailyMetric::query()->create($this->metricRow([
+            'platform' => 'google_ads', 'metric_date' => '2026-09-15', 'campaign_id' => 'mixed-google', 'spend' => 200,
+        ]));
+        $this->postJson('/informes/campanas/investment-closure', ['month' => '2026-09-01'])->assertOk();
+        foreach (['meta', 'google_ads'] as $platform) {
+            CampaignPlatformDailyMetric::query()->create($this->metricRow([
+                'platform' => $platform, 'metric_date' => '2026-10-15', 'campaign_id' => 'mixed-'.$platform, 'spend' => 10,
+            ]));
+            $this->platformRun($platform, '2026-10-01 00:00:00', '2026-11-01 00:00:00');
+        }
+
+        $mixed = $this->getJson('/informes/campanas/data/summary?start_date=2026-09-01&end_date=2026-10-31&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame('mixed', data_get($mixed, 'availability.platforms.meta.evidence'));
+        $this->assertSame('mixed', data_get($mixed, 'availability.platforms.google_ads.evidence'));
+        $this->assertSame(320.0, (float) data_get($mixed, 'kpis.spend'));
+
+        $partial = $this->getJson('/informes/campanas/data/summary?start_date=2026-09-02&end_date=2026-10-31&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame('blocked', data_get($partial, 'availability.platforms.meta.status'));
+        $this->assertFalse($partial['ok']);
+    }
+
     public function test_data_updated_date_requires_successful_dependencies_and_does_not_advance_after_google_failure(): void
     {
         CampaignPlatformDailyMetric::query()->create($this->metricRow(['spend' => 25]));
@@ -3338,6 +3539,36 @@ class CampaignDashboardTest extends TestCase
         return http_build_query([
             'start_date' => '2026-05-01',
             'end_date' => '2026-05-31',
+        ]);
+    }
+
+    private function disableInterestPublication(): void
+    {
+        DB::table('salesforce_interest_publication')->where('id', 1)->update([
+            'generation_id' => null,
+            'watermark_at' => null,
+        ]);
+        app()->forgetInstance(InterestGenerationReader::class);
+    }
+
+    private function platformRun(string $platform, string $start, string $endExclusive, string $status = 'completed', bool $includeStats = true): void
+    {
+        DB::table('report_sync_runs')->insert([
+            'dataset' => 'campaign_platform_daily_metrics',
+            'source' => $platform,
+            'status' => $status,
+            'period_start_at' => $start,
+            'period_end_at' => $endExclusive,
+            'source_cutoff_at' => $status === 'completed' ? $endExclusive : null,
+            'started_at' => $start,
+            'completed_at' => $status === 'completed' ? $endExclusive : null,
+            'timezone' => 'Europe/Madrid',
+            'stats' => $includeStats ? json_encode([
+                'range_start' => substr($start, 0, 10),
+                'range_end_exclusive' => substr($endExclusive, 0, 10),
+            ]) : null,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 

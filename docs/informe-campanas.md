@@ -4,13 +4,55 @@
 
 Si el lector de la generación certificada de Interests devuelve
 `InterestDatasetUnavailable`, summary, campañas y rankings pueden responder en
-modo `platform_independent_only`. Para cada plataforma se selecciona por ID
-descendente el último run `campaign_platform_daily_metrics` que cubre el
-período solicitado; debe estar `completed` y tener fecha de finalización. Si no
-existe o está fallido, en curso o sin finalizar, esa plataforma queda bloqueada,
-aunque haya otro run anterior completado. Se utilizan las métricas
-económicas locales del período y filtros existentes, incluidos cierres cuando
-corresponda. La cobertura de ese run no certifica Salesforce ni atribución.
+modo `platform_independent_only`. Este es un estado técnico de disponibilidad,
+no un error público por sí mismo: si Meta/Google tienen evidencia económica
+válida, la vista muestra los KPI y campañas nativos sin el aviso permanente de
+recuperación. `availability`, los warnings del contrato JSON y el diagnóstico
+administrativo se conservan. Solo una plataforma realmente bloqueada muestra
+una indicación discreta de su causa; los errores de carga reales conservan el
+tratamiento de error. El botón «Ver diagnóstico» sigue limitado al permiso
+administrativo existente.
+
+La evidencia económica se resuelve por tramos de días civiles de
+`Europe/Madrid`. Un mes **cerrado completo** solo se lee desde la versión
+vigente de `campaign_investment_closure_snapshots.economic_rows` enlazada a
+`campaign_investment_closures.snapshot_version`. El snapshot debe ser JSON no
+vacío y estructuralmente válido; solo acredita las plataformas con filas en él.
+No se exige un run nuevo para esos importes, no se sustituyen por métricas
+diarias y `meta_synced_at`/`google_synced_at` quedan nulos cuando la única
+evidencia es histórica. El estado aditivo
+`availability.platforms.{meta,google_ads}.evidence` distingue
+`closure_snapshot`, `sync_run` y `mixed`; `closure_months` identifica los
+meses cerrados usados. Un snapshot ausente, vacío o inválido bloquea el tramo,
+nunca habilita una vuelta a datos vivos.
+
+Los tramos abiertos exigen, por plataforma, el run de mayor ID que cubra todo
+cada tramo y que esté `completed` con finalización. Se usa primero
+`stats.range_start`/`range_end_exclusive`, que son días de proveedor y, cuando
+aparecen, son autoritativos: si falta uno o es inválido, no se recurre a los
+timestamps. Para runs históricos sin rango explícito, los límites solo se
+aceptan si **una única** interpretación de los `DATETIME` (civil
+`Europe/Madrid` o UTC heredado convertido a Madrid) forma ambos límites de
+inicio de día; no se escoge la interpretación más amplia. La fecha de fin es
+exclusiva. Así no se confunde el inicio civil de Madrid con su instante UTC ni
+se presupone que todos los timestamps almacenados sean UTC; los cambios DST,
+incluidos los tramos de octubre/noviembre, quedan cubiertos por la conversión
+de zona. Un run incompleto, fallido, sin límites acreditables o que deja un
+hueco bloquea exclusivamente esa plataforma, incluso si existen filas locales.
+
+`period_end_at=1970-01-01` se conserva como incidencia histórica de calidad
+del dato independiente de esta corrección: no se corrige ni se reinterpreta
+como cobertura. Debe diagnosticarse en modo solo lectura antes de aplicar una
+corrección aislada y autorizada.
+
+Los rangos mixtos agregan snapshots de meses cerrados completos y métricas
+diarias únicamente de sus tramos abiertos, sin solapar días ni sustituir
+importes cerrados. Un rango que tome días parciales de un mes cerrado se
+bloquea: el snapshot mensual no se prorratea. Varios meses cerrados completos
+pueden agregarse si cada snapshot vigente es válido. La cobertura de Meta y
+Google se evalúa independientemente; no se inventan proveedores, campañas,
+inversión, clics ni impresiones ausentes. La evidencia económica no certifica
+Salesforce ni atribución.
 
 La vista muestra inversión, impresiones, clics, CTR, CPC y leads propios de
 plataforma cuando existan. Los leads y conversiones nativos de plataforma no
@@ -20,10 +62,11 @@ quedan bloqueados; sus valores no deben interpretarse como cero. Se deshabilitan
 los filtros dependientes y se ocultan las opciones de auditoría de atribución;
 si llegan en la petición se ignoran y se informa en un aviso;
 la auditoría KPI y de atribución requieren generación certificada, y el CSV de
-campañas conserva el camino ordinario y puede responder 503. El aviso y el
-metadato de disponibilidad identifican el modo parcial.
+campañas conserva el camino ordinario y puede responder 503. La ausencia de
+certificación no se presenta como aviso rojo permanente: queda expresada en el
+metadato de disponibilidad y el diagnóstico autorizado.
 
-Actualizado: 2026-10-27. URL: `/informes/campanas`.
+Actualizado: 2026-11-04. URL: `/informes/campanas`.
 
 ## Contrato funcional ROT-4
 
@@ -445,6 +488,29 @@ El detalle muestra **Estado actual** mediante `current_status`, sin reinterpreta
 `CampaignCurrentStatusService::sync()` persiste el inventario únicamente en `campaign_current_statuses`, con identidad única textual `(platform,account_id,campaign_id)`. El prefijo `act_` de cuenta Meta y guiones de cuenta Google se normalizan; no se unen nombres ni se convierten identificadores a números. La tabla guarda observación bruta/configurada, último par válido y sus fechas UTC. `last_observed_at`, `last_verified_at`, `created_at` y `updated_at` son DATETIME con valores civiles UTC (los dos últimos mediante `$table->datetimes()`), escritos por el servicio en UTC: se evita la conversión implícita de TIMESTAMP al cambiar la zona de sesión MariaDB. Las fechas de frescura no dependen de created_at/updated_at ni de la zona de la conexión. Un código nuevo conserva el último válido pero se presenta no disponible. Una respuesta incompleta o malformada no actualiza ninguna fila de esa cuenta; otras cuentas pueden completar. Una campaña ausente no se elimina ni se interpreta como eliminada.
 
 La auditoría reutiliza `report_sync_runs`: dataset `campaign_current_status`, source `platform:account_id`, resultado por cuenta, conteos de páginas/campañas/estados reconocidos/no verificables, operational_run_id y error genérico. No se crea una segunda tabla de ejecuciones. La migración aditiva incorpora índice único de identidad, índice `sync_source` y referencia nullable a `report_sync_runs` con `nullOnDelete`; no modifica históricos económicos.
+
+### Activación y primera verificación controladas
+
+`CAMPAIGN_CURRENT_STATUS_ENABLED=false` es el valor inicial y debe permanecer
+así hasta una autorización operacional separada; el despliegue no la activa ni
+reactiva el scheduler. El scheduler puede seguir detenido. Cuando la tarea esté
+habilitada y exista una reserva operacional válida, la primera lectura se
+ejecuta exclusivamente por `php artisan operations:run
+campaigns-sync-current-status` o por el mecanismo operacional autorizado
+equivalente. No se llama al sincronizador interno directamente ni se fabrican
+runs.
+
+Tras un intento autorizado, revisar localmente y sin exponer credenciales ni
+identificadores en canales compartidos: el run de
+`report_sync_runs` con dataset `campaign_current_status` por source
+`plataforma:cuenta`, las filas de `campaign_current_statuses` y la respuesta
+JSON `current_status` durante las 24 horas siguientes. Solo una observación
+reconocida, con run completado coherente y antigüedad menor de 24 horas se
+presenta `fresh`; un intento posterior, ausencia/inventario incompleto, código
+desconocido, identidad ambigua o falta de evidencia produce `stale` o
+`unavailable`. El estado histórico no es fallback. Este procedimiento no toca
+credenciales, workers ni scheduler, ni altera sincronizaciones económicas,
+cierres o snapshots.
 
 ### Frescura y contrato aditivo
 

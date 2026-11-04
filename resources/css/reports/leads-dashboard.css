@@ -2964,6 +2964,12 @@ th.num {
     color: #b91c2d;
 }
 
+.campaigns-report .notice.campaign-availability-notice {
+    border-color: rgba(37, 99, 235, .18);
+    background: rgba(239, 246, 255, .78);
+    color: #1e3a5f;
+}
+
 .campaigns-report .campaign-context-grid {
     gap: 12px;
     margin-bottom: 22px;

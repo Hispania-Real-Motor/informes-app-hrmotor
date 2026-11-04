@@ -1,5 +1,21 @@
 # Handoff para agentes
 
+## 2026-11-04 — Campañas — endurecimiento de cobertura heredada de runs
+
+- Revisión de `CampaignDashboardDatasetService::syncRunCoverageRanges()`: los sincronizadores económicos invocan `ReportSyncRunService` con límites de días de proveedor `Europe/Madrid`; desde el contrato vigente persisten además `stats.range_start` y `stats.range_end_exclusive`. Esos campos son ahora autoritativos: una declaración presente pero inválida, incompleta o no creciente no puede ampliar el intervalo usando DATETIME heredados.
+- Compatibilidad segura: los runs sin rango explícito solo admiten una única representación acreditable de sus dos límites —hora civil Madrid o UTC convertido a Madrid— y ambos deben resultar inicio de día con fin exclusivo creciente. Los registros con zona distinta, timestamps malformados/no alineados, ambigüedad o huecos bloquean la plataforma. Se preservan los intervalos UTC históricos de octubre/noviembre y los cambios DST de marzo y octubre, sin elegir el candidato que cubra más días.
+- Se añadieron regresiones HTTP que prueban que un rango explícito parcial vence a timestamps aparentemente más amplios, que los límites UTC históricos reconocen ambos cambios DST y que un límite heredado no acreditable de noviembre se bloquea. No se modifican cierres, snapshots, datos económicos, contratos JSON, Interests, scheduler, credenciales ni registros productivos.
+- `period_end_at=1970-01-01` se registra como incidencia histórica independiente: no se reinterpreta, normaliza ni corrige en esta entrega. Requiere diagnóstico de solo lectura antes de una corrección aislada autorizada. `docs/informe-campanas.md` y `docs/matriz-trazabilidad-kpi.md` reflejan el contrato; no cambia `PROJECT_CONTEXT.md` ni `DECISIONS.md`.
+- Validación local: `node --test tests/js/campaign-presentation.test.mjs` 27/27 y `git diff --check` correctos. PHPUnit focal, suite PHP, Pint y validador documental quedan pendientes: el entorno no expone un binario PHP/Python utilizable. No se declara ninguna de esas comprobaciones como superada.
+
+## 2026-11-04 — Campañas — diagnóstico de Estado actual no disponible
+
+- Diagnóstico de implementación: `CampaignCurrentStatusService` mantiene un inventario operativo independiente de las métricas económicas. `CampaignDashboardDatasetService` solo realiza una unión local por lote, posterior a la caché económica, con la identidad textual canónica `(platform, account_id, campaign_id)`. Meta normaliza `act_`; Google elimina los guiones de la cuenta. La relación está cubierta para ambas plataformas y una fila económica agregada de varias cuentas se marca deliberadamente ambigua, sin elegir un estado arbitrario. No hay llamadas a Meta/Google en HTTP ni fallback desde `campaign_status`/`campaign_effective_status` históricos.
+- Causa operacional esperable: `CAMPAIGN_CURRENT_STATUS_ENABLED` es `false` por defecto. Con la tarea deshabilitada, o sin una ejecución acreditada del dataset `campaign_current_status` por source `plataforma:cuenta`, el valor correcto es `unavailable` / «Estado no disponible», aunque se hayan sincronizado métricas económicas. El scheduler detenido impide las ejecuciones periódicas, pero no requiere ninguna modificación: la primera lectura autorizada debe usar exclusivamente `operations:run campaigns-sync-current-status`, que obtiene su reserva persistente. No se modificaron credenciales, workers, scheduler, configuración productiva, métricas, cierres, snapshots ni certificación de Interests.
+- Contrato de presentación: `fresh` exige código reconocido, `last_verified_at` no futuro y menor de 24 h, último `report_sync_runs` completado y referencia de auditoría coincidente. Una lectura antigua, intento posterior fallido o auditoría ausente queda `stale` / «Estado no actualizado»; identidad inviable/ambigua, código desconocido, fecha futura o falta de evidencia queda `unavailable`. La tabla usa texto y tooltip discretos, conservando la separación del filtro histórico y los datos operativos.
+- Documentación actualizada: `docs/informe-campanas.md` y `docs/matriz-trazabilidad-kpi.md` describen la activación autorizada, la primera comprobación local sin exponer IDs ni secretos y la ausencia de cambios en scheduler/workers. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian: no se ha modificado arquitectura ni adoptado una decisión nueva. No hay migraciones ni assets.
+- Validación: revisión estática de servicio, clientes, catálogo, dashboard, contratos JSON y regresiones existentes; `node --test tests/js/campaign-presentation.test.mjs` pasó 27/27; `git diff --check` pasó. La ejecución focal de PHPUnit quedó pendiente porque este entorno no tiene un binario PHP utilizable (`php` no está en PATH y el runtime Herd previamente configurado no está presente); no se declara una prueba PHP no ejecutada como superada. No se inspeccionó producción ni se invocaron proveedores.
+
 ## 2026-11-04 — Comisiones — compactación visual de Preparación/Aprobación y Contact Center
 
 - Origen UX: `813baac7e65341144a4c09fa5c32c404abd306c6`; la rama de revisión actual reaplica el cambio sobre `origin/main` en `35de275b1ca652bbe2b7ed323aee5c5b32f9c6af`. Se compacta exclusivamente la presentación de Comisiones: las tablas dejan de reservar una altura fija cuando su contenido es corto, conservan un máximo con desplazamiento para listados extensos y se reducen espaciados de los controles de preparación, aprobación y detalle.
@@ -6475,3 +6491,47 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `validating` y no existen diarios por período; falta evidencia histórica
   F2/F5, de borrados y relaciones. Ver
   `docs/salesforce-interest-generations.md` para el alcance y los límites.
+
+## 2026-11-04 — cobertura histórica económica de Campañas
+
+- Alcance: se corrige la recuperación nativa de Meta Ads y Google Ads cuando
+  Interests no está certificado. Los meses económicos cerrados completos usan
+  exclusivamente el snapshot vigente; los tramos abiertos usan runs de
+  plataforma con cobertura completa de días civiles `Europe/Madrid` y límite
+  final exclusivo. No se leen ni modifican datos productivos, snapshots,
+  cierres, scheduler, workers, Salesforce o la publicación de Interests.
+- Implementación: `CampaignDashboardDatasetService` separa evidencia
+  `closure_snapshot`, `sync_run` y `mixed` en `availability.platforms.*`.
+  Valida snapshots no vacíos y estructurados, mantiene Meta y Google
+  independientes, rechaza snapshots inválidos y días parciales de meses
+  cerrados, y agrega rangos mixtos sin solapar días ni sustituir importes
+  cerrados por métricas vivas. Para legado sin días de proveedor en `stats`,
+  solo admite límites de inicio de día coherentes con Madrid o UTC convertido.
+- Presentación: la ausencia de certificación de Interests sigue bloqueando sus
+  KPI, filtros, auditorías y exportaciones dependientes, pero ya no muestra un
+  aviso rojo permanente si hay economía acreditada. El contrato JSON,
+  warnings y diagnóstico con permiso se conservan; una plataforma bloqueada
+  aparece con aviso visual discreto y los errores de carga mantienen el estilo
+  crítico.
+- Base de datos/configuración: sin migraciones, cambios de esquema, variables
+  de entorno ni tareas manuales. Los assets compilados actualizan solo las
+  entradas de Campañas y del CSS compartido de su dashboard.
+- Documentación: revisión terminada por `report_docs_maintainer`; se actualizaron
+  `docs/informe-campanas.md` y `docs/matriz-trazabilidad-kpi.md`. No cambia
+  `PROJECT_CONTEXT.md` ni `DECISIONS.md`: no se introduce arquitectura,
+  módulo ni decisión transversal irreversible.
+- Pruebas verificadas: `CampaignDashboardTest` 69/69 (741 aserciones),
+  `CampaignClosedPeriodSyncTest` 9/9 (46 aserciones),
+  `campaign-presentation.test.mjs` 27/27, lint PHP de servicio y test,
+  Pint sobre cambios PHP, build Vite y `git diff --check`, todos correctos.
+  La suite PHP completa se inició con clave efímera y SQLite en memoria, pero
+  excedió la ventana del ejecutor y dejó procesos de Pest que se identificaron
+  por línea de comando y se detuvieron; no se registra como superada. El
+  validador documental y su suite están pendientes porque `python`/`python3`
+  resuelven a alias de Windows sin intérprete utilizable.
+- Riesgos pendientes: CI debe ejecutar la suite PHP global y el validador
+  documental con Python real antes de desplegar. En producción, confirmar que
+  los runs de octubre almacenan `stats.range_start` y
+  `stats.range_end_exclusive` o límites de inicio de día válidos; no crear runs
+  ficticios para ello. Cuerpo de PR: `Docs-Impact: updated` y
+  `Docs-Matrix-Impact: updated`.
