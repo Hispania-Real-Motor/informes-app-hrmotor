@@ -6462,9 +6462,12 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   no se ejecutaron sincronizaciones ni se consultó producción en esta revisión.
 - La cobertura de plataforma no certifica Salesforce ni atribución; se mantienen
   permisos y las auditorías dependientes rechazan la ausencia de publicación.
-  Pruebas y validación integral del diff final quedan a cargo del agente principal.
-  Verificar filtros, exportación, comportamiento sin filas y bundle antes de un
-  despliegue. No se han medido costes de consultas ni concurrencia en producción.
+  Según el agente principal: `CampaignDashboardTest` pasó con 66 pruebas y 712
+  aserciones; JavaScript `campaign-presentation` pasó 26/26; pruebas documentales
+  Python: 41, con una omitida; `check_documentation_integrity` pasó para nueve
+  rutas. La suite PHP global sigue en ejecución y su resultado está pendiente.
+  Verificar el bundle antes de un despliegue. No se han medido costes de
+  consultas ni concurrencia en producción.
 - Fases C/D de Interests: la vista provisional sigue limitada a conteos y
   borrados mensuales; las dimensiones adicionales carecen de definición final y
   cobertura acreditadas. Según el estado operativo comunicado, no comprobado
