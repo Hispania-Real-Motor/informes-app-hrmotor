@@ -178,6 +178,11 @@ eliminados; estos se cuentan adicionalmente en su propia columna. La consulta
 del diario, en cambio, compara solo Interests no eliminados en la semilla y en
 Salesforce. Una ausencia en la comparación no demuestra un borrado.
 
+La vista calcula sus períodos con agregaciones SQL (`COUNT(*)` y conteo de
+eliminados) y aliases internos que no usan palabras reservadas. No selecciona
+versiones completas; conserva los mismos totales, límites Europe/Madrid,
+certificación y aislamiento de los consumidores oficiales.
+
 ## Recuperación progresiva por período: bloqueo de certificación
 
 No existe todavía una vía certificable para publicar únicamente septiembre y
