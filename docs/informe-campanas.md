@@ -4,13 +4,48 @@
 
 Si el lector de la generación certificada de Interests devuelve
 `InterestDatasetUnavailable`, summary, campañas y rankings pueden responder en
-modo `platform_independent_only`. Para cada plataforma se selecciona por ID
-descendente el último run `campaign_platform_daily_metrics` que cubre el
-período solicitado; debe estar `completed` y tener fecha de finalización. Si no
-existe o está fallido, en curso o sin finalizar, esa plataforma queda bloqueada,
-aunque haya otro run anterior completado. Se utilizan las métricas
-económicas locales del período y filtros existentes, incluidos cierres cuando
-corresponda. La cobertura de ese run no certifica Salesforce ni atribución.
+modo `platform_independent_only`. Este es un estado técnico de disponibilidad,
+no un error público por sí mismo: si Meta/Google tienen evidencia económica
+válida, la vista muestra los KPI y campañas nativos sin el aviso permanente de
+recuperación. `availability`, los warnings del contrato JSON y el diagnóstico
+administrativo se conservan. Solo una plataforma realmente bloqueada muestra
+una indicación discreta de su causa; los errores de carga reales conservan el
+tratamiento de error. El botón «Ver diagnóstico» sigue limitado al permiso
+administrativo existente.
+
+La evidencia económica se resuelve por tramos de días civiles de
+`Europe/Madrid`. Un mes **cerrado completo** solo se lee desde la versión
+vigente de `campaign_investment_closure_snapshots.economic_rows` enlazada a
+`campaign_investment_closures.snapshot_version`. El snapshot debe ser JSON no
+vacío y estructuralmente válido; solo acredita las plataformas con filas en él.
+No se exige un run nuevo para esos importes, no se sustituyen por métricas
+diarias y `meta_synced_at`/`google_synced_at` quedan nulos cuando la única
+evidencia es histórica. El estado aditivo
+`availability.platforms.{meta,google_ads}.evidence` distingue
+`closure_snapshot`, `sync_run` y `mixed`; `closure_months` identifica los
+meses cerrados usados. Un snapshot ausente, vacío o inválido bloquea el tramo,
+nunca habilita una vuelta a datos vivos.
+
+Los tramos abiertos exigen, por plataforma, el run de mayor ID que cubra todo
+cada tramo y que esté `completed` con finalización. Se usa primero
+`stats.range_start`/`range_end_exclusive`, que son días de proveedor. Para
+runs históricos sin esas estadísticas, los límites solo se aceptan si forman
+un intervalo de inicio de día válido interpretado coherentemente como
+`Europe/Madrid` o como la persistencia UTC heredada convertida a esa zona. La
+fecha de fin es exclusiva. Así no se confunde el inicio civil de Madrid con su
+instante UTC ni se presupone que todos los timestamps almacenados sean UTC;
+los cambios DST quedan cubiertos por la conversión de zona. Un run incompleto,
+fallido, sin límites válidos o que deja un hueco bloquea exclusivamente esa
+plataforma, incluso si existen filas locales.
+
+Los rangos mixtos agregan snapshots de meses cerrados completos y métricas
+diarias únicamente de sus tramos abiertos, sin solapar días ni sustituir
+importes cerrados. Un rango que tome días parciales de un mes cerrado se
+bloquea: el snapshot mensual no se prorratea. Varios meses cerrados completos
+pueden agregarse si cada snapshot vigente es válido. La cobertura de Meta y
+Google se evalúa independientemente; no se inventan proveedores, campañas,
+inversión, clics ni impresiones ausentes. La evidencia económica no certifica
+Salesforce ni atribución.
 
 La vista muestra inversión, impresiones, clics, CTR, CPC y leads propios de
 plataforma cuando existan. Los leads y conversiones nativos de plataforma no
@@ -20,10 +55,11 @@ quedan bloqueados; sus valores no deben interpretarse como cero. Se deshabilitan
 los filtros dependientes y se ocultan las opciones de auditoría de atribución;
 si llegan en la petición se ignoran y se informa en un aviso;
 la auditoría KPI y de atribución requieren generación certificada, y el CSV de
-campañas conserva el camino ordinario y puede responder 503. El aviso y el
-metadato de disponibilidad identifican el modo parcial.
+campañas conserva el camino ordinario y puede responder 503. La ausencia de
+certificación no se presenta como aviso rojo permanente: queda expresada en el
+metadato de disponibilidad y el diagnóstico autorizado.
 
-Actualizado: 2026-10-27. URL: `/informes/campanas`.
+Actualizado: 2026-11-04. URL: `/informes/campanas`.
 
 ## Contrato funcional ROT-4
 

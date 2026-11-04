@@ -54,6 +54,18 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(source.replace(/^import .*;\r?\n/, ''), sandbox);
 
+test('recovery mode remains technical state without a permanent public alert, while unavailable platforms stay visible', () => {
+    const warnings = {innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; }};
+    sandbox.document.getElementById = (id) => id === 'warnings' ? warnings : null;
+    vm.runInContext("renderWarnings(['Modo de recuperación: se muestran exclusivamente métricas nativas de plataforma con cobertura verificada. Interests, Opportunities, atribución y conversiones atribuidas permanecen bloqueados hasta publicar una generación certificada.'], {platforms: {meta: {status: 'available'}, google_ads: {status: 'available'}}})", sandbox);
+    assert.equal(warnings.innerHTML, '');
+
+    vm.runInContext("renderWarnings([], {platforms: {meta: {status: 'blocked', reason: 'Sin cobertura verificable.'}, google_ads: {status: 'available'}}})", sandbox);
+    assert.match(warnings.innerHTML, /Meta Ads: Sin cobertura verificable\./);
+    assert.match(warnings.innerHTML, /campaign-availability-notice/);
+    assert.ok(!warnings.innerHTML.includes('is-error'));
+});
+
 test('real detail rendering preserves shared rows, hides empty rows and escapes campaign names', () => {
     sandbox.document.getElementById = (id) => id === 'campaignTables' ? root : null;
     vm.runInContext('renderColumnsPopover = () => {}; applyColumnVisibility = () => {}; syncCampaignTableScrollWidth = () => {};', sandbox);

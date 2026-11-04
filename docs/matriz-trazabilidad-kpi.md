@@ -4,15 +4,17 @@
 
 | Sección / evidencia | Condición de disponibilidad | Limitación |
 |---|---|---|
-| Campañas: summary, detalle y rankings nativos | `CampaignDashboardDatasetService::platformOnlySummary()` exige que el último run por ID que cubre el período en `campaign_platform_daily_metrics` esté completado y finalizado; lee métricas locales o cierres económicos mediante `metricRows()`. | Un run posterior fallido que cubre el período bloquea la plataforma. La cobertura no certifica atribución ni estado histórico de Salesforce; leads y conversiones nativos no equivalen a Interests o conversiones atribuidas. |
+| Campañas: summary, detalle y rankings nativos | `CampaignDashboardDatasetService::{economicEvidence,platformAvailability,metricRows}` divide el intervalo civil `Europe/Madrid` en meses cerrados completos y tramos abiertos. Un cierre exige el snapshot vigente no vacío y válido; acredita solo las plataformas que contiene. Un tramo abierto exige por plataforma el run de mayor ID con cobertura completa, `completed` y finalizado; usa `stats.range_start/range_end_exclusive` o, en legado, límites de inicio de día válidos en Madrid o UTC convertido. `availability.platforms.*.evidence` expone `closure_snapshot`, `sync_run` o `mixed`. | El fin de cobertura es exclusivo. Un snapshot ausente/vacío/inválido, un día parcial de mes cerrado, run fallido/incompleto, límites nulos/inválidos o hueco bloquean sin usar filas diarias como sustituto del cierre. Meta y Google se validan por separado; la evidencia económica no certifica Salesforce, atribución ni estado histórico. Leads/conversiones nativos no equivalen a Interests ni conversiones atribuidas. |
 | Campañas: Interests, Opportunities, resultados comerciales, auditoría y exportaciones dependientes | Requieren generación certificada de Interests; las auditorías la comprueban explícitamente y la exportación de campañas conserva el camino ordinario. | En recuperación se bloquean los valores dependientes, no se convierten en cero. |
 | Interests: informe y auditoría | `InterestGenerationReader` requiere publicación certificada. | El modo parcial de Campañas no publica ni certifica Interests. |
 
 El cambio introduce un contrato de disponibilidad, no audita las fichas KPI.
 La comparación de inversión, impresiones, clics, leads de plataforma, CTR y CPC
-en el modo parcial y su comportamiento con datos vacíos o filtros requiere la
-validación del test de `CampaignDashboardTest` y pruebas adicionales según el
-diff final; no se infieren fórmulas o coberturas externas no verificadas aquí.
+en el modo parcial y su comportamiento con datos vacíos o filtros se prueba en
+`CampaignDashboardTest`; la recuperación sintética cubre snapshot cerrado,
+intervalo abierto, fallo y mezcla de evidencia, sin acreditar importes ni
+cobertura productiva. No se infieren fórmulas o coberturas externas no
+verificadas aquí.
 
 ### Interests: recuperación inicial desde estado actual
 

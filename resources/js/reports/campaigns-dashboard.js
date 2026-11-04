@@ -770,7 +770,7 @@ async function loadDiagnostics() {
 function renderSummary(data) {
     platformOnlyMode = data?.availability?.mode === 'platform_independent_only';
     applyAvailabilityControls();
-    renderWarnings(data.warnings || []);
+    renderWarnings(data.warnings || [], data.availability || {});
     renderInvestmentClosure(data.investment_closure || null);
     currentContext = data.selected_context || currentContext;
     syncCampaignTypeSelect();
@@ -820,13 +820,21 @@ function renderInvestmentClosure(closure) {
     root.textContent = `Inversión: ${investment}. Resultados comerciales: Abiertos.`;
 }
 
-function renderWarnings(warnings) {
+function renderWarnings(warnings, availability = {}) {
     const root = document.getElementById('warnings');
+    if (!root) return;
 
     root.innerHTML = '';
 
-    warnings.forEach((warning) => {
-        root.insertAdjacentHTML('beforeend', `<div class="notice">${escapeHtml(warning)}</div>`);
+    const blockedPlatformWarnings = Object.entries(availability?.platforms || {})
+        .filter(([, state]) => state?.status === 'blocked' && state?.reason)
+        .map(([platform, state]) => `${platform === 'google_ads' ? 'Google Ads' : 'Meta Ads'}: ${state.reason}`);
+    const visibleWarnings = blockedPlatformWarnings.length
+        ? blockedPlatformWarnings
+        : warnings.filter((warning) => !String(warning).startsWith('Modo de recuperación:'));
+
+    visibleWarnings.forEach((warning) => {
+        root.insertAdjacentHTML('beforeend', `<div class="notice campaign-availability-notice">${escapeHtml(warning)}</div>`);
     });
 }
 

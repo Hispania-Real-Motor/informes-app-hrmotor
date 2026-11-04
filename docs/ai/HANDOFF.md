@@ -6475,3 +6475,47 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `validating` y no existen diarios por período; falta evidencia histórica
   F2/F5, de borrados y relaciones. Ver
   `docs/salesforce-interest-generations.md` para el alcance y los límites.
+
+## 2026-11-04 — cobertura histórica económica de Campañas
+
+- Alcance: se corrige la recuperación nativa de Meta Ads y Google Ads cuando
+  Interests no está certificado. Los meses económicos cerrados completos usan
+  exclusivamente el snapshot vigente; los tramos abiertos usan runs de
+  plataforma con cobertura completa de días civiles `Europe/Madrid` y límite
+  final exclusivo. No se leen ni modifican datos productivos, snapshots,
+  cierres, scheduler, workers, Salesforce o la publicación de Interests.
+- Implementación: `CampaignDashboardDatasetService` separa evidencia
+  `closure_snapshot`, `sync_run` y `mixed` en `availability.platforms.*`.
+  Valida snapshots no vacíos y estructurados, mantiene Meta y Google
+  independientes, rechaza snapshots inválidos y días parciales de meses
+  cerrados, y agrega rangos mixtos sin solapar días ni sustituir importes
+  cerrados por métricas vivas. Para legado sin días de proveedor en `stats`,
+  solo admite límites de inicio de día coherentes con Madrid o UTC convertido.
+- Presentación: la ausencia de certificación de Interests sigue bloqueando sus
+  KPI, filtros, auditorías y exportaciones dependientes, pero ya no muestra un
+  aviso rojo permanente si hay economía acreditada. El contrato JSON,
+  warnings y diagnóstico con permiso se conservan; una plataforma bloqueada
+  aparece con aviso visual discreto y los errores de carga mantienen el estilo
+  crítico.
+- Base de datos/configuración: sin migraciones, cambios de esquema, variables
+  de entorno ni tareas manuales. Los assets compilados actualizan solo las
+  entradas de Campañas y del CSS compartido de su dashboard.
+- Documentación: revisión terminada por `report_docs_maintainer`; se actualizaron
+  `docs/informe-campanas.md` y `docs/matriz-trazabilidad-kpi.md`. No cambia
+  `PROJECT_CONTEXT.md` ni `DECISIONS.md`: no se introduce arquitectura,
+  módulo ni decisión transversal irreversible.
+- Pruebas verificadas: `CampaignDashboardTest` 69/69 (741 aserciones),
+  `CampaignClosedPeriodSyncTest` 9/9 (46 aserciones),
+  `campaign-presentation.test.mjs` 27/27, lint PHP de servicio y test,
+  Pint sobre cambios PHP, build Vite y `git diff --check`, todos correctos.
+  La suite PHP completa se inició con clave efímera y SQLite en memoria, pero
+  excedió la ventana del ejecutor y dejó procesos de Pest que se identificaron
+  por línea de comando y se detuvieron; no se registra como superada. El
+  validador documental y su suite están pendientes porque `python`/`python3`
+  resuelven a alias de Windows sin intérprete utilizable.
+- Riesgos pendientes: CI debe ejecutar la suite PHP global y el validador
+  documental con Python real antes de desplegar. En producción, confirmar que
+  los runs de octubre almacenan `stats.range_start` y
+  `stats.range_end_exclusive` o límites de inicio de día válidos; no crear runs
+  ficticios para ello. Cuerpo de PR: `Docs-Impact: updated` y
+  `Docs-Matrix-Impact: updated`.

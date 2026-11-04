@@ -311,13 +311,14 @@ class CampaignDashboardDatasetService
     {
         [$filters, $blockedFilters] = $this->platformOnlyFilters($this->filters($request));
         $period = $this->period($filters);
-        $availability = $this->platformAvailability($period);
+        $economicEvidence = $this->economicEvidence($period);
+        $availability = $this->platformAvailability($economicEvidence);
         $availablePlatforms = array_keys(array_filter(
             $availability['platforms'],
             static fn (array $platform): bool => $platform['status'] === 'available'
         ));
         $rows = array_values(array_filter(
-            $this->metricRows($filters, $period),
+            $this->metricRows($filters, $economicEvidence),
             static fn (array $row): bool => in_array($row['platform'] ?? null, $availablePlatforms, true)
         ));
         $rows = $this->applyOperationalClassifications($this->mergeRows($rows, [], $filters));
@@ -420,41 +421,60 @@ class CampaignDashboardDatasetService
     }
 
     /** @return array<string, mixed> */
-    private function platformAvailability(array $period): array
+    private function platformAvailability(array $economicEvidence): array
     {
         $states = [];
         $latest = null;
         foreach (['meta', 'google_ads'] as $platform) {
-            $run = DB::table('report_sync_runs')
-                ->where('dataset', 'campaign_platform_daily_metrics')
-                ->where('source', $platform)
-                ->whereNotNull('period_start_at')
-                ->whereNotNull('period_end_at')
-                ->where('period_start_at', '<=', $period['start_at'])
-                ->where('period_end_at', '>=', $period['end_at'])
-                ->orderByDesc('id')
-                ->first(['id', 'status', 'completed_at', 'source_cutoff_at']);
-
-            if ($run === null || $run->status !== 'completed' || $run->completed_at === null) {
+            if ($economicEvidence['blocked_reason'] !== null) {
                 $states[$platform] = [
                     'status' => 'blocked',
-                    'reason' => $run === null
-                        ? 'No existe una ejecución de plataforma que cubra el período solicitado.'
-                        : 'La última ejecución de plataforma que cubre el período no terminó correctamente.',
+                    'reason' => $economicEvidence['blocked_reason'],
                     'synced_at' => null,
                     'run_id' => null,
+                    'evidence' => null,
                 ];
 
                 continue;
             }
 
-            $syncedAt = $this->reportDateTime($run->source_cutoff_at ?? $run->completed_at);
-            $latest = $latest === null || $syncedAt?->lessThan($latest) ? $syncedAt : $latest;
+            $closureMonths = $economicEvidence['closure_months_by_platform'][$platform];
+            if ($economicEvidence['closed_months'] !== [] && $closureMonths !== $economicEvidence['closed_months']) {
+                $states[$platform] = [
+                    'status' => 'blocked',
+                    'reason' => 'El cierre económico no respalda esta plataforma durante todo el mes cerrado solicitado.',
+                    'synced_at' => null,
+                    'run_id' => null,
+                    'evidence' => null,
+                ];
+
+                continue;
+            }
+
+            $syncEvidence = $this->platformSyncEvidence($platform, $economicEvidence['open_segments']);
+            if (! $syncEvidence['available']) {
+                $states[$platform] = [
+                    'status' => 'blocked',
+                    'reason' => $syncEvidence['reason'],
+                    'synced_at' => null,
+                    'run_id' => null,
+                    'evidence' => null,
+                ];
+
+                continue;
+            }
+
+            $syncedAt = $syncEvidence['synced_at'];
+            if ($syncedAt !== null && ($latest === null || $syncedAt->greaterThan($latest))) {
+                $latest = $syncedAt;
+            }
             $states[$platform] = [
                 'status' => 'available',
                 'reason' => null,
                 'synced_at' => $syncedAt?->toDateTimeString(),
-                'run_id' => (int) $run->id,
+                'run_id' => $syncEvidence['run_ids'][0] ?? null,
+                'evidence' => $closureMonths === [] ? 'sync_run' : ($economicEvidence['open_segments'] === [] ? 'closure_snapshot' : 'mixed'),
+                'closure_months' => $closureMonths,
             ];
         }
 
@@ -630,7 +650,7 @@ class CampaignDashboardDatasetService
 
     private function buildPayload(array $filters, array $period, bool $includeDiagnostics = true, bool $includeFilters = true): array
     {
-        $metricRows = $this->metricRows($filters, $period);
+        $metricRows = $this->metricRows($filters, $this->economicEvidence($period));
         $attributionRows = $this->attributionRows($filters, $period);
         $allCampaigns = $this->mergeRows($metricRows, $attributionRows, $filters);
         $allCampaigns = $this->applyOperationalClassifications($allCampaigns);
@@ -671,7 +691,7 @@ class CampaignDashboardDatasetService
 
     private function visibleCampaignRows(array $filters, array $period): array
     {
-        $metricRows = $this->metricRows($filters, $period);
+        $metricRows = $this->metricRows($filters, $this->economicEvidence($period));
         $attributionRows = $this->attributionRows($filters, $period);
         $allCampaigns = $this->mergeRows($metricRows, $attributionRows, $filters);
         $allCampaigns = $this->applyOperationalClassifications($allCampaigns);
@@ -841,20 +861,30 @@ class CampaignDashboardDatasetService
         return $rows;
     }
 
-    private function metricRows(array $filters, array $period): array
+    private function metricRows(array $filters, array $economicEvidence): array
     {
-        $closedRows = $this->closedEconomicRows($filters, $period);
-        if ($closedRows !== null) {
-            return $closedRows;
+        $snapshotRows = collect($economicEvidence['snapshot_rows'])
+            ->map(fn (array $row): array => $this->normalizeDashboardRow($row))
+            ->filter(fn (array $row): bool => $this->snapshotRowMatchesMetricFilters($row, $filters))
+            ->filter(fn (array $row): bool => $this->includeCampaignForContext($row, $filters));
+
+        if ($economicEvidence['open_segments'] === []) {
+            return $snapshotRows->values()->all();
         }
 
         $query = DB::table('campaign_platform_daily_metrics')
-            ->where('metric_date', '>=', $period['start'])
-            ->where('metric_date', '<=', $period['end']);
+            ->where(function ($query) use ($economicEvidence): void {
+                foreach ($economicEvidence['open_segments'] as $segment) {
+                    $query->orWhere(function ($segmentQuery) use ($segment): void {
+                        $segmentQuery->where('metric_date', '>=', $segment['start'])
+                            ->where('metric_date', '<', $segment['end_exclusive']);
+                    });
+                }
+            });
 
         $this->applyMetricFilters($query, $filters);
 
-        return $query
+        $liveRows = $query
             ->select([
                 'platform',
                 'account_id',
@@ -882,42 +912,226 @@ class CampaignDashboardDatasetService
             ->filter(fn (array $row): bool => $this->includeCampaignForContext($row, $filters))
             ->values()
             ->all();
+
+        return $snapshotRows->concat($liveRows)->values()->all();
     }
 
-    private function closedEconomicRows(array $filters, array $period): ?array
+    /** @return array{snapshot_rows: array<int, array<string, mixed>>, closed_months: array<int, string>, closure_months_by_platform: array<string, array<int, string>>, open_segments: array<int, array{start:string, end_exclusive:string}>, blocked_reason: ?string} */
+    private function economicEvidence(array $period): array
     {
-        $start = CarbonImmutable::parse($period['start']);
-        $end = CarbonImmutable::parse($period['end']);
-        if (! $start->isSameDay($start->startOfMonth()) || ! $end->isSameDay($start->endOfMonth())) {
-            return null;
-        }
-
-        $status = $this->investmentClosures->status($start->toDateString());
-        if ($status['investment_status'] !== 'closed') {
-            return null;
-        }
-
-        $snapshot = DB::table('campaign_investment_closures as cic')
-            ->join('campaign_investment_closure_snapshots as s', function ($join): void {
+        $start = $period['start_local']->startOfDay();
+        $endExclusive = $period['end_local']->addDay()->startOfDay();
+        $closures = DB::table('campaign_investment_closures as cic')
+            ->leftJoin('campaign_investment_closure_snapshots as s', function ($join): void {
                 $join->on('s.closure_id', '=', 'cic.id')->on('s.version', '=', 'cic.snapshot_version');
             })
-            ->where('cic.month', $start->toDateString())
-            ->value('s.economic_rows');
-        $rows = is_string($snapshot) ? json_decode($snapshot, true) : [];
+            ->where('cic.status', 'closed')
+            ->whereBetween('cic.month', [$start->startOfMonth()->toDateString(), $endExclusive->subDay()->startOfMonth()->toDateString()])
+            ->get(['cic.month', 's.economic_rows'])
+            ->keyBy(fn ($closure): string => (string) $closure->month);
 
-        return collect($rows)->map(function (array $row): array {
-            $row = array_merge([
+        $snapshotRows = [];
+        $closedMonths = [];
+        $closureMonthsByPlatform = ['meta' => [], 'google_ads' => []];
+        $openSegments = [];
+        $cursor = $start->startOfMonth();
+
+        while ($cursor->lessThan($endExclusive)) {
+            $monthEnd = $cursor->addMonth();
+            $segmentStart = $start->greaterThan($cursor) ? $start : $cursor;
+            $segmentEnd = $endExclusive->lessThan($monthEnd) ? $endExclusive : $monthEnd;
+            $month = $cursor->toDateString();
+            $closure = $closures->get($month);
+
+            if ($closure === null) {
+                $openSegments[] = ['start' => $segmentStart->toDateString(), 'end_exclusive' => $segmentEnd->toDateString()];
+            } elseif (! $segmentStart->equalTo($cursor) || ! $segmentEnd->equalTo($monthEnd)) {
+                return $this->blockedEconomicEvidence('El período incluye días parciales de un mes económico cerrado; el snapshot mensual no puede prorratearse de forma verificable.');
+            } else {
+                $rows = $this->validSnapshotRows($closure->economic_rows);
+                if ($rows === null) {
+                    return $this->blockedEconomicEvidence('El cierre económico solicitado no tiene un snapshot válido y no se sustituye con datos diarios.');
+                }
+                $closedMonths[] = $month;
+                foreach ($rows as $row) {
+                    $snapshotRows[] = $row;
+                    $closureMonthsByPlatform[$row['platform']][] = $month;
+                }
+            }
+            $cursor = $monthEnd;
+        }
+
+        foreach ($closureMonthsByPlatform as $platform => $months) {
+            $closureMonthsByPlatform[$platform] = array_values(array_unique($months));
+        }
+
+        return [
+            'snapshot_rows' => $snapshotRows,
+            'closed_months' => $closedMonths,
+            'closure_months_by_platform' => $closureMonthsByPlatform,
+            'open_segments' => $openSegments,
+            'blocked_reason' => null,
+        ];
+    }
+
+    /** @return array{snapshot_rows: array<int, array<string, mixed>>, closed_months: array<int, string>, closure_months_by_platform: array<string, array<int, string>>, open_segments: array<int, array{start:string, end_exclusive:string}>, blocked_reason: string} */
+    private function blockedEconomicEvidence(string $reason): array
+    {
+        return [
+            'snapshot_rows' => [],
+            'closed_months' => [],
+            'closure_months_by_platform' => ['meta' => [], 'google_ads' => []],
+            'open_segments' => [],
+            'blocked_reason' => $reason,
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>>|null */
+    private function validSnapshotRows(mixed $snapshot): ?array
+    {
+        if (! is_string($snapshot)) {
+            return null;
+        }
+
+        try {
+            $rows = json_decode($snapshot, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        if (! is_array($rows) || $rows === []) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($rows as $row) {
+            if (! is_array($row)
+                || ! in_array($row['platform'] ?? null, ['meta', 'google_ads'], true)
+                || ! array_key_exists('campaign_id', $row)
+                || ! array_key_exists('campaign_name', $row)
+                || ! $this->snapshotNumericFieldsAreValid($row)) {
+                return null;
+            }
+
+            $normalized[] = array_merge([
                 'account_name' => null, 'campaign_status' => null, 'campaign_effective_status' => null,
                 'campaign_start_date' => null, 'campaign_end_date' => null, 'advertising_channel_type' => null,
                 'advertising_channel_sub_type' => null, 'last_spend_date' => null, 'campaign_source_type' => 'platform_campaign',
                 'platform_leads' => 0, 'platform_leads_rows' => 0, 'platform_conversions' => 0,
             ], $row);
+        }
 
-            return $this->normalizeDashboardRow($row);
-        })->filter(fn (array $row): bool => $this->snapshotRowMatchesMetricFilters($row, $filters))
-            ->filter(fn (array $row): bool => $this->includeCampaignForContext($row, $filters))
-            ->values()
-            ->all();
+        return $normalized;
+    }
+
+    private function snapshotNumericFieldsAreValid(array $row): bool
+    {
+        foreach (['spend', 'impressions', 'clicks', 'platform_leads', 'platform_leads_rows', 'platform_conversions'] as $field) {
+            if (! array_key_exists($field, $row) || ! is_numeric($row[$field])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @return array{available: bool, reason: ?string, synced_at: ?CarbonImmutable, run_ids: array<int, int>} */
+    private function platformSyncEvidence(string $platform, array $segments): array
+    {
+        if ($segments === []) {
+            return ['available' => true, 'reason' => null, 'synced_at' => null, 'run_ids' => []];
+        }
+
+        $latest = null;
+        $runIds = [];
+        $runs = DB::table('report_sync_runs')
+            ->where('dataset', 'campaign_platform_daily_metrics')
+            ->where('source', $platform)
+            ->whereNotNull('period_start_at')
+            ->whereNotNull('period_end_at')
+            ->where(function ($query) use ($segments): void {
+                foreach ($segments as $segment) {
+                    $query->orWhere(function ($segmentQuery) use ($segment): void {
+                        $segmentQuery->where('period_start_at', '<=', $segment['end_exclusive'])
+                            ->where('period_end_at', '>=', $segment['start']);
+                    });
+                }
+            })
+            ->orderByDesc('id')
+            ->get(['id', 'status', 'period_start_at', 'period_end_at', 'source_cutoff_at', 'completed_at', 'timezone', 'stats']);
+
+        foreach ($segments as $segment) {
+            $run = $runs->first(fn (object $candidate): bool => $this->syncRunCoversSegment($candidate, $segment));
+            if ($run === null) {
+                return ['available' => false, 'reason' => 'No existe una ejecución de plataforma que cubra el período solicitado.', 'synced_at' => null, 'run_ids' => []];
+            }
+            if ($run->status !== 'completed' || $run->completed_at === null) {
+                return ['available' => false, 'reason' => 'La última ejecución de plataforma que cubre el período no terminó correctamente.', 'synced_at' => null, 'run_ids' => []];
+            }
+
+            $runIds[] = (int) $run->id;
+            $syncedAt = $this->reportDateTime($run->source_cutoff_at ?? $run->completed_at);
+            if ($syncedAt !== null && ($latest === null || $syncedAt->greaterThan($latest))) {
+                $latest = $syncedAt;
+            }
+        }
+
+        return ['available' => true, 'reason' => null, 'synced_at' => $latest, 'run_ids' => array_values(array_unique($runIds))];
+    }
+
+    private function syncRunCoversSegment(object $run, array $segment): bool
+    {
+        foreach ($this->syncRunCoverageRanges($run) as $range) {
+            if ($range['start'] <= $segment['start'] && $range['end_exclusive'] >= $segment['end_exclusive']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array<int, array{start:string, end_exclusive:string}> */
+    private function syncRunCoverageRanges(object $run): array
+    {
+        $stats = is_string($run->stats ?? null) ? json_decode($run->stats, true) : $run->stats;
+        if (is_array($stats)
+            && $this->validCoverageDate($stats['range_start'] ?? null)
+            && $this->validCoverageDate($stats['range_end_exclusive'] ?? null)
+            && $stats['range_start'] < $stats['range_end_exclusive']) {
+            return [['start' => $stats['range_start'], 'end_exclusive' => $stats['range_end_exclusive']]];
+        }
+
+        if (! is_string($run->period_start_at ?? null) || ! is_string($run->period_end_at ?? null)) {
+            return [];
+        }
+
+        $timezone = is_string($run->timezone ?? null) && $run->timezone !== '' ? $run->timezone : self::REPORT_TIMEZONE;
+        $ranges = [];
+        foreach ([$timezone, 'UTC'] as $storageTimezone) {
+            try {
+                $start = CarbonImmutable::createFromFormat('Y-m-d H:i:s', $run->period_start_at, $storageTimezone);
+                $end = CarbonImmutable::createFromFormat('Y-m-d H:i:s', $run->period_end_at, $storageTimezone);
+                if ($storageTimezone === 'UTC') {
+                    $start = $start->setTimezone($timezone);
+                    $end = $end->setTimezone($timezone);
+                }
+                if (! $start->isStartOfDay() || ! $end->isStartOfDay() || ! $start->lessThan($end)) {
+                    continue;
+                }
+                $ranges[] = ['start' => $start->toDateString(), 'end_exclusive' => $end->toDateString()];
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return array_values(array_unique($ranges, SORT_REGULAR));
+    }
+
+    private function validCoverageDate(mixed $date): bool
+    {
+        return is_string($date)
+            && preg_match('/\A\d{4}-\d{2}-\d{2}\z/D', $date) === 1
+            && checkdate((int) substr($date, 5, 2), (int) substr($date, 8, 2), (int) substr($date, 0, 4));
     }
 
     private function snapshotRowMatchesMetricFilters(array $row, array $filters): bool
