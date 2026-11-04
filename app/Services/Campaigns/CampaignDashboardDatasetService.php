@@ -428,19 +428,19 @@ class CampaignDashboardDatasetService
             $run = DB::table('report_sync_runs')
                 ->where('dataset', 'campaign_platform_daily_metrics')
                 ->where('source', $platform)
-                ->where('status', 'completed')
-                ->whereNotNull('completed_at')
                 ->whereNotNull('period_start_at')
                 ->whereNotNull('period_end_at')
                 ->where('period_start_at', '<=', $period['start_at'])
                 ->where('period_end_at', '>=', $period['end_at'])
-                ->orderByDesc('completed_at')
-                ->first(['id', 'completed_at', 'source_cutoff_at']);
+                ->orderByDesc('id')
+                ->first(['id', 'status', 'completed_at', 'source_cutoff_at']);
 
-            if ($run === null) {
+            if ($run === null || $run->status !== 'completed' || $run->completed_at === null) {
                 $states[$platform] = [
                     'status' => 'blocked',
-                    'reason' => 'No existe una ejecución completa de plataforma que cubra el período solicitado.',
+                    'reason' => $run === null
+                        ? 'No existe una ejecución de plataforma que cubra el período solicitado.'
+                        : 'La última ejecución de plataforma que cubre el período no terminó correctamente.',
                     'synced_at' => null,
                     'run_id' => null,
                 ];

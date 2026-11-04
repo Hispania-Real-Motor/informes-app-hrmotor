@@ -4,7 +4,7 @@
 
 | Sección / evidencia | Condición de disponibilidad | Limitación |
 |---|---|---|
-| Campañas: summary, detalle y rankings nativos | `CampaignDashboardDatasetService::platformOnlySummary()` filtra cada plataforma por un run `campaign_platform_daily_metrics` completado con cobertura del período; lee métricas locales o cierres económicos mediante `metricRows()`. | Cobertura del run no certifica atribución ni estado histórico de Salesforce; leads y conversiones nativos no equivalen a Interests o conversiones atribuidas. |
+| Campañas: summary, detalle y rankings nativos | `CampaignDashboardDatasetService::platformOnlySummary()` exige que el último run por ID que cubre el período en `campaign_platform_daily_metrics` esté completado y finalizado; lee métricas locales o cierres económicos mediante `metricRows()`. | Un run posterior fallido que cubre el período bloquea la plataforma. La cobertura no certifica atribución ni estado histórico de Salesforce; leads y conversiones nativos no equivalen a Interests o conversiones atribuidas. |
 | Campañas: Interests, Opportunities, resultados comerciales, auditoría y exportaciones dependientes | Requieren generación certificada de Interests; las auditorías la comprueban explícitamente y la exportación de campañas conserva el camino ordinario. | En recuperación se bloquean los valores dependientes, no se convierten en cero. |
 | Interests: informe y auditoría | `InterestGenerationReader` requiere publicación certificada. | El modo parcial de Campañas no publica ni certifica Interests. |
 

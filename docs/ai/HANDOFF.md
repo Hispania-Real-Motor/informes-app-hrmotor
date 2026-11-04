@@ -6450,14 +6450,15 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 ## 2026-11-04 — disponibilidad parcial de Campañas
 
 - Cuando falta generación certificada de Interests, summary, detalle y rankings
-  de Campañas pueden mostrar métricas nativas de plataformas con run completado
-  que cubra el período. Los resultados atribuidos y las dependencias de Interests
+  de Campañas pueden mostrar métricas nativas si el último run por ID que cubre
+  el período está completado y finalizado. Un run posterior fallido con esa
+  cobertura bloquea la plataforma. Los resultados atribuidos y las dependencias de Interests
   y Opportunities quedan bloqueados; los leads y conversiones nativos de
   plataforma son otra medida. Véanse `docs/informe-campanas.md`,
   `docs/reglas-negocio-leads.md` y `docs/matriz-trazabilidad-kpi.md`.
 - Cambios funcionales: `app/Services/Campaigns/CampaignDashboardDatasetService.php`,
   `resources/js/reports/campaigns-dashboard.js` y
-  `tests/Feature/CampaignDashboardTest.php`. Sin migraciones ni variables nuevas;
+  `tests/Feature/CampaignDashboardTest.php` y `tests/js/campaign-presentation.test.mjs`. Sin migraciones ni variables nuevas;
   no se ejecutaron sincronizaciones ni se consultó producción en esta revisión.
 - La cobertura de plataforma no certifica Salesforce ni atribución; se mantienen
   permisos y las auditorías dependientes rechazan la ausencia de publicación.
@@ -6468,6 +6469,6 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   borrados mensuales; las dimensiones adicionales carecen de definición final y
   cobertura acreditadas. Según el estado operativo comunicado, no comprobado
   en esta revisión, el puntero publicado es nulo, la generación 1 está en
-  `validating` y el diario en `reconciled_unverified`; falta evidencia histórica
+  `validating` y no existen diarios por período; falta evidencia histórica
   F2/F5, de borrados y relaciones. Ver
   `docs/salesforce-interest-generations.md` para el alcance y los límites.
