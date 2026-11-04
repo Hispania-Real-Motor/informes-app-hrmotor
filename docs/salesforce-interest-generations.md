@@ -183,6 +183,22 @@ eliminados) y aliases internos que no usan palabras reservadas. No selecciona
 versiones completas; conserva los mismos totales, límites Europe/Madrid,
 certificación y aislamiento de los consumidores oficiales.
 
+### Fases C/D: alcance provisional y bloqueo oficial
+
+La vista administrativa actual solo muestra agregados mensuales de conteo y
+borrados de la semilla. La distribución por fuentes, canales o estados no se
+amplía mientras no estén acreditadas su definición final y la cobertura de la
+semilla no certificada. Esos agregados no publican una generación ni convierten
+el informe oficial en disponible.
+
+Según el estado operativo comunicado, el puntero publicado es nulo, la
+generación 1 está en `validating` y la recuperación por período figura como
+`reconciled_unverified`. Falta evidencia histórica suficiente para F2 y F5,
+incluidas la cobertura de borrados y las relaciones. Esos datos operativos no
+se han comprobado desde esta revisión documental; deben contrastarse antes de
+cualquier decisión. No se ha establecido una recuperación o certificación
+nueva por añadir esta sección.
+
 ## Recuperación progresiva por período: bloqueo de certificación
 
 No existe todavía una vía certificable para publicar únicamente septiembre y

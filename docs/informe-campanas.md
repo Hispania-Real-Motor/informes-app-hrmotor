@@ -1,5 +1,25 @@
 # Informe de Campañas
 
+## Disponibilidad con Interests no certificado
+
+Si el lector de la generación certificada de Interests devuelve
+`InterestDatasetUnavailable`, summary, campañas y rankings pueden responder en
+modo `platform_independent_only`. Para cada plataforma, se exige un run
+`campaign_platform_daily_metrics` completado que cubra el período solicitado;
+una plataforma sin esa evidencia queda bloqueada. Se utilizan las métricas
+económicas locales del período y filtros existentes, incluidos cierres cuando
+corresponda. La cobertura de ese run no certifica Salesforce ni atribución.
+
+La vista muestra inversión, impresiones, clics, CTR, CPC y leads propios de
+plataforma cuando existan. Los leads y conversiones nativos de plataforma no
+son Interests ni conversiones comerciales atribuidas. Interests,
+Opportunities, reservas, ventas, importes, ratios dependientes y atribución
+quedan bloqueados; sus valores no deben interpretarse como cero. Se deshabilitan
+los filtros dependientes y se ocultan las opciones de auditoría de atribución;
+la auditoría KPI y de atribución requieren generación certificada, y el CSV de
+campañas conserva el camino ordinario y puede responder 503. El aviso y el
+metadato de disponibilidad identifican el modo parcial.
+
 Actualizado: 2026-10-27. URL: `/informes/campanas`.
 
 ## Contrato funcional ROT-4

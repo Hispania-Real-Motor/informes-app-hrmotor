@@ -50,6 +50,11 @@ certificada. Pruebas: `InterestGenerationTest`,
 `SalesforceInterestDashboardDatasetTest` y `leads-unavailable.test.mjs`.
 Véase [arquitectura, recuperación y límites](salesforce-interest-generations.md).
 
+La falta de una generación certificada mantiene indisponible el informe de
+Interests. Campañas puede mostrar datos nativos de plataforma bajo condiciones
+de cobertura propias; esa respuesta parcial no certifica Interests ni habilita
+atribución o resultados comerciales. Véase [Campañas](informe-campanas.md#disponibilidad-con-interests-no-certificado).
+
 Existe además una [vista provisional administrativa](salesforce-interest-generations.md#vista-provisional-administrativa),
 desactivada por defecto y separada del informe oficial. Muestra recuentos de
 la semilla no certificada para septiembre y octubre de 2026; el total incluye
