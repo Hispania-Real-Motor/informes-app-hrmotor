@@ -157,7 +157,12 @@ class SalesforceInterestActivitySyncService
                 ]);
                 $generations->finishF5($generationId, $run);
             } catch (Throwable) {
-                $generations->fail($generationId);
+                // A current-state recovery retains its F2 checkpoint. Its F5
+                // materialization is restarted in a new run on resume; a
+                // partial activity run is never attached to the candidate.
+                if (! $currentState) {
+                    $generations->fail($generationId);
+                }
                 $stats['errors']++;
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
                 try {

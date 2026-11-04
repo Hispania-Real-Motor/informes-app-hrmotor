@@ -122,9 +122,21 @@ final class SalesforceInterestSyncService
     }
 
     /** Full current-state query for isolated initial reconciliation, including deleted records. */
-    public function currentRecoverySoql(): string
+    public function currentRecoverySoql(?string $afterId = null, ?int $limit = null): string
     {
-        return $this->soql(false, null, null);
+        if ($afterId !== null && preg_match('/^[A-Za-z0-9]{18}$/', $afterId) !== 1) {
+            throw new RuntimeException('Initial recovery cursor is invalid.');
+        }
+        if ($limit !== null && ($limit < 1 || $limit > 1000)) {
+            throw new RuntimeException('Initial recovery batch size is invalid.');
+        }
+
+        $soql = $this->soql(false, null, null);
+        if ($afterId !== null) {
+            $soql = preg_replace('/ORDER BY Id ASC$/m', "WHERE Id > '".$afterId."'\nORDER BY Id ASC", $soql) ?? '';
+        }
+
+        return $limit === null ? $soql : $soql."\nLIMIT ".$limit;
     }
 
     /**

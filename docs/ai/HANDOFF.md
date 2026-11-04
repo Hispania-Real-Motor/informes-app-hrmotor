@@ -6535,3 +6535,39 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `stats.range_end_exclusive` o límites de inicio de día válidos; no crear runs
   ficticios para ello. Cuerpo de PR: `Docs-Impact: updated` y
   `Docs-Matrix-Impact: updated`.
+
+## 2026-11-04 — recuperación inicial Salesforce Interests por checkpoints
+
+- Alcance: `recover-initial` deja de recorrer F2 como una única operación. La
+  nueva recuperación usa cursor Salesforce ID, lotes configurables de 50 a
+  1.000 (500 por defecto), pasadas de reconciliación acotadas, checkpoints y
+  lease persistente. Se añaden consulta, reanudación y cancelación operator-only
+  (`recover-status`, `recover-resume`, `recover-cancel`). F5 interrumpido se
+  reinicia en un run aislado nuevo; no se adjunta ni acredita un run parcial.
+- Archivos funcionales: migración
+  `2026_11_04_120000_create_salesforce_interest_initial_recoveries.php`,
+  `InterestInitialCurrentRecoveryService`, `SalesforceInterestSyncService`,
+  `SalesforceInterestActivitySyncService`, comando de generaciones y pruebas
+  de `InterestGenerationTest`. La migración añade evidencia local; no toca
+  tablas legacy, Salesforce remoto, scheduler, workers, puntero ni publicación.
+- Seguridad e integridad: los checkpoints contienen hashes y contadores, no
+  payloads, tokens ni IDs Salesforce; un lease vivo impide dos escritores y
+  cada checkpoint verifica propietario. Un lote no confirmado se repite de
+  forma idempotente; cursor/orden inválidos, cobertura de borrados insuficiente,
+  conflictos o verificación no limpia fallan cerrados. La publicación conserva
+  su aprobación y evidencia revisada independientes.
+- Rendimiento: la extracción F2 evita OFFSET y limita memoria/trasacción por
+  lote; F2 local reusa versiones con contenido idéntico. No se ejecutó ningún
+  benchmark de volumen representativo ni se modificó InnoDB/MariaDB. La
+  recomendación de capacidad, lecturas concurrentes y ajuste de buffer pool
+  queda pendiente de una medición aislada autorizada.
+- Documentación: `docs/salesforce-interest-generations.md` describe el journal,
+  límites, comandos y recuperación; `docs/matriz-trazabilidad-kpi.md` registra
+  su linaje como operación sin alterar KPI. `PROJECT_CONTEXT.md` y
+  `DECISIONS.md` no cambian: no se modifica el contrato de lectores publicados
+  ni se adopta una decisión transversal irreversible.
+- Verificación documental ejecutada: revisión de diff y `git diff --check`.
+  El validador `scripts/check_documentation_integrity.py` queda pendiente de un
+  intérprete Python disponible y de un cuerpo de PR con `Docs-Impact: updated`
+  y `Docs-Matrix-Impact: updated`. La suite funcional y migración aislada deben
+  completar su resultado antes de despliegue; no se declara apto para producción.

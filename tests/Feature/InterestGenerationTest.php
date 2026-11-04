@@ -316,7 +316,64 @@ class InterestGenerationTest extends TestCase
         $this->assertSame('2026-10-29 00:00:00', SalesforceInterestActivityRun::findOrFail($this->store()->generation($candidate)->activity_run_id)->source_cutoff_at->utc()->toDateTimeString());
         $this->assertSame('2026-10-29 00:00:00', $result['evidence']['watermark']);
         $this->assertSame(['2026-10-29T13:37:00+00:00', '2026-10-29T00:00:00+00:00'], $client->deletionEnds);
+        $this->assertDatabaseHas('salesforce_interest_initial_recoveries', [
+            'candidate_generation_id' => $candidate, 'status' => 'completed', 'phase' => 'completed',
+        ]);
         $this->travelBack();
+    }
+
+    public function test_initial_recovery_retries_an_unacknowledged_batch_without_advancing_its_checkpoint(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $record = ['Id' => 'a01000000000000001', 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z', 'IsDeleted' => false];
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->store()->persist($source, [app(SalesforceInterestSyncService::class)->mapRecord($record, false)]);
+        $this->complete($source);
+        $client = new class($record) extends SalesforceClient
+        {
+            public int $interestQueries = 0;
+
+            public function __construct(private readonly array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                if (str_contains($soql, 'FROM Interes__c')) {
+                    $this->interestQueries++;
+                    if ($this->interestQueries >= 2 && $this->interestQueries <= 4) {
+                        throw new RuntimeException('Synthetic transient read interruption.');
+                    }
+                    yield [$this->record];
+
+                    return;
+                }
+                yield [];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
+                    'latestDateCovered' => $end->utc()->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Resume interrupted initial recovery safely.');
+            $this->fail('Expected the synthetic interruption.');
+        } catch (RuntimeException) {
+            $recovery = DB::table('salesforce_interest_initial_recoveries')->first();
+            $this->assertSame('failed', $recovery->status);
+            $this->assertSame('f2_reconcile', $recovery->phase);
+            $this->assertNull($recovery->checkpoint_salesforce_id);
+            $this->assertSame(1, $this->store()->rows($recovery->candidate_generation_id)->count());
+            $result = app(InterestInitialCurrentRecoveryService::class)->resume($recovery->id, 'Resume interrupted initial recovery safely.');
+            $this->assertSame('completed', $result['status']);
+            $this->assertSame(1, $this->store()->rows($result['generation_id'])->count());
+            $this->assertNull($this->store()->published());
+        } finally {
+            $this->travelBack();
+        }
     }
 
     public function test_current_initial_recovery_cli_refuses_remote_read_without_explicit_authorization(): void
