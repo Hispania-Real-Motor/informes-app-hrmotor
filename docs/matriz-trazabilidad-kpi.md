@@ -1,5 +1,13 @@
 # Matriz de trazabilidad de KPIs
 
+> Inventario mensual provisional de Interests: `salesforce_interest_monthly_recoveries`
+> no es fuente de KPI ni de informes. Solo registra inventario actual por mes,
+> con soft deletes observables; no certifica hard deletes, F5 ni cierre histórico.
+> La verificación remota mensual guarda solo contadores agregados de discrepancias
+> y no habilita ninguna métrica aunque resulte limpia.
+> Su evidencia persistente está minimizada a metadatos técnicos y hash canónico;
+> no almacena payload Salesforce ni datos personales de la respuesta remota.
+
 ### Dependencias de Campañas e Interests durante recuperación
 
 | Sección / evidencia | Condición de disponibilidad | Limitación |

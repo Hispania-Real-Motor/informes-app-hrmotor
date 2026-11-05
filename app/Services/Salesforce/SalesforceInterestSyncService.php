@@ -143,12 +143,14 @@ final class SalesforceInterestSyncService
      * Current-state, keyset-paginated query used only by the period recovery
      * journal. It is not historical evidence and is never used for publication.
      */
-    public function functionalPeriodSoql(CarbonInterface $start, CarbonInterface $end, ?string $afterId = null): string
+    public function functionalPeriodSoql(CarbonInterface $start, CarbonInterface $end, ?string $afterId = null, bool $includeDeleted = false): string
     {
         if ($afterId !== null && preg_match('/^[A-Za-z0-9]{18}$/', $afterId) !== 1) {
             throw new RuntimeException('Period recovery cursor is invalid.');
         }
         $cursor = $afterId === null ? '' : "\n    AND Id > '".str_replace("'", "\\'", $afterId)."'";
+
+        $deletedFilter = $includeDeleted ? '' : "IsDeleted = false\n    AND ";
 
         return <<<SOQL
 SELECT
@@ -180,8 +182,7 @@ SELECT
     IN_TAS_Vehiculo__c,
     IN_VEN_Oportunidad__c
 FROM Interes__c
-WHERE IsDeleted = false
-    AND ((IN_Fecha_Creacion_Origen__c >= {$this->soqlDateTime($start)} AND IN_Fecha_Creacion_Origen__c < {$this->soqlDateTime($end)})
+WHERE {$deletedFilter}((IN_Fecha_Creacion_Origen__c >= {$this->soqlDateTime($start)} AND IN_Fecha_Creacion_Origen__c < {$this->soqlDateTime($end)})
         OR (IN_Fecha_Creacion_Origen__c = NULL AND CreatedDate >= {$this->soqlDateTime($start)} AND CreatedDate < {$this->soqlDateTime($end)})){$cursor}
 ORDER BY Id ASC
 SOQL;

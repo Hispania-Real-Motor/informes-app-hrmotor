@@ -163,6 +163,14 @@ No cambian prioridades del clasificador, fecha de llamada, filtros, fórmulas ni
 exportaciones de Llamadas. Sin generación certificada, el lector rechaza usar
 legacy; debe validarse la regresión de sincronización/reproceso con esas
 condiciones. Las notas anteriores sobre tabla viva son históricas.
+
+### Nota técnica PR #111 — inventario mensual provisional
+
+Existe una reconstrucción mensual aislada de inventarios actuales de Interests.
+En esa modalidad `functionalPeriodSoql()` puede solicitar soft deletes con un
+parámetro opcional; la llamada ordinaria conserva el comportamiento anterior.
+No altera el lector publicado ni habilita clasificación, reproceso o KPI de
+Llamadas: F5 no está certificado y los hard deletes históricos no se acreditan.
 [Contrato transversal y límites](salesforce-interest-generations.md).
 
 La recuperación inicial F2/F5 reanudable mantiene su candidata aislada y no

@@ -628,6 +628,15 @@ materiales para readiness considera runs F2 publicados; la caché de opciones
 incluye generación. No cambian first touch, `functional_created_at`, filtros,
 atribución, ratios ni deduplicación, y no se reabren snapshots económicos.
 
+### Nota técnica PR #111 — inventario mensual provisional
+
+La reconstrucción mensual de Interests conserva inventarios actuales aislados
+por período funcional. Solo en ese flujo `functionalPeriodSoql()` puede incluir
+soft deletes mediante un parámetro opcional; el comportamiento ordinario se
+mantiene por defecto. No cambia la generación publicada usada por Campañas ni
+habilita readiness, atribución o KPI: F5 no está certificado y los hard deletes
+históricos no están acreditados.
+
 Esta garantía corresponde a la fuente Interest. Las atribuciones materializadas,
 fuentes publicitarias y otras fuentes conservan sus contratos de build/readiness;
 no se afirma una transacción global sobre ellas ni un token de carga multipetición

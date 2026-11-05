@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\Salesforce\InterestExternalEvidenceService;
 use App\Services\Salesforce\InterestGenerationStore;
 use App\Services\Salesforce\InterestInitialCurrentRecoveryService;
+use App\Services\Salesforce\InterestMonthlyRecoveryService;
 use App\Services\Salesforce\InterestPeriodRecoveryService;
 use App\Services\Salesforce\SalesforceInterestActivitySyncService;
 use App\Services\Salesforce\SalesforceInterestSyncService;
@@ -16,7 +17,7 @@ use RuntimeException;
 class ManageInterestGenerationCommand extends Command
 {
     protected $signature = 'salesforce:interest-generation
-        {action : prepare-initial, recover-initial, recover-status, recover-resume, recover-cancel, period-prepare, period-run, period-status, manifest, external-evidence, or publish-initial}
+        {action : prepare-initial, recover-initial, recover-status, recover-resume, recover-cancel, monthly-prepare, monthly-run, monthly-status, monthly-cancel, manifest, external-evidence, or publish-initial}
         {--generation= : Candidate identifier}
         {--source-generation= : Unpublished initial seed identifier for recover-initial}
         {--recovery-id= : Persistent initial recovery identifier}
@@ -37,6 +38,7 @@ class ManageInterestGenerationCommand extends Command
         InterestExternalEvidenceService $externalEvidence,
         InterestInitialCurrentRecoveryService $recovery,
         InterestPeriodRecoveryService $periodRecovery,
+        InterestMonthlyRecoveryService $monthlyRecovery,
     ): int {
         try {
             $action = $this->argument('action');
@@ -73,6 +75,42 @@ class ManageInterestGenerationCommand extends Command
                 $result = $recovery->recover((int) $source, $reason, InterestInitialCurrentRecoveryService::MAX_PASSES, $batch);
                 $this->line(json_encode($result['evidence'], JSON_THROW_ON_ERROR));
                 $this->info('Recovery candidate certified but not published. Scheduler state was not changed.');
+
+                return self::SUCCESS;
+            }
+            if (in_array($action, ['monthly-prepare', 'monthly-run', 'monthly-status', 'monthly-cancel'], true)) {
+                $period = (string) $this->option('period-id');
+                if ($action === 'monthly-prepare') {
+                    $reason = trim((string) $this->option('reason'));
+                    $start = (string) $this->option('functional-start');
+                    $end = (string) $this->option('functional-end');
+                    $batch = filter_var($this->option('batch-size'), FILTER_VALIDATE_INT);
+                    if ($this->option('allow-salesforce-read') !== true || preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) !== 1 || preg_match('/^\d{4}-\d{2}-\d{2}$/', $end) !== 1 || $batch === false) {
+                        throw new RuntimeException('Monthly preparation requires bounded dates, batch size, and read authorization.');
+                    }
+                    $this->line(json_encode($monthlyRecovery->status($monthlyRecovery->prepare(CarbonImmutable::parse($start, 'Europe/Madrid'), CarbonImmutable::parse($end, 'Europe/Madrid'), $reason, $batch)), JSON_THROW_ON_ERROR));
+
+                    return self::SUCCESS;
+                }
+                if (ctype_digit($period) === false || (int) $period < 1) {
+                    throw new RuntimeException('A valid monthly recovery identifier is required.');
+                }
+                if ($action === 'monthly-status') {
+                    $this->line(json_encode($monthlyRecovery->status((int) $period), JSON_THROW_ON_ERROR));
+
+                    return self::SUCCESS;
+                }
+                if ($action === 'monthly-cancel') {
+                    $monthlyRecovery->cancel((int) $period);
+                    $this->info('Monthly inventory recovery cancelled; evidence was retained.');
+
+                    return self::SUCCESS;
+                }
+                $reason = trim((string) $this->option('reason'));
+                if ($this->option('allow-salesforce-read') !== true) {
+                    throw new RuntimeException('Monthly recovery requires explicit Salesforce read authorization.');
+                }
+                $this->line(json_encode($monthlyRecovery->run((int) $period, $reason, $this->option('resume') === true), JSON_THROW_ON_ERROR));
 
                 return self::SUCCESS;
             }
