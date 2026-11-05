@@ -634,6 +634,13 @@ exportaciones. El texto anterior de la fase de transacciones por bloque describe
 el estado previo a generaciones.
 [Arquitectura y operación](salesforce-interest-generations.md).
 
+La recuperación inicial reanudable de F2/F5 no modifica esta selección: sus
+candidatas, checkpoints, leases y estados F5 solo son evidencia operativa hasta
+la publicación explícita. Un candidato aislado, incluso certificado, no
+alimenta atribución, opciones, readiness, snapshot, detalle, ratios ni CSV de
+Campañas. Se conservan first touch, `functional_created_at`, filtros,
+deduplicación, fórmulas y los límites de disponibilidad existentes.
+
 ### Recuperación diagnóstica progresiva de Interests (2026-11-03)
 
 La recuperación diagnóstica por períodos de Interests no modifica atribución,

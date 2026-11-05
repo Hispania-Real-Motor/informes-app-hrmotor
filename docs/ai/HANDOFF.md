@@ -6634,3 +6634,28 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   migraciones aisladas, Salesforce ni producción. Antes de despliegue, CI debe
   ejecutar la prueba de guardia y la suite aplicable. PR: `Docs-Impact: updated`
   y `Docs-Matrix-Impact: updated`.
+
+## PR #107 — alcance documental de recuperación inicial Interest
+
+- Se contrastó el diff desde `origin/main` `54814e22cf8c0375e4f6c812efa02c6ab7cafc7c`:
+  la recuperación inicial crea y reanuda una candidata F2/F5 aislada con
+  checkpoints y lease, sin publicación automática ni modificación del puntero.
+- Se actualizaron `docs/reglas-negocio-leads.md`, `docs/informe-llamadas.md`,
+  `docs/informe-campanas.md` y `docs/informe-reservas-ventas.md`, además de la
+  matriz y el runbook de generaciones. Los cuatro contratos declaran que una
+  candidata no publicada, incluso certificada o con F5 asociado sin verificar,
+  no es fuente oficial ni alternativa para sus lectores.
+- No cambian fuentes oficiales publicadas, fórmulas, fecha funcional, filtros,
+  universos, deduplicación, cierres, auditorías ni exportaciones de Interests,
+  Llamadas, Campañas o Reservas/Ventas. La disponibilidad actual conserva sus
+  rechazos controlados y no adopta tabla legacy ni datos del candidato.
+- Verificación documental: revisión del diff y `git diff --check`; no se
+  ejecutaron PHP, Python, MariaDB, benchmark, migraciones aisladas, Salesforce
+  ni producción. El validador requiere runtime Python y cuerpo de PR con
+  `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`.
+- Seguimiento de CI: `composer.lock` sube los componentes Symfony afectados a
+  `http-foundation` y `http-kernel` `v8.1.11`, `routing` `v8.1.11` y el
+  `var-dumper` necesario para la compatibilidad de `http-kernel` a `v8.1.10`.
+  El lock se contrastó con Packagist y etiquetas oficiales; no se pudieron
+  ejecutar Composer ni PHP localmente por ausencia de runtime. La CI debe
+  validar instalación y `composer audit --locked --no-dev`.

@@ -787,6 +787,14 @@ regresión integral y contratos de varias peticiones siguen sujetos a validació
 Las notas anteriores sobre tabla viva describen la fase previa.
 [Contrato transversal y límites](salesforce-interest-generations.md).
 
+La recuperación inicial F2/F5 reanudable no cambia la fuente efectiva de esta
+atribución: su candidata se mantiene aislada mediante checkpoints/lease y no se
+lee hasta una publicación explícita. Los estados intermedios —incluido F5
+asociado sin verificar o candidata certificada no publicada— no habilitan una
+atribución, una auditoría ni un resultado comercial. Permanecen iguales fecha
+funcional, límites UTC/Madrid, exclusión de eliminados, filtros, universo,
+deduplicación, fórmulas, cierres y exportaciones.
+
 ### Recuperación diagnóstica progresiva de Interests (2026-11-03)
 
 La recuperación diagnóstica por períodos de Interests no modifica la
