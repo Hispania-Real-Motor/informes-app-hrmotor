@@ -11,12 +11,12 @@ return new class extends Migration
     {
         Schema::create('salesforce_interest_initial_recoveries', function (Blueprint $table): void {
             $table->id();
-            $table->uuid('recovery_identifier')->unique();
+            $table->uuid('recovery_identifier')->unique('sf_iir_recovery_identifier_uq');
             $table->unsignedBigInteger('source_generation_id');
-            $table->unsignedBigInteger('candidate_generation_id')->unique();
-            $table->unsignedBigInteger('interest_run_id')->unique();
-            $table->string('status', 32)->index();
-            $table->string('phase', 48)->index();
+            $table->unsignedBigInteger('candidate_generation_id')->unique('sf_iir_candidate_generation_uq');
+            $table->unsignedBigInteger('interest_run_id')->unique('sf_iir_interest_run_uq');
+            $table->string('status', 32)->index('sf_iir_status_idx');
+            $table->string('phase', 48)->index('sf_iir_phase_idx');
             $table->string('checkpoint_salesforce_id', 18)->nullable();
             $table->unsignedSmallInteger('reconciliation_pass')->default(1);
             $table->unsignedSmallInteger('max_reconciliation_passes');

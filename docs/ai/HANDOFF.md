@@ -1,5 +1,36 @@
 # Handoff para agentes
 
+## 2026-11-05 — hotfix de identificadores SQL de recuperación inicial Interest
+
+- Problema: la migración `2026_11_04_120000_create_salesforce_interest_initial_recoveries`
+  generaba implícitamente nombres de índices únicos de 65, 69 y 61 caracteres.
+  MariaDB limita los identificadores a 64 caracteres y rechaza la creación antes
+  de que la migración se registre como aplicada.
+- Corrección: se fijaron nombres explícitos para los tres únicos y los índices
+  simples `status` y `phase`: `sf_iir_recovery_identifier_uq`,
+  `sf_iir_candidate_generation_uq`, `sf_iir_interest_run_uq`,
+  `sf_iir_status_idx` y `sf_iir_phase_idx`. Todos los índices y FK de esta
+  tabla quedan por debajo de 64 caracteres. No cambian columnas, unicidad,
+  selectividad, claves foráneas, F2/F5, publicación ni datos de generaciones.
+- Pruebas añadidas: `InterestInitialRecoverySchemaTest` comprueba el esquema,
+  unicidad e integridad referencial en la suite ordinaria. La prueba opt-in
+  `InterestInitialRecoveryMariaDbMigrationTest` comprueba `SHOW INDEX` e
+  `information_schema` tras `RefreshDatabase` en MariaDB 11 y solo acepta una
+  base local vacía, de entorno `testing`, con prefijo
+  `hrmotor_interest_recovery_test_`.
+- Verificación realizada: sintaxis PHP, Laravel Pint y `git diff --check`.
+  La ejecución local de PHPUnit quedó bloqueada por un autoload de Composer
+  temporal que no terminó en este host; Docker Desktop no expuso un daemon, por
+  lo que la integración MariaDB 11 no se ejecutó. La CI y una instancia local
+  efímera MariaDB 11 deben completar esas validaciones antes de despliegue.
+- Procedimiento productivo seguro: no ejecutar `migrate` hasta inspeccionar
+  manualmente la tabla pendiente con `SHOW TABLES` y `SHOW CREATE TABLE`. Si la
+  tabla parcial contiene filas o la migración figura como aplicada, detenerse y
+  escalar; este hotfix no borra ni repara automáticamente. Si sigue `Pending`
+  y la tabla parcial está vacía, la reparación debe ser aprobada y ejecutada
+  manualmente por operaciones antes de reintentar exclusivamente la migración.
+  No ejecutar `recover-initial`, scheduler ni ninguna operación Salesforce.
+
 ## 2026-11-04 — Campañas — endurecimiento de cobertura heredada de runs
 
 - Revisión de `CampaignDashboardDatasetService::syncRunCoverageRanges()`: los sincronizadores económicos invocan `ReportSyncRunService` con límites de días de proveedor `Europe/Madrid`; desde el contrato vigente persisten además `stats.range_start` y `stats.range_end_exclusive`. Esos campos son ahora autoritativos: una declaración presente pero inválida, incompleta o no creciente no puede ampliar el intervalo usando DATETIME heredados.
