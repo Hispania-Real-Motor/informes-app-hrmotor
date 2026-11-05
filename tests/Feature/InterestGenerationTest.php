@@ -536,6 +536,99 @@ class InterestGenerationTest extends TestCase
         }
     }
 
+    public function test_f5_finalization_guard_rejects_a_fenced_worker_before_association(): void
+    {
+        $candidate = $this->candidate('2026-10-28 15:57:00');
+        $this->store()->finishF2($candidate);
+        app(ReportSyncRunService::class)->complete(
+            ReportSyncRun::findOrFail($this->store()->generation($candidate)->interest_run_id),
+            CarbonImmutable::parse('2026-10-28 15:57:00', 'UTC'),
+        );
+        $client = new class extends SalesforceClient
+        {
+            public function __construct() {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield [];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        try {
+            app(SalesforceInterestActivitySyncService::class)->syncCurrentRecovery(
+                'Reject fenced F5 finalization safely.',
+                $candidate,
+                null,
+                fn (): bool => false,
+            );
+            $this->fail('Expected finalization guard rejection.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('failed safely', $exception->getMessage());
+            $generation = $this->store()->generation($candidate);
+            $this->assertFalse((bool) $generation->f5_complete);
+            $this->assertNull($generation->activity_run_id);
+            $this->assertDatabaseHas('salesforce_interest_activity_runs', ['status' => 'failed']);
+        }
+    }
+
+    public function test_recovery_resumes_when_f5_was_associated_before_its_operational_checkpoint(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->complete($source);
+        $record = ['Id' => 'a01000000000000001', 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z', 'IsDeleted' => false];
+        $client = new class($record) extends SalesforceClient
+        {
+            public function __construct(private readonly array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield str_contains($soql, 'FROM Interes__c') ? [$this->record] : [];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
+                    'latestDateCovered' => $end->utc()->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+        $activities = new class($client) extends SalesforceInterestActivitySyncService
+        {
+            public bool $interruptAfterAssociation = true;
+
+            public function syncCurrentRecovery(string $reason, int $generationId, ?callable $heartbeat = null, ?callable $finalizationGuard = null): array
+            {
+                $result = parent::syncCurrentRecovery($reason, $generationId, $heartbeat, $finalizationGuard);
+                if ($this->interruptAfterAssociation) {
+                    $this->interruptAfterAssociation = false;
+                    throw new RuntimeException('Synthetic interruption after F5 association.');
+                }
+
+                return $result;
+            }
+        };
+        $this->app->instance(SalesforceInterestActivitySyncService::class, $activities);
+
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Resume after F5 association without certification.');
+            $this->fail('Expected the post-association interruption.');
+        } catch (RuntimeException) {
+            $recovery = DB::table('salesforce_interest_initial_recoveries')->first();
+            $candidate = $this->store()->generation($recovery->candidate_generation_id);
+            $this->assertTrue((bool) $candidate->f5_complete);
+            $this->assertSame('validating', $candidate->status);
+            $this->assertSame('associated_unverified', app(InterestInitialCurrentRecoveryService::class)->status($recovery->id)['f5_status']);
+            $result = app(InterestInitialCurrentRecoveryService::class)->resume($recovery->id, 'Resume after F5 association without certification.');
+            $this->assertSame('completed', $result['status']);
+            $this->assertSame('certified', $this->store()->generation($result['generation_id'])->status);
+        } finally {
+            $this->travelBack();
+        }
+    }
+
     public function test_current_initial_recovery_cli_refuses_remote_read_without_explicit_authorization(): void
     {
         $this->artisan('salesforce:interest-generation', [

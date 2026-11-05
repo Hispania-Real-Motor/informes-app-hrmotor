@@ -48,9 +48,14 @@ class SalesforceInterestActivitySyncService
      *
      * @return array{run: SalesforceInterestActivityRun, stats: array<string, int|float|string|null>}
      */
-    public function syncCurrentRecovery(string $reason, int $generationId, ?callable $heartbeat = null): array
+    public function syncCurrentRecovery(
+        string $reason,
+        int $generationId,
+        ?callable $heartbeat = null,
+        ?callable $finalizationGuard = null,
+    ): array
     {
-        return $this->syncSnapshot($reason, $generationId, true, $heartbeat);
+        return $this->syncSnapshot($reason, $generationId, true, $heartbeat, $finalizationGuard);
     }
 
     /** Deterministic, non-identifying digest of a completed F5 materialization. */
@@ -95,7 +100,13 @@ class SalesforceInterestActivitySyncService
     }
 
     /** @return array{run: SalesforceInterestActivityRun, stats: array<string, int|float|string|null>} */
-    private function syncSnapshot(string $reason, ?int $generationId, bool $currentState, ?callable $heartbeat = null): array
+    private function syncSnapshot(
+        string $reason,
+        ?int $generationId,
+        bool $currentState,
+        ?callable $heartbeat = null,
+        ?callable $finalizationGuard = null,
+    ): array
     {
         if ($generationId === null) {
             throw new RuntimeException('F5 requires an explicit isolated F2 candidate.');
@@ -153,13 +164,21 @@ class SalesforceInterestActivitySyncService
                 }
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
 
-                $run->update([
-                    'status' => 'completed',
-                    'completed_at' => now('UTC'),
-                    'stats' => $stats,
-                    'error_message' => null,
-                ]);
-                $generations->finishF5($generationId, $run);
+                DB::transaction(function () use ($finalizationGuard, $run, $stats, $generations, $generationId): void {
+                    // For an initial recovery, this locks and verifies the
+                    // recovery lease before either the run or candidate may be
+                    // finalized. The two local transitions commit together.
+                    if ($finalizationGuard !== null && $finalizationGuard() !== true) {
+                        throw new RuntimeException('Initial recovery lease was lost.');
+                    }
+                    $run->update([
+                        'status' => 'completed',
+                        'completed_at' => now('UTC'),
+                        'stats' => $stats,
+                        'error_message' => null,
+                    ]);
+                    $generations->finishF5($generationId, $run);
+                });
             } catch (Throwable) {
                 // A current-state recovery retains its F2 checkpoint. Its F5
                 // materialization is restarted in a new run on resume; a

@@ -105,10 +105,16 @@ pasadas y no publica ni modifica la generación fuente, el scheduler ni los
 workers.
 
 F5 se reconstruye en un run nuevo contra la candidata F2 reconciliada; no se
-reutiliza el run histórico de la semilla. Si F5 se interrumpe, la candidata
+reutiliza el run histórico de la semilla. El paso que completa el run F5 y lo
+asocia a la candidata (`finishF5`) es atómico y se ejecuta bajo una guardia
+fenced del lease: un trabajador que lo haya perdido no puede completar ni
+asociar ese run. Si F5 se interrumpe antes de esa asociación, la candidata
 conserva F2 y el run parcial queda como evidencia sin adjuntarse; la reanudación
-crea un run F5 vacío nuevo y exige de nuevo el manifiesto/verificación completa.
-No se acredita ni reutiliza un F5 parcial. La evidencia `initial_current_recovery`
+crea un run F5 vacío nuevo. Si la caída ocurre después de la asociación pero
+antes de certificar, el journal queda `associated_unverified`: la reanudación
+reutiliza exclusivamente ese run ya completo para recalcular manifiesto y
+verificación, y no lo acredita hasta certificar. No se acredita ni reutiliza un
+F5 parcial. La evidencia `initial_current_recovery`
 guarda generación fuente y recuperada, watermark, runs F2/F5, manifiesto,
 contadores finales, cobertura de borrados y número de pasadas. Solo una
 generación certificada mediante esa evidencia puede llegar posteriormente a
@@ -151,13 +157,17 @@ php artisan salesforce:interest-generation recover-cancel --recovery-id=<id>
 ```
 
 `recover-status` es de solo lectura: informa estado/fase, pasada actual y máxima,
-contadores persistidos, estado F5, progreso de verificación, último checkpoint,
+contadores persistidos, estado F5 (`pending`, `materializing`, `associated_unverified`,
+`failed`, `verified` o `certified`), progreso de verificación, último checkpoint,
 caducidad calculada del lease, cobertura de borrados y motivo de fallo, sin
 payloads, tokens ni IDs Salesforce. El porcentaje solo es `100` tras completar
 todas las fases; antes se omite porque Salesforce no ofrece un total certificable
 para la recuperación progresiva. Los reintentos de lectura remota están acotados
 a tres por lote con espera corta; una vez agotados se conserva el checkpoint
-anterior.
+anterior. Para sobrevivir a una caída entre la asociación F5 y el checkpoint,
+el estado consultado deriva `associated_unverified` de una candidata todavía
+`validating` con F5 asociado y deriva `certified` si la generación ya lo está;
+no infiere que exista verificación o publicación.
 
 `InterestGenerationTest` incluye casos de publicación con evidencia coincidente,
 rechazo de evidencia alterada o ajena, ausencia de aprobación y cambio del

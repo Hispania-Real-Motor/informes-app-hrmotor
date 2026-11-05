@@ -90,6 +90,13 @@ final class InterestInitialCurrentRecoveryService
     {
         $r = DB::table('salesforce_interest_initial_recoveries')->find($id) ?? throw new RuntimeException('Initial recovery does not exist.');
         $c = $this->json($r->counters);
+        $candidate = DB::table('salesforce_interest_generations')->select(['status', 'f5_complete', 'activity_run_id'])
+            ->where('id', $r->candidate_generation_id)->first();
+        $f5Status = match (true) {
+            $candidate !== null && $candidate->status === 'certified' => 'certified',
+            $candidate !== null && (bool) $candidate->f5_complete && $candidate->activity_run_id !== null => 'associated_unverified',
+            default => $c['f5_status'] ?? 'pending',
+        };
         return ['recovery_id' => (int) $r->id, 'source_generation_id' => (int) $r->source_generation_id,
             'candidate_generation_id' => (int) $r->candidate_generation_id, 'status' => $r->status, 'phase' => $r->phase,
             'reconciliation_pass' => (int) $r->reconciliation_pass, 'max_reconciliation_passes' => (int) $r->max_reconciliation_passes,
@@ -98,7 +105,7 @@ final class InterestInitialCurrentRecoveryService
             'batches_completed' => (int) ($c['batches_completed'] ?? 0), 'changes_applied' => (int) ($c['changes_applied'] ?? 0),
             'errors' => (int) ($c['errors'] ?? 0), 'conflicts' => (int) ($c['conflicts'] ?? 0),
             'last_checkpoint_at' => $r->last_checkpoint_at, 'failure_code' => $r->error_code,
-            'f5_status' => $c['f5_status'] ?? 'pending', 'verification' => $c['verification'] ?? null,
+            'f5_status' => $f5Status, 'verification' => $c['verification'] ?? null,
             'lease_expires_at' => $r->heartbeat_at === null ? null : CarbonImmutable::parse($r->heartbeat_at, 'UTC')->addSeconds(self::LEASE_SECONDS)->toIso8601String(),
             'deletion_coverage' => $r->deletion_coverage === null ? null : $this->json($r->deletion_coverage)];
     }
@@ -129,12 +136,14 @@ final class InterestInitialCurrentRecoveryService
                 if ($r->phase === 'f5') {
                     // F5 resumes safely by rebuilding a fresh isolated run. Partial F5 rows stay unattached evidence.
                     if ($this->store->generation((int) $r->candidate_generation_id)->status === 'certified') {
-                        $this->checkpoint($id, $lease, 'completed', null, []);
+                        $this->checkpoint($id, $lease, 'completed', null, ['f5_status' => 'certified']);
                         continue;
                     }
                     $this->checkpoint($id, $lease, 'f5', null, ['f5_status' => 'materializing']);
                     $heartbeat = fn (): bool => $this->renewLease($id, $lease);
-                    $f5 = $this->activities->syncCurrentRecovery($reason, (int) $r->candidate_generation_id, $heartbeat);
+                    $finalizationGuard = fn (): bool => $this->guardF5Finalization($id, $lease);
+                    $f5 = $this->activities->syncCurrentRecovery($reason, (int) $r->candidate_generation_id, $heartbeat, $finalizationGuard);
+                    $this->checkpoint($id, $lease, 'f5', null, ['f5_status' => 'associated_unverified']);
                     $a = $this->activities->manifest($f5['run'], $heartbeat);
                     $v = $this->activities->verifyCurrentRecovery($f5['run'], (int) $r->candidate_generation_id, $heartbeat);
                     if (! $v['matches']) {
@@ -173,7 +182,10 @@ final class InterestInitialCurrentRecoveryService
                 $counters = $this->json($r->counters);
                 $counters['errors'] = (int) ($counters['errors'] ?? 0) + 1;
                 if ($r->phase === 'f5') {
-                    $counters['f5_status'] = 'failed';
+                    $counters['f5_status'] = DB::table('salesforce_interest_generations')
+                        ->where('id', $r->candidate_generation_id)->value('f5_complete')
+                        ? 'associated_unverified'
+                        : 'failed';
                 }
                 DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->where('lease_token', $lease)->update([
                     'status' => 'failed', 'error_code' => $this->code($e), 'failed_at' => now('UTC'),
@@ -383,6 +395,7 @@ final class InterestInitialCurrentRecoveryService
     /** @param array<string,int> $s */ private function clean(array $s): bool { return $s['content_mismatches']===0 && $s['salesforce_only']===0 && $s['candidate_only_unexplained']===0 && $s['conflicts']===0; }
     private function claim(int $id,string $reason,bool $resume): string { return DB::transaction(function () use($id,$reason,$resume): string { $r=DB::table('salesforce_interest_initial_recoveries')->where('id',$id)->lockForUpdate()->first(); if ($r===null || !hash_equals($r->reason_hash,hash('sha256',trim($reason))) || ($r->status==='running' && $this->live($r)) || (!$resume && $r->status!=='prepared') || ($resume && !in_array($r->status,['prepared','failed','running'],true))) throw new RuntimeException('Initial recovery is not compatible or safely resumable.'); $lease=(string) Str::uuid(); DB::table('salesforce_interest_initial_recoveries')->where('id',$id)->update(['status'=>'running','lease_token'=>$lease,'heartbeat_at'=>now('UTC'),'error_code'=>null,'failed_at'=>null,'updated_at'=>now()]); return $lease; }); }
     private function renewLease(int $id, string $lease): bool { $updated = DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['heartbeat_at' => now('UTC'), 'updated_at' => now()]); if ($updated !== 1) throw new RuntimeException('Initial recovery lease was lost.'); return true; }
+    private function guardF5Finalization(int $id, string $lease): bool { $this->owned($id, $lease, true); return $this->renewLease($id, $lease); }
     private function owned(int $id,string $lease,bool $lock=false): object { $q=DB::table('salesforce_interest_initial_recoveries')->where('id',$id)->where('lease_token',$lease); if($lock)$q->lockForUpdate(); return $q->first() ?? throw new RuntimeException('Initial recovery lease was lost.'); }
     private function live(object $r): bool { return $r->heartbeat_at !== null && CarbonImmutable::parse($r->heartbeat_at,'UTC')->gt(now('UTC')->subSeconds(self::LEASE_SECONDS)); }
     private function validate(string $reason,int $passes,int $batch): void { if(mb_strlen(trim($reason))<10||mb_strlen(trim($reason))>500||$passes<2||$passes>10||$batch<50||$batch>self::MAX_BATCH_SIZE) throw new RuntimeException('Initial recovery configuration is invalid.'); }

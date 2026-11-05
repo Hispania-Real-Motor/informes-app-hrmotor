@@ -6584,11 +6584,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   clave y con heartbeat. Una discrepancia abre otra pasada de reconciliación
   hasta el máximo; después falla cerrado. No cambia la evidencia exigida, la
   semilla, versiones inmutables, publicación ni el puntero.
-- F5: el estado persistido distingue pendiente, materialización, fallo y
-  verificación. La creación de actividades, manifiesto y cotejo renuevan el
-  lease; la certificación y el checkpoint final se encierran en la transacción
-  fenced. Un F5 interrumpido sigue reiniciándose en un run aislado y no acredita
-  sus filas parciales.
+- F5: el estado persistido distingue pendiente, materialización, asociación sin
+  verificar, fallo, verificación y certificación. La creación de actividades,
+  manifiesto y cotejo renuevan el lease; la certificación y el checkpoint final
+  se encierran en la transacción fenced. Un F5 interrumpido antes de asociarse
+  se reinicia en un run aislado y no acredita sus filas parciales.
 - Operación: `recover-status` añade pasada actual/máxima, estado F5, progreso de
   verificación y caducidad calculada del lease. La salida mantiene datos
   operativos agregados y no expone payloads, tokens ni IDs Salesforce. No se
@@ -6604,3 +6604,33 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   Salesforce ni producción. Estas pruebas deben ejecutarse por CI/entorno PHP
   antes de despliegue. Mantener en la PR `Docs-Impact:
   updated` y `Docs-Matrix-Impact: updated`.
+
+## 2026-11-05 — finalización F5 atómica y estado asociado sin certificar
+
+- Corrección sobre `8ff088a`: el estado `completed` del run F5 y su asociación
+  `finishF5` con la candidata se confirman en una sola transacción, después de
+  comprobar la guardia fenced del lease. Un worker que perdió el lease no puede
+  completar el run ni adjuntarlo; la prueba añadida cubre ese rechazo antes de
+  la asociación.
+- Recuperación: si el proceso cae tras esa asociación pero antes de manifiesto,
+  verificación o certificación, el journal conserva/deriva
+  `associated_unverified`. La reanudación reutiliza solo el run F5 ya completo
+  para verificarlo y certificarlo; no lo publica ni lo trata como evidencia
+  suficiente. Una interrupción previa a la asociación conserva F2 y obliga a
+  un F5 nuevo, sin reutilizar filas parciales.
+- Operación: `recover-status` deriva `associated_unverified` cuando detecta F5
+  asociado en una candidata `validating`, incluso si cayó antes de persistir ese
+  checkpoint; si la candidata ya es `certified`, devuelve ese estado. Esta
+  derivación no acredita verificación, evidencia revisada ni publicación.
+- Pruebas añadidas: una guardia sintética rechaza la finalización fenced antes
+  de asociar F5; otra simula la caída después de asociarlo y antes del
+  checkpoint, comprueba `associated_unverified` en estado y que la reanudación
+  termina la certificación sin crear una publicación.
+- Documentación: se actualizaron `docs/salesforce-interest-generations.md`,
+  `docs/matriz-trazabilidad-kpi.md` y este handoff. Sin migración, cambios de
+  KPI, fórmulas, fuente, universo, exportación, endpoint web, scheduler o
+  workers. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian.
+- Verificación pendiente: no se ejecutaron PHP, MariaDB, Python, benchmark,
+  migraciones aisladas, Salesforce ni producción. Antes de despliegue, CI debe
+  ejecutar la prueba de guardia y la suite aplicable. PR: `Docs-Impact: updated`
+  y `Docs-Matrix-Impact: updated`.
