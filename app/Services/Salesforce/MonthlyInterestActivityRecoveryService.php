@@ -379,7 +379,13 @@ final class MonthlyInterestActivityRecoveryService
     private function recordFailure(int $id, string $lease, string $stage, Throwable $error): void
     {
         $category = $error instanceof MonthlyInterestRecoveryLeaseLost ? 'lease_lost' : ($error instanceof QueryException ? 'database_persist_failed' : match ($stage) {
-            'salesforce_query', 'verification_query' => 'salesforce_query_failed', 'mapping' => 'mapping_failed', 'content_hash' => 'hash_failed', 'database_persist' => 'database_persist_failed', 'checkpoint_update' => 'checkpoint_failed', 'verification_database' => 'verification_database_failed', default => 'unexpected_failure',
+            'salesforce_query', 'verification_query' => 'salesforce_query_failed',
+            'mapping' => 'mapping_failed',
+            'content_hash' => 'hash_failed',
+            'database_persist' => 'database_persist_failed',
+            'checkpoint_update' => 'checkpoint_failed',
+            'verification_database' => 'verification_database_failed',
+            default => 'unexpected_failure',
         });
         $meta = ['exception_type' => class_basename($error), 'pages_completed' => (int) DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', $id)->value('pages_completed'), 'occurred_at' => now('UTC')->toIso8601String()];
         $updated = DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['status' => 'failed', 'failed_at' => now('UTC'), 'error_code' => $category, 'error_stage' => $stage, 'error_meta' => json_encode($meta, JSON_THROW_ON_ERROR), 'lease_token' => null, 'updated_at' => now()]);
