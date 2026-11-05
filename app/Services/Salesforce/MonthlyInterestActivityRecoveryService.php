@@ -20,7 +20,9 @@ final class MonthlyInterestActivityRecoveryService
 
     private const ID_PATTERN = '/^[A-Za-z0-9]{18}$/';
 
-    public function __construct(private readonly SalesforceClient $client) {}
+    public function __construct(
+        private readonly SalesforceClient $client,
+    ) {}
 
     public function prepare(int $monthlyRecoveryId, string $reason, int $batch = self::DEFAULT_BATCH_SIZE): int
     {
