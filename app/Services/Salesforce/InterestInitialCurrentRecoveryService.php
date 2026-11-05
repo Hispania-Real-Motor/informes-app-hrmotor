@@ -15,8 +15,11 @@ use Throwable;
 final class InterestInitialCurrentRecoveryService
 {
     public const MAX_PASSES = 3;
+
     public const DEFAULT_BATCH_SIZE = 500;
+
     private const MAX_BATCH_SIZE = 1000;
+
     private const LEASE_SECONDS = 900;
 
     public function __construct(
@@ -97,6 +100,7 @@ final class InterestInitialCurrentRecoveryService
             $candidate !== null && (bool) $candidate->f5_complete && $candidate->activity_run_id !== null => 'associated_unverified',
             default => $c['f5_status'] ?? 'pending',
         };
+
         return ['recovery_id' => (int) $r->id, 'source_generation_id' => (int) $r->source_generation_id,
             'candidate_generation_id' => (int) $r->candidate_generation_id, 'status' => $r->status, 'phase' => $r->phase,
             'reconciliation_pass' => (int) $r->reconciliation_pass, 'max_reconciliation_passes' => (int) $r->max_reconciliation_passes,
@@ -123,20 +127,24 @@ final class InterestInitialCurrentRecoveryService
                     $this->interests->applyDeletionLog((int) $r->candidate_generation_id, CarbonImmutable::parse($r->source_cutoff_at, 'UTC'), CarbonImmutable::parse($r->watermark_at, 'UTC'), $stats, fn (): bool => $this->renewLease($id, $lease));
                     $this->renewLease($id, $lease);
                     $this->checkpoint($id, $lease, 'f2_extract', null, ['coverage' => ['earliest_date_available' => $stats['deletion_log_earliest'] ?? null, 'latest_date_covered' => $stats['deletion_log_covered_through'] ?? null, 'records' => $stats['deletion_log_records'] ?? 0]]);
+
                     continue;
                 }
                 if (in_array($r->phase, ['f2_extract', 'f2_reconcile'], true)) {
                     $this->batch($id, $lease, $r, $r->phase === 'f2_reconcile');
+
                     continue;
                 }
                 if ($r->phase === 'f2_verify') {
                     $this->verifyBatch($id, $lease, $r);
+
                     continue;
                 }
                 if ($r->phase === 'f5') {
                     // F5 resumes safely by rebuilding a fresh isolated run. Partial F5 rows stay unattached evidence.
                     if ($this->store->generation((int) $r->candidate_generation_id)->status === 'certified') {
                         $this->checkpoint($id, $lease, 'completed', null, ['f5_status' => 'certified']);
+
                         continue;
                     }
                     $this->checkpoint($id, $lease, 'f5', null, ['f5_status' => 'materializing']);
@@ -161,6 +169,7 @@ final class InterestInitialCurrentRecoveryService
                         $this->store->certifyInitialCurrentRecovery((int) $r->candidate_generation_id, $evidence);
                         $this->checkpoint($id, $lease, 'completed', null, ['f5_status' => 'verified']);
                     });
+
                     continue;
                 }
                 if ($r->phase === 'completed') {
@@ -204,13 +213,15 @@ final class InterestInitialCurrentRecoveryService
         if (count($records) > (int) $r->batch_size) {
             throw new RuntimeException('Salesforce batch exceeded its configured bound.');
         }
-        $last = $r->checkpoint_salesforce_id; $rows = [];
+        $last = $r->checkpoint_salesforce_id;
+        $rows = [];
         foreach ($records as $record) {
             $sfId = trim((string) data_get($record, 'Id'));
             if (preg_match('/^[A-Za-z0-9]{18}$/', $sfId) !== 1 || ($last !== null && strcmp($sfId, $last) <= 0)) {
                 throw new RuntimeException('Salesforce Interest recovery cursor or ordering is invalid.');
             }
-            $last = $sfId; $rows[] = $this->interests->mapRecord($record, (bool) data_get($record, 'IsDeleted', false));
+            $last = $sfId;
+            $rows[] = $this->interests->mapRecord($record, (bool) data_get($record, 'IsDeleted', false));
         }
         if ($reconcile && $rows !== []) {
             $current = $this->store->rows((int) $r->candidate_generation_id)->whereIn('version.salesforce_id', array_column($rows, 'salesforce_id'))->get()->keyBy('salesforce_id');
@@ -224,13 +235,20 @@ final class InterestInitialCurrentRecoveryService
             $write = ['inserted' => 0, 'updated' => 0, 'conflicts' => 0];
             foreach (array_chunk($rows, 200) as $chunk) {
                 $result = $this->store->persist((int) $r->candidate_generation_id, $chunk);
-                foreach ($write as $key => $_) { $write[$key] += $result[$key]; }
+                foreach ($write as $key => $_) {
+                    $write[$key] += $result[$key];
+                }
             }
-            $phase = $reconcile ? 'f2_reconcile' : 'f2_extract'; $cursor = $last; $pass = null;
+            $phase = $reconcile ? 'f2_reconcile' : 'f2_extract';
+            $cursor = $last;
+            $pass = null;
             if (count($records) < (int) $r->batch_size) {
                 $cursor = null;
-                if (! $reconcile) { $phase = 'f2_reconcile'; }
-                else { $phase = 'f2_verify'; }
+                if (! $reconcile) {
+                    $phase = 'f2_reconcile';
+                } else {
+                    $phase = 'f2_verify';
+                }
             }
             $checkpoint = ['pass' => $pass, 'delta' => ['records_observed' => count($records), 'records_confirmed' => count($records), 'batches_completed' => 1, 'changes_applied' => $write['inserted'] + $write['updated'], 'conflicts' => $write['conflicts']]];
             if ($phase === 'f2_verify') {
@@ -245,8 +263,21 @@ final class InterestInitialCurrentRecoveryService
     {
         $last = null;
         for ($try = 1; $try <= 3; $try++) {
-            try { $rows = []; foreach ($this->client->queryPages($soql, true) as $page) { foreach ($page as $row) { $rows[] = $row; } } return $rows; }
-            catch (Throwable $e) { $last = $e; if ($try < 3) { usleep($try * 200000); } }
+            try {
+                $rows = [];
+                foreach ($this->client->queryPages($soql, true) as $page) {
+                    foreach ($page as $row) {
+                        $rows[] = $row;
+                    }
+                }
+
+                return $rows;
+            } catch (Throwable $e) {
+                $last = $e;
+                if ($try < 3) {
+                    usleep($try * 200000);
+                }
+            }
         }
         throw new RuntimeException('Salesforce batch read exhausted its bounded retries.', 0, $last);
     }
@@ -254,14 +285,27 @@ final class InterestInitialCurrentRecoveryService
     private function checkpoint(int $id, string $lease, string $phase, ?string $cursor, array $data): void
     {
         DB::transaction(function () use ($id, $lease, $phase, $cursor, $data): void {
-            $r = $this->owned($id, $lease, true); $c = $this->json($r->counters);
-            foreach (($data['delta'] ?? []) as $key => $value) { $c[$key] = ($c[$key] ?? 0) + $value; }
-            if (isset($data['f2'])) { $c['f2'] = $data['f2']; }
-            if (isset($data['verification'])) { $c['verification'] = $data['verification']; }
-            if (isset($data['f5_status'])) { $c['f5_status'] = $data['f5_status']; }
+            $r = $this->owned($id, $lease, true);
+            $c = $this->json($r->counters);
+            foreach (($data['delta'] ?? []) as $key => $value) {
+                $c[$key] = ($c[$key] ?? 0) + $value;
+            }
+            if (isset($data['f2'])) {
+                $c['f2'] = $data['f2'];
+            }
+            if (isset($data['verification'])) {
+                $c['verification'] = $data['verification'];
+            }
+            if (isset($data['f5_status'])) {
+                $c['f5_status'] = $data['f5_status'];
+            }
             $update = ['phase' => $phase, 'checkpoint_salesforce_id' => $cursor, 'counters' => json_encode($c, JSON_THROW_ON_ERROR), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()];
-            if (isset($data['coverage'])) { $update['deletion_coverage'] = json_encode($data['coverage'], JSON_THROW_ON_ERROR); }
-            if ($data['pass'] ?? null) { $update['reconciliation_pass'] = $data['pass']; }
+            if (isset($data['coverage'])) {
+                $update['deletion_coverage'] = json_encode($data['coverage'], JSON_THROW_ON_ERROR);
+            }
+            if ($data['pass'] ?? null) {
+                $update['reconciliation_pass'] = $data['pass'];
+            }
             DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->where('lease_token', $lease)->update($update);
         });
     }
@@ -306,6 +350,7 @@ final class InterestInitialCurrentRecoveryService
                 $verification['remote_rows']++;
                 if (! $local->valid() || (string) $local->current()->salesforce_id !== $sfId) {
                     $verification['salesforce_only']++;
+
                     continue;
                 }
                 $current = $local->current();
@@ -391,17 +436,100 @@ final class InterestInitialCurrentRecoveryService
             }
         }
     }
-    /** @param array<string,int> $s */ private function localOnly(object $row, array &$s): void { ((bool) $row->is_deleted && $row->deletion_detection_source === 'get_deleted') ? $s['tombstones']++ : $s['candidate_only_unexplained']++; }
-    /** @param array<string,int> $s */ private function clean(array $s): bool { return $s['content_mismatches']===0 && $s['salesforce_only']===0 && $s['candidate_only_unexplained']===0 && $s['conflicts']===0; }
-    private function claim(int $id,string $reason,bool $resume): string { return DB::transaction(function () use($id,$reason,$resume): string { $r=DB::table('salesforce_interest_initial_recoveries')->where('id',$id)->lockForUpdate()->first(); if ($r===null || !hash_equals($r->reason_hash,hash('sha256',trim($reason))) || ($r->status==='running' && $this->live($r)) || (!$resume && $r->status!=='prepared') || ($resume && !in_array($r->status,['prepared','failed','running'],true))) throw new RuntimeException('Initial recovery is not compatible or safely resumable.'); $lease=(string) Str::uuid(); DB::table('salesforce_interest_initial_recoveries')->where('id',$id)->update(['status'=>'running','lease_token'=>$lease,'heartbeat_at'=>now('UTC'),'error_code'=>null,'failed_at'=>null,'updated_at'=>now()]); return $lease; }); }
-    private function renewLease(int $id, string $lease): bool { $updated = DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['heartbeat_at' => now('UTC'), 'updated_at' => now()]); if ($updated !== 1) throw new RuntimeException('Initial recovery lease was lost.'); return true; }
-    private function guardF5Finalization(int $id, string $lease): bool { $this->owned($id, $lease, true); return $this->renewLease($id, $lease); }
-    private function owned(int $id,string $lease,bool $lock=false): object { $q=DB::table('salesforce_interest_initial_recoveries')->where('id',$id)->where('lease_token',$lease); if($lock)$q->lockForUpdate(); return $q->first() ?? throw new RuntimeException('Initial recovery lease was lost.'); }
-    private function live(object $r): bool { return $r->heartbeat_at !== null && CarbonImmutable::parse($r->heartbeat_at,'UTC')->gt(now('UTC')->subSeconds(self::LEASE_SECONDS)); }
-    private function validate(string $reason,int $passes,int $batch): void { if(mb_strlen(trim($reason))<10||mb_strlen(trim($reason))>500||$passes<2||$passes>10||$batch<50||$batch>self::MAX_BATCH_SIZE) throw new RuntimeException('Initial recovery configuration is invalid.'); }
-    private function configurationHash(int $source,string $reason,int $passes,int $batch): string { return hash('sha256',json_encode([$source,hash('sha256',trim($reason)),$passes,$batch],JSON_THROW_ON_ERROR)); }
-    /** @return array<string,mixed> */ private function json(?string $value): array { return $value===null?[]:json_decode($value,true,64,JSON_THROW_ON_ERROR); }
-    /** @return array<string,int> */ private function emptyCounters(): array { return ['records_observed'=>0,'records_confirmed'=>0,'batches_completed'=>0,'changes_applied'=>0,'errors'=>0,'conflicts'=>0]; }
-    /** @return array<string,int> */ private function emptyVerification(): array { return ['remote_rows'=>0,'candidate_rows'=>0,'content_matches'=>0,'content_mismatches'=>0,'state_mismatches'=>0,'salesforce_only'=>0,'candidate_only_unexplained'=>0,'tombstones'=>0,'conflicts'=>0]; }
-    private function code(Throwable $e): string { return match(true) { str_contains($e->getMessage(),'cursor'),str_contains($e->getMessage(),'ordering')=>'integrity_cursor_or_order',str_contains($e->getMessage(),'verification'),str_contains($e->getMessage(),'conflict')=>'integrity_verification',str_contains($e->getMessage(),'retries')=>'remote_transient_exhausted',default=>'recovery_failed'}; }
+
+    /** @param array<string,int> $s */
+    private function localOnly(object $row, array &$s): void
+    {
+        ((bool) $row->is_deleted && $row->deletion_detection_source === 'get_deleted') ? $s['tombstones']++ : $s['candidate_only_unexplained']++;
+    }
+
+    /** @param array<string,int> $s */
+    private function clean(array $s): bool
+    {
+        return $s['content_mismatches'] === 0 && $s['salesforce_only'] === 0 && $s['candidate_only_unexplained'] === 0 && $s['conflicts'] === 0;
+    }
+
+    private function claim(int $id, string $reason, bool $resume): string
+    {
+        return DB::transaction(function () use ($id, $reason, $resume): string {
+            $r = DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->lockForUpdate()->first();
+            if ($r === null || ! hash_equals($r->reason_hash, hash('sha256', trim($reason))) || ($r->status === 'running' && $this->live($r)) || (! $resume && $r->status !== 'prepared') || ($resume && ! in_array($r->status, ['prepared', 'failed', 'running'], true))) {
+                throw new RuntimeException('Initial recovery is not compatible or safely resumable.');
+            }
+
+            $lease = (string) Str::uuid();
+            DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->update(['status' => 'running', 'lease_token' => $lease, 'heartbeat_at' => now('UTC'), 'error_code' => null, 'failed_at' => null, 'updated_at' => now()]);
+
+            return $lease;
+        });
+    }
+
+    private function renewLease(int $id, string $lease): bool
+    {
+        $updated = DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['heartbeat_at' => now('UTC'), 'updated_at' => now()]);
+        if ($updated !== 1) {
+            throw new RuntimeException('Initial recovery lease was lost.');
+        }
+
+        return true;
+    }
+
+    private function guardF5Finalization(int $id, string $lease): bool
+    {
+        $this->owned($id, $lease, true);
+
+        return $this->renewLease($id, $lease);
+    }
+
+    private function owned(int $id, string $lease, bool $lock = false): object
+    {
+        $q = DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->where('lease_token', $lease);
+        if ($lock) {
+            $q->lockForUpdate();
+        }
+
+        return $q->first() ?? throw new RuntimeException('Initial recovery lease was lost.');
+    }
+
+    private function live(object $r): bool
+    {
+        return $r->heartbeat_at !== null && CarbonImmutable::parse($r->heartbeat_at, 'UTC')->gt(now('UTC')->subSeconds(self::LEASE_SECONDS));
+    }
+
+    private function validate(string $reason, int $passes, int $batch): void
+    {
+        if (mb_strlen(trim($reason)) < 10 || mb_strlen(trim($reason)) > 500 || $passes < 2 || $passes > 10 || $batch < 50 || $batch > self::MAX_BATCH_SIZE) {
+            throw new RuntimeException('Initial recovery configuration is invalid.');
+        }
+    }
+
+    private function configurationHash(int $source, string $reason, int $passes, int $batch): string
+    {
+        return hash('sha256', json_encode([$source, hash('sha256', trim($reason)), $passes, $batch], JSON_THROW_ON_ERROR));
+    }
+
+    /** @return array<string,mixed> */
+    private function json(?string $value): array
+    {
+        return $value === null ? [] : json_decode($value, true, 64, JSON_THROW_ON_ERROR);
+    }
+
+    /** @return array<string,int> */
+    private function emptyCounters(): array
+    {
+        return ['records_observed' => 0, 'records_confirmed' => 0, 'batches_completed' => 0, 'changes_applied' => 0, 'errors' => 0, 'conflicts' => 0];
+    }
+
+    /** @return array<string,int> */
+    private function emptyVerification(): array
+    {
+        return ['remote_rows' => 0, 'candidate_rows' => 0, 'content_matches' => 0, 'content_mismatches' => 0, 'state_mismatches' => 0, 'salesforce_only' => 0, 'candidate_only_unexplained' => 0, 'tombstones' => 0, 'conflicts' => 0];
+    }
+
+    private function code(Throwable $e): string
+    {
+        return match (true) {
+            str_contains($e->getMessage(), 'cursor'),str_contains($e->getMessage(), 'ordering') => 'integrity_cursor_or_order',str_contains($e->getMessage(), 'verification'),str_contains($e->getMessage(), 'conflict') => 'integrity_verification',str_contains($e->getMessage(), 'retries') => 'remote_transient_exhausted',default => 'recovery_failed'
+        };
+    }
 }

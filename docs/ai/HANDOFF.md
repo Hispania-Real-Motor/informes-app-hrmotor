@@ -6663,3 +6663,17 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   reanudable y que la candidata sigue aislada/sin publicar. No se marca la
   candidata como fallida porque ese estado impediría el reintento controlado;
   tampoco se habilita el puntero de publicación.
+
+## 2026-11-05 — corrección de calidad CI de PR #107
+
+- Se aplicó Laravel Pint `v1.29.1` a los dos servicios señalados por la CI:
+  `InterestInitialCurrentRecoveryService` y
+  `SalesforceInterestActivitySyncService`. El cambio es exclusivamente de
+  estilo; no altera los límites del lease, los checkpoints, las transacciones
+  fenced, las transiciones F2/F5 ni la publicación de la generación.
+- Verificaciones locales: Pint en modo `--test`, `php -l` de ambos servicios y
+  `git diff --check`, todos correctos. El intérprete PHP oficial se usó de forma
+  temporal solo para ejecutar Pint y no se incorporó al repositorio.
+- No hay migraciones, configuración, variables de entorno ni acciones de
+  producción asociadas. La suite completa y `composer audit` quedan a cargo de
+  la CI, que ya debe reevaluar la revisión con el `composer.lock` corregido.

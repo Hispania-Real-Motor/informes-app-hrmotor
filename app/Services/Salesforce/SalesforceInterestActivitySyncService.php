@@ -53,8 +53,7 @@ class SalesforceInterestActivitySyncService
         int $generationId,
         ?callable $heartbeat = null,
         ?callable $finalizationGuard = null,
-    ): array
-    {
+    ): array {
         return $this->syncSnapshot($reason, $generationId, true, $heartbeat, $finalizationGuard);
     }
 
@@ -106,8 +105,7 @@ class SalesforceInterestActivitySyncService
         bool $currentState,
         ?callable $heartbeat = null,
         ?callable $finalizationGuard = null,
-    ): array
-    {
+    ): array {
         if ($generationId === null) {
             throw new RuntimeException('F5 requires an explicit isolated F2 candidate.');
         }
