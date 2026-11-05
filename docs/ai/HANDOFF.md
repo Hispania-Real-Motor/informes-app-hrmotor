@@ -6571,3 +6571,36 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   intérprete Python disponible y de un cuerpo de PR con `Docs-Impact: updated`
   y `Docs-Matrix-Impact: updated`. La suite funcional y migración aislada deben
   completar su resultado antes de despliegue; no se declara apto para producción.
+
+## 2026-11-05 — fencing y progreso persistente de recuperación inicial Interests
+
+- Corrección sobre `f94782c`: el lease se renueva y comprueba antes/después de
+  las lecturas F2, mientras se aplican borrados `getDeleted`, durante el merge
+  F2 local/remoto y en cada tramo material de F5. Si otro propietario toma una
+  recuperación caducada, el worker anterior queda fenced y no puede escribir un
+  checkpoint ni registrar un fallo sobre la ejecución nueva.
+- Verificación F2: ahora conserva cursor y contadores de merge por `Id` y
+  retoma el último rango totalmente comparado; la cola local se recorre por
+  clave y con heartbeat. Una discrepancia abre otra pasada de reconciliación
+  hasta el máximo; después falla cerrado. No cambia la evidencia exigida, la
+  semilla, versiones inmutables, publicación ni el puntero.
+- F5: el estado persistido distingue pendiente, materialización, fallo y
+  verificación. La creación de actividades, manifiesto y cotejo renuevan el
+  lease; la certificación y el checkpoint final se encierran en la transacción
+  fenced. Un F5 interrumpido sigue reiniciándose en un run aislado y no acredita
+  sus filas parciales.
+- Operación: `recover-status` añade pasada actual/máxima, estado F5, progreso de
+  verificación y caducidad calculada del lease. La salida mantiene datos
+  operativos agregados y no expone payloads, tokens ni IDs Salesforce. No se
+  añade endpoint web ni se habilita scheduler o worker.
+- Documentación actualizada: `docs/salesforce-interest-generations.md` y
+  `docs/matriz-trazabilidad-kpi.md`; no se modifica `PROJECT_CONTEXT.md` ni
+  `DECISIONS.md`, pues no cambia el contrato de lectura publicada ni hay una
+  decisión irreversible adicional.
+- Pruebas añadidas: `InterestGenerationTest` cubre worker F2 fenced,
+  verificación F2 que retoma cursor y F5 fallido que conserva F2 y reinicia un
+  run aislado. Verificación ejecutada: revisión del diff y `git diff --check`
+  correctos. No se ejecutaron PHP, Python, migraciones aisladas, benchmark,
+  Salesforce ni producción. Estas pruebas deben ejecutarse por CI/entorno PHP
+  antes de despliegue. Mantener en la PR `Docs-Impact:
+  updated` y `Docs-Matrix-Impact: updated`.

@@ -95,7 +95,10 @@ compara hash de contenido y solo escribe versiones para altas o diferencias.
 Cada lote persiste en transacciones pequeñas; el checkpoint se confirma después
 del lote. Una caída antes del checkpoint repite el lote: la persistencia de
 versiones/memberships es idempotente y el cursor nunca lo salta. Un ID inválido,
-fuera de orden o que no progresa bloquea la recuperación. Los hard-deletes
+fuera de orden o que no progresa bloquea la recuperación. El lease se renueva
+antes y después de la lectura F2 y mientras se aplican los bloques de
+`getDeleted`; perderlo cerca la ejecución anterior y evita que ésta confirme o
+marque fallida una recuperación tomada por otro propietario. Los hard-deletes
 requieren cobertura válida de `getDeleted`; una fila local ausente sin esa
 evidencia hace fallar la candidata. La reconciliación tiene un máximo de tres
 pasadas y no publica ni modifica la generación fuente, el scheduler ni los
@@ -124,7 +127,10 @@ run F2, fase, cursor, lote, pasadas, lease/heartbeat, corte, cobertura de
 borrados, contadores, hashes de configuración y motivo, error y tiempos. No
 almacena payloads de Salesforce ni añade una fuente certificada alternativa.
 La recuperación tiene exclusión de escritor mediante lease persistente de 15
-minutos y verificación de propietario en cada checkpoint. `recover-initial`
+minutos y verificación de propietario en cada checkpoint. El heartbeat se
+renueva también durante F5 (lectura de Task/Event, persistencia, manifiesto y
+verificación) y el cierre F2/F5 se protege con el mismo fencing transaccional.
+`recover-initial`
 reanuda automáticamente solo una ejecución no finalizada con la misma semilla,
 motivo y configuración; un proceso con heartbeat vigente no puede ser tomado.
 `recover-resume` solo acepta una recuperación `prepared`, `failed` o `running`
@@ -144,12 +150,14 @@ php artisan salesforce:interest-generation recover-resume --recovery-id=<id> --a
 php artisan salesforce:interest-generation recover-cancel --recovery-id=<id>
 ```
 
-`recover-status` es de solo lectura: informa estado/fase, contadores persistidos,
-último checkpoint, cobertura de borrados y motivo de fallo, sin payloads, tokens
-ni IDs Salesforce. El porcentaje solo es `100` tras completar todas las fases;
-antes se omite porque Salesforce no ofrece un total certificable para la
-recuperación progresiva. Los reintentos de lectura remota están acotados a tres
-por lote con espera corta; una vez agotados se conserva el checkpoint anterior.
+`recover-status` es de solo lectura: informa estado/fase, pasada actual y máxima,
+contadores persistidos, estado F5, progreso de verificación, último checkpoint,
+caducidad calculada del lease, cobertura de borrados y motivo de fallo, sin
+payloads, tokens ni IDs Salesforce. El porcentaje solo es `100` tras completar
+todas las fases; antes se omite porque Salesforce no ofrece un total certificable
+para la recuperación progresiva. Los reintentos de lectura remota están acotados
+a tres por lote con espera corta; una vez agotados se conserva el checkpoint
+anterior.
 
 `InterestGenerationTest` incluye casos de publicación con evidencia coincidente,
 rechazo de evidencia alterada o ajena, ausencia de aprobación y cambio del
@@ -157,10 +165,15 @@ puntero. Estas pruebas no sustituyen la revisión operativa ni validan datos
 reales de Salesforce.
 
 Las consultas de recuperación F2 y F5 leen el estado actual sin limitar
-`SystemModstamp` al watermark. La verificación compara lecturas sucesivas;
-ese watermark no demuestra una fotografía histórica ni simultaneidad exacta
-entre F2 y F5. El resultado y la cobertura deben revisarse antes del uso
-operativo; las pruebas simuladas no certifican Salesforce ni producción.
+`SystemModstamp` al watermark. La verificación F2 hace un merge remoto/local
+por `Id`, también por lotes y con checkpoint: un corte reanuda desde el último
+rango comparado en vez de repetir una exploración completa. La cola local de
+identidades se recorre por clave y con heartbeat; discrepancias pueden abrir
+otra pasada de reconciliación hasta el máximo configurado, tras el cual el flujo
+falla cerrado. Ese watermark no demuestra una fotografía histórica ni
+simultaneidad exacta entre F2 y F5. El resultado y la cobertura deben revisarse
+antes del uso operativo; las pruebas simuladas no certifican Salesforce ni
+producción.
 
 Antes de crear la candidata, `recover-initial` consulta de forma read-only
 `getDeleted` desde el cutoff de la semilla hasta el corte solicitado (UTC,

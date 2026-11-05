@@ -389,7 +389,7 @@ SOQL;
      *
      * @param  array<string, mixed>  $stats
      */
-    public function applyDeletionLog(int $generationId, CarbonImmutable $start, CarbonImmutable $cutoff, array &$stats): void
+    public function applyDeletionLog(int $generationId, CarbonImmutable $start, CarbonImmutable $cutoff, array &$stats, ?callable $heartbeat = null): void
     {
         $start = $start->startOfMinute();
         $response = $this->client->getDeleted('Interes__c', $start, $cutoff);
@@ -401,6 +401,9 @@ SOQL;
         $stats['deletion_log_earliest'] = CarbonImmutable::parse($response['earliestDateAvailable'])->utc()->toIso8601String();
         $stats['deletion_log_records'] = count($response['deletedRecords']);
         foreach (array_chunk($response['deletedRecords'], self::PERSIST_CHUNK_SIZE) as $chunk) {
+            if ($heartbeat !== null && $heartbeat() !== true) {
+                throw new RuntimeException('Initial recovery lease was lost.');
+            }
             $dates = [];
             foreach ($chunk as $record) {
                 if (! is_array($record) || ! preg_match('/^[A-Za-z0-9]{18}$/', $record['id'] ?? '')
