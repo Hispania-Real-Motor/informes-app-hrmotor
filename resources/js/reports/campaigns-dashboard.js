@@ -448,7 +448,8 @@ function bindColumns() {
             return;
         }
 
-        const popoverWasOpen = popover && !popover.classList.contains('is-hidden');
+        const currentPopover = document.getElementById('columnsPopover');
+        const popoverWasOpen = currentPopover && !currentPopover.classList.contains('is-hidden');
         const scrollPositions = captureCampaignTableScrollPositions();
 
         if (target.checked) {
@@ -2507,8 +2508,17 @@ function captureCampaignTableScrollPositions() {
         return new Map();
     }
 
-    return new Map([...root.querySelectorAll('[data-table-wrap], [data-table-scroll-proxy]')]
-        .map((element) => [element.dataset.tableWrap || element.dataset.tableScrollProxy, element.scrollLeft]));
+    const positions = new Map([...root.querySelectorAll('[data-table-wrap]')]
+        .map((element) => [element.dataset.tableWrap, element.scrollLeft]));
+
+    root.querySelectorAll('[data-table-scroll-proxy]').forEach((element) => {
+        const key = element.dataset.tableScrollProxy;
+        if (!positions.has(key)) {
+            positions.set(key, element.scrollLeft);
+        }
+    });
+
+    return positions;
 }
 
 function restoreCampaignTableScrollPositions(positions) {

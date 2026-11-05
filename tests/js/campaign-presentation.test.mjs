@@ -118,6 +118,47 @@ test('column selector marks unavailable context columns as disabled instead of a
     assert.match(popover.innerHTML, /Tasaciones generadas · no disponible en esta vista/);
 });
 
+test('a real checkbox change rerenders the table and keeps proxy and table scroll synchronized', () => {
+    class FakeHTMLElement {}
+    class FakeHTMLInputElement extends FakeHTMLElement {}
+    const listeners = {};
+    const wrap = { dataset: { tableWrap: 'all' }, scrollLeft: 37 };
+    const proxy = { dataset: { tableScrollProxy: 'all' }, scrollLeft: 37 };
+    const isolatedRoot = {
+        innerHTML: '',
+        querySelectorAll: (selector) => selector === '[data-table-wrap]' ? [wrap]
+            : selector === '[data-table-scroll-proxy]' ? [proxy] : [],
+    };
+    const popover = { innerHTML: '', classList: { contains: () => false, remove() {} } };
+    const isolated = createDashboardSandbox({
+        getElementById: (id) => id === 'campaignTables' ? isolatedRoot : id === 'columnsPopover' ? popover : null,
+        addEventListener: (type, handler) => { listeners[type] = handler; },
+        querySelectorAll: () => [],
+    });
+    isolated.HTMLElement = FakeHTMLElement;
+    isolated.HTMLInputElement = FakeHTMLInputElement;
+    isolated.localStorage = { getItem: () => null, setItem() {} };
+    vm.runInContext('campaignRows = [{ platform: "meta", campaign_name: "VISIBLE", spend: 20 }]; currentContext = "all"; visibleColumns = ["campaign"]; renderCampaignTables(campaignRows); bindColumns();', isolated);
+
+    const enable = new FakeHTMLInputElement();
+    enable.dataset = { columnToggle: 'spend' };
+    enable.matches = (selector) => selector === '[data-column-toggle]';
+    enable.checked = true;
+    listeners.change({ target: enable });
+    assert.ok(isolatedRoot.innerHTML.includes('<th data-column="spend"'));
+    assert.equal(wrap.scrollLeft, 37);
+    assert.equal(proxy.scrollLeft, 37);
+
+    const disable = new FakeHTMLInputElement();
+    disable.dataset = { columnToggle: 'spend' };
+    disable.matches = (selector) => selector === '[data-column-toggle]';
+    disable.checked = false;
+    listeners.change({ target: disable });
+    assert.ok(!isolatedRoot.innerHTML.includes('<th data-column="spend"'));
+    assert.equal(wrap.scrollLeft, 37);
+    assert.equal(proxy.scrollLeft, 37);
+});
+
 test('sorting, context columns and incomplete monthly costs retain their contracts', () => {
     assert.equal(vm.runInContext('numericChartValue(null)', sandbox), null);
     assert.equal(vm.runInContext('numericChartValue(0)', sandbox), 0);

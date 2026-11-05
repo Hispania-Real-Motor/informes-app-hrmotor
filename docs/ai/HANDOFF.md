@@ -6756,3 +6756,23 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   GitHub devolvió HTTP 403 (`Resource not accessible by integration`); queda
   pendiente de apertura manual. No se ha desplegado producción ni realizado
   smoke test.
+
+## 2026-11-05 — ajustes finales solicitados del hotfix de Campañas
+
+- Se conservaron los assets históricos previamente eliminados por el build
+  limpio. El manifest sigue apuntando a los nuevos bundles del hotfix y los
+  ficheros históricos permanecen disponibles para sesiones con caché anterior.
+- `bindColumns()` conserva el selector abierto, regenera el HTML desde
+  `campaignRows` y restaura el `scrollLeft` del contenedor de tabla como fuente
+  autoritativa en proxy y tabla. Si no existe el contenedor, usa el proxy como
+  fallback; no hay sobrescritura por claves duplicadas.
+- Se añadió una regresión que dispara el handler delegado `change` sobre un
+  checkbox real simulado, comprueba activación y desactivación del `th` y de
+  sus celdas, y verifica la sincronización de ambos scrolls.
+- Verificación ejecutada: `node --check`, `node --test
+  tests/js/campaign-presentation.test.mjs` (30/30), `npm run build` (correcto),
+  `git diff --check` (correcto). El manifest referencia el bundle JS nuevo y
+  todos sus assets existen; los assets históricos restaurados también existen.
+- No se ejecutaron `CampaignDashboardTest`, CI completa, validador documental,
+  migraciones, sincronizaciones ni despliegue. PHP y Python no están
+  disponibles en este entorno.
