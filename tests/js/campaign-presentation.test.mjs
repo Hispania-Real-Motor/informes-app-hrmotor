@@ -54,6 +54,13 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(source.replace(/^import .*;\r?\n/, ''), sandbox);
 
+const createDashboardSandbox = (document) => {
+    const isolated = { ...sandbox, document, window: { ...sandbox.window } };
+    vm.createContext(isolated);
+    vm.runInContext(source.replace(/^import .*;\r?\n/, ''), isolated);
+    return isolated;
+};
+
 test('recovery mode remains technical state without a permanent public alert, while unavailable platforms stay visible', () => {
     const warnings = {innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; }};
     sandbox.document.getElementById = (id) => id === 'warnings' ? warnings : null;
@@ -83,6 +90,73 @@ test('real detail rendering preserves shared rows, hides empty rows and escapes 
     assert.ok(root.innerHTML.includes(money(0)));
     assert.ok(root.innerHTML.includes('/informes/campanas/export/campaigns.csv'));
     assert.equal(JSON.stringify(sandbox.rows), before);
+});
+
+test('activating a column rerenders its header and cells from the in-memory rows', () => {
+    const isolatedRoot = { innerHTML: '' };
+    const isolated = createDashboardSandbox({ getElementById: (id) => id === 'campaignTables' ? isolatedRoot : null, addEventListener() {}, querySelectorAll: () => [] });
+    isolated.detailRows = [{ platform: 'meta', campaign_name: 'VISIBLE', spend: 20, impressions: 4 }];
+
+    vm.runInContext("visibleColumns = ['campaign']; renderCampaignTables(detailRows);", isolated);
+    assert.equal((isolatedRoot.innerHTML.match(/data-column=\"spend\"/g) || []).length, 0);
+
+    vm.runInContext("visibleColumns = ['campaign', 'spend']; renderCampaignTables(detailRows);", isolated);
+    assert.ok(isolatedRoot.innerHTML.includes('<th data-column="spend"'));
+    assert.equal((isolatedRoot.innerHTML.match(/data-column=\"spend\"/g) || []).length, 2);
+});
+
+test('column selector marks unavailable context columns as disabled instead of active', () => {
+    const popover = { innerHTML: '' };
+    const isolated = createDashboardSandbox({ getElementById: (id) => id === 'columnsPopover' ? popover : null, addEventListener() {}, querySelectorAll: () => [] });
+    vm.runInContext("currentContext = 'all'; platformOnlyMode = false; visibleColumns = ['campaign', 'appraisals_generated']; renderColumnsPopover();", isolated);
+
+    const unavailable = popover.innerHTML.match(/<input[^>]+data-column-toggle=\"appraisals_generated\"[^>]*>/)?.[0] || '';
+    const available = popover.innerHTML.match(/<input[^>]+data-column-toggle=\"campaign\"[^>]*>/)?.[0] || '';
+    assert.match(unavailable, /disabled/);
+    assert.doesNotMatch(unavailable, /checked/);
+    assert.match(available, /checked/);
+    assert.match(popover.innerHTML, /Tasaciones generadas · no disponible en esta vista/);
+});
+
+test('a real checkbox change rerenders the table and keeps proxy and table scroll synchronized', () => {
+    class FakeHTMLElement {}
+    class FakeHTMLInputElement extends FakeHTMLElement {}
+    const listeners = {};
+    const wrap = { dataset: { tableWrap: 'all' }, scrollLeft: 37 };
+    const proxy = { dataset: { tableScrollProxy: 'all' }, scrollLeft: 37 };
+    const isolatedRoot = {
+        innerHTML: '',
+        querySelectorAll: (selector) => selector === '[data-table-wrap]' ? [wrap]
+            : selector === '[data-table-scroll-proxy]' ? [proxy] : [],
+    };
+    const popover = { innerHTML: '', classList: { contains: () => false, remove() {} } };
+    const isolated = createDashboardSandbox({
+        getElementById: (id) => id === 'campaignTables' ? isolatedRoot : id === 'columnsPopover' ? popover : null,
+        addEventListener: (type, handler) => { listeners[type] = handler; },
+        querySelectorAll: () => [],
+    });
+    isolated.HTMLElement = FakeHTMLElement;
+    isolated.HTMLInputElement = FakeHTMLInputElement;
+    isolated.localStorage = { getItem: () => null, setItem() {} };
+    vm.runInContext('campaignRows = [{ platform: "meta", campaign_name: "VISIBLE", spend: 20 }]; currentContext = "all"; visibleColumns = ["campaign"]; renderCampaignTables(campaignRows); bindColumns();', isolated);
+
+    const enable = new FakeHTMLInputElement();
+    enable.dataset = { columnToggle: 'spend' };
+    enable.matches = (selector) => selector === '[data-column-toggle]';
+    enable.checked = true;
+    listeners.change({ target: enable });
+    assert.ok(isolatedRoot.innerHTML.includes('<th data-column="spend"'));
+    assert.equal(wrap.scrollLeft, 37);
+    assert.equal(proxy.scrollLeft, 37);
+
+    const disable = new FakeHTMLInputElement();
+    disable.dataset = { columnToggle: 'spend' };
+    disable.matches = (selector) => selector === '[data-column-toggle]';
+    disable.checked = false;
+    listeners.change({ target: disable });
+    assert.ok(!isolatedRoot.innerHTML.includes('<th data-column="spend"'));
+    assert.equal(wrap.scrollLeft, 37);
+    assert.equal(proxy.scrollLeft, 37);
 });
 
 test('sorting, context columns and incomplete monthly costs retain their contracts', () => {
