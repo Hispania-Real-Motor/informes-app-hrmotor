@@ -18,6 +18,9 @@
   verificación remota separada y reanudable registra discrepancias agregadas
   sin payloads. El lease se renueva antes/durante/después de lecturas y sigue
   fenced. No cambia el carácter provisional, `getDeleted`, F5 ni publicación.
+- Endurecimiento final: el hash mensual ya no incluye `synced_at`, payload ni
+  tiempos técnicos; se elimina la columna `payload` de la migración no
+  desplegada. La evidencia persiste solo metadatos mínimos y hash determinista.
 
 ## 2026-11-05 — hotfix de identificadores SQL de recuperación inicial Interest
 

@@ -133,13 +133,12 @@ final class InterestMonthlyRecoveryService
                 throw new RuntimeException('Monthly recovery received invalid, unordered, or out-of-period content.');
             }
             $last = $id;
-            $payload = json_decode((string) $mapped['raw_payload'], true, 512, JSON_THROW_ON_ERROR);
-            $rows[] = ['monthly_recovery_id' => $r->id, 'salesforce_id' => $id, 'content_hash' => hash('sha256', json_encode($mapped, JSON_THROW_ON_ERROR)), 'is_deleted' => (bool) $mapped['is_deleted'], 'functional_created_at' => $functional, 'system_modstamp_at' => $mapped['system_modstamp_at'], 'payload' => json_encode($payload, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()];
+            $rows[] = ['monthly_recovery_id' => $r->id, 'salesforce_id' => $id, 'content_hash' => $this->contentHash($mapped), 'is_deleted' => (bool) $mapped['is_deleted'], 'functional_created_at' => $functional, 'system_modstamp_at' => $mapped['system_modstamp_at'], 'created_at' => now(), 'updated_at' => now()];
         }
         DB::transaction(function () use ($r, $lease, $rows, $records, $last): void {
             $this->owned((int) $r->id, $lease, true);
             if ($rows !== []) {
-                DB::table('salesforce_interest_monthly_recovery_rows')->upsert($rows, ['monthly_recovery_id', 'salesforce_id'], ['content_hash', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'payload', 'updated_at']);
+                DB::table('salesforce_interest_monthly_recovery_rows')->upsert($rows, ['monthly_recovery_id', 'salesforce_id'], ['content_hash', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'updated_at']);
             }
             $next = count($records) === (int) $r->batch_size ? 'f2_extract' : 'verify';
             $c = $this->counters($r);
@@ -167,7 +166,7 @@ final class InterestMonthlyRecoveryService
                 }
                 $last = $id;
                 $local = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)->where('salesforce_id', $id)->first();
-                $hash = hash('sha256', json_encode($mapped, JSON_THROW_ON_ERROR));
+                $hash = $this->contentHash($mapped);
                 $counters['remote_checked']++;
                 if ($local === null) {
                     $counters['remote_missing_local']++;
@@ -245,5 +244,31 @@ final class InterestMonthlyRecoveryService
         if (DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['heartbeat_at' => now('UTC'), 'updated_at' => now()]) !== 1) {
             throw new RuntimeException('Monthly recovery lease was lost.');
         }
+    }
+
+    /** @param array<string, mixed> $mapped */
+    private function contentHash(array $mapped): string
+    {
+        unset($mapped['raw_payload'], $mapped['synced_at'], $mapped['created_at'], $mapped['updated_at']);
+
+        return hash('sha256', json_encode($this->canonicalize($mapped), JSON_THROW_ON_ERROR));
+    }
+
+    private function canonicalize(mixed $value): mixed
+    {
+        if ($value instanceof CarbonInterface) {
+            return $value->utc()->toIso8601String();
+        }
+        if (! is_array($value)) {
+            return $value;
+        }
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->canonicalize($item);
+        }
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
     }
 }

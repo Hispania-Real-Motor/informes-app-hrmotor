@@ -46,7 +46,6 @@ return new class extends Migration
             $table->boolean('is_deleted')->default(false);
             $table->dateTime('functional_created_at');
             $table->dateTime('system_modstamp_at')->nullable();
-            $table->json('payload');
             $table->timestamps();
 
             $table->unique(['monthly_recovery_id', 'salesforce_id'], 'sf_imrr_recovery_id_uq');

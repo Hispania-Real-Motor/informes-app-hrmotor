@@ -5,6 +5,8 @@
 > con soft deletes observables; no certifica hard deletes, F5 ni cierre histórico.
 > La verificación remota mensual guarda solo contadores agregados de discrepancias
 > y no habilita ninguna métrica aunque resulte limpia.
+> Su evidencia persistente está minimizada a metadatos técnicos y hash canónico;
+> no almacena payload Salesforce ni datos personales de la respuesta remota.
 
 ### Dependencias de Campañas e Interests durante recuperación
 

@@ -99,6 +99,10 @@ cursor se checkpointa, y el lease se renueva antes, durante y después de cada
 lectura; una pérdida de lease no puede confirmar filas, progreso ni evidencia.
 Un fallo conserva fase y cursor confirmados para reanudar. Cualquier diferencia
 mantiene el resultado provisional no verificado.
+La evidencia mensual persiste solo ID técnico, fechas funcionales/modificación,
+estado de soft delete y un hash canónico; no conserva el payload Salesforce.
+El hash excluye payload y tiempos técnicos de sincronización/creación/actualización
+para evitar diferencias artificiales, pero conserva los campos funcionales.
 
 Cuando no existe una generación publicada, una generación histórica en estado
 `validating` puede utilizarse únicamente como semilla técnica, nunca como

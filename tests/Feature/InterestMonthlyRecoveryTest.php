@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Services\Salesforce\InterestMonthlyRecoveryService;
 use App\Services\Salesforce\SalesforceClient;
+use App\Services\Salesforce\SalesforceInterestSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class InterestMonthlyRecoveryTest extends TestCase
@@ -49,6 +51,20 @@ class InterestMonthlyRecoveryTest extends TestCase
         $this->assertDatabaseCount('salesforce_interest_generations', 0);
         $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 2);
         $this->assertSame('not_observable_without_independent_evidence', $status['evidence']['hard_deletes']);
+    }
+
+    public function test_monthly_content_hash_ignores_technical_sync_time_and_detects_functional_change(): void
+    {
+        $monthly = app(InterestMonthlyRecoveryService::class);
+        $hash = new \ReflectionMethod($monthly, 'contentHash');
+        $hash->setAccessible(true);
+        $mapped = app(SalesforceInterestSyncService::class)->mapRecord($this->record('a01000000000000001', '2026-10-10T10:00:00Z'), false);
+        $first = $hash->invoke($monthly, $mapped);
+        $mapped['synced_at'] = now('UTC')->addHour();
+        $this->assertSame($first, $hash->invoke($monthly, $mapped));
+        $mapped['status'] = 'Changed';
+        $this->assertNotSame($first, $hash->invoke($monthly, $mapped));
+        $this->assertNotContains('payload', Schema::getColumnListing('salesforce_interest_monthly_recovery_rows'));
     }
 
     /** @return array<string, mixed> */
