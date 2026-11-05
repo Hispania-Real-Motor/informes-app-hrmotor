@@ -640,6 +640,14 @@ La instrumentación mensual conserva checkpoint y reanudación con diagnósticos
 internos por etapa, sin payloads ni excepciones sensibles; no publica el
 inventario ni modifica readiness o KPI.
 
+### Nota técnica — F5 mensual aislada (2026-11-07)
+
+F5 mensual relaciona Task/Event exclusivamente con IDs de su F2 mensual de
+origen y persiste esa evidencia fuera de las tablas de generación. No cambia
+atribución, readiness, métricas, filtros ni exportaciones de Campañas. F5
+`completed` no verifica/certifica F2, por lo que una F2 provisional no habilita
+una fuente mensual en este informe.
+
 Esta garantía corresponde a la fuente Interest. Las atribuciones materializadas,
 fuentes publicitarias y otras fuentes conservan sus contratos de build/readiness;
 no se afirma una transacción global sobre ellas ni un token de carga multipetición
