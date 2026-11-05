@@ -6684,6 +6684,30 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   ejecutaron PHP, Python, MariaDB, benchmark, migraciones aisladas, Salesforce
   ni producción. El validador requiere runtime Python y cuerpo de PR con
   `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`.
+
+## 2026-11-05 — no degradar watermark en recuperación inicial Interest
+
+- Hotfix temporal: antes de crear una candidata, `recover-initial` exige que
+  `getDeleted.latestDateCovered` alcance el cutoff solicitado para F2/F5
+  (`UTC now - 2 min`, redondeado al minuto). Ya no reduce el watermark al valor
+  disponible; si la cobertura no llega, falla cerrada sin extraer F2/F5 ni crear
+  candidata. La regresión sintética cubre el caso solicitado 11:00 frente a
+  cobertura 19:54 del día anterior.
+- Compatibilidad/evidencia: un journal heredado cuyo watermark sea anterior a
+  su cutoff solicitado no se reanuda ni certifica. Debe conservarse como
+  evidencia y cancelarse/recrearse únicamente bajo procedimiento autorizado;
+  no se modifican candidatos históricos, puntero de publicación, scheduler,
+  workers ni Salesforce remoto.
+- Impacto de informes: no cambian la generación publicada, lectores, fuentes,
+  KPI, fecha funcional, filtros, fórmulas, universos, auditorías ni
+  exportaciones de los seis informes. La matriz solo registra el endurecimiento
+  de cobertura de la operación F2/F5; no certifica una fotografía histórica.
+- Documentación: actualizado el runbook y la matriz. No se actualizan los seis
+  documentos de informe porque todos ya condicionan su fuente oficial a la
+  generación publicada y esta corrección no puede publicar una candidata.
+- Verificación pendiente: no se ejecutaron PHP, Python, MariaDB, benchmark,
+  migraciones aisladas, Salesforce ni producción. PR: `Docs-Impact: updated` y
+  `Docs-Matrix-Impact: updated`.
 - Seguimiento de CI: `composer.lock` sube los componentes Symfony afectados a
   `http-foundation` y `http-kernel` `v8.1.11`, `routing` `v8.1.11` y el
   `var-dumper` necesario para la compatibilidad de `http-kernel` a `v8.1.10`.
@@ -6776,3 +6800,32 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - No se ejecutaron `CampaignDashboardTest`, CI completa, validador documental,
   migraciones, sincronizaciones ni despliegue. PHP y Python no están
   disponibles en este entorno.
+
+## 2026-11-05 — cobertura temporal de `getDeleted` en recuperación inicial Interests
+
+- Causa corregida: `recover-initial` admitía una respuesta de `getDeleted` con
+  `latestDateCovered` anterior al corte pedido y rebajaba el watermark de la
+  candidata. F2 y F5 continuaban después con lecturas `queryAll` de estado
+  actual, mientras la evidencia atribuía a ambas el watermark atrasado.
+- Corrección mínima: antes de crear candidata, la cobertura de borrados debe
+  alcanzar el corte solicitado (`UTC ahora - 2 minutos`, minuto). Si no llega,
+  falla cerrado antes de toda lectura F2/F5, sin candidata, run ni publicación.
+  Ya no se degrada el watermark. Un journal heredado cuyo watermark quedó por
+  debajo de su propio corte solicitado tampoco se reanuda ni certifica; se
+  preserva íntegro para cancelación/recreación autorizada.
+- Alcance y seguridad: no hay migración, cambios de esquema, escrituras de
+  datos productivos, acceso a Salesforce, scheduler ni publicación. Se
+  conservan checkpoints, lease/fencing y la reanudación de journals preparados
+  con cobertura válida. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian: no
+  se altera arquitectura, fuente publicada ni contrato de lectores.
+- Pruebas: se añadió una regresión con corte semilla `2026-10-28 15:57 UTC`,
+  petición `2026-11-05 11:00 UTC` y `latestDateCovered`
+  `2026-11-04 19:54 UTC`; exige excepción, cero lecturas F2/F5 y ausencia de
+  candidate/journal. `php -l` de servicio y test, y `git diff --check`, fueron
+  correctos. Pint no pudo iniciarse porque su PHAR no pudo crear el temporal en
+  el entorno; la suite PHP/CI queda pendiente de un worktree con `vendor`.
+- Documentación: se actualizó el contrato operativo de
+  `docs/salesforce-interest-generations.md`; revisión del agente documental y
+  validador pendientes de cierre. Para PR: `Docs-Impact: updated` y
+  `Docs-Matrix-Impact: none` si la revisión confirma que no cambian KPIs,
+  fuentes, filtros ni trazabilidad de los seis informes.

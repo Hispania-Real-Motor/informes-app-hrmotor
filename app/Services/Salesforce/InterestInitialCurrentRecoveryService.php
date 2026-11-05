@@ -36,20 +36,20 @@ final class InterestInitialCurrentRecoveryService
         $this->validate($reason, $passes, $batch);
         $source = $this->store->generation($sourceId);
         $start = CarbonImmutable::parse($source->cutoff_at, 'UTC');
-        $requested = now('UTC')->subMinutes(2)->startOfMinute();
-        $preflight = $this->client->getDeleted('Interes__c', $start, $requested);
-        $earliest = CarbonImmutable::parse($preflight['earliestDateAvailable'], 'UTC');
-        $covered = CarbonImmutable::parse($preflight['latestDateCovered'], 'UTC')->startOfMinute();
-        if ($earliest->gt($start) || $covered->lte($start)) {
-            throw new RuntimeException('Salesforce deletion history does not cover the recovery source cutoff.');
-        }
-        $watermark = $covered->lt($requested) ? $covered : $requested;
         $hash = $this->configurationHash($sourceId, $reason, $passes, $batch);
         $existing = DB::table('salesforce_interest_initial_recoveries')->where('configuration_hash', $hash)
             ->whereNotIn('status', ['completed', 'cancelled'])->latest('id')->value('id');
         if ($existing !== null) {
             return $this->run((int) $existing, $reason, true);
         }
+        $requested = now('UTC')->subMinutes(2)->startOfMinute();
+        $preflight = $this->client->getDeleted('Interes__c', $start, $requested);
+        $earliest = CarbonImmutable::parse($preflight['earliestDateAvailable'], 'UTC');
+        $covered = CarbonImmutable::parse($preflight['latestDateCovered'], 'UTC')->startOfMinute();
+        if ($earliest->gt($start) || $covered->lt($requested)) {
+            throw new RuntimeException('Salesforce deletion history does not cover the requested recovery cutoff.');
+        }
+        $watermark = $requested;
         $candidate = $this->store->beginInitialRecovery($sourceId, $watermark);
         $run = $this->runs->start(SalesforceInterestSyncService::DATASET, SalesforceInterestSyncService::SOURCE, $start, $watermark, 'UTC');
         try {
@@ -455,6 +455,10 @@ final class InterestInitialCurrentRecoveryService
             $r = DB::table('salesforce_interest_initial_recoveries')->where('id', $id)->lockForUpdate()->first();
             if ($r === null || ! hash_equals($r->reason_hash, hash('sha256', trim($reason))) || ($r->status === 'running' && $this->live($r)) || (! $resume && $r->status !== 'prepared') || ($resume && ! in_array($r->status, ['prepared', 'failed', 'running'], true))) {
                 throw new RuntimeException('Initial recovery is not compatible or safely resumable.');
+            }
+            $requested = CarbonImmutable::parse($r->started_at, 'UTC')->subMinutes(2)->startOfMinute();
+            if (CarbonImmutable::parse($r->watermark_at, 'UTC')->lt($requested)) {
+                throw new RuntimeException('Initial recovery watermark predates its requested cutoff and cannot be resumed safely.');
             }
 
             $lease = (string) Str::uuid();

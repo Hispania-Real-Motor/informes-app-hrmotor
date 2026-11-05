@@ -88,7 +88,14 @@ evidencia de certificación. El operador autorizado puede ejecutar
 explícita, autorización de lectura y un motivo operativo.
 
 El procedimiento copia solamente las memberships de la fuente y reutiliza sus
-versiones inmutables. F2 lee `queryAll` por lotes acotados (por defecto 500,
+versiones inmutables. Antes de crear la candidata, `getDeleted` debe acreditar
+cobertura desde el corte de la semilla hasta el corte solicitado para F2/F5
+(`ahora UTC - 2 minutos`, redondeado al minuto). Si `latestDateCovered` es
+anterior, la operación falla sin crear candidata ni emitir lecturas F2/F5; no
+rebaja silenciosamente el watermark al valor devuelto. Un journal existente
+solo puede reanudarse si su watermark era ese corte solicitado al prepararlo;
+los journals heredados con un watermark anterior permanecen sin certificar y
+requieren cancelar/recrear la recuperación bajo procedimiento autorizado. F2 lee `queryAll` por lotes acotados (por defecto 500,
 mínimo 50, máximo 1.000), ordenados por `Id` y con cursor `Id > último Id`
 confirmado; no usa fecha funcional como cobertura global. El mismo mapeo F2
 compara hash de contenido y solo escribe versiones para altas o diferencias.

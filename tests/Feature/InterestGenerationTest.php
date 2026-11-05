@@ -293,11 +293,8 @@ class InterestGenerationTest extends TestCase
             public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
             {
                 $this->deletionEnds[] = $end->utc()->toIso8601String();
-                $latest = count($this->deletionEnds) === 1
-                    ? '2026-10-29T00:00:00.000+0000'
-                    : $end->utc()->toIso8601String();
 
-                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000', 'latestDateCovered' => $latest, 'deletedRecords' => []];
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000', 'latestDateCovered' => $end->utc()->toIso8601String(), 'deletedRecords' => []];
             }
         };
         $this->app->instance(SalesforceClient::class, $client);
@@ -311,11 +308,11 @@ class InterestGenerationTest extends TestCase
         $this->assertSame(0, $result['evidence']['f2']['content_mismatches']);
         $this->assertSame(0, $result['evidence']['f2']['candidate_only_unexplained']);
         $this->assertSame(1, $result['evidence']['f5']['rows']);
-        $this->assertSame('2026-10-29 00:00:00', $this->store()->generation($candidate)->cutoff_at);
-        $this->assertSame('2026-10-29 00:00:00', ReportSyncRun::findOrFail($this->store()->generation($candidate)->interest_run_id)->source_cutoff_at->utc()->toDateTimeString());
-        $this->assertSame('2026-10-29 00:00:00', SalesforceInterestActivityRun::findOrFail($this->store()->generation($candidate)->activity_run_id)->source_cutoff_at->utc()->toDateTimeString());
-        $this->assertSame('2026-10-29 00:00:00', $result['evidence']['watermark']);
-        $this->assertSame(['2026-10-29T13:37:00+00:00', '2026-10-29T00:00:00+00:00'], $client->deletionEnds);
+        $this->assertSame('2026-10-29 13:37:00', $this->store()->generation($candidate)->cutoff_at);
+        $this->assertSame('2026-10-29 13:37:00', ReportSyncRun::findOrFail($this->store()->generation($candidate)->interest_run_id)->source_cutoff_at->utc()->toDateTimeString());
+        $this->assertSame('2026-10-29 13:37:00', SalesforceInterestActivityRun::findOrFail($this->store()->generation($candidate)->activity_run_id)->source_cutoff_at->utc()->toDateTimeString());
+        $this->assertSame('2026-10-29 13:37:00', $result['evidence']['watermark']);
+        $this->assertSame(['2026-10-29T13:37:00+00:00', '2026-10-29T13:37:00+00:00'], $client->deletionEnds);
         $this->assertDatabaseHas('salesforce_interest_initial_recoveries', [
             'candidate_generation_id' => $candidate, 'status' => 'completed', 'phase' => 'completed',
         ]);
@@ -663,6 +660,42 @@ class InterestGenerationTest extends TestCase
         }
     }
 
+    public function test_current_initial_recovery_rejects_deletion_coverage_that_predates_f2_and_f5_cutoff(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-05 11:02:00', 'UTC'));
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->complete($source);
+        $client = new class extends SalesforceClient
+        {
+            public int $queries = 0;
+
+            public function __construct() {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                $this->queries++;
+                yield [];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2026-10-28T15:57:00.000+0000',
+                    'latestDateCovered' => '2026-11-04T19:54:00.000+0000', 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        $this->expectException(RuntimeException::class);
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Reject stale deletion coverage before current recovery.');
+        } finally {
+            $this->assertSame(0, $client->queries);
+            $this->assertDatabaseCount('salesforce_interest_initial_recoveries', 0);
+            $this->assertDatabaseCount('salesforce_interest_generations', 1);
+            $this->travelBack();
+        }
+    }
+
     public function test_current_initial_recovery_fails_closed_if_deletion_coverage_recedes_after_preflight(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
@@ -679,7 +712,7 @@ class InterestGenerationTest extends TestCase
                 $this->calls++;
 
                 return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
-                    'latestDateCovered' => $this->calls === 1 ? '2026-10-29T00:00:00.000+0000' : '2026-10-28T23:59:00.000+0000',
+                    'latestDateCovered' => $this->calls === 1 ? $end->utc()->toIso8601String() : '2026-10-29T13:36:00.000+0000',
                     'deletedRecords' => []];
             }
         };
