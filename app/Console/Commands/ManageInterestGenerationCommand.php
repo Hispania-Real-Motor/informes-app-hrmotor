@@ -16,9 +16,11 @@ use RuntimeException;
 class ManageInterestGenerationCommand extends Command
 {
     protected $signature = 'salesforce:interest-generation
-        {action : prepare-initial, recover-initial, period-prepare, period-run, period-status, manifest, external-evidence, or publish-initial}
+        {action : prepare-initial, recover-initial, recover-status, recover-resume, recover-cancel, period-prepare, period-run, period-status, manifest, external-evidence, or publish-initial}
         {--generation= : Candidate identifier}
         {--source-generation= : Unpublished initial seed identifier for recover-initial}
+        {--recovery-id= : Persistent initial recovery identifier}
+        {--batch-size=500 : Bounded initial recovery batch size (50 to 1000)}
         {--period-id= : Prepared period recovery identifier}
         {--resume : Resume only a period whose running heartbeat is stale}
         {--functional-start= : Inclusive YYYY-MM-DD date in Europe/Madrid}
@@ -64,9 +66,38 @@ class ManageInterestGenerationCommand extends Command
                     || (int) $source < 1 || mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
                     throw new RuntimeException('Initial recovery requires an explicit source, read authorization, and an operational reason.');
                 }
-                $result = $recovery->recover((int) $source, $reason);
+                $batch = filter_var($this->option('batch-size'), FILTER_VALIDATE_INT);
+                if ($batch === false) {
+                    throw new RuntimeException('Initial recovery batch size is invalid.');
+                }
+                $result = $recovery->recover((int) $source, $reason, InterestInitialCurrentRecoveryService::MAX_PASSES, $batch);
                 $this->line(json_encode($result['evidence'], JSON_THROW_ON_ERROR));
                 $this->info('Recovery candidate certified but not published. Scheduler state was not changed.');
+
+                return self::SUCCESS;
+            }
+            if (in_array($action, ['recover-status', 'recover-resume', 'recover-cancel'], true)) {
+                $recoveryId = (string) $this->option('recovery-id');
+                if (ctype_digit($recoveryId) === false || (int) $recoveryId < 1) {
+                    throw new RuntimeException('A valid initial recovery identifier is required.');
+                }
+                if ($action === 'recover-status') {
+                    $this->line(json_encode($recovery->status((int) $recoveryId), JSON_THROW_ON_ERROR));
+
+                    return self::SUCCESS;
+                }
+                if ($action === 'recover-cancel') {
+                    $recovery->cancel((int) $recoveryId);
+                    $this->info('Initial recovery cancelled. No generation was published.');
+
+                    return self::SUCCESS;
+                }
+                $reason = trim((string) $this->option('reason'));
+                if ($this->option('allow-salesforce-read') !== true || mb_strlen($reason) < 10 || mb_strlen($reason) > 500) {
+                    throw new RuntimeException('Initial recovery resume requires explicit read authorization and an operational reason.');
+                }
+                $result = $recovery->resume((int) $recoveryId, $reason);
+                $this->line(json_encode($result, JSON_THROW_ON_ERROR));
 
                 return self::SUCCESS;
             }

@@ -68,6 +68,13 @@ reconciliación del estado actual y F5 nuevo, antes de una publicación separada
 Sus lecturas no prueban una fotografía histórica al watermark; los límites y
 las comprobaciones operativas figuran en el documento de generaciones.
 
+La recuperación reanudable conserva candidata, checkpoints y evidencia F2/F5
+aislados hasta completar su certificación y la publicación explícita posterior.
+Aunque el journal indique F5 asociado o candidata certificada, no se convierte
+en fuente del dashboard, métricas, comparativas, AJAX ni CSV mientras el
+puntero de publicación no la seleccione. No cambian KPI, filtros, fecha
+funcional, redondeo ni comportamiento de indisponibilidad de Interests.
+
 Ajuste de disponibilidad posterior del núcleo: si falta el run F2 o F5 que una
 generación publicada referencia, `InterestGenerationReader::f2()/f5()` devuelve
 el error controlado `InterestDatasetUnavailable` (503), sin una excepción de

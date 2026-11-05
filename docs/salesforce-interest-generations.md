@@ -88,15 +88,33 @@ evidencia de certificación. El operador autorizado puede ejecutar
 explícita, autorización de lectura y un motivo operativo.
 
 El procedimiento copia solamente las memberships de la fuente y reutiliza sus
-versiones inmutables. Después lee el estado actual de Salesforce por páginas,
-lo transforma con el mismo mapeo F2 y compara el hash de contenido existente.
-Solo se escriben versiones para altas o diferencias. Los hard-deletes requieren
-cobertura válida de `getDeleted`; una fila local ausente sin esa evidencia hace
-fallar la candidata. La reconciliación tiene un máximo de tres pasadas y no
-publica ni modifica la generación fuente, el scheduler ni los workers.
+versiones inmutables. F2 lee `queryAll` por lotes acotados (por defecto 500,
+mínimo 50, máximo 1.000), ordenados por `Id` y con cursor `Id > último Id`
+confirmado; no usa fecha funcional como cobertura global. El mismo mapeo F2
+compara hash de contenido y solo escribe versiones para altas o diferencias.
+Cada lote persiste en transacciones pequeñas; el checkpoint se confirma después
+del lote. Una caída antes del checkpoint repite el lote: la persistencia de
+versiones/memberships es idempotente y el cursor nunca lo salta. Un ID inválido,
+fuera de orden o que no progresa bloquea la recuperación. El lease se renueva
+antes y después de la lectura F2 y mientras se aplican los bloques de
+`getDeleted`; perderlo cerca la ejecución anterior y evita que ésta confirme o
+marque fallida una recuperación tomada por otro propietario. Los hard-deletes
+requieren cobertura válida de `getDeleted`; una fila local ausente sin esa
+evidencia hace fallar la candidata. La reconciliación tiene un máximo de tres
+pasadas y no publica ni modifica la generación fuente, el scheduler ni los
+workers.
 
 F5 se reconstruye en un run nuevo contra la candidata F2 reconciliada; no se
-reutiliza el run histórico de la semilla. La evidencia `initial_current_recovery`
+reutiliza el run histórico de la semilla. El paso que completa el run F5 y lo
+asocia a la candidata (`finishF5`) es atómico y se ejecuta bajo una guardia
+fenced del lease: un trabajador que lo haya perdido no puede completar ni
+asociar ese run. Si F5 se interrumpe antes de esa asociación, la candidata
+conserva F2 y el run parcial queda como evidencia sin adjuntarse; la reanudación
+crea un run F5 vacío nuevo. Si la caída ocurre después de la asociación pero
+antes de certificar, el journal queda `associated_unverified`: la reanudación
+reutiliza exclusivamente ese run ya completo para recalcular manifiesto y
+verificación, y no lo acredita hasta certificar. No se acredita ni reutiliza un
+F5 parcial. La evidencia `initial_current_recovery`
 guarda generación fuente y recuperada, watermark, runs F2/F5, manifiesto,
 contadores finales, cobertura de borrados y número de pasadas. Solo una
 generación certificada mediante esa evidencia puede llegar posteriormente a
@@ -109,16 +127,63 @@ válidos; rechaza evidencia alterada o de otra candidata. El puntero se verifica
 en la publicación. El JSON contiene identificadores técnicos de generaciones y
 runs, por lo que debe tratarse como evidencia operativa restringida.
 
+La migración `2026_11_04_120000_create_salesforce_interest_initial_recoveries.php`
+añade el journal exclusivo de recuperación inicial: generación semilla/candidata,
+run F2, fase, cursor, lote, pasadas, lease/heartbeat, corte, cobertura de
+borrados, contadores, hashes de configuración y motivo, error y tiempos. No
+almacena payloads de Salesforce ni añade una fuente certificada alternativa.
+La recuperación tiene exclusión de escritor mediante lease persistente de 15
+minutos y verificación de propietario en cada checkpoint. El heartbeat se
+renueva también durante F5 (lectura de Task/Event, persistencia, manifiesto y
+verificación) y el cierre F2/F5 se protege con el mismo fencing transaccional.
+`recover-initial`
+reanuda automáticamente solo una ejecución no finalizada con la misma semilla,
+motivo y configuración; un proceso con heartbeat vigente no puede ser tomado.
+`recover-resume` solo acepta una recuperación `prepared`, `failed` o `running`
+con lease caducado y el mismo motivo; no repara generaciones históricas.
+`recover-cancel` únicamente cancela una ejecución no activa y no borra la
+candidata, versiones, runs ni evidencia. Los fallos de cursor, orden,
+conflicto o verificación permanecen cerrados; no se usan como autorización de
+reanudar o publicar.
+
+Operación permitida exclusivamente por CLI y con autorización explícita de
+lectura Salesforce:
+
+```text
+php artisan salesforce:interest-generation recover-initial --source-generation=<semilla> --batch-size=500 --allow-salesforce-read --reason="motivo operativo revisado"
+php artisan salesforce:interest-generation recover-status --recovery-id=<id>
+php artisan salesforce:interest-generation recover-resume --recovery-id=<id> --allow-salesforce-read --reason="mismo motivo operativo revisado"
+php artisan salesforce:interest-generation recover-cancel --recovery-id=<id>
+```
+
+`recover-status` es de solo lectura: informa estado/fase, pasada actual y máxima,
+contadores persistidos, estado F5 (`pending`, `materializing`, `associated_unverified`,
+`failed`, `verified` o `certified`), progreso de verificación, último checkpoint,
+caducidad calculada del lease, cobertura de borrados y motivo de fallo, sin
+payloads, tokens ni IDs Salesforce. El porcentaje solo es `100` tras completar
+todas las fases; antes se omite porque Salesforce no ofrece un total certificable
+para la recuperación progresiva. Los reintentos de lectura remota están acotados
+a tres por lote con espera corta; una vez agotados se conserva el checkpoint
+anterior. Para sobrevivir a una caída entre la asociación F5 y el checkpoint,
+el estado consultado deriva `associated_unverified` de una candidata todavía
+`validating` con F5 asociado y deriva `certified` si la generación ya lo está;
+no infiere que exista verificación o publicación.
+
 `InterestGenerationTest` incluye casos de publicación con evidencia coincidente,
 rechazo de evidencia alterada o ajena, ausencia de aprobación y cambio del
 puntero. Estas pruebas no sustituyen la revisión operativa ni validan datos
 reales de Salesforce.
 
 Las consultas de recuperación F2 y F5 leen el estado actual sin limitar
-`SystemModstamp` al watermark. La verificación compara lecturas sucesivas;
-ese watermark no demuestra una fotografía histórica ni simultaneidad exacta
-entre F2 y F5. El resultado y la cobertura deben revisarse antes del uso
-operativo; las pruebas simuladas no certifican Salesforce ni producción.
+`SystemModstamp` al watermark. La verificación F2 hace un merge remoto/local
+por `Id`, también por lotes y con checkpoint: un corte reanuda desde el último
+rango comparado en vez de repetir una exploración completa. La cola local de
+identidades se recorre por clave y con heartbeat; discrepancias pueden abrir
+otra pasada de reconciliación hasta el máximo configurado, tras el cual el flujo
+falla cerrado. Ese watermark no demuestra una fotografía histórica ni
+simultaneidad exacta entre F2 y F5. El resultado y la cobertura deben revisarse
+antes del uso operativo; las pruebas simuladas no certifican Salesforce ni
+producción.
 
 Antes de crear la candidata, `recover-initial` consulta de forma read-only
 `getDeleted` desde el cutoff de la semilla hasta el corte solicitado (UTC,
@@ -129,8 +194,9 @@ respecto a ella. La aplicación posterior vuelve a consultar `getDeleted` y
 exige cobertura hasta el cutoff efectivo; una regresión falla cerrada. Así, el
 watermark queda limitado por la cobertura de borrados comunicada por Salesforce;
 no acredita por sí solo la integridad de toda la replicación ni una fotografía
-histórica exacta. La evidencia registra `requested_watermark` y el watermark
-efectivo para que puedan contrastarse.
+histórica exacta. La evidencia registra el watermark efectivo; el journal
+persistente conserva además la cobertura y configuración que fijaron la
+ejecución.
 
 ### Diario de recuperación por período
 

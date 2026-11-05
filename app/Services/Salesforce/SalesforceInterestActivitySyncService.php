@@ -48,18 +48,23 @@ class SalesforceInterestActivitySyncService
      *
      * @return array{run: SalesforceInterestActivityRun, stats: array<string, int|float|string|null>}
      */
-    public function syncCurrentRecovery(string $reason, int $generationId): array
-    {
-        return $this->syncSnapshot($reason, $generationId, true);
+    public function syncCurrentRecovery(
+        string $reason,
+        int $generationId,
+        ?callable $heartbeat = null,
+        ?callable $finalizationGuard = null,
+    ): array {
+        return $this->syncSnapshot($reason, $generationId, true, $heartbeat, $finalizationGuard);
     }
 
     /** Deterministic, non-identifying digest of a completed F5 materialization. */
-    public function manifest(SalesforceInterestActivityRun $run): array
+    public function manifest(SalesforceInterestActivityRun $run, ?callable $heartbeat = null): array
     {
         $hash = hash_init('sha256');
         $rows = 0;
         SalesforceInterestActivity::query()->where('activity_run_id', $run->id)
-            ->chunkById(1000, function ($items) use ($hash, &$rows): void {
+            ->chunkById(1000, function ($items) use ($hash, &$rows, $heartbeat): void {
+                $this->heartbeat($heartbeat);
                 foreach ($items as $item) {
                     hash_update($hash, $this->activityHash((array) $item->getAttributes())."\n");
                     $rows++;
@@ -70,13 +75,14 @@ class SalesforceInterestActivitySyncService
     }
 
     /** @return array{rows: int, sha256: string, matches: bool} */
-    public function verifyCurrentRecovery(SalesforceInterestActivityRun $run, int $generationId): array
+    public function verifyCurrentRecovery(SalesforceInterestActivityRun $run, int $generationId, ?callable $heartbeat = null): array
     {
         $hash = hash_init('sha256');
         $rows = 0;
         $cutoff = CarbonImmutable::parse($run->source_cutoff_at, 'UTC');
         foreach (['Task', 'Event'] as $kind) {
             foreach ($this->client->queryPages($this->soql($kind, $cutoff, true), true) as $records) {
+                $this->heartbeat($heartbeat);
                 $interests = $this->resolveInterests($records, $generationId);
                 foreach ($records as $record) {
                     $row = $this->mapRecord($run, $kind, $record, $interests);
@@ -85,7 +91,7 @@ class SalesforceInterestActivitySyncService
                 }
             }
         }
-        $actual = $this->manifest($run);
+        $actual = $this->manifest($run, $heartbeat);
         $expected = hash_final($hash);
 
         return ['rows' => $rows, 'sha256' => $expected,
@@ -93,8 +99,13 @@ class SalesforceInterestActivitySyncService
     }
 
     /** @return array{run: SalesforceInterestActivityRun, stats: array<string, int|float|string|null>} */
-    private function syncSnapshot(string $reason, ?int $generationId, bool $currentState): array
-    {
+    private function syncSnapshot(
+        string $reason,
+        ?int $generationId,
+        bool $currentState,
+        ?callable $heartbeat = null,
+        ?callable $finalizationGuard = null,
+    ): array {
         if ($generationId === null) {
             throw new RuntimeException('F5 requires an explicit isolated F2 candidate.');
         }
@@ -124,6 +135,7 @@ class SalesforceInterestActivitySyncService
         $startedAt = microtime(true);
 
         try {
+            $this->heartbeat($heartbeat);
             $sourceRun = ReportSyncRun::findOrFail($candidate->interest_run_id);
             $stats['source_interest_sync_run_id'] = $sourceRun->id;
             $stats['source_interest_cutoff_at'] = $sourceRun->source_cutoff_at->utc()->toIso8601String();
@@ -141,23 +153,37 @@ class SalesforceInterestActivitySyncService
                     'stats' => $stats,
                 ]);
 
-                $this->syncActivities($run, $cutoff, $stats, $generationId, $currentState);
+                $this->syncActivities($run, $cutoff, $stats, $generationId, $currentState, $heartbeat);
                 $this->afterSnapshotBuilt($run, $stats);
                 $this->assertSnapshotComplete($run, $stats);
+                $this->heartbeat($heartbeat);
                 if (! $generations->generation($generationId)->f2_complete) {
                     throw new RuntimeException('F2 candidate is no longer complete.');
                 }
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
 
-                $run->update([
-                    'status' => 'completed',
-                    'completed_at' => now('UTC'),
-                    'stats' => $stats,
-                    'error_message' => null,
-                ]);
-                $generations->finishF5($generationId, $run);
+                DB::transaction(function () use ($finalizationGuard, $run, $stats, $generations, $generationId): void {
+                    // For an initial recovery, this locks and verifies the
+                    // recovery lease before either the run or candidate may be
+                    // finalized. The two local transitions commit together.
+                    if ($finalizationGuard !== null && $finalizationGuard() !== true) {
+                        throw new RuntimeException('Initial recovery lease was lost.');
+                    }
+                    $run->update([
+                        'status' => 'completed',
+                        'completed_at' => now('UTC'),
+                        'stats' => $stats,
+                        'error_message' => null,
+                    ]);
+                    $generations->finishF5($generationId, $run);
+                });
             } catch (Throwable) {
-                $generations->fail($generationId);
+                // A current-state recovery retains its F2 checkpoint. Its F5
+                // materialization is restarted in a new run on resume; a
+                // partial activity run is never attached to the candidate.
+                if (! $currentState) {
+                    $generations->fail($generationId);
+                }
                 $stats['errors']++;
                 $stats['duration_seconds'] = round(microtime(true) - $startedAt, 3);
                 try {
@@ -188,9 +214,10 @@ class SalesforceInterestActivitySyncService
         array &$stats,
         int $generationId,
         bool $currentState,
+        ?callable $heartbeat,
     ): void {
-        $this->syncActivityKind($run, 'Task', $cutoff, $stats, $generationId, $currentState);
-        $this->syncActivityKind($run, 'Event', $cutoff, $stats, $generationId, $currentState);
+        $this->syncActivityKind($run, 'Task', $cutoff, $stats, $generationId, $currentState, $heartbeat);
+        $this->syncActivityKind($run, 'Event', $cutoff, $stats, $generationId, $currentState, $heartbeat);
     }
 
     /** @param array<string, int|float|string|null> $stats */
@@ -201,9 +228,11 @@ class SalesforceInterestActivitySyncService
         array &$stats,
         int $generationId,
         bool $currentState,
+        ?callable $heartbeat,
     ): void {
         $stats['query_all_calls']++;
         foreach ($this->client->queryPages($this->soql($kind, $cutoff, $currentState), true) as $records) {
+            $this->heartbeat($heartbeat);
             $stats[$kind === 'Task' ? 'task_pages' : 'event_pages']++;
             $stats[$kind === 'Task' ? 'tasks_examined' : 'events_examined'] += count($records);
             $interestById = $this->resolveInterests($records, $generationId);
@@ -213,6 +242,7 @@ class SalesforceInterestActivitySyncService
             );
 
             foreach (array_chunk($rows, self::PERSIST_CHUNK_SIZE) as $chunk) {
+                $this->heartbeat($heartbeat);
                 DB::table('salesforce_interest_activities')->insert($chunk);
                 $stats['persist_chunks']++;
                 $stats['rows_materialized'] += count($chunk);
@@ -401,4 +431,11 @@ class SalesforceInterestActivitySyncService
     protected function afterSnapshotBuilt(SalesforceInterestActivityRun $run, array $stats): void {}
 
     protected function afterCleanupChunk(int $rowsDeleted): void {}
+
+    private function heartbeat(?callable $heartbeat): void
+    {
+        if ($heartbeat !== null && $heartbeat() !== true) {
+            throw new RuntimeException('Initial recovery lease was lost.');
+        }
+    }
 }

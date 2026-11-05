@@ -165,6 +165,13 @@ legacy; debe validarse la regresión de sincronización/reproceso con esas
 condiciones. Las notas anteriores sobre tabla viva son históricas.
 [Contrato transversal y límites](salesforce-interest-generations.md).
 
+La recuperación inicial F2/F5 reanudable mantiene su candidata aislada y no
+publica automáticamente. Sus checkpoints, lease, run F5 asociado sin verificar
+o certificación previa a publicación no cambian la generación que
+`relatedInterestMatches()` consulta. Por tanto no cambian la clasificación de
+llamadas, sus prioridades, fecha, filtros, fórmulas, auditoría ni exportaciones;
+un candidato no publicado no es fuente alternativa para este informe.
+
 ### Recuperación diagnóstica progresiva de Interests (2026-11-03)
 
 La recuperación diagnóstica por períodos de Interests no cambia los cálculos,

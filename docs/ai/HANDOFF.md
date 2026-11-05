@@ -6535,3 +6535,145 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `stats.range_end_exclusive` o límites de inicio de día válidos; no crear runs
   ficticios para ello. Cuerpo de PR: `Docs-Impact: updated` y
   `Docs-Matrix-Impact: updated`.
+
+## 2026-11-04 — recuperación inicial Salesforce Interests por checkpoints
+
+- Alcance: `recover-initial` deja de recorrer F2 como una única operación. La
+  nueva recuperación usa cursor Salesforce ID, lotes configurables de 50 a
+  1.000 (500 por defecto), pasadas de reconciliación acotadas, checkpoints y
+  lease persistente. Se añaden consulta, reanudación y cancelación operator-only
+  (`recover-status`, `recover-resume`, `recover-cancel`). F5 interrumpido se
+  reinicia en un run aislado nuevo; no se adjunta ni acredita un run parcial.
+- Archivos funcionales: migración
+  `2026_11_04_120000_create_salesforce_interest_initial_recoveries.php`,
+  `InterestInitialCurrentRecoveryService`, `SalesforceInterestSyncService`,
+  `SalesforceInterestActivitySyncService`, comando de generaciones y pruebas
+  de `InterestGenerationTest`. La migración añade evidencia local; no toca
+  tablas legacy, Salesforce remoto, scheduler, workers, puntero ni publicación.
+- Seguridad e integridad: los checkpoints contienen hashes y contadores, no
+  payloads, tokens ni IDs Salesforce; un lease vivo impide dos escritores y
+  cada checkpoint verifica propietario. Un lote no confirmado se repite de
+  forma idempotente; cursor/orden inválidos, cobertura de borrados insuficiente,
+  conflictos o verificación no limpia fallan cerrados. La publicación conserva
+  su aprobación y evidencia revisada independientes.
+- Rendimiento: la extracción F2 evita OFFSET y limita memoria/trasacción por
+  lote; F2 local reusa versiones con contenido idéntico. No se ejecutó ningún
+  benchmark de volumen representativo ni se modificó InnoDB/MariaDB. La
+  recomendación de capacidad, lecturas concurrentes y ajuste de buffer pool
+  queda pendiente de una medición aislada autorizada.
+- Documentación: `docs/salesforce-interest-generations.md` describe el journal,
+  límites, comandos y recuperación; `docs/matriz-trazabilidad-kpi.md` registra
+  su linaje como operación sin alterar KPI. `PROJECT_CONTEXT.md` y
+  `DECISIONS.md` no cambian: no se modifica el contrato de lectores publicados
+  ni se adopta una decisión transversal irreversible.
+- Verificación documental ejecutada: revisión de diff y `git diff --check`.
+  El validador `scripts/check_documentation_integrity.py` queda pendiente de un
+  intérprete Python disponible y de un cuerpo de PR con `Docs-Impact: updated`
+  y `Docs-Matrix-Impact: updated`. La suite funcional y migración aislada deben
+  completar su resultado antes de despliegue; no se declara apto para producción.
+
+## 2026-11-05 — fencing y progreso persistente de recuperación inicial Interests
+
+- Corrección sobre `f94782c`: el lease se renueva y comprueba antes/después de
+  las lecturas F2, mientras se aplican borrados `getDeleted`, durante el merge
+  F2 local/remoto y en cada tramo material de F5. Si otro propietario toma una
+  recuperación caducada, el worker anterior queda fenced y no puede escribir un
+  checkpoint ni registrar un fallo sobre la ejecución nueva.
+- Verificación F2: ahora conserva cursor y contadores de merge por `Id` y
+  retoma el último rango totalmente comparado; la cola local se recorre por
+  clave y con heartbeat. Una discrepancia abre otra pasada de reconciliación
+  hasta el máximo; después falla cerrado. No cambia la evidencia exigida, la
+  semilla, versiones inmutables, publicación ni el puntero.
+- F5: el estado persistido distingue pendiente, materialización, asociación sin
+  verificar, fallo, verificación y certificación. La creación de actividades,
+  manifiesto y cotejo renuevan el lease; la certificación y el checkpoint final
+  se encierran en la transacción fenced. Un F5 interrumpido antes de asociarse
+  se reinicia en un run aislado y no acredita sus filas parciales.
+- Operación: `recover-status` añade pasada actual/máxima, estado F5, progreso de
+  verificación y caducidad calculada del lease. La salida mantiene datos
+  operativos agregados y no expone payloads, tokens ni IDs Salesforce. No se
+  añade endpoint web ni se habilita scheduler o worker.
+- Documentación actualizada: `docs/salesforce-interest-generations.md` y
+  `docs/matriz-trazabilidad-kpi.md`; no se modifica `PROJECT_CONTEXT.md` ni
+  `DECISIONS.md`, pues no cambia el contrato de lectura publicada ni hay una
+  decisión irreversible adicional.
+- Pruebas añadidas: `InterestGenerationTest` cubre worker F2 fenced,
+  verificación F2 que retoma cursor y F5 fallido que conserva F2 y reinicia un
+  run aislado. Verificación ejecutada: revisión del diff y `git diff --check`
+  correctos. No se ejecutaron PHP, Python, migraciones aisladas, benchmark,
+  Salesforce ni producción. Estas pruebas deben ejecutarse por CI/entorno PHP
+  antes de despliegue. Mantener en la PR `Docs-Impact:
+  updated` y `Docs-Matrix-Impact: updated`.
+
+## 2026-11-05 — finalización F5 atómica y estado asociado sin certificar
+
+- Corrección sobre `8ff088a`: el estado `completed` del run F5 y su asociación
+  `finishF5` con la candidata se confirman en una sola transacción, después de
+  comprobar la guardia fenced del lease. Un worker que perdió el lease no puede
+  completar el run ni adjuntarlo; la prueba añadida cubre ese rechazo antes de
+  la asociación.
+- Recuperación: si el proceso cae tras esa asociación pero antes de manifiesto,
+  verificación o certificación, el journal conserva/deriva
+  `associated_unverified`. La reanudación reutiliza solo el run F5 ya completo
+  para verificarlo y certificarlo; no lo publica ni lo trata como evidencia
+  suficiente. Una interrupción previa a la asociación conserva F2 y obliga a
+  un F5 nuevo, sin reutilizar filas parciales.
+- Operación: `recover-status` deriva `associated_unverified` cuando detecta F5
+  asociado en una candidata `validating`, incluso si cayó antes de persistir ese
+  checkpoint; si la candidata ya es `certified`, devuelve ese estado. Esta
+  derivación no acredita verificación, evidencia revisada ni publicación.
+- Pruebas añadidas: una guardia sintética rechaza la finalización fenced antes
+  de asociar F5; otra simula la caída después de asociarlo y antes del
+  checkpoint, comprueba `associated_unverified` en estado y que la reanudación
+  termina la certificación sin crear una publicación.
+- Documentación: se actualizaron `docs/salesforce-interest-generations.md`,
+  `docs/matriz-trazabilidad-kpi.md` y este handoff. Sin migración, cambios de
+  KPI, fórmulas, fuente, universo, exportación, endpoint web, scheduler o
+  workers. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian.
+- Verificación pendiente: no se ejecutaron PHP, MariaDB, Python, benchmark,
+  migraciones aisladas, Salesforce ni producción. Antes de despliegue, CI debe
+  ejecutar la prueba de guardia y la suite aplicable. PR: `Docs-Impact: updated`
+  y `Docs-Matrix-Impact: updated`.
+
+## PR #107 — alcance documental de recuperación inicial Interest
+
+- Se contrastó el diff desde `origin/main` `54814e22cf8c0375e4f6c812efa02c6ab7cafc7c`:
+  la recuperación inicial crea y reanuda una candidata F2/F5 aislada con
+  checkpoints y lease, sin publicación automática ni modificación del puntero.
+- Se actualizaron `docs/reglas-negocio-leads.md`, `docs/informe-llamadas.md`,
+  `docs/informe-campanas.md` y `docs/informe-reservas-ventas.md`, además de la
+  matriz y el runbook de generaciones. Los cuatro contratos declaran que una
+  candidata no publicada, incluso certificada o con F5 asociado sin verificar,
+  no es fuente oficial ni alternativa para sus lectores.
+- No cambian fuentes oficiales publicadas, fórmulas, fecha funcional, filtros,
+  universos, deduplicación, cierres, auditorías ni exportaciones de Interests,
+  Llamadas, Campañas o Reservas/Ventas. La disponibilidad actual conserva sus
+  rechazos controlados y no adopta tabla legacy ni datos del candidato.
+- Verificación documental: revisión del diff y `git diff --check`; no se
+  ejecutaron PHP, Python, MariaDB, benchmark, migraciones aisladas, Salesforce
+  ni producción. El validador requiere runtime Python y cuerpo de PR con
+  `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`.
+- Seguimiento de CI: `composer.lock` sube los componentes Symfony afectados a
+  `http-foundation` y `http-kernel` `v8.1.11`, `routing` `v8.1.11` y el
+  `var-dumper` necesario para la compatibilidad de `http-kernel` a `v8.1.10`.
+  El lock se contrastó con Packagist y etiquetas oficiales; no se pudieron
+  ejecutar Composer ni PHP localmente por ausencia de runtime. La CI debe
+  validar instalación y `composer audit --locked --no-dev`.
+- La regresión de cobertura de borrados valida el estado fallido del journal
+  reanudable y que la candidata sigue aislada/sin publicar. No se marca la
+  candidata como fallida porque ese estado impediría el reintento controlado;
+  tampoco se habilita el puntero de publicación.
+
+## 2026-11-05 — corrección de calidad CI de PR #107
+
+- Se aplicó Laravel Pint `v1.29.1` a los dos servicios señalados por la CI:
+  `InterestInitialCurrentRecoveryService` y
+  `SalesforceInterestActivitySyncService`. El cambio es exclusivamente de
+  estilo; no altera los límites del lease, los checkpoints, las transacciones
+  fenced, las transiciones F2/F5 ni la publicación de la generación.
+- Verificaciones locales: Pint en modo `--test`, `php -l` de ambos servicios y
+  `git diff --check`, todos correctos. El intérprete PHP oficial se usó de forma
+  temporal solo para ejecutar Pint y no se incorporó al repositorio.
+- No hay migraciones, configuración, variables de entorno ni acciones de
+  producción asociadas. La suite completa y `composer audit` quedan a cargo de
+  la CI, que ya debe reevaluar la revisión con el `composer.lock` corregido.

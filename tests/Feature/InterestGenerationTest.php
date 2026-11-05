@@ -316,7 +316,317 @@ class InterestGenerationTest extends TestCase
         $this->assertSame('2026-10-29 00:00:00', SalesforceInterestActivityRun::findOrFail($this->store()->generation($candidate)->activity_run_id)->source_cutoff_at->utc()->toDateTimeString());
         $this->assertSame('2026-10-29 00:00:00', $result['evidence']['watermark']);
         $this->assertSame(['2026-10-29T13:37:00+00:00', '2026-10-29T00:00:00+00:00'], $client->deletionEnds);
+        $this->assertDatabaseHas('salesforce_interest_initial_recoveries', [
+            'candidate_generation_id' => $candidate, 'status' => 'completed', 'phase' => 'completed',
+        ]);
         $this->travelBack();
+    }
+
+    public function test_initial_recovery_retries_an_unacknowledged_batch_without_advancing_its_checkpoint(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $record = ['Id' => 'a01000000000000001', 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z', 'IsDeleted' => false];
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->store()->persist($source, [app(SalesforceInterestSyncService::class)->mapRecord($record, false)]);
+        $this->complete($source);
+        $client = new class($record) extends SalesforceClient
+        {
+            public int $interestQueries = 0;
+
+            public function __construct(private readonly array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                if (str_contains($soql, 'FROM Interes__c')) {
+                    $this->interestQueries++;
+                    if ($this->interestQueries >= 2 && $this->interestQueries <= 4) {
+                        throw new RuntimeException('Synthetic transient read interruption.');
+                    }
+                    yield [$this->record];
+
+                    return;
+                }
+                yield [];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
+                    'latestDateCovered' => $end->utc()->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Resume interrupted initial recovery safely.');
+            $this->fail('Expected the synthetic interruption.');
+        } catch (RuntimeException) {
+            $recovery = DB::table('salesforce_interest_initial_recoveries')->first();
+            $this->assertSame('failed', $recovery->status);
+            $this->assertSame('f2_reconcile', $recovery->phase);
+            $this->assertNull($recovery->checkpoint_salesforce_id);
+            $this->assertSame(1, $this->store()->rows($recovery->candidate_generation_id)->count());
+            $result = app(InterestInitialCurrentRecoveryService::class)->resume($recovery->id, 'Resume interrupted initial recovery safely.');
+            $this->assertSame('completed', $result['status']);
+            $this->assertSame(1, $this->store()->rows($result['generation_id'])->count());
+            $this->assertNull($this->store()->published());
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_fenced_worker_cannot_persist_after_its_recovery_lease_is_replaced(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->complete($source);
+        $record = ['Id' => 'a01000000000000002', 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z', 'IsDeleted' => false];
+        $client = new class($record) extends SalesforceClient
+        {
+            public function __construct(private readonly array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                if (str_contains($soql, 'FROM Interes__c')) {
+                    DB::table('salesforce_interest_initial_recoveries')->update([
+                        'lease_token' => (string) Str::uuid(), 'heartbeat_at' => now('UTC'),
+                    ]);
+                    yield [$this->record];
+
+                    return;
+                }
+                yield [];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
+                    'latestDateCovered' => $end->utc()->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Reject fenced worker writes safely.');
+            $this->fail('Expected the replacement lease to fence the worker.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('lease was lost', $exception->getMessage());
+            $recovery = DB::table('salesforce_interest_initial_recoveries')->first();
+            $this->assertSame('running', $recovery->status);
+            $this->assertSame(0, $this->store()->rows($recovery->candidate_generation_id)->count());
+            $this->assertNull($this->store()->published());
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_f2_verification_resumes_from_its_persisted_keyset_checkpoint(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $records = collect(range(1, 50))->map(fn (int $number): array => [
+            'Id' => sprintf('a01%015d', $number), 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z', 'IsDeleted' => false,
+        ])->all();
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->store()->persist($source, array_map(fn (array $record): array => app(SalesforceInterestSyncService::class)->mapRecord($record, false), $records));
+        $this->complete($source);
+        $client = new class($records) extends SalesforceClient
+        {
+            public int $interestQueries = 0;
+
+            public function __construct(private readonly array $records) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                if (! str_contains($soql, 'FROM Interes__c')) {
+                    yield [];
+
+                    return;
+                }
+                $this->interestQueries++;
+                if ($this->interestQueries >= 6 && $this->interestQueries <= 8) {
+                    throw new RuntimeException('Synthetic verification interruption.');
+                }
+                preg_match("/Id > '([^']+)'/", $soql, $matches);
+                $after = $matches[1] ?? null;
+                yield array_values(array_filter($this->records, fn (array $record): bool => $after === null || strcmp($record['Id'], $after) > 0));
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
+                    'latestDateCovered' => $end->utc()->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Resume F2 verification from a durable cursor.', 3, 50);
+            $this->fail('Expected the verification interruption.');
+        } catch (RuntimeException) {
+            $recovery = DB::table('salesforce_interest_initial_recoveries')->first();
+            $this->assertSame('failed', $recovery->status);
+            $this->assertSame('f2_verify', $recovery->phase);
+            $this->assertSame('a01000000000000050', $recovery->checkpoint_salesforce_id);
+            $result = app(InterestInitialCurrentRecoveryService::class)->resume($recovery->id, 'Resume F2 verification from a durable cursor.');
+            $this->assertSame('completed', $result['status']);
+            $this->assertSame(50, $result['verification']['remote_rows']);
+            $this->assertNull($this->store()->published());
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_failed_f5_keeps_f2_and_restarts_in_a_new_isolated_run_on_resume(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->complete($source);
+        $record = ['Id' => 'a01000000000000001', 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z', 'IsDeleted' => false];
+        $client = new class($record) extends SalesforceClient
+        {
+            public int $taskQueries = 0;
+
+            public function __construct(private readonly array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                if (str_contains($soql, 'FROM Interes__c')) {
+                    yield [$this->record];
+
+                    return;
+                }
+                if (str_contains($soql, 'FROM Task')) {
+                    $this->taskQueries++;
+                    if ($this->taskQueries === 1) {
+                        throw new RuntimeException('Synthetic F5 Task interruption.');
+                    }
+                }
+                yield [];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
+                    'latestDateCovered' => $end->utc()->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Restart F5 without discarding F2 safely.');
+            $this->fail('Expected the synthetic F5 failure.');
+        } catch (RuntimeException) {
+            $recovery = DB::table('salesforce_interest_initial_recoveries')->first();
+            $candidate = $this->store()->generation($recovery->candidate_generation_id);
+            $this->assertSame('failed', $recovery->status);
+            $this->assertSame('f5', $recovery->phase);
+            $this->assertTrue((bool) $candidate->f2_complete);
+            $this->assertFalse((bool) $candidate->f5_complete);
+            $this->assertDatabaseHas('salesforce_interest_activity_runs', ['status' => 'failed']);
+            $result = app(InterestInitialCurrentRecoveryService::class)->resume($recovery->id, 'Restart F5 without discarding F2 safely.');
+            $this->assertSame('completed', $result['status']);
+            $this->assertTrue((bool) $this->store()->generation($result['generation_id'])->f5_complete);
+            $this->assertDatabaseCount('salesforce_interest_activity_runs', 3);
+        } finally {
+            $this->travelBack();
+        }
+    }
+
+    public function test_f5_finalization_guard_rejects_a_fenced_worker_before_association(): void
+    {
+        $candidate = $this->candidate('2026-10-28 15:57:00');
+        $this->store()->finishF2($candidate);
+        app(ReportSyncRunService::class)->complete(
+            ReportSyncRun::findOrFail($this->store()->generation($candidate)->interest_run_id),
+            CarbonImmutable::parse('2026-10-28 15:57:00', 'UTC'),
+        );
+        $client = new class extends SalesforceClient
+        {
+            public function __construct() {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield [];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+
+        try {
+            app(SalesforceInterestActivitySyncService::class)->syncCurrentRecovery(
+                'Reject fenced F5 finalization safely.',
+                $candidate,
+                null,
+                fn (): bool => false,
+            );
+            $this->fail('Expected finalization guard rejection.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('failed safely', $exception->getMessage());
+            $generation = $this->store()->generation($candidate);
+            $this->assertFalse((bool) $generation->f5_complete);
+            $this->assertNull($generation->activity_run_id);
+            $this->assertDatabaseHas('salesforce_interest_activity_runs', ['status' => 'failed']);
+        }
+    }
+
+    public function test_recovery_resumes_when_f5_was_associated_before_its_operational_checkpoint(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-29 13:39:00', 'UTC'));
+        $source = $this->candidate('2026-10-28 15:57:00');
+        $this->complete($source);
+        $record = ['Id' => 'a01000000000000001', 'CreatedDate' => '2026-10-01T00:00:00Z',
+            'LastModifiedDate' => '2026-10-01T00:00:00Z', 'SystemModstamp' => '2026-10-01T00:00:00Z', 'IsDeleted' => false];
+        $client = new class($record) extends SalesforceClient
+        {
+            public function __construct(private readonly array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield str_contains($soql, 'FROM Interes__c') ? [$this->record] : [];
+            }
+
+            public function getDeleted(string $object, CarbonInterface $start, CarbonInterface $end): array
+            {
+                return ['earliestDateAvailable' => '2020-07-31T10:37:00.000+0000',
+                    'latestDateCovered' => $end->utc()->toIso8601String(), 'deletedRecords' => []];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+        $activities = new class($client) extends SalesforceInterestActivitySyncService
+        {
+            public bool $interruptAfterAssociation = true;
+
+            public function syncCurrentRecovery(string $reason, int $generationId, ?callable $heartbeat = null, ?callable $finalizationGuard = null): array
+            {
+                $result = parent::syncCurrentRecovery($reason, $generationId, $heartbeat, $finalizationGuard);
+                if ($this->interruptAfterAssociation) {
+                    $this->interruptAfterAssociation = false;
+                    throw new RuntimeException('Synthetic interruption after F5 association.');
+                }
+
+                return $result;
+            }
+        };
+        $this->app->instance(SalesforceInterestActivitySyncService::class, $activities);
+
+        try {
+            app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Resume after F5 association without certification.');
+            $this->fail('Expected the post-association interruption.');
+        } catch (RuntimeException) {
+            $recovery = DB::table('salesforce_interest_initial_recoveries')->first();
+            $candidate = $this->store()->generation($recovery->candidate_generation_id);
+            $this->assertTrue((bool) $candidate->f5_complete);
+            $this->assertSame('validating', $candidate->status);
+            $this->assertSame('associated_unverified', app(InterestInitialCurrentRecoveryService::class)->status($recovery->id)['f5_status']);
+            $result = app(InterestInitialCurrentRecoveryService::class)->resume($recovery->id, 'Resume after F5 association without certification.');
+            $this->assertSame('completed', $result['status']);
+            $this->assertSame('certified', $this->store()->generation($result['generation_id'])->status);
+        } finally {
+            $this->travelBack();
+        }
     }
 
     public function test_current_initial_recovery_cli_refuses_remote_read_without_explicit_authorization(): void
@@ -379,7 +689,8 @@ class InterestGenerationTest extends TestCase
             app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Reject regressed deletion coverage safely.');
             $this->fail('Expected coverage regression to fail the candidate.');
         } catch (RuntimeException) {
-            $this->assertDatabaseHas('salesforce_interest_generations', ['status' => 'failed']);
+            $this->assertDatabaseHas('salesforce_interest_initial_recoveries', ['status' => 'failed']);
+            $this->assertDatabaseHas('salesforce_interest_generations', ['status' => 'syncing']);
             $this->assertNull($this->store()->published());
         } finally {
             $this->travelBack();
