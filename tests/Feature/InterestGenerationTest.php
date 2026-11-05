@@ -689,7 +689,8 @@ class InterestGenerationTest extends TestCase
             app(InterestInitialCurrentRecoveryService::class)->recover($source, 'Reject regressed deletion coverage safely.');
             $this->fail('Expected coverage regression to fail the candidate.');
         } catch (RuntimeException) {
-            $this->assertDatabaseHas('salesforce_interest_generations', ['status' => 'failed']);
+            $this->assertDatabaseHas('salesforce_interest_initial_recoveries', ['status' => 'failed']);
+            $this->assertDatabaseHas('salesforce_interest_generations', ['status' => 'syncing']);
             $this->assertNull($this->store()->published());
         } finally {
             $this->travelBack();

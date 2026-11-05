@@ -6659,3 +6659,7 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   El lock se contrastó con Packagist y etiquetas oficiales; no se pudieron
   ejecutar Composer ni PHP localmente por ausencia de runtime. La CI debe
   validar instalación y `composer audit --locked --no-dev`.
+- La regresión de cobertura de borrados valida el estado fallido del journal
+  reanudable y que la candidata sigue aislada/sin publicar. No se marca la
+  candidata como fallida porque ese estado impediría el reintento controlado;
+  tampoco se habilita el puntero de publicación.
