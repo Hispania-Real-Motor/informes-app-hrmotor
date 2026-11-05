@@ -4,6 +4,4 @@ namespace App\Services\Salesforce;
 
 use RuntimeException;
 
-final class MonthlyInterestRecoveryLeaseLost extends RuntimeException
-{
-}
+final class MonthlyInterestRecoveryLeaseLost extends RuntimeException {}
