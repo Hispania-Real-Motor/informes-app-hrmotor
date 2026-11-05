@@ -6835,6 +6835,33 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   migraciones, sincronizaciones ni despliegue. PHP y Python no están
   disponibles en este entorno.
 
+## 2026-11-07 — F5 mensual aislada de Interests
+
+- Se añadió un diario F5 mensual administrativo, preparado exclusivamente
+  desde una F2 mensual terminada. Consulta Task/Event relacionados por
+  `What.Type = Interes__c`, retiene únicamente relaciones cuyo Interest está
+  en la F2 de origen y guarda filas, hashes, manifiestos, checkpoints y leases
+  en tablas mensuales propias. No hay endpoint HTTP.
+- La terminación de F5 es operativa, no una certificación: compara el snapshot
+  F2 fijado al inicio y el estado remoto actual, pero una F2 con
+  `verification.verified = false` sigue siendo provisional. No se usa
+  `getDeleted`, historial as-of ni fuente independiente; la certificación
+  histórica continúa `unavailable`.
+- Impacto: no se crean generaciones, versiones ni memberships, no se modifica
+  `salesforce_interest_activities`, lectores o puntero publicado y los seis
+  informes oficiales, KPI, filtros, cálculos, auditorías y exportaciones no
+  cambian. Se actualizaron el runbook y la matriz para registrar la operación
+  no-KPI; `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian.
+- Seguridad/operación: CLI requiere razón y confirmación explícita de lectura
+  remota para ejecutar. El estado/fallo expone metadatos permitidos, no
+  payloads, SOQL, tokens ni IDs remotos. La reanudación es fenced y conserva el
+  checkpoint; cancelar no borra evidencia.
+- Verificación documental: pendiente del validador sobre un HEAD comprometido;
+  no se ejecutaron PHP, MariaDB, migraciones, Salesforce, benchmark ni
+  producción desde esta revisión. PR: `Docs-Impact: updated`,
+  `Docs-Matrix-Impact: updated`; añadir la excepción de rutas operativas sin
+  mapa si el validador la exige.
+
 ## 2026-11-05 — cobertura temporal de `getDeleted` en recuperación inicial Interests
 
 - Causa corregida: `recover-initial` admitía una respuesta de `getDeleted` con
