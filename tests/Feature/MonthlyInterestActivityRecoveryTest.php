@@ -119,6 +119,7 @@ class MonthlyActivityFakeClient extends SalesforceClient
 {
     /** @var list<string> */
     public array $soql = [];
+
     private int $calls = 0;
 
     /** @param list<array<string,mixed>> $tasks @param list<array<string,mixed>> $events */

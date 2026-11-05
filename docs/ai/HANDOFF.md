@@ -6871,8 +6871,9 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - La documentación de integridad pasó en esa ejecución. PHP, Composer y la
   suite siguen sin estar disponibles localmente. Una segunda ejecución alcanzó
   la suite y localizó un error de sintaxis en el contador de soft deletes de
-  Interest; se corrige sin cambiar la semántica del contador y debe validarse
-  en CI antes de revisión o despliegue.
+  Interest; se corrigió sin cambiar la semántica del contador. La misma
+  ejecución acreditó 1.621 pruebas y 14.521 aserciones; solo quedó Pint, cuya
+  separación de atributos se ajustó para una nueva validación de CI.
 
 ## 2026-11-05 — cobertura temporal de `getDeleted` en recuperación inicial Interests
 

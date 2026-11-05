@@ -15,7 +15,9 @@ use Throwable;
 final class MonthlyInterestActivityRecoveryService
 {
     private const LEASE_SECONDS = 900;
+
     private const DEFAULT_BATCH_SIZE = 500;
+
     private const ID_PATTERN = '/^[A-Za-z0-9]{18}$/';
 
     public function __construct(private readonly SalesforceClient $client) {}
