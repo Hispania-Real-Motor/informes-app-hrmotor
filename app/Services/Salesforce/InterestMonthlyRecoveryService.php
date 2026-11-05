@@ -74,7 +74,10 @@ final class InterestMonthlyRecoveryService
                 }
                 if ($r->phase === 'completed') {
                     $stage = 'finalization';
-                    DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->update(['status' => 'completed', 'completed_at' => now('UTC'), 'lease_token' => null, 'updated_at' => now()]);
+                    $updated = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['status' => 'completed', 'completed_at' => now('UTC'), 'lease_token' => null, 'updated_at' => now()]);
+                    if ($updated !== 1) {
+                        throw new MonthlyInterestRecoveryLeaseLost;
+                    }
 
                     return $this->status($id);
                 }
@@ -229,12 +232,12 @@ final class InterestMonthlyRecoveryService
 
     private function owned(int $id, string $lease, bool $lock = false): object
     {
-        $q = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease);
+        $q = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running');
         if ($lock) {
             $q->lockForUpdate();
         }
 
-        return $q->first() ?? throw new RuntimeException('Monthly recovery lease was lost.');
+        return $q->first() ?? throw new MonthlyInterestRecoveryLeaseLost;
     }
 
     private function live(object $r): bool
@@ -256,14 +259,22 @@ final class InterestMonthlyRecoveryService
 
     private function renew(int $id, string $lease): void
     {
-        if (DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['heartbeat_at' => now('UTC'), 'updated_at' => now()]) !== 1) {
-            throw new RuntimeException('Monthly recovery lease was lost.');
+        $updated = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['heartbeat_at' => now('UTC'), 'updated_at' => now()]);
+        if ($updated === 1) {
+            return;
+        }
+
+        // MySQL/MariaDB report zero affected rows when both datetime values remain equal.
+        // A second fenced read distinguishes that benign outcome from an actual lease loss.
+        $stillOwned = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->exists();
+        if (! $stillOwned) {
+            throw new MonthlyInterestRecoveryLeaseLost;
         }
     }
 
     private function recordFailure(int $id, string $lease, string $stage, Throwable $e): void
     {
-        $category = $e instanceof QueryException ? $this->databaseCategory($e) : match ($stage) {
+        $category = $e instanceof MonthlyInterestRecoveryLeaseLost ? 'lease_lost' : ($e instanceof QueryException ? $this->databaseCategory($e) : match ($stage) {
             'salesforce_query', 'verification_query' => 'salesforce_query_failed',
             'mapping' => 'mapping_failed',
             'record_validation' => 'invalid_record',
@@ -274,14 +285,14 @@ final class InterestMonthlyRecoveryService
             'verification_hash' => 'verification_hash_failed',
             'verification_database' => 'verification_failed',
             'finalization' => 'checkpoint_failed',
-            default => $e instanceof RuntimeException && $e->getMessage() === 'Monthly recovery lease was lost.' ? 'lease_lost' : 'unexpected_failure',
-        };
+            default => 'unexpected_failure',
+        });
         $meta = ['exception_type' => class_basename($e), 'pages_completed' => (int) DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->value('pages_completed'), 'occurred_at' => now('UTC')->toIso8601String()];
         if ($e instanceof QueryException && isset($e->errorInfo[0], $e->errorInfo[1])) {
             $meta['sql_state'] = substr((string) $e->errorInfo[0], 0, 5);
             $meta['driver_code'] = (int) $e->errorInfo[1];
         }
-        $updated = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->update(['status' => 'failed', 'failed_at' => now('UTC'), 'error_code' => $category, 'error_stage' => $stage, 'error_meta' => json_encode($meta, JSON_THROW_ON_ERROR), 'lease_token' => null, 'updated_at' => now()]);
+        $updated = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['status' => 'failed', 'failed_at' => now('UTC'), 'error_code' => $category, 'error_stage' => $stage, 'error_meta' => json_encode($meta, JSON_THROW_ON_ERROR), 'lease_token' => null, 'updated_at' => now()]);
         if ($updated === 1) {
             Log::warning('salesforce_interest_monthly_recovery_failed', ['recovery_id' => $id, 'stage' => $stage, 'category' => $category, 'exception_type' => $meta['exception_type'], 'pages_completed' => $meta['pages_completed'], 'occurred_at' => $meta['occurred_at']]);
         }

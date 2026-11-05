@@ -3,11 +3,15 @@
 namespace Tests\Feature;
 
 use App\Services\Salesforce\InterestMonthlyRecoveryService;
+use App\Services\Salesforce\MonthlyInterestRecoveryLeaseLost;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestSyncService;
+use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class InterestMonthlyRecoveryTest extends TestCase
@@ -92,6 +96,78 @@ class InterestMonthlyRecoveryTest extends TestCase
             $this->assertSame('salesforce_query_failed', $status['diagnostic']['category']);
             $this->assertArrayNotHasKey('message', $status['diagnostic']['meta']);
         }
+    }
+
+    public function test_consecutive_renewals_keep_a_valid_lease_running(): void
+    {
+        [$service, $id, $lease] = $this->runningRecovery();
+
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-05 10:00:00', 'UTC'));
+        try {
+            $this->invokePrivate($service, 'renew', $id, $lease);
+            $this->invokePrivate($service, 'renew', $id, $lease);
+        } finally {
+            Carbon::setTestNow();
+        }
+
+        $this->assertSame('running', DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->value('status'));
+        $this->assertSame($lease, DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->value('lease_token'));
+    }
+
+    public function test_renew_rejects_a_lease_replaced_by_another_executor(): void
+    {
+        [$service, $id, $lease] = $this->runningRecovery();
+        $otherLease = (string) Str::uuid();
+        DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->update(['lease_token' => $otherLease]);
+
+        try {
+            $this->invokePrivate($service, 'renew', $id, $lease);
+            $this->fail('Expected a replaced lease to be rejected.');
+        } catch (MonthlyInterestRecoveryLeaseLost) {
+            $this->assertSame('running', DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->value('status'));
+            $this->assertSame($otherLease, DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->value('lease_token'));
+        }
+    }
+
+    public function test_renew_rejects_a_revoked_lease(): void
+    {
+        [$service, $id, $lease] = $this->runningRecovery();
+        DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->update(['status' => 'cancelled', 'lease_token' => null]);
+
+        $this->expectException(MonthlyInterestRecoveryLeaseLost::class);
+        $this->invokePrivate($service, 'renew', $id, $lease);
+    }
+
+    public function test_lease_loss_is_classified_without_exposing_exception_details(): void
+    {
+        [$service, $id, $lease] = $this->runningRecovery();
+
+        $this->invokePrivate($service, 'recordFailure', $id, $lease, 'salesforce_query', new MonthlyInterestRecoveryLeaseLost);
+
+        $status = $service->status($id);
+        $this->assertSame('failed', $status['status']);
+        $this->assertSame('salesforce_query', $status['diagnostic']['stage']);
+        $this->assertSame('lease_lost', $status['diagnostic']['category']);
+        $this->assertArrayNotHasKey('message', $status['diagnostic']['meta']);
+    }
+
+    /** @return array{InterestMonthlyRecoveryService, int, string} */
+    private function runningRecovery(): array
+    {
+        $service = app(InterestMonthlyRecoveryService::class);
+        $id = $service->prepare(CarbonImmutable::parse('2026-10-01', 'Europe/Madrid'), CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'), 'Exercise the fenced lease renewal safely.');
+        $lease = (string) Str::uuid();
+        DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->update(['status' => 'running', 'lease_token' => $lease, 'heartbeat_at' => now('UTC')]);
+
+        return [$service, $id, $lease];
+    }
+
+    private function invokePrivate(object $object, string $method, mixed ...$arguments): mixed
+    {
+        $reflection = new \ReflectionMethod($object, $method);
+        $reflection->setAccessible(true);
+
+        return $reflection->invoke($object, ...$arguments);
     }
 
     /** @return array<string, mixed> */

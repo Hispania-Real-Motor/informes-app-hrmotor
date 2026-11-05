@@ -1,5 +1,13 @@
 # Handoff para agentes
 
+## 2026-11-05 — Hotfix de renovación fenced del lease mensual de Interests
+
+- Problema: MariaDB/MySQL puede devolver cero filas afectadas cuando una renovación escribe los mismos valores de segundo. El recuperador trataba ese resultado como pérdida del lease y marcaba erróneamente la etapa de consulta Salesforce como fallida, pese a seguir siendo propietario del lease.
+- Corrección: `renew()` conserva el `UPDATE` fenced por `id`, `lease_token` y `status=running`; si devuelve cero, realiza una única comprobación fenced de propiedad antes de decidir. La existencia del lease activo permite continuar; su ausencia genera una excepción tipada que se clasifica como `lease_lost`, sin usar mensajes de excepción. `owned`, finalización y registro de fallo también exigen `status=running`, por lo que un trabajador obsoleto no puede finalizar ni sobrescribir el estado de otro propietario.
+- Alcance y seguridad: no cambian SOQL, mapeo, hash, F2/F5, checkpoints, inventarios oficiales, generaciones, puntero global, scheduler ni lectores de informes. No hay migración ni acceso a Salesforce, producción o datos reales. La categoría y los metadatos del diagnóstico continúan sin tokens, SQL, payloads ni mensajes de excepción.
+- Pruebas añadidas: renovaciones consecutivas de un lease válido, revocación, sustitución por otro ejecutor y clasificación segura de `lease_lost`; la recuperación completa con `SalesforceClient` simulado permanece cubierta por la regresión existente. `git diff --check` pasó. PHPUnit y Pint requieren un binario PHP que este entorno no expone; deben ejecutarse en CI antes de desplegar. La validación documental local requiere una descripción de PR y un HEAD confirmado. Revisión documental realizada: no hay impacto en los seis informes ni en la matriz KPI; para la PR se debe declarar `Docs-Impact: none` y las dos rutas de servicio como `Docs-Outside-Paths`.
+- Riesgo residual: la rama debe validar en CI contra MariaDB/MySQL la ruta de cero filas afectadas; no se ha ejecutado recuperación ni se ha modificado el `recovery_id=1` productivo.
+
 ## 2026-11-05 — inventario mensual provisional de Interests
 
 - Se añadió un journal mensual aislado (`monthly-prepare`, `monthly-run`,
