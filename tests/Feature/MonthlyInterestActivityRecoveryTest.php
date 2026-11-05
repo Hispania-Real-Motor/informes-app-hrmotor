@@ -21,7 +21,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->monthlyInterest($monthlyRecovery, $first);
         $this->monthlyInterest($monthlyRecovery, $second, true);
         $client = new MonthlyActivityFakeClient(
-            tasks: [$this->task(1, $first, false, '2026-11-06') , $this->task(2, $this->interestId(99))],
+            tasks: [$this->task(1, $first, false, '2026-11-06'), $this->task(2, $this->interestId(99))],
             events: [$this->event(1, $second, true)],
         );
         $service = new MonthlyInterestActivityRecoveryService($client);

@@ -297,7 +297,7 @@ final class MonthlyInterestActivityRecoveryService
     {
         return DB::transaction(function () use ($id, $reason, $resume): string {
             $run = DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', $id)->lockForUpdate()->first();
-            if ($run === null || ! hash_equals($run->reason_hash, hash('sha256', trim($reason))) || ($run->status === 'running' && $this->live($run)) || (! $resume && $run->status !== 'prepared') || ($resume && ! in_array($run->status, ['prepared', 'failed', 'running'], true))) {
+            if ($run === null || !hash_equals($run->reason_hash, hash('sha256', trim($reason))) || ($run->status === 'running' && $this->live($run)) || (!$resume && $run->status !== 'prepared') || ($resume && !in_array($run->status, ['prepared', 'failed', 'running'], true))) {
                 throw new RuntimeException('Monthly F5 is not compatible or safely resumable.');
             }
             $lease = (string) Str::uuid();
