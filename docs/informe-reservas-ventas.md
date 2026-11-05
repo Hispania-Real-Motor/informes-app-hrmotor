@@ -779,6 +779,15 @@ La caché de Rendimiento incluye su ID. Se mantienen fecha pivote
 `functional_created_at`, límites UTC derivados de Europe/Madrid, exclusión de
 eliminados y reglas de atribución; cambia la versión local de la fuente, que ya
 no es la tabla viva. Una candidata fallida no sustituye el F2 certificado.
+
+### Nota técnica PR #111 — inventario mensual provisional
+
+La reconstrucción mensual de Interests usa inventarios actuales aislados por
+período funcional. Para ella, `functionalPeriodSoql()` puede incluir soft
+deletes mediante un parámetro opcional, sin cambiar su comportamiento por
+defecto. No sustituye la generación publicada de atribución ni habilita
+Rendimiento comercial: F5 no está certificado y los hard deletes históricos no
+están acreditados.
 `OpportunityInterestAttributionService` conserva el resultado explícito de fuente
 no resuelta cuando no existe generación, sin leer legacy. No se certifican por
 ello las otras fuentes ni se modifican cierres. Pruebas adaptadas:

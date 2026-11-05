@@ -20,6 +20,15 @@ El informe usa exclusivamente estas fuentes locales:
   ni presentación del informe;
 - `report_sync_runs`: estado, run y cutoff F2 auditables.
 
+### Nota técnica PR #111 — inventario mensual provisional
+
+La reconstrucción mensual de Interests mantiene inventarios actuales aislados
+por período funcional. `SalesforceInterestSyncService::functionalPeriodSoql()`
+admite opcionalmente incluir soft deletes para ese flujo; su valor por defecto
+conserva la consulta anterior. No modifica la generación publicada ni habilita
+este informe o sus KPI: F5 no está certificado y los hard deletes históricos no
+están acreditados.
+
 El render HTTP no consulta Salesforce. No recupera atributos desde Lead,
 Account o Contact y no utiliza PII como fallback.
 
