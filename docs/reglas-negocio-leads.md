@@ -28,6 +28,9 @@ admite opcionalmente incluir soft deletes para ese flujo; su valor por defecto
 conserva la consulta anterior. No modifica la generación publicada ni habilita
 este informe o sus KPI: F5 no está certificado y los hard deletes históricos no
 están acreditados.
+La instrumentación diagnóstica mensual clasifica los fallos por etapa sin
+exponer mensajes, SQL ni payloads; conserva checkpoint y reanudación, sin
+habilitar ningún lector oficial.
 
 El render HTTP no consulta Salesforce. No recupera atributos desde Lead,
 Account o Contact y no utiliza PII como fallback.

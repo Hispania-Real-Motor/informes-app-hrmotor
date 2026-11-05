@@ -67,6 +67,33 @@ class InterestMonthlyRecoveryTest extends TestCase
         $this->assertNotContains('payload', Schema::getColumnListing('salesforce_interest_monthly_recovery_rows'));
     }
 
+    public function test_salesforce_failure_exposes_only_safe_monthly_diagnostic(): void
+    {
+        $this->app->instance(SalesforceClient::class, new class extends SalesforceClient
+        {
+            public function __construct() {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                throw new \RuntimeException('SELECT confidential_value FROM Interes__c');
+                yield [];
+            }
+        });
+        $service = app(InterestMonthlyRecoveryService::class);
+        $id = $service->prepare(CarbonImmutable::parse('2026-10-01', 'Europe/Madrid'), CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'), 'Diagnose monthly query failure safely.');
+        try {
+            $service->run($id, 'Diagnose monthly query failure safely.');
+            $this->fail('Expected the synthetic query failure.');
+        } catch (\RuntimeException) {
+            $status = $service->status($id);
+            $this->assertSame('failed', $status['status']);
+            $this->assertSame('f2_extract', $status['phase']);
+            $this->assertSame('salesforce_query', $status['diagnostic']['stage']);
+            $this->assertSame('salesforce_query_failed', $status['diagnostic']['category']);
+            $this->assertArrayNotHasKey('message', $status['diagnostic']['meta']);
+        }
+    }
+
     /** @return array<string, mixed> */
     private function record(string $id, string $created, bool $deleted = false): array
     {

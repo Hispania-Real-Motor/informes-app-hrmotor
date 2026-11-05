@@ -636,6 +636,9 @@ soft deletes mediante un parámetro opcional; el comportamiento ordinario se
 mantiene por defecto. No cambia la generación publicada usada por Campañas ni
 habilita readiness, atribución o KPI: F5 no está certificado y los hard deletes
 históricos no están acreditados.
+La instrumentación mensual conserva checkpoint y reanudación con diagnósticos
+internos por etapa, sin payloads ni excepciones sensibles; no publica el
+inventario ni modifica readiness o KPI.
 
 Esta garantía corresponde a la fuente Interest. Las atribuciones materializadas,
 fuentes publicitarias y otras fuentes conservan sus contratos de build/readiness;

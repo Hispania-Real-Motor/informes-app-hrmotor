@@ -4,7 +4,9 @@ namespace App\Services\Salesforce;
 
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -52,23 +54,26 @@ final class InterestMonthlyRecoveryService
     public function run(int $id, string $reason, bool $resume = false): array
     {
         $lease = $this->claim($id, $reason, $resume);
+        $stage = 'recovery_loop';
         try {
             while (true) {
                 $r = $this->owned($id, $lease);
                 if ($r->phase === 'f2_extract') {
+                    $stage = 'salesforce_query';
                     $this->renew($id, $lease);
                     $records = $this->read($this->interests->functionalPeriodSoql(CarbonImmutable::parse($r->functional_start_at, 'UTC'), CarbonImmutable::parse($r->functional_end_at, 'UTC'), $r->checkpoint_salesforce_id, true)."\nLIMIT ".(int) $r->batch_size, (int) $r->batch_size, $id, $lease);
                     $this->renew($id, $lease);
-                    $this->persistPage($r, $lease, $records);
+                    $this->persistPage($r, $lease, $records, $stage);
 
                     continue;
                 }
                 if ($r->phase === 'verify') {
-                    $this->verify($r, $lease);
+                    $this->verify($r, $lease, $stage);
 
                     continue;
                 }
                 if ($r->phase === 'completed') {
+                    $stage = 'finalization';
                     DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->update(['status' => 'completed', 'completed_at' => now('UTC'), 'lease_token' => null, 'updated_at' => now()]);
 
                     return $this->status($id);
@@ -76,7 +81,7 @@ final class InterestMonthlyRecoveryService
                 throw new RuntimeException('Monthly recovery checkpoint is not runnable.');
             }
         } catch (Throwable $e) {
-            DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->update(['status' => 'failed', 'failed_at' => now('UTC'), 'error_code' => 'monthly_recovery_failed', 'lease_token' => null, 'updated_at' => now()]);
+            $this->recordFailure($id, $lease, $stage, $e);
             throw $e;
         }
     }
@@ -97,7 +102,7 @@ final class InterestMonthlyRecoveryService
     {
         $r = DB::table('salesforce_interest_monthly_recoveries')->find($id) ?? throw new RuntimeException('Monthly recovery does not exist.');
 
-        return ['recovery_id' => (int) $r->id, 'period' => ['start' => (string) $r->functional_start_at, 'end' => (string) $r->functional_end_at, 'timezone' => $r->timezone], 'status' => $r->status, 'phase' => $r->phase, 'checkpoint_present' => $r->checkpoint_salesforce_id !== null, 'pages_completed' => (int) $r->pages_completed, 'counters' => json_decode($r->counters, true, 64, JSON_THROW_ON_ERROR), 'evidence' => $r->evidence === null ? null : json_decode($r->evidence, true, 64, JSON_THROW_ON_ERROR), 'f5_status' => 'not_attempted_blocked', 'historical_certification' => 'unavailable'];
+        return ['recovery_id' => (int) $r->id, 'period' => ['start' => (string) $r->functional_start_at, 'end' => (string) $r->functional_end_at, 'timezone' => $r->timezone], 'status' => $r->status, 'phase' => $r->phase, 'checkpoint_present' => $r->checkpoint_salesforce_id !== null, 'pages_completed' => (int) $r->pages_completed, 'counters' => json_decode($r->counters, true, 64, JSON_THROW_ON_ERROR), 'evidence' => $r->evidence === null ? null : json_decode($r->evidence, true, 64, JSON_THROW_ON_ERROR), 'diagnostic' => $r->error_code === null ? null : ['stage' => $r->error_stage, 'category' => $r->error_code, 'meta' => $r->error_meta === null ? [] : json_decode($r->error_meta, true, 16, JSON_THROW_ON_ERROR)], 'f5_status' => 'not_attempted_blocked', 'historical_certification' => 'unavailable'];
     }
 
     /** @return list<array<string, mixed>> */
@@ -118,7 +123,7 @@ final class InterestMonthlyRecoveryService
     }
 
     /** @param list<array<string, mixed>> $records */
-    private function persistPage(object $r, string $lease, array $records): void
+    private function persistPage(object $r, string $lease, array $records, string &$stage): void
     {
         if (count($records) > (int) $r->batch_size) {
             throw new RuntimeException('Monthly recovery batch exceeded its configured bound.');
@@ -126,18 +131,22 @@ final class InterestMonthlyRecoveryService
         $rows = [];
         $last = $r->checkpoint_salesforce_id;
         foreach ($records as $record) {
+            $stage = 'mapping';
             $mapped = $this->interests->mapRecord($record, (bool) data_get($record, 'IsDeleted', false));
             $id = (string) $mapped['salesforce_id'];
             $functional = CarbonImmutable::parse($mapped['functional_created_at'], 'UTC');
+            $stage = 'record_validation';
             if (preg_match('/^[A-Za-z0-9]{18}$/', $id) !== 1 || ($last !== null && strcmp($id, $last) <= 0) || $functional->lt(CarbonImmutable::parse($r->functional_start_at, 'UTC')) || $functional->gte(CarbonImmutable::parse($r->functional_end_at, 'UTC'))) {
                 throw new RuntimeException('Monthly recovery received invalid, unordered, or out-of-period content.');
             }
             $last = $id;
+            $stage = 'content_hash';
             $rows[] = ['monthly_recovery_id' => $r->id, 'salesforce_id' => $id, 'content_hash' => $this->contentHash($mapped), 'is_deleted' => (bool) $mapped['is_deleted'], 'functional_created_at' => $functional, 'system_modstamp_at' => $mapped['system_modstamp_at'], 'created_at' => now(), 'updated_at' => now()];
         }
-        DB::transaction(function () use ($r, $lease, $rows, $records, $last): void {
+        DB::transaction(function () use ($r, $lease, $rows, $records, $last, &$stage): void {
             $this->owned((int) $r->id, $lease, true);
             if ($rows !== []) {
+                $stage = 'database_persist';
                 DB::table('salesforce_interest_monthly_recovery_rows')->upsert($rows, ['monthly_recovery_id', 'salesforce_id'], ['content_hash', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'updated_at']);
             }
             $next = count($records) === (int) $r->batch_size ? 'f2_extract' : 'verify';
@@ -145,20 +154,23 @@ final class InterestMonthlyRecoveryService
             $c['observed'] += count($records);
             $c['persisted'] += count($rows);
             $c['soft_deleted_observed'] += count(array_filter($rows, fn (array $row): bool => $row['is_deleted']));
+            $stage = 'checkpoint_update';
             DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)->where('lease_token', $lease)->update(['phase' => $next, 'checkpoint_salesforce_id' => $next === 'f2_extract' ? $last : null, 'pages_completed' => DB::raw('pages_completed + 1'), 'counters' => json_encode($c, JSON_THROW_ON_ERROR), 'extraction_started_at' => $r->extraction_started_at ?? now('UTC'), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
         });
     }
 
-    private function verify(object $r, string $lease): void
+    private function verify(object $r, string $lease, string &$stage): void
     {
         $counters = $this->counters($r);
         $cursor = $counters['verify_checkpoint'] ?? null;
         $this->renew((int) $r->id, $lease);
+        $stage = 'verification_query';
         $records = $this->read($this->interests->functionalPeriodSoql(CarbonImmutable::parse($r->functional_start_at, 'UTC'), CarbonImmutable::parse($r->functional_end_at, 'UTC'), $cursor, true)."\nLIMIT ".(int) $r->batch_size, (int) $r->batch_size, (int) $r->id, $lease);
         $last = $cursor;
-        DB::transaction(function () use ($r, $lease, $records, &$counters, &$last): void {
+        DB::transaction(function () use ($r, $lease, $records, &$counters, &$last, &$stage): void {
             $this->owned((int) $r->id, $lease, true);
             foreach ($records as $record) {
+                $stage = 'verification_mapping';
                 $mapped = $this->interests->mapRecord($record, (bool) data_get($record, 'IsDeleted', false));
                 $id = (string) $mapped['salesforce_id'];
                 if (($last !== null && strcmp($id, $last) <= 0) || preg_match('/^[A-Za-z0-9]{18}$/', $id) !== 1) {
@@ -166,6 +178,7 @@ final class InterestMonthlyRecoveryService
                 }
                 $last = $id;
                 $local = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)->where('salesforce_id', $id)->first();
+                $stage = 'verification_hash';
                 $hash = $this->contentHash($mapped);
                 $counters['remote_checked']++;
                 if ($local === null) {
@@ -174,6 +187,7 @@ final class InterestMonthlyRecoveryService
                     if (! hash_equals($local->content_hash, $hash)) {
                         $counters['content_changed']++;
                     }
+                    $stage = 'verification_database';
                     DB::table('salesforce_interest_monthly_recovery_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
                 }
             }
@@ -189,6 +203,7 @@ final class InterestMonthlyRecoveryService
                 $evidence = null;
                 $phase = 'verify';
             }
+            $stage = 'verification_database';
             DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)->where('lease_token', $lease)->update(['phase' => $phase, 'counters' => json_encode($counters, JSON_THROW_ON_ERROR), 'evidence' => $evidence === null ? $r->evidence : json_encode($evidence, JSON_THROW_ON_ERROR), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
         });
     }
@@ -205,7 +220,7 @@ final class InterestMonthlyRecoveryService
             $lease = (string) Str::uuid();
             DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->update([
                 'status' => 'running', 'lease_token' => $lease, 'heartbeat_at' => now('UTC'),
-                'error_code' => null, 'failed_at' => null, 'updated_at' => now(),
+                'error_code' => null, 'error_stage' => null, 'error_meta' => null, 'failed_at' => null, 'updated_at' => now(),
             ]);
 
             return $lease;
@@ -244,6 +259,37 @@ final class InterestMonthlyRecoveryService
         if (DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['heartbeat_at' => now('UTC'), 'updated_at' => now()]) !== 1) {
             throw new RuntimeException('Monthly recovery lease was lost.');
         }
+    }
+
+    private function recordFailure(int $id, string $lease, string $stage, Throwable $e): void
+    {
+        $category = $e instanceof QueryException ? $this->databaseCategory($e) : match ($stage) {
+            'salesforce_query', 'verification_query' => 'salesforce_query_failed',
+            'mapping' => 'mapping_failed',
+            'record_validation' => 'invalid_record',
+            'content_hash' => 'hash_failed',
+            'database_persist' => 'database_write_failed',
+            'checkpoint_update' => 'checkpoint_failed',
+            'verification_mapping' => 'verification_mapping_failed',
+            'verification_hash' => 'verification_hash_failed',
+            'verification_database' => 'verification_failed',
+            'finalization' => 'checkpoint_failed',
+            default => $e instanceof RuntimeException && $e->getMessage() === 'Monthly recovery lease was lost.' ? 'lease_lost' : 'unexpected_failure',
+        };
+        $meta = ['exception_type' => class_basename($e), 'pages_completed' => (int) DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->value('pages_completed'), 'occurred_at' => now('UTC')->toIso8601String()];
+        if ($e instanceof QueryException && isset($e->errorInfo[0], $e->errorInfo[1])) {
+            $meta['sql_state'] = substr((string) $e->errorInfo[0], 0, 5);
+            $meta['driver_code'] = (int) $e->errorInfo[1];
+        }
+        $updated = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->update(['status' => 'failed', 'failed_at' => now('UTC'), 'error_code' => $category, 'error_stage' => $stage, 'error_meta' => json_encode($meta, JSON_THROW_ON_ERROR), 'lease_token' => null, 'updated_at' => now()]);
+        if ($updated === 1) {
+            Log::warning('salesforce_interest_monthly_recovery_failed', ['recovery_id' => $id, 'stage' => $stage, 'category' => $category, 'exception_type' => $meta['exception_type'], 'pages_completed' => $meta['pages_completed'], 'occurred_at' => $meta['occurred_at']]);
+        }
+    }
+
+    private function databaseCategory(QueryException $e): string
+    {
+        return in_array((int) ($e->errorInfo[1] ?? 0), [1205, 1213], true) ? 'database_lock_timeout' : 'database_write_failed';
     }
 
     /** @param array<string, mixed> $mapped */

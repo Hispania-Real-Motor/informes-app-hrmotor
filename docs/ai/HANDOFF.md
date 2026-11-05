@@ -21,6 +21,10 @@
 - Endurecimiento final: el hash mensual ya no incluye `synced_at`, payload ni
   tiempos técnicos; se elimina la columna `payload` de la migración no
   desplegada. La evidencia persiste solo metadatos mínimos y hash determinista.
+- Diagnóstico seguro: los fallos mensuales guardan etapa/categoría y metadatos
+  permitidos; `monthly-status` y logs no incluyen mensajes, SQL, bindings, IDs
+  ni payloads. La fase/checkpoint se conservan y una reanudación válida limpia
+  el diagnóstico activo tras adquirir el lease.
 
 ## 2026-11-05 — hotfix de identificadores SQL de recuperación inicial Interest
 

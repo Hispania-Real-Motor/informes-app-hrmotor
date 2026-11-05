@@ -788,6 +788,8 @@ deletes mediante un parámetro opcional, sin cambiar su comportamiento por
 defecto. No sustituye la generación publicada de atribución ni habilita
 Rendimiento comercial: F5 no está certificado y los hard deletes históricos no
 están acreditados.
+Sus diagnósticos mensuales son internos y seguros, clasificados por etapa; no
+alteran checkpoints, reanudación, fuente publicada ni KPI de este informe.
 `OpportunityInterestAttributionService` conserva el resultado explícito de fuente
 no resuelta cuando no existe generación, sin leer legacy. No se certifican por
 ello las otras fuentes ni se modifican cierres. Pruebas adaptadas:

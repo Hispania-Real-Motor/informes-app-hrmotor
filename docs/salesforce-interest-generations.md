@@ -103,6 +103,13 @@ La evidencia mensual persiste solo ID técnico, fechas funcionales/modificación
 estado de soft delete y un hash canónico; no conserva el payload Salesforce.
 El hash excluye payload y tiempos técnicos de sincronización/creación/actualización
 para evitar diferencias artificiales, pero conserva los campos funcionales.
+Ante fallo, `monthly-status` expone exclusivamente `diagnostic.stage`, categoría
+y metadatos permitidos (tipo de excepción, páginas e instante; SQLSTATE/código
+de driver solo para base de datos). Nunca expone mensajes, SOQL, bindings, IDs
+ni payloads. La reanudación con un lease nuevo limpia el diagnóstico activo.
+Las etapas permitidas distinguen consulta, mapeo, validación, hash, persistencia
+y checkpoint, además de sus equivalentes de verificación; las categorías no
+atribuyen una causa de base de datos a un error de contenido.
 
 Cuando no existe una generación publicada, una generación histórica en estado
 `validating` puede utilizarse únicamente como semilla técnica, nunca como
