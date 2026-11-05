@@ -93,6 +93,12 @@ soft deletes observables, pero no puede demostrar hard deletes históricos ni
 una fotografía de cierre: su evidencia declara expresamente F5 bloqueado y
 certificación histórica indisponible. Un operador debe proporcionar autorización
 explícita de lectura Salesforce y motivo; cancelar conserva filas y evidencia.
+Tras F2, una segunda lectura remota también paginada por `Id` contrasta el
+inventario y conserva solo contadores de ausencias y cambios de contenido. Su
+cursor se checkpointa, y el lease se renueva antes, durante y después de cada
+lectura; una pérdida de lease no puede confirmar filas, progreso ni evidencia.
+Un fallo conserva fase y cursor confirmados para reanudar. Cualquier diferencia
+mantiene el resultado provisional no verificado.
 
 Cuando no existe una generación publicada, una generación histórica en estado
 `validating` puede utilizarse únicamente como semilla técnica, nunca como

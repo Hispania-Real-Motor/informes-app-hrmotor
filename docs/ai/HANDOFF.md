@@ -14,6 +14,10 @@
 - Pruebas: sintaxis PHP de código, migración y regresión nueva correctas; la
   suite, MariaDB, Pint, benchmark, validador documental y CI quedan pendientes
   de un entorno con dependencias. Docs-Impact: updated; Docs-Matrix-Impact: updated.
+- Correctivo posterior: un fallo conserva la fase y cursor pendientes; una
+  verificación remota separada y reanudable registra discrepancias agregadas
+  sin payloads. El lease se renueva antes/durante/después de lecturas y sigue
+  fenced. No cambia el carácter provisional, `getDeleted`, F5 ni publicación.
 
 ## 2026-11-05 — hotfix de identificadores SQL de recuperación inicial Interest
 
