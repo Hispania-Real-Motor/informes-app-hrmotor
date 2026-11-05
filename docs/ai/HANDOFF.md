@@ -6875,6 +6875,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   ejecución acreditó 1.621 pruebas y 14.521 aserciones; solo quedó Pint, cuya
   separación de atributos, espaciado unario y espaciado antes de coma se
   ajustaron para una nueva validación de CI.
+- Se localizó PHP 8.4 de Herd y el `vendor` existente del worktree principal
+  para validar sin alterar dependencias: `php -l` pasó para servicio, comando
+  y test; Pint pasó sobre esos tres PHP. La última CI de la rama sigue siendo
+  la autoridad para la suite completa y los checks de integración.
 
 ## 2026-11-05 — cobertura temporal de `getDeleted` en recuperación inicial Interests
 

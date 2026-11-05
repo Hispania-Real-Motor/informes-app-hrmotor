@@ -70,6 +70,7 @@ final class MonthlyInterestActivityRecoveryService
                     $kind = $run->phase === 'task_extract' ? 'Task' : 'Event';
                     $records = $this->read($this->soql($kind, $run->checkpoint_activity_id, (int) $run->batch_size), (int) $run->batch_size, $id, $lease);
                     $this->persistPage($run, $lease, $kind, $records, $stage);
+
                     continue;
                 }
                 if (in_array($run->phase, ['verify_task', 'verify_event'], true)) {
@@ -77,6 +78,7 @@ final class MonthlyInterestActivityRecoveryService
                     $kind = $run->phase === 'verify_task' ? 'Task' : 'Event';
                     $records = $this->read($this->soql($kind, $run->checkpoint_activity_id, (int) $run->batch_size), (int) $run->batch_size, $id, $lease);
                     $this->verifyPage($run, $lease, $kind, $records, $stage);
+
                     continue;
                 }
                 if ($run->phase === 'completed') {
@@ -230,6 +232,7 @@ final class MonthlyInterestActivityRecoveryService
             $interest = $interestById[$interestId] ?? null;
             if ($interest === null) {
                 $unresolved++;
+
                 continue;
             }
             $stage = 'content_hash';
