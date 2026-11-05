@@ -270,7 +270,9 @@ final class MonthlyInterestActivityRecoveryService
         $counters['discarded_other_period'] += $mapped['unresolved'];
         foreach ($mapped['rows'] as $row) {
             $counters[$row['activity_is_deleted'] ? 'activities_soft_deleted' : 'activities_active']++;
-            $counters[$row['interest_is_deleted'] ? 'interests_soft_deleted']++;
+            if ($row['interest_is_deleted']) {
+                $counters['interests_soft_deleted']++;
+            }
         }
     }
 

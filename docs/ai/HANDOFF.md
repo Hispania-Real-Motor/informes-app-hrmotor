@@ -6869,8 +6869,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   público heredado de `Illuminate\\Console\\Command`. Se renombró a
   `runRecovery()`; no cambia el contrato CLI ni la lógica de F5.
 - La documentación de integridad pasó en esa ejecución. PHP, Composer y la
-  suite siguen sin estar disponibles localmente; el commit correctivo debe
-  validarse en CI antes de revisión o despliegue.
+  suite siguen sin estar disponibles localmente. Una segunda ejecución alcanzó
+  la suite y localizó un error de sintaxis en el contador de soft deletes de
+  Interest; se corrige sin cambiar la semántica del contador y debe validarse
+  en CI antes de revisión o despliegue.
 
 ## 2026-11-05 — cobertura temporal de `getDeleted` en recuperación inicial Interests
 
