@@ -79,7 +79,7 @@
     "isEntry": true
   },
   "resources/css/reports/leads-dashboard.css": {
-    "file": "assets/leads-dashboard-D8m1mQnm.css",
+    "file": "assets/leads-dashboard-DSYCF12e.css",
     "name": "leads-dashboard",
     "names": [
       "leads-dashboard.css"
@@ -124,7 +124,7 @@
     "isEntry": true
   },
   "resources/js/reports/campaigns-dashboard.js": {
-    "file": "assets/campaigns-dashboard-CdW8TokL.js",
+    "file": "assets/campaigns-dashboard-JCR1SCy2.js",
     "name": "campaigns-dashboard",
     "src": "resources/js/reports/campaigns-dashboard.js",
     "isEntry": true

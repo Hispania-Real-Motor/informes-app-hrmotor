@@ -448,6 +448,9 @@ function bindColumns() {
             return;
         }
 
+        const popoverWasOpen = popover && !popover.classList.contains('is-hidden');
+        const scrollPositions = captureCampaignTableScrollPositions();
+
         if (target.checked) {
             if (!visibleColumns.includes(column)) {
                 visibleColumns = [...visibleColumns, column];
@@ -460,8 +463,13 @@ function bindColumns() {
         }
 
         persistVisibleColumns();
-        applyColumnVisibility();
-        syncCampaignTableScrollWidth();
+        renderCampaignTables(campaignRows);
+        restoreCampaignTableScrollPositions(scrollPositions);
+
+        const refreshedPopover = document.getElementById('columnsPopover');
+        if (popoverWasOpen && refreshedPopover) {
+            refreshedPopover.classList.remove('is-hidden');
+        }
     });
 }
 
@@ -2451,6 +2459,13 @@ function activeColumns(context = currentContext) {
         && (!platformOnlyMode || platformOnlyColumns.includes(column.key)));
 }
 
+function columnAllowedInCurrentView(key) {
+    const platformOnlyColumns = ['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'campaign_end_date', 'last_spend_date'];
+
+    return columnAllowedInContext(key, currentContext)
+        && (!platformOnlyMode || platformOnlyColumns.includes(key));
+}
+
 function applyColumnVisibility() {
     document.querySelectorAll('#campaignTables table[data-table-type] [data-column]').forEach((cell) => {
         const tableType = cell.closest('table')?.dataset.tableType || currentContext;
@@ -2482,6 +2497,30 @@ function syncCampaignTableScrollWidth() {
 
         if (spacer && table) {
             spacer.style.width = `${table.scrollWidth}px`;
+        }
+    });
+}
+
+function captureCampaignTableScrollPositions() {
+    const root = document.getElementById('campaignTables');
+    if (!root) {
+        return new Map();
+    }
+
+    return new Map([...root.querySelectorAll('[data-table-wrap], [data-table-scroll-proxy]')]
+        .map((element) => [element.dataset.tableWrap || element.dataset.tableScrollProxy, element.scrollLeft]));
+}
+
+function restoreCampaignTableScrollPositions(positions) {
+    const root = document.getElementById('campaignTables');
+    if (!root || !(positions instanceof Map)) {
+        return;
+    }
+
+    root.querySelectorAll('[data-table-wrap], [data-table-scroll-proxy]').forEach((element) => {
+        const key = element.dataset.tableWrap || element.dataset.tableScrollProxy;
+        if (positions.has(key)) {
+            element.scrollLeft = positions.get(key);
         }
     });
 }
@@ -3001,12 +3040,18 @@ function renderColumnsPopover() {
         return;
     }
 
-    root.innerHTML = columnDefinitions.map((column) => `
+    root.innerHTML = columnDefinitions.map((column) => {
+        const available = columnAllowedInCurrentView(column.key);
+        const checked = visibleColumns.includes(column.key) && available;
+        const unavailableLabel = available ? '' : ' · no disponible en esta vista';
+
+        return `
         <label class="column-option switch-option">
-            <input type="checkbox" data-column-toggle="${escapeHtml(column.key)}" ${visibleColumns.includes(column.key) ? 'checked' : ''}>
-            <span>${escapeHtml(column.label)}</span>
+            <input type="checkbox" data-column-toggle="${escapeHtml(column.key)}" ${checked ? 'checked' : ''} ${available ? '' : 'disabled'}>
+            <span>${escapeHtml(column.label)}${escapeHtml(unavailableLabel)}</span>
         </label>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function renderRankingsPopover() {

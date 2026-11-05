@@ -6708,3 +6708,51 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - No hay migraciones, configuración, variables de entorno ni acciones de
   producción asociadas. La suite completa y `composer audit` quedan a cargo de
   la CI, que ya debe reevaluar la revisión con el `composer.lock` corregido.
+
+## 2026-11-05 — hotfix de columnas y scroll del detalle de Campañas
+
+- Base verificada después de `git fetch origin --prune`: `origin/main` en
+  `888a52b003c640a20e781b49790f4175806177a3`. El trabajo se realiza aislado en
+  la rama `codex/hotfix-campaign-columns-scroll-20261105` y su worktree
+  `C:\Users\Usuario\Herd\informes-app-hrmotor-hotfix-campaign-columns-scroll`;
+  el working tree original no se modifica.
+- Causa: `bindColumns()` persistía `visibleColumns` y aplicaba clases a nodos
+  existentes, pero no regeneraba `renderCampaignTables()`. Una columna ausente
+  del DOM no podía aparecer y el proxy medía una tabla obsoleta.
+- Solución: al cambiar una columna se rerenderiza localmente desde
+  `campaignRows`, se conserva abierto el popover, se restauran los `scrollLeft`
+  del proxy y de la tabla, y se mantiene el almacenamiento
+  `hrmotor_campaign_columns_v7`. El selector deshabilita y etiqueta las
+  columnas no aplicables al contexto actual, incluyendo `platformOnlyMode`, sin
+  eliminar la preferencia global.
+- Presentación: el detalle usa `width: max-content` con `min-width: 100%` dentro
+  de la infraestructura existente de scroll; no se crea un segundo sistema de
+  desplazamiento.
+- Seguridad y alcance: se conserva `escapeHtml()`, no se añaden datos a
+  `localStorage`, endpoints, permisos, consultas, fórmulas, atribución,
+  Salesforce, Meta Ads, Google Ads ni lógica económica.
+- Archivos modificados: `resources/js/reports/campaigns-dashboard.js`,
+  `resources/css/reports/leads-dashboard.css`,
+  `tests/js/campaign-presentation.test.mjs`, `docs/informe-campanas.md` y este
+  handoff. No cambia `PROJECT_CONTEXT.md` ni `DECISIONS.md`: no hay cambio de
+  arquitectura ni decisión transversal difícil de revertir.
+- Base de datos: no hay migraciones ni operaciones de datos.
+- Pruebas focalizadas: `node --check resources/js/reports/campaigns-dashboard.js`
+  y `node --test tests/js/campaign-presentation.test.mjs` correctos; la suite
+  JS termina con 29/29 pruebas. La regresión comprueba HTML real con `th` y
+  celdas tras activar una columna inicialmente ausente, además de la coherencia
+  del selector por contexto.
+- Documentación: se actualizó únicamente el contrato de presentación en
+  `docs/informe-campanas.md`. `Docs-Impact: updated`; la matriz de KPIs queda
+  sin cambios porque no varían fuentes, universo, filtros, fórmulas,
+  resultados ni trazabilidad. El agente personalizado
+  `report_docs_maintainer` fue invocado para una revisión de solo documentación;
+  no detectó discrepancias adicionales ni cambios necesarios en la matriz. El
+  validador documental quedó `NO VERIFICADO` por ausencia de un intérprete
+  Python utilizable y la revisión se registra como fallback.
+- Pendiente antes de producción: ejecutar `CampaignDashboardTest`, `npm run
+  build`, validación documental, CI completa, revisión final del diff, commit,
+  push y PR. La rama ya está publicada. La creación de PR mediante la integración
+  GitHub devolvió HTTP 403 (`Resource not accessible by integration`); queda
+  pendiente de apertura manual. No se ha desplegado producción ni realizado
+  smoke test.
