@@ -171,6 +171,8 @@ En esa modalidad `functionalPeriodSoql()` puede solicitar soft deletes con un
 parámetro opcional; la llamada ordinaria conserva el comportamiento anterior.
 No altera el lector publicado ni habilita clasificación, reproceso o KPI de
 Llamadas: F5 no está certificado y los hard deletes históricos no se acreditan.
+Los fallos mensuales conservan checkpoint/reanudación y se diagnostican por
+etapa sin mensajes ni datos sensibles; no publican inventario alguno.
 [Contrato transversal y límites](salesforce-interest-generations.md).
 
 La recuperación inicial F2/F5 reanudable mantiene su candidata aislada y no

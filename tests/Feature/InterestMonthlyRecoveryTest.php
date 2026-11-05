@@ -71,6 +71,8 @@ class InterestMonthlyRecoveryTest extends TestCase
     {
         $this->app->instance(SalesforceClient::class, new class extends SalesforceClient
         {
+            public function __construct() {}
+
             public function queryPages(string $soql, bool $includeDeleted = false): \Generator
             {
                 throw new \RuntimeException('SELECT confidential_value FROM Interes__c');

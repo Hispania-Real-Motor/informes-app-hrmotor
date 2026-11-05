@@ -7,6 +7,8 @@
 > y no habilita ninguna métrica aunque resulte limpia.
 > Su evidencia persistente está minimizada a metadatos técnicos y hash canónico;
 > no almacena payload Salesforce ni datos personales de la respuesta remota.
+> Los fallos del journal se clasifican por etapa con metadatos seguros y
+> conservan checkpoint/reanudación; no activan KPI, lectores ni publicación.
 
 ### Dependencias de Campañas e Interests durante recuperación
 
