@@ -6862,6 +6862,16 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `Docs-Matrix-Impact: updated`; añadir la excepción de rutas operativas sin
   mapa si el validador la exige.
 
+## 2026-11-07 — corrección de arranque de la CLI F5 mensual
+
+- La primera ejecución de CI de la PR #114 detectó antes de las pruebas que el
+  método privado `run()` del nuevo comando reducía la visibilidad del método
+  público heredado de `Illuminate\\Console\\Command`. Se renombró a
+  `runRecovery()`; no cambia el contrato CLI ni la lógica de F5.
+- La documentación de integridad pasó en esa ejecución. PHP, Composer y la
+  suite siguen sin estar disponibles localmente; el commit correctivo debe
+  validarse en CI antes de revisión o despliegue.
+
 ## 2026-11-05 — cobertura temporal de `getDeleted` en recuperación inicial Interests
 
 - Causa corregida: `recover-initial` admitía una respuesta de `getDeleted` con

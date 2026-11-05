@@ -23,7 +23,7 @@ final class ManageMonthlyInterestActivityRecoveryCommand extends Command
         try {
             return match ($this->argument('action')) {
                 'prepare' => $this->prepare($service),
-                'run' => $this->run($service),
+                'run' => $this->runRecovery($service),
                 'status' => $this->display($service->status($this->runId())),
                 'manifest' => $this->display($service->manifest($this->runId())),
                 'cancel' => $this->cancel($service),
@@ -43,7 +43,7 @@ final class ManageMonthlyInterestActivityRecoveryCommand extends Command
         return $this->display(['run_id' => $id, 'published' => false]);
     }
 
-    private function run(MonthlyInterestActivityRecoveryService $service): int
+    private function runRecovery(MonthlyInterestActivityRecoveryService $service): int
     {
         if (! $this->option('confirm-salesforce')) {
             throw new RuntimeException('Remote reads require explicit operator authorization.');
