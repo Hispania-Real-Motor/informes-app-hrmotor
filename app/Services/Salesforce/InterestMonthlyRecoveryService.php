@@ -1,0 +1,176 @@
+<?php
+
+namespace App\Services\Salesforce;
+
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use RuntimeException;
+use Throwable;
+
+/** Builds an isolated present-state monthly inventory; it never certifies or publishes history. */
+final class InterestMonthlyRecoveryService
+{
+    private const LEASE_SECONDS = 900;
+    private const DEFAULT_BATCH_SIZE = 500;
+
+    public function __construct(
+        private readonly SalesforceClient $client,
+        private readonly SalesforceInterestSyncService $interests,
+    ) {}
+
+    public function prepare(CarbonInterface $start, CarbonInterface $end, string $reason, int $batch = self::DEFAULT_BATCH_SIZE): int
+    {
+        $reason = trim($reason);
+        $start = CarbonImmutable::parse($start, 'Europe/Madrid')->startOfDay()->utc();
+        $end = CarbonImmutable::parse($end, 'Europe/Madrid')->startOfDay()->utc();
+        if (mb_strlen($reason) < 10 || mb_strlen($reason) > 500 || $end->lte($start) || $end->diffInDays($start) > 32 || $batch < 50 || $batch > 1000) {
+            throw new RuntimeException('Monthly recovery requires one bounded functional month, a reason, and a safe batch size.');
+        }
+
+        return DB::transaction(function () use ($start, $end, $reason, $batch): int {
+            $existing = DB::table('salesforce_interest_monthly_recoveries')->where('functional_start_at', $start)->where('functional_end_at', $end)->lockForUpdate()->first();
+            if ($existing !== null) {
+                return (int) $existing->id;
+            }
+
+            return DB::table('salesforce_interest_monthly_recoveries')->insertGetId([
+                'recovery_identifier' => (string) Str::uuid(), 'functional_start_at' => $start, 'functional_end_at' => $end,
+                'timezone' => 'Europe/Madrid', 'status' => 'prepared', 'phase' => 'f2_extract', 'batch_size' => $batch,
+                'pages_completed' => 0, 'counters' => json_encode($this->emptyCounters(), JSON_THROW_ON_ERROR),
+                'reason_hash' => hash('sha256', $reason), 'started_at' => now('UTC'), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function run(int $id, string $reason, bool $resume = false): array
+    {
+        $lease = $this->claim($id, $reason, $resume);
+        try {
+            while (true) {
+                $r = $this->owned($id, $lease);
+                if ($r->phase === 'f2_extract') {
+                    $records = $this->read($this->interests->functionalPeriodSoql(CarbonImmutable::parse($r->functional_start_at, 'UTC'), CarbonImmutable::parse($r->functional_end_at, 'UTC'), $r->checkpoint_salesforce_id, true)."\nLIMIT ".(int) $r->batch_size);
+                    $this->persistPage($r, $lease, $records);
+                    continue;
+                }
+                if ($r->phase === 'verify') {
+                    $this->verify($r, $lease);
+                    continue;
+                }
+                if ($r->phase === 'completed') {
+                    DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->update(['status' => 'completed', 'completed_at' => now('UTC'), 'lease_token' => null, 'updated_at' => now()]);
+
+                    return $this->status($id);
+                }
+                throw new RuntimeException('Monthly recovery checkpoint is not runnable.');
+            }
+        } catch (Throwable $e) {
+            DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease)->update(['status' => 'failed', 'phase' => 'failed', 'failed_at' => now('UTC'), 'error_code' => 'monthly_recovery_failed', 'lease_token' => null, 'updated_at' => now()]);
+            throw $e;
+        }
+    }
+
+    public function cancel(int $id): void
+    {
+        DB::transaction(function () use ($id): void {
+            $r = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->lockForUpdate()->first();
+            if ($r === null || ($r->status === 'running' && $this->live($r)) || $r->status === 'completed') {
+                throw new RuntimeException('Monthly recovery cannot be cancelled safely.');
+            }
+            DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->update(['status' => 'cancelled', 'phase' => 'cancelled', 'cancelled_at' => now('UTC'), 'lease_token' => null, 'updated_at' => now()]);
+        });
+    }
+
+    /** @return array<string, mixed> */
+    public function status(int $id): array
+    {
+        $r = DB::table('salesforce_interest_monthly_recoveries')->find($id) ?? throw new RuntimeException('Monthly recovery does not exist.');
+        return ['recovery_id' => (int) $r->id, 'period' => ['start' => (string) $r->functional_start_at, 'end' => (string) $r->functional_end_at, 'timezone' => $r->timezone], 'status' => $r->status, 'phase' => $r->phase, 'checkpoint_present' => $r->checkpoint_salesforce_id !== null, 'pages_completed' => (int) $r->pages_completed, 'counters' => json_decode($r->counters, true, 64, JSON_THROW_ON_ERROR), 'evidence' => $r->evidence === null ? null : json_decode($r->evidence, true, 64, JSON_THROW_ON_ERROR), 'f5_status' => 'not_attempted_blocked', 'historical_certification' => 'unavailable'];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function read(string $soql): array
+    {
+        $rows = [];
+        foreach ($this->client->queryPages($soql, true) as $page) {
+            foreach ($page as $row) { $rows[] = $row; }
+        }
+        return $rows;
+    }
+
+    /** @param list<array<string, mixed>> $records */
+    private function persistPage(object $r, string $lease, array $records): void
+    {
+        if (count($records) > (int) $r->batch_size) { throw new RuntimeException('Monthly recovery batch exceeded its configured bound.'); }
+        $rows = []; $last = $r->checkpoint_salesforce_id;
+        foreach ($records as $record) {
+            $mapped = $this->interests->mapRecord($record, (bool) data_get($record, 'IsDeleted', false));
+            $id = (string) $mapped['salesforce_id'];
+            $functional = CarbonImmutable::parse($mapped['functional_created_at'], 'UTC');
+            if (preg_match('/^[A-Za-z0-9]{18}$/', $id) !== 1 || ($last !== null && strcmp($id, $last) <= 0) || $functional->lt(CarbonImmutable::parse($r->functional_start_at, 'UTC')) || $functional->gte(CarbonImmutable::parse($r->functional_end_at, 'UTC'))) { throw new RuntimeException('Monthly recovery received invalid, unordered, or out-of-period content.'); }
+            $last = $id; $payload = json_decode((string) $mapped['raw_payload'], true, 512, JSON_THROW_ON_ERROR);
+            $rows[] = ['monthly_recovery_id' => $r->id, 'salesforce_id' => $id, 'content_hash' => hash('sha256', json_encode($mapped, JSON_THROW_ON_ERROR)), 'is_deleted' => (bool) $mapped['is_deleted'], 'functional_created_at' => $functional, 'system_modstamp_at' => $mapped['system_modstamp_at'], 'payload' => json_encode($payload, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()];
+        }
+        DB::transaction(function () use ($r, $lease, $rows, $records, $last): void {
+            $this->owned((int) $r->id, $lease, true);
+            if ($rows !== []) { DB::table('salesforce_interest_monthly_recovery_rows')->upsert($rows, ['monthly_recovery_id', 'salesforce_id'], ['content_hash', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'payload', 'updated_at']); }
+            $next = count($records) === (int) $r->batch_size ? 'f2_extract' : 'verify';
+            $c = $this->counters($r); $c['observed'] += count($records); $c['persisted'] += count($rows); $c['soft_deleted_observed'] += count(array_filter($rows, fn (array $row): bool => $row['is_deleted']));
+            DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)->where('lease_token', $lease)->update(['phase' => $next, 'checkpoint_salesforce_id' => $next === 'f2_extract' ? $last : null, 'pages_completed' => DB::raw('pages_completed + 1'), 'counters' => json_encode($c, JSON_THROW_ON_ERROR), 'extraction_started_at' => $r->extraction_started_at ?? now('UTC'), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
+        });
+    }
+
+    private function verify(object $r, string $lease): void
+    {
+        $hash = hash_init('sha256'); $count = 0; $deleted = 0;
+        DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)->orderBy('salesforce_id')->each(function (object $row) use ($hash, &$count, &$deleted): void { hash_update($hash, $row->salesforce_id.'|'.$row->content_hash.'|'.(int) $row->is_deleted."\n"); $count++; $deleted += (int) $row->is_deleted; });
+        DB::transaction(function () use ($r, $lease, $hash, $count, $deleted): void { $this->owned((int) $r->id, $lease, true); $evidence = ['source' => 'current_state_monthly_inventory', 'rows' => $count, 'soft_deleted_observed' => $deleted, 'manifest_sha256' => hash_final($hash), 'hard_deletes' => 'not_observable_without_independent_evidence', 'f5' => 'not_attempted_blocked', 'historical_certification' => false]; DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)->where('lease_token', $lease)->update(['phase' => 'completed', 'evidence' => json_encode($evidence, JSON_THROW_ON_ERROR), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]); });
+    }
+
+    private function claim(int $id, string $reason, bool $resume): string
+    {
+        return DB::transaction(function () use ($id, $reason, $resume): string {
+            $r = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->lockForUpdate()->first();
+            if ($r === null || ! hash_equals((string) $r->reason_hash, hash('sha256', trim($reason)))
+                || ($r->status === 'running' && $this->live($r)) || (! $resume && $r->status !== 'prepared')
+                || ($resume && ! in_array($r->status, ['prepared', 'failed', 'running'], true))) {
+                throw new RuntimeException('Monthly recovery is not compatible or safely resumable.');
+            }
+            $lease = (string) Str::uuid();
+            DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->update([
+                'status' => 'running', 'lease_token' => $lease, 'heartbeat_at' => now('UTC'),
+                'error_code' => null, 'failed_at' => null, 'updated_at' => now(),
+            ]);
+
+            return $lease;
+        });
+    }
+
+    private function owned(int $id, string $lease, bool $lock = false): object
+    {
+        $q = DB::table('salesforce_interest_monthly_recoveries')->where('id', $id)->where('lease_token', $lease);
+        if ($lock) { $q->lockForUpdate(); }
+
+        return $q->first() ?? throw new RuntimeException('Monthly recovery lease was lost.');
+    }
+
+    private function live(object $r): bool
+    {
+        return $r->heartbeat_at !== null && CarbonImmutable::parse($r->heartbeat_at, 'UTC')->gt(now('UTC')->subSeconds(self::LEASE_SECONDS));
+    }
+
+    /** @return array<string,int> */
+    private function emptyCounters(): array
+    {
+        return ['observed' => 0, 'persisted' => 0, 'soft_deleted_observed' => 0];
+    }
+
+    /** @return array<string,int> */
+    private function counters(object $r): array
+    {
+        return array_replace($this->emptyCounters(), json_decode($r->counters, true, 64, JSON_THROW_ON_ERROR));
+    }
+}

@@ -1,5 +1,20 @@
 # Handoff para agentes
 
+## 2026-11-05 — inventario mensual provisional de Interests
+
+- Se añadió un journal mensual aislado (`monthly-prepare`, `monthly-run`,
+  `monthly-status`, `monthly-cancel`) con paginación por Id, lotes de 500,
+  checkpoint transaccional, lease fenced, manifiesto y reanudación. No usa
+  `getDeleted`, no copia la generación 1 y no modifica generaciones, puntero,
+  scheduler ni lectores oficiales.
+- El resultado es un inventario actual, no una fotografía histórica: conserva
+  soft deletes observables, declara hard deletes no observables, F5 bloqueado
+  y certificación histórica indisponible. No hay migración ejecutada ni acceso
+  Salesforce/producción.
+- Pruebas: sintaxis PHP de código, migración y regresión nueva correctas; la
+  suite, MariaDB, Pint, benchmark, validador documental y CI quedan pendientes
+  de un entorno con dependencias. Docs-Impact: updated; Docs-Matrix-Impact: updated.
+
 ## 2026-11-05 — hotfix de identificadores SQL de recuperación inicial Interest
 
 - Problema: la migración `2026_11_04_120000_create_salesforce_interest_initial_recoveries`

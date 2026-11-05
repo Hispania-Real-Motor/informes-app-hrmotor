@@ -81,6 +81,19 @@ comprueba rechazo, conservación del propietario/estado y ausencia de llamadas
 remotas. No permite reanudar ni reasignar una candidata ajena.
 ## Recuperación inicial desde estado actual
 
+## Inventario mensual provisional independiente
+
+La CLI `salesforce:interest-generation` ofrece `monthly-prepare`, `monthly-run`,
+`monthly-status` y `monthly-cancel` para reconstruir un único mes funcional en
+`Europe/Madrid` dentro de un journal aislado. El inventario usa `queryAll`,
+paginación keyset por `Id`, lotes de 50 a 1.000 (500 por defecto), checkpoints
+transaccionales y lease fenced; no consulta `getDeleted`, no copia la semilla,
+no escribe generaciones, no modifica publicación y no habilita lectores. Incluye
+soft deletes observables, pero no puede demostrar hard deletes históricos ni
+una fotografía de cierre: su evidencia declara expresamente F5 bloqueado y
+certificación histórica indisponible. Un operador debe proporcionar autorización
+explícita de lectura Salesforce y motivo; cancelar conserva filas y evidencia.
+
 Cuando no existe una generación publicada, una generación histórica en estado
 `validating` puede utilizarse únicamente como semilla técnica, nunca como
 evidencia de certificación. El operador autorizado puede ejecutar
