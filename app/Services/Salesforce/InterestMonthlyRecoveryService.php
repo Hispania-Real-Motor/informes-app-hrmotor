@@ -171,13 +171,16 @@ final class InterestMonthlyRecoveryService
                 $counters['remote_checked']++;
                 if ($local === null) {
                     $counters['remote_missing_local']++;
-                } elseif (! hash_equals($local->content_hash, $hash)) {
-                    $counters['content_changed']++;
+                } else {
+                    if (! hash_equals($local->content_hash, $hash)) {
+                        $counters['content_changed']++;
+                    }
+                    DB::table('salesforce_interest_monthly_recovery_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
                 }
             }
             $terminal = count($records) < (int) $r->batch_size;
             if ($terminal) {
-                $localOnly = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)->where('salesforce_id', '>', $last ?? '')->count();
+                $localOnly = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)->whereNull('verified_at')->count();
                 $counters['local_missing_remote'] += $localOnly;
                 $verified = $counters['remote_missing_local'] === 0 && $counters['local_missing_remote'] === 0 && $counters['content_changed'] === 0;
                 $evidence = ['source' => 'current_state_monthly_inventory', 'rows' => $counters['persisted'], 'verification' => ['verified' => $verified, 'remote_checked' => $counters['remote_checked'], 'remote_missing_local' => $counters['remote_missing_local'], 'local_missing_remote' => $counters['local_missing_remote'], 'content_changed' => $counters['content_changed']], 'hard_deletes' => 'not_observable_without_independent_evidence', 'f5' => 'not_attempted_blocked', 'historical_certification' => false];
