@@ -185,7 +185,7 @@ final class MonthlyInterestActivityRecoveryService
                 $counters['remote_checked']++;
                 if ($local === null) {
                     $counters['remote_missing_local']++;
-                } elseif (! hash_equals($local->content_hash, $row['content_hash'])) {
+                } elseif (!hash_equals($local->content_hash, $row['content_hash'])) {
                     $counters['content_changed']++;
                 } else {
                     DB::table('salesforce_interest_monthly_activity_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
