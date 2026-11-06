@@ -16,8 +16,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('salesforce_interest_monthly_activity_recoveries', function (Blueprint $table): void {
-            $table->dropColumn(['extraction_strategy', 'checkpoint_interest_id']);
-        });
+        // Keep additive checkpoint evidence during rollback; dropping it could make a
+        // prepared or failed selective run non-resumable and reinterpret its journal.
     }
 };

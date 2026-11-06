@@ -1269,3 +1269,7 @@ actividad. Los runs existentes conservan `legacy_global_v1` y no cambian de
 semántica al reanudarse. La compatibilidad SOQL se valida sintéticamente; una
 ejecución supervisada y autorizada debe confirmar la selectividad real antes de
 atribuir métricas de rendimiento a producción.
+
+La migración de estrategia y checkpoint es estrictamente aditiva y su `down()`
+no elimina columnas: hacerlo podría destruir el cursor de un run selectivo
+preparado o fallido y convertirlo silenciosamente en un journal no reanudable.

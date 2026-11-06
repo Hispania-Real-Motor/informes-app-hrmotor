@@ -7002,7 +7002,8 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Base de datos: migración aditiva de estrategia y checkpoint de Interest; no
   altera filas, manifiestos ni publicaciones existentes. El índice único ya
   existente `(monthly_recovery_id, salesforce_id)` soporta la lectura keyset del
-  bloque fuente, por lo que no se añadió un índice redundante.
+  bloque fuente, por lo que no se añadió un índice redundante. Su rollback no
+  elimina columnas: conserva el checkpoint de journals selectivos reanudables.
 - Seguridad y límites: el comando no realiza lecturas remotas; identificadores
   sólo se emiten con confirmación explícita. Los 30 IDs F5 adicionales y los
   valores históricos de hashes F2 se declaran no identificables si el journal
