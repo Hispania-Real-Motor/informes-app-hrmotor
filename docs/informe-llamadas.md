@@ -189,6 +189,9 @@ La F5 mensual materializa Task/Event sólo para IDs presentes en su F2 mensual.
 No modifica `SalesforceCallSyncService`, `relatedInterestMatches()` ni los
 datos de Llamadas. Su finalización es operativa y provisional: no certifica F2
 ni habilita KPI o evidencia histórica para este informe.
+Los nuevos bloques selectivos por `WhatId` y la reconciliación local son sólo
+evidencia administrativa de lectura; no cambian la generación que consume
+`relatedInterestMatches()`.
 [Contrato transversal y límites](salesforce-interest-generations.md).
 
 La recuperación inicial F2/F5 reanudable mantiene su candidata aislada y no

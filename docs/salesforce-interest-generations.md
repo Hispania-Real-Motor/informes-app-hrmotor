@@ -272,12 +272,15 @@ La recuperación mensual es un diario administrativo de estado actual, separado
 de `salesforce_interest_generations`, versiones, memberships y de cualquier
 puntero publicado. La F2 mensual conserva un inventario por período funcional
 semiabierto en `Europe/Madrid`; la F5 mensual sólo puede prepararse desde una
-F2 terminada y lee `Task` y `Event` cuyo `What.Type` es `Interes__c`. Las
-relaciones se conservan únicamente cuando su `WhatId` está entre las filas del
-inventario F2 de origen; las restantes se descartan como ajenas al período.
-Ambas operaciones usan cursor por `Id`, páginas acotadas, checkpoint y lease
-renovable/fenced; una reanudación explícita continúa desde el checkpoint y no
-duplica filas.
+F2 terminada. Las ejecuciones nuevas usan bloques acotados de `WhatId` tomados
+del inventario F2 de origen: no filtran por fecha de creación de la actividad,
+por lo que una actividad posterior del mismo Interest sigue perteneciendo al
+inventario mensual. Cada bloque conserva por separado el último Interest
+confirmado y el cursor `Id` dentro del bloque; los dos checkpoints se confirman
+con las filas bajo el mismo lease fenced. Esto evita recorrer todas las Tasks y
+Events de Salesforce para un período y evita omisiones al cambiar de bloque.
+Los journals anteriores permanecen como `legacy_global_v1`: no se reinterpretan
+ni se reanudan con la estrategia nueva.
 
 La F5 se opera exclusivamente por CLI administrativa, sin endpoint HTTP:
 
@@ -307,6 +310,21 @@ generación global, no mueven el puntero, no habilitan KPI, comparativas, CSV,
 auditorías ni el informe oficial. Fallos y estado exponen sólo diagnóstico
 permitido (fase, categoría, tipo de excepción, páginas e instante), sin
 payloads, SOQL, tokens ni identificadores remotos.
+
+La reconciliación local se ejecuta también por CLI y no escribe los journals:
+
+```text
+php artisan interests:monthly-reconcile --recovery=<f2> --materialization=<id> --f5-run=<id>
+```
+
+Por defecto sólo emite agregados, huellas y límites de observabilidad. La
+emisión acotada de identificadores Salesforce exige confirmación explícita de
+operador. Los IDs de discrepancias F5 no se reconstruyen cuando el journal sólo
+conservó su contador; de igual modo, un hash F2 histórico no permite atribuir
+un cambio a un campo sin valores previos retenidos. Los tres diarios deben
+pertenecer a la misma F2; la reconciliación no los escribe, no repara ausencias
+ni eleva una verificación a certificación. Un hard delete sigue sin probarse por
+la ausencia de `queryAll`.
 
 ### Vista provisional administrativa
 
