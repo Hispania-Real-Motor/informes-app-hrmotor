@@ -197,7 +197,7 @@ final class MonthlyMaterializationFakeClient extends SalesforceClient
     public function queryPages(string $soql, bool $includeDeleted = false): \Generator
     {
         $this->calls++;
-        if (! $includeDeleted) {
+        if (!$includeDeleted) {
             throw new RuntimeException('Monthly materialization must request queryAll.');
         }
         if ($this->calls === $this->failOnCall) {
