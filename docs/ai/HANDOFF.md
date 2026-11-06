@@ -1,5 +1,35 @@
 # Handoff para agentes
 
+## 2026-11-06 — materialización funcional F2 mensual aislada
+
+- Se añadió `InterestMonthlyMaterializationService`, su comando administrativo
+  `interests:monthly-f2-materialization` y un journal propio. La fuente de
+  identidad es exclusivamente `salesforce_interest_monthly_recovery_rows` de
+  un F2 mensual ya completado; cada bloque de 50–500 IDs usa `queryAll` y una
+  consulta Salesforce de solo lectura `Id IN (...)` acotada. No se consulta ni
+  altera F5, no se incorporan IDs nuevos y no se han hecho lecturas remotas.
+- La migración `2026_11_08_120000_create_salesforce_interest_monthly_materializations.php`
+  crea cabecera y filas aisladas. Las filas conservan el contrato estructurado
+  de `SalesforceInterestSyncService::mapRecord`, huella original y materializada,
+  y excluyen `raw_payload`; no escriben generaciones, versiones, memberships,
+  publicación ni el inventario F2 de origen. `down()` se niega si ya hay
+  evidencia de materialización.
+- Los lotes persisten junto al checkpoint dentro de una transacción fenced por
+  lease. La reanudación usa el último ID F2 confirmado; renovaciones con cero
+  filas afectadas verifican después la propiedad fenced. El manifiesto distingue
+  finalización técnica, cobertura, hash/cambios, borrados observables,
+  certificación histórica (`unavailable`) y publicación (`false`).
+- Se añadieron regresiones sintéticas para contrato/hash, soft delete, ausencia,
+  contenido cambiado, respuesta inesperada/duplicada, más de 500 registros,
+  reanudación y pérdida de lease. No hay cambios en lectores o KPI: la matriz y
+  los documentos de Interests, Reservas/Ventas, Llamadas y Campañas registran
+  que ningún informe consume aún el journal. `PROJECT_CONTEXT.md` y
+  `DECISIONS.md` no cambian porque no se alteró arquitectura publicada.
+- Pendiente de CI: el entorno actual no expone un binario PHP aunque contiene
+  dependencias compartidas, por lo que PHPUnit, Pint y la migración aislada de
+  MariaDB no se ejecutaron aquí. Ejecutar CI antes de desplegar; no ejecutar la
+  materialización de octubre sin autorización operativa explícita.
+
 ## 2026-11-05 — Hotfix de renovación fenced del lease mensual de Interests
 
 - Problema: MariaDB/MySQL puede devolver cero filas afectadas cuando una renovación escribe los mismos valores de segundo. El recuperador trataba ese resultado como pérdida del lease y marcaba erróneamente la etapa de consulta Salesforce como fallida, pese a seguir siendo propietario del lease.

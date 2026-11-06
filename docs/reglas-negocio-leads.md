@@ -1,5 +1,15 @@
 # Informe de Interests — contrato ROT-1
 
+## Nota técnica — materialización mensual F2 provisional
+
+La materialización F2 mensual aislada preserva, para una futura consulta
+autorizada, campos normalizados de identidad, persona/Lead/Account, fecha
+funcional, owner, estado/tipo, procedencia y UTM. No es un lector de este
+informe ni modifica ROT-1, filtros, KPI, AJAX, CSV o el contrato de 503: el
+dashboard continúa leyendo solo la generación F2/F5 publicada. Sus hashes,
+ausencias, soft deletes y discrepancias son evidencia operativa; octubre no se
+certifica ni publica por materializar sus campos.
+
 > La ruta `/informes/leads`, el permiso `leads` y varias claves técnicas
 > `leads_*` se conservan por compatibilidad. Desde ROT-1 el hecho funcional del
 > informe es Salesforce `Interes__c`, no `Lead`.

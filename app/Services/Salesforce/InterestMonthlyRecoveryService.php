@@ -21,6 +21,7 @@ final class InterestMonthlyRecoveryService
     public function __construct(
         private readonly SalesforceClient $client,
         private readonly SalesforceInterestSyncService $interests,
+        private readonly InterestMonthlyContentHasher $hasher,
     ) {}
 
     public function prepare(CarbonInterface $start, CarbonInterface $end, string $reason, int $batch = self::DEFAULT_BATCH_SIZE): int
@@ -306,26 +307,6 @@ final class InterestMonthlyRecoveryService
     /** @param array<string, mixed> $mapped */
     private function contentHash(array $mapped): string
     {
-        unset($mapped['raw_payload'], $mapped['synced_at'], $mapped['created_at'], $mapped['updated_at']);
-
-        return hash('sha256', json_encode($this->canonicalize($mapped), JSON_THROW_ON_ERROR));
-    }
-
-    private function canonicalize(mixed $value): mixed
-    {
-        if ($value instanceof CarbonInterface) {
-            return $value->utc()->toIso8601String();
-        }
-        if (! is_array($value)) {
-            return $value;
-        }
-        foreach ($value as $key => $item) {
-            $value[$key] = $this->canonicalize($item);
-        }
-        if (! array_is_list($value)) {
-            ksort($value);
-        }
-
-        return $value;
+        return $this->hasher->hash($mapped);
     }
 }
