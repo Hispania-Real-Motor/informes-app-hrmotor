@@ -266,6 +266,48 @@ ausencia no incluida en él permanece explícitamente sin verificar. El lease de
 diario cambia en cada ejecución: un worker anterior comprueba ese token antes
 de persistir cada página y no puede continuar después de una reanudación.
 
+### Inventarios mensuales aislados F2/F5
+
+La recuperación mensual es un diario administrativo de estado actual, separado
+de `salesforce_interest_generations`, versiones, memberships y de cualquier
+puntero publicado. La F2 mensual conserva un inventario por período funcional
+semiabierto en `Europe/Madrid`; la F5 mensual sólo puede prepararse desde una
+F2 terminada y lee `Task` y `Event` cuyo `What.Type` es `Interes__c`. Las
+relaciones se conservan únicamente cuando su `WhatId` está entre las filas del
+inventario F2 de origen; las restantes se descartan como ajenas al período.
+Ambas operaciones usan cursor por `Id`, páginas acotadas, checkpoint y lease
+renovable/fenced; una reanudación explícita continúa desde el checkpoint y no
+duplica filas.
+
+La F5 se opera exclusivamente por CLI administrativa, sin endpoint HTTP:
+
+```text
+php artisan interests:monthly-f5 prepare --monthly-recovery=<f2> --reason="motivo operativo revisado"
+php artisan interests:monthly-f5 run --run=<id> --reason="mismo motivo" --confirm-salesforce
+php artisan interests:monthly-f5 status --run=<id>
+php artisan interests:monthly-f5 manifest --run=<id>
+php artisan interests:monthly-f5 cancel --run=<id>
+```
+
+La evidencia F5 fija el identificador, número de filas y hash de la F2 de
+origen al prepararse; después verifica remotamente Task y Event por páginas y
+registra sólo contadores de ausencias/cambios y un manifiesto de hashes. Una
+F5 completada significa únicamente que terminó este inventario operativo: no
+equivale a verificación de la F2, certificación histórica ni publicación. En
+particular, si la evidencia de F2 tiene `verification.verified = false`, la F5
+permanece provisional aunque sus comprobaciones no declaren discrepancias. La
+ausencia de `getDeleted`, historial as-of o evidencia independiente mantiene
+`historical_certification: unavailable`; los borrados duros siguen sin poder
+inferirse del estado actual.
+
+Las filas F5 se guardan en tablas mensuales propias, incluidas marcas de
+eliminación y fechas técnicas necesarias para el hash, pero no alimentan
+`salesforce_interest_activities` ni los lectores de generación. No crean una
+generación global, no mueven el puntero, no habilitan KPI, comparativas, CSV,
+auditorías ni el informe oficial. Fallos y estado exponen sólo diagnóstico
+permitido (fase, categoría, tipo de excepción, páginas e instante), sin
+payloads, SOQL, tokens ni identificadores remotos.
+
 ### Vista provisional administrativa
 
 `/informes/leads/provisional/september-october-2026` es distinta de los
