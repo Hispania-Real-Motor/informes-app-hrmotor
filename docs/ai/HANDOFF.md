@@ -7015,6 +7015,25 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   local de PHPUnit con `vendor` enlazado falló antes de pruebas por tablas de
   migración ausentes en ese harness; CI debe validar integración completa.
 
+## 2026-11-06 — lector administrativo provisional de Interests, octubre de 2026
+
+- Se añadió `/informes/leads/provisional/october-2026`: pantalla exclusiva de
+  administrador, sin caché compartida y deshabilitada por defecto mediante
+  `SALESFORCE_OCTOBER_2026_PROVISIONAL_ENABLED`. Responde 404 deshabilitada y
+  503 ante evidencia incompleta, sin fallback a Salesforce, legacy, generación
+  ni lector publicado.
+- El contrato usa internamente sólo F2, F2M y F5 con ID fijo `1`; exige misma
+  F2, estado `completed`, período de octubre de 2026 en `Europe/Madrid` y
+  manifiestos coincidentes. No acepta parámetros ni configuración que redirijan
+  la fuente. Muestra cobertura y delegación de filas activas coincidentes, no
+  IDs Salesforce ni payloads.
+- F2/F2M/F5 terminados o verificados no certifican historia. No se habilitan
+  Dirección, KPI/comparativas, Reservas/Ventas/Rendimiento, Campañas, Llamadas,
+  SEO, Comisiones ni Stock; tampoco CSV, auditoría, publicación o lectores
+  oficiales. Se actualizaron runbook, matriz, seis informes y DECISIONS. No se
+  ejecutaron PHP, MariaDB, migraciones, Salesforce, benchmark ni producción;
+  queda pendiente el validador sobre HEAD y cuerpo de PR.
+
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
 - Causa corregida: el mapeador conserva la clave

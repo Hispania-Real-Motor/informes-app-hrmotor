@@ -1273,3 +1273,21 @@ atribuir métricas de rendimiento a producción.
 La migración de estrategia y checkpoint es estrictamente aditiva y su `down()`
 no elimina columnas: hacerlo podría destruir el cursor de un run selectivo
 preparado o fallido y convertirlo silenciosamente en un journal no reanudable.
+
+## 2026-11-06 — lector provisional de octubre separado del lector publicado
+
+La pantalla administrativa de octubre de 2026 se ancla a tres journals
+mensuales concretos (F2, F2M y F5) y nunca delega, decora ni hace fallback a
+`InterestGenerationReader`. Antes de emitir agregados exige identidad de F2
+compartida, estado final, límites de período y manifiestos coincidentes; una
+sola discrepancia produce indisponibilidad controlada. Esta separación evita
+convertir evidencia de estado actual en una generación o una fuente oficial por
+un cambio de configuración o por ausencia de publicación.
+
+La pantalla sólo muestra cobertura y agregados de contenido activo coincidente,
+queda limitada a administración y sin caché compartida. No habilita KPI,
+comparativas, CSV, auditorías ni consumidores de otros informes. Los IDs de
+journals son internamente fijos y no se aceptan por parámetro ni configuración,
+para impedir que un despliegue redirija la fuente. El único control configurable
+es el flag de exposición, que se mantiene apagado hasta una habilitación
+administrativa autorizada.

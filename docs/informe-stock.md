@@ -20,6 +20,10 @@ La ruta administrativa del roster de Contact Center está restringida a
 administradores y solo mantiene identidad/vigencia para el refresco local de
 Users; no altera las fuentes, cálculos ni KPIs de Stock.
 
+El lector administrativo provisional de Interests de octubre de 2026 no
+participa en Stock. La evidencia F2/F2M/F5 aislada no modifica inventario,
+ventas, snapshots, cálculos, filtros, auditoría ni exportaciones.
+
 El stock actual considera `Disponible`, `Reservado` y `Bloqueado`. Las ventas no
 se reconstruyen con el Product2 actual: el snapshot conserva los valores
 económicos del momento de la venta y posteriormente solo se reconcilia su
