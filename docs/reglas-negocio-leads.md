@@ -48,6 +48,9 @@ La F5 mensual relaciona `Task` y `Event` exclusivamente cuando `WhatId` existe
 en la F2 mensual de origen. Sus filas, checkpoints y manifiesto son evidencia
 administrativa aislada: no alimentan este dashboard ni sus KPI. F5 `completed`
 no verifica ni certifica F2; una F2 provisional sigue sin ser publicable.
+La estrategia selectiva posterior recorre bloques de `WhatId` de esa F2 con
+checkpoints separados de Interest y Activity; su reconciliación es de solo
+lectura y tampoco puede convertir la evidencia en fuente oficial.
 
 El render HTTP no consulta Salesforce. No recupera atributos desde Lead,
 Account o Contact y no utiliza PII como fallback.

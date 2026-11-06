@@ -18,6 +18,10 @@ final class MonthlyInterestActivityRecoveryService
 
     private const DEFAULT_BATCH_SIZE = 500;
 
+    private const SOURCE_BLOCK_SIZE = 250;
+
+    private const SELECTIVE_STRATEGY = 'selective_whatid_v1';
+
     private const ID_PATTERN = '/^[A-Za-z0-9]{18}$/';
 
     public function __construct(
@@ -44,7 +48,7 @@ final class MonthlyInterestActivityRecoveryService
 
             return DB::table('salesforce_interest_monthly_activity_recoveries')->insertGetId([
                 'recovery_identifier' => (string) Str::uuid(), 'monthly_recovery_id' => $monthlyRecoveryId,
-                'status' => 'prepared', 'phase' => 'task_extract', 'batch_size' => $batch,
+                'status' => 'prepared', 'phase' => 'task_extract', 'batch_size' => $batch, 'extraction_strategy' => self::SELECTIVE_STRATEGY,
                 'pages_completed' => 0, 'counters' => json_encode($this->emptyCounters(), JSON_THROW_ON_ERROR),
                 'source_evidence' => json_encode([
                     'monthly_recovery_id' => $monthlyRecoveryId,
@@ -61,6 +65,13 @@ final class MonthlyInterestActivityRecoveryService
     public function run(int $id, string $reason, bool $resume = false): array
     {
         $lease = $this->claim($id, $reason, $resume);
+        $initial = $this->owned($id, $lease);
+        if (($initial->extraction_strategy ?? 'legacy_global_v1') === self::SELECTIVE_STRATEGY) {
+            return $this->runSelective($id, $lease);
+        }
+        if (($initial->extraction_strategy ?? 'legacy_global_v1') !== 'legacy_global_v1') {
+            throw new RuntimeException('Monthly F5 extraction strategy is not supported safely.');
+        }
         $stage = 'recovery_loop';
         try {
             while (true) {
@@ -113,7 +124,7 @@ final class MonthlyInterestActivityRecoveryService
     {
         $run = DB::table('salesforce_interest_monthly_activity_recoveries')->find($id) ?? throw new RuntimeException('Monthly F5 does not exist.');
 
-        return ['run_id' => (int) $run->id, 'monthly_recovery_id' => (int) $run->monthly_recovery_id, 'status' => $run->status, 'phase' => $run->phase, 'pages_completed' => (int) $run->pages_completed, 'counters' => json_decode($run->counters, true, 64, JSON_THROW_ON_ERROR), 'source_evidence' => json_decode($run->source_evidence, true, 64, JSON_THROW_ON_ERROR), 'evidence' => $run->evidence === null ? null : json_decode($run->evidence, true, 64, JSON_THROW_ON_ERROR), 'diagnostic' => $run->error_code === null ? null : ['stage' => $run->error_stage, 'category' => $run->error_code, 'meta' => $run->error_meta === null ? [] : json_decode($run->error_meta, true, 16, JSON_THROW_ON_ERROR)], 'historical_certification' => 'unavailable', 'published' => false];
+        return ['run_id' => (int) $run->id, 'monthly_recovery_id' => (int) $run->monthly_recovery_id, 'status' => $run->status, 'phase' => $run->phase, 'extraction_strategy' => $run->extraction_strategy ?? 'legacy_global_v1', 'checkpoint_present' => $run->checkpoint_activity_id !== null || ($run->checkpoint_interest_id ?? null) !== null, 'pages_completed' => (int) $run->pages_completed, 'counters' => json_decode($run->counters, true, 64, JSON_THROW_ON_ERROR), 'source_evidence' => json_decode($run->source_evidence, true, 64, JSON_THROW_ON_ERROR), 'evidence' => $run->evidence === null ? null : json_decode($run->evidence, true, 64, JSON_THROW_ON_ERROR), 'diagnostic' => $run->error_code === null ? null : ['stage' => $run->error_stage, 'category' => $run->error_code, 'meta' => $run->error_meta === null ? [] : json_decode($run->error_meta, true, 16, JSON_THROW_ON_ERROR)], 'historical_certification' => 'unavailable', 'published' => false];
     }
 
     /** @return array{rows:int,sha256:string} */
@@ -129,6 +140,155 @@ final class MonthlyInterestActivityRecoveryService
         });
 
         return ['rows' => $rows, 'sha256' => hash_final($hash)];
+    }
+
+    /** Runs only against bounded WhatId blocks from the immutable F2 journal. */
+    private function runSelective(int $id, string $lease): array
+    {
+        $stage = 'recovery_loop';
+        try {
+            while (true) {
+                $run = $this->owned($id, $lease);
+                if ($run->phase === 'completed') {
+                    $updated = DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', $id)->where('lease_token', $lease)->where('status', 'running')->update(['status' => 'completed', 'completed_at' => now('UTC'), 'lease_token' => null, 'updated_at' => now()]);
+                    if ($updated !== 1) {
+                        throw new MonthlyInterestRecoveryLeaseLost;
+                    }
+
+                    return $this->status($id);
+                }
+                $kind = match ($run->phase) {
+                    'task_extract', 'verify_task' => 'Task',
+                    'event_extract', 'verify_event' => 'Event',
+                    default => throw new RuntimeException('Monthly F5 selective checkpoint is not runnable.'),
+                };
+                $block = $this->interestBlock((int) $run->monthly_recovery_id, $run->checkpoint_interest_id);
+                if ($block['ids'] === []) {
+                    $this->advanceSelectivePhase($run, $lease);
+
+                    continue;
+                }
+                $stage = str_starts_with($run->phase, 'verify_') ? 'verification_query' : 'salesforce_query';
+                $records = $this->read($this->selectiveSoql($kind, $block['ids'], $run->checkpoint_activity_id, (int) $run->batch_size), (int) $run->batch_size, $id, $lease);
+                if (str_starts_with($run->phase, 'verify_')) {
+                    $this->verifySelectivePage($run, $lease, $kind, $records, $block['last'], $stage);
+                } else {
+                    $this->persistSelectivePage($run, $lease, $kind, $records, $block['last'], $stage);
+                }
+            }
+        } catch (Throwable $e) {
+            $this->recordFailure($id, $lease, $stage, $e);
+            throw $e;
+        }
+    }
+
+    /** @return array{ids:list<string>,last:?string} */
+    private function interestBlock(int $recoveryId, ?string $after): array
+    {
+        $query = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $recoveryId)->orderBy('salesforce_id')->limit(self::SOURCE_BLOCK_SIZE);
+        if ($after !== null) {
+            $query->where('salesforce_id', '>', $after);
+        }
+        $ids = $query->pluck('salesforce_id')->all();
+
+        return ['ids' => $ids, 'last' => $ids === [] ? null : last($ids)];
+    }
+
+    private function selectiveSoql(string $kind, array $interestIds, ?string $activityCheckpoint, int $batch): string
+    {
+        if ($interestIds === [] || count($interestIds) > self::SOURCE_BLOCK_SIZE || ($activityCheckpoint !== null && preg_match(self::ID_PATTERN, $activityCheckpoint) !== 1)) {
+            throw new RuntimeException('Monthly F5 selective checkpoint contains invalid Salesforce identifiers.');
+        }
+        foreach ($interestIds as $interestId) {
+            if (preg_match(self::ID_PATTERN, $interestId) !== 1) {
+                throw new RuntimeException('Monthly F5 selective checkpoint contains invalid Salesforce identifiers.');
+            }
+        }
+        $fields = $kind === 'Task' ? SalesforceInterestActivitySyncService::TASK_SOQL_FIELDS : SalesforceInterestActivitySyncService::EVENT_SOQL_FIELDS;
+        $quoted = implode(', ', array_map(fn (string $id): string => "'{$id}'", $interestIds));
+        $cursor = $activityCheckpoint === null ? '' : " AND Id > '{$activityCheckpoint}'";
+
+        return "SELECT {$fields}\nFROM {$kind}\nWHERE WhatId IN ({$quoted}){$cursor}\nORDER BY Id ASC\nLIMIT {$batch}";
+    }
+
+    private function persistSelectivePage(object $run, string $lease, string $kind, array $records, string $blockLast, string &$stage): void
+    {
+        $mapped = $this->mapPage((int) $run->monthly_recovery_id, $kind, $records, $run->checkpoint_activity_id, $stage);
+        DB::transaction(function () use ($run, $lease, $kind, $records, $mapped, $blockLast, &$stage): void {
+            $this->owned((int) $run->id, $lease, true);
+            $stage = 'database_persist';
+            $rows = array_map(fn (array $row): array => $row + ['monthly_activity_recovery_id' => $run->id], $mapped['rows']);
+            if ($rows !== []) {
+                DB::table('salesforce_interest_monthly_activity_rows')->upsert($rows, ['monthly_activity_recovery_id', 'activity_kind', 'activity_salesforce_id'], ['interest_salesforce_id', 'who_salesforce_id', 'activity_is_deleted', 'interest_is_deleted', 'activity_date', 'start_datetime', 'salesforce_created_at', 'salesforce_last_modified_at', 'system_modstamp_at', 'content_hash', 'updated_at']);
+            }
+            $counters = $this->counters($run);
+            $this->accumulate($counters, $kind, $records, $mapped);
+            $terminal = count($records) < (int) $run->batch_size;
+            $stage = 'checkpoint_update';
+            $updated = DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', $run->id)->where('lease_token', $lease)->where('status', 'running')->update(['checkpoint_activity_id' => $terminal ? null : $mapped['last'], 'checkpoint_interest_id' => $terminal ? $blockLast : $run->checkpoint_interest_id, 'pages_completed' => DB::raw('pages_completed + 1'), 'counters' => json_encode($counters, JSON_THROW_ON_ERROR), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
+            if ($updated !== 1) {
+                throw new MonthlyInterestRecoveryLeaseLost;
+            }
+        });
+    }
+
+    private function verifySelectivePage(object $run, string $lease, string $kind, array $records, string $blockLast, string &$stage): void
+    {
+        $mapped = $this->mapPage((int) $run->monthly_recovery_id, $kind, $records, $run->checkpoint_activity_id, $stage);
+        DB::transaction(function () use ($run, $lease, $kind, $records, $mapped, $blockLast, &$stage): void {
+            $this->owned((int) $run->id, $lease, true);
+            $counters = $this->counters($run);
+            foreach ($mapped['rows'] as $row) {
+                $stage = 'verification_database';
+                $local = DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', $run->id)->where('activity_kind', $kind)->where('activity_salesforce_id', $row['activity_salesforce_id'])->first();
+                $counters['remote_checked']++;
+                if ($local === null) {
+                    $counters['remote_missing_local']++;
+                } else {
+                    $counters['local_missing_remote']--;
+                    if (! hash_equals($local->content_hash, $row['content_hash'])) {
+                        $counters['content_changed']++;
+                    }
+                    DB::table('salesforce_interest_monthly_activity_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
+                }
+            }
+            $terminal = count($records) < (int) $run->batch_size;
+            $stage = 'checkpoint_update';
+            $updated = DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', $run->id)->where('lease_token', $lease)->where('status', 'running')->update(['checkpoint_activity_id' => $terminal ? null : $mapped['last'], 'checkpoint_interest_id' => $terminal ? $blockLast : $run->checkpoint_interest_id, 'pages_completed' => DB::raw('pages_completed + 1'), 'counters' => json_encode($counters, JSON_THROW_ON_ERROR), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
+            if ($updated !== 1) {
+                throw new MonthlyInterestRecoveryLeaseLost;
+            }
+        });
+    }
+
+    private function advanceSelectivePhase(object $run, string $lease): void
+    {
+        DB::transaction(function () use ($run, $lease): void {
+            $this->owned((int) $run->id, $lease, true);
+            $counters = $this->counters($run);
+            $next = match ($run->phase) {
+                'task_extract' => 'event_extract',
+                'event_extract' => 'verify_task',
+                'verify_task' => 'verify_event',
+                'verify_event' => 'completed',
+                default => throw new RuntimeException('Monthly F5 selective phase cannot advance.'),
+            };
+            if ($run->phase === 'event_extract') {
+                $counters['local_missing_remote'] = DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', $run->id)->count();
+            }
+            $evidence = null;
+            if ($run->phase === 'verify_event') {
+                $source = $this->sourceSnapshot((int) $run->monthly_recovery_id);
+                $sourceEvidence = json_decode($run->source_evidence, true, 64, JSON_THROW_ON_ERROR);
+                $sourceMatches = $source['rows'] === $sourceEvidence['source_rows'] && hash_equals($sourceEvidence['source_sha256'], $source['sha256']);
+                $verified = $sourceMatches && $counters['remote_missing_local'] === 0 && $counters['local_missing_remote'] === 0 && $counters['content_changed'] === 0;
+                $evidence = ['source' => 'current_state_monthly_f5_inventory', 'strategy' => self::SELECTIVE_STRATEGY, 'manifest' => $this->manifest((int) $run->id), 'verification' => ['verified' => $verified, 'source_f2_unchanged' => $sourceMatches, 'remote_checked' => $counters['remote_checked'], 'remote_missing_local' => $counters['remote_missing_local'], 'local_missing_remote' => $counters['local_missing_remote'], 'content_changed' => $counters['content_changed']], 'combined_certified' => false, 'historical_certification' => false];
+            }
+            $updated = DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', $run->id)->where('lease_token', $lease)->where('status', 'running')->update(['phase' => $next, 'checkpoint_activity_id' => null, 'checkpoint_interest_id' => null, 'counters' => json_encode($counters, JSON_THROW_ON_ERROR), 'evidence' => $evidence === null ? $run->evidence : json_encode($evidence, JSON_THROW_ON_ERROR), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
+            if ($updated !== 1) {
+                throw new MonthlyInterestRecoveryLeaseLost;
+            }
+        });
     }
 
     /** @return list<array<string,mixed>> */

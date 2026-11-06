@@ -32,7 +32,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->assertSame('completed', $status['status']);
         $this->assertSame($monthlyRecovery, $status['monthly_recovery_id']);
         $this->assertSame(2, $status['counters']['activities_related']);
-        $this->assertSame(1, $status['counters']['discarded_other_period']);
+        $this->assertSame(0, $status['counters']['discarded_other_period']);
         $this->assertSame(1, $status['counters']['activities_soft_deleted']);
         $this->assertSame(1, $status['counters']['interests_soft_deleted']);
         $this->assertFalse($status['source_evidence']['f2_verified']);
@@ -44,8 +44,8 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->assertDatabaseHas('salesforce_interest_monthly_activity_rows', ['activity_kind' => 'Task', 'interest_salesforce_id' => $first, 'activity_date' => '2026-11-06']);
         $this->assertDatabaseHas('salesforce_interest_monthly_activity_rows', ['activity_kind' => 'Event', 'interest_salesforce_id' => $second, 'activity_is_deleted' => true, 'interest_is_deleted' => true]);
         foreach ($client->soql as $soql) {
-            $this->assertStringContainsString("What.Type = 'Interes__c'", $soql);
-            $this->assertStringNotContainsString('WhatId IN', $soql);
+            $this->assertStringContainsString('WhatId IN', $soql);
+            $this->assertStringNotContainsString('CreatedDate', $soql);
         }
     }
 
@@ -69,7 +69,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
             $failed = $service->status($run);
             $this->assertSame('failed', $failed['status']);
             $this->assertSame('task_extract', $failed['phase']);
-            $this->assertSame(500, DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', $run)->count());
+            $this->assertSame(250, DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', $run)->count());
         }
 
         $completed = $service->run($run, 'Resume F5 after a synthetic remote interruption safely.', true);
@@ -140,7 +140,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
             $this->monthlyInterest($monthlyRecovery, $id);
             $tasks[] = $this->task($index, $id);
         }
-        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(tasks: $tasks, failOnCall: 5));
+        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(tasks: $tasks, failOnCall: 10));
         $run = $service->prepare($monthlyRecovery, 'Resume the verification checkpoint without duplicate counters.');
 
         try {
@@ -150,8 +150,8 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
             $failed = $service->status($run);
             $this->assertSame('failed', $failed['status']);
             $this->assertSame('verify_task', $failed['phase']);
-            $this->assertSame(500, $failed['counters']['remote_checked']);
-            $this->assertSame(2, $failed['counters']['local_missing_remote']);
+            $this->assertSame(250, $failed['counters']['remote_checked']);
+            $this->assertSame(252, $failed['counters']['local_missing_remote']);
         }
 
         $completed = $service->run($run, 'Resume the verification checkpoint without duplicate counters.', true);
@@ -215,6 +215,11 @@ class MonthlyActivityFakeClient extends SalesforceClient
             throw new RuntimeException('remote secret payload must not escape');
         }
         $records = $this->recordsByCall[$this->calls] ?? (str_contains($soql, 'FROM Task') ? $this->tasks : $this->events);
+        preg_match_all("/'([A-Za-z0-9]{18})'/", $soql, $matches);
+        $whatIds = array_values(array_filter($matches[1] ?? [], fn (string $id): bool => ! str_starts_with($id, '00T') && ! str_starts_with($id, '00U')));
+        if ($whatIds !== []) {
+            $records = array_values(array_filter($records, fn (array $record): bool => in_array($record['WhatId'], $whatIds, true)));
+        }
         $after = preg_match("/Id > '([^']+)'/", $soql, $matches) === 1 ? $matches[1] : null;
         preg_match('/LIMIT (\d+)/', $soql, $limit);
         $records = array_values(array_filter($records, fn (array $record): bool => $after === null || strcmp($record['Id'], $after) > 0));

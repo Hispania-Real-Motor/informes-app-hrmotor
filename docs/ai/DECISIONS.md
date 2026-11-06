@@ -1257,3 +1257,15 @@ automática; el rollback del esquema con generaciones existentes se rechaza.
 La primera generación requiere reconstrucción aislada y revisión del manifiesto;
 no se usa como base la tabla actual ni un backup posterior a la incidencia.
 [Alternativas, costes y operación](../salesforce-interest-generations.md).
+
+## 2026-11-06 — F5 mensual selectiva por bloques de Interest
+
+Las nuevas ejecuciones F5 mensuales usan `selective_whatid_v1`: bloques de 250
+identificadores del journal F2 y consultas `Task`/`Event` por `WhatId IN (...)`.
+El checkpoint persiste tanto el bloque de Interest confirmado como el cursor de
+actividad dentro de ese bloque; ambos se actualizan en la misma transacción que
+las filas. Así se evita la exploración histórica global sin filtrar por fecha de
+actividad. Los runs existentes conservan `legacy_global_v1` y no cambian de
+semántica al reanudarse. La compatibilidad SOQL se valida sintéticamente; una
+ejecución supervisada y autorizada debe confirmar la selectividad real antes de
+atribuir métricas de rendimiento a producción.

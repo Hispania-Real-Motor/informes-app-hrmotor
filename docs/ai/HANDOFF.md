@@ -6892,6 +6892,34 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `Docs-Matrix-Impact: updated`; añadir la excepción de rutas operativas sin
   mapa si el validador la exige.
 
+## 2026-11-09 — F5 mensual selectiva y reconciliación de evidencia
+
+- La F5 mensual nueva usa `selective_whatid_v1`: parte exclusivamente de la
+  F2 mensual, consulta Task/Event por bloques acotados de `WhatId` y conserva
+  dos checkpoints (Interest y Activity) bajo el mismo lease fenced. Los
+  journals `legacy_global_v1` se preservan sin reinterpretarse ni reanudarse
+  con la estrategia selectiva.
+- `interests:monthly-reconcile` es una CLI de solo lectura que exige que F2,
+  materialización y F5 pertenezcan al mismo diario. Por defecto entrega sólo
+  agregados, hashes y límites de observabilidad; la lista de hasta 500 IDs
+  ausentes requiere confirmación explícita. No puede reconstruir IDs F5 que
+  sólo se conservaron como contador ni atribuir cambios hash F2 a campos cuyo
+  valor anterior no se retuvo.
+- Límites e impacto: F5 terminada y reconciliación no certifican F2 ni historia;
+  `getDeleted`, fuente as-of y evidencia independiente siguen ausentes. No se
+  escriben generaciones, versiones, memberships, punteros, lectores ni fuentes
+  oficiales; los seis informes, KPI, filtros, fórmulas, auditorías y CSV no
+  cambian. `PROJECT_CONTEXT.md` no cambia. `DECISIONS.md` contiene la decisión
+  técnica del aislamiento/selectividad ya aportada por la implementación.
+- Documentación actualizada: runbook de generaciones, matriz y los contratos
+  de Interests, Reservas/Ventas, Llamadas y Campañas para dejar explícito que
+  los bloques/reconciliación no habilitan consumidores. No se ejecutaron PHP,
+  MariaDB, migraciones, Salesforce, benchmark ni producción desde esta revisión
+  documental. Pendiente ejecutar el validador con HEAD comprometido y la
+  descripción PR. Contrato: `Docs-Impact: updated` y
+  `Docs-Matrix-Impact: updated`, más las excepciones de rutas operativas sin
+  mapa exigidas por el validador.
+
 ## 2026-11-07 — corrección de arranque de la CLI F5 mensual
 
 - La primera ejecución de CI de la PR #114 detectó antes de las pruebas que el
@@ -6960,3 +6988,28 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   validador pendientes de cierre. Para PR: `Docs-Impact: updated` y
   `Docs-Matrix-Impact: none` si la revisión confirma que no cambian KPIs,
   fuentes, filtros ni trazabilidad de los seis informes.
+## 2026-11-06 — reconciliación mensual y F5 selectiva (pendiente de CI)
+
+- Tarea: se añadió reconciliación administrativa de solo lectura para los
+  journals mensuales F2, materialización y F5, y una estrategia F5 nueva por
+  bloques `WhatId` de 250 Interests. Archivos: servicio/comando de
+  reconciliación, migración `2026_11_09_120000`, servicio F5, sus pruebas y
+  documentación de generations/decisions.
+- Decisión: los runs nuevos usan `selective_whatid_v1`, con checkpoint doble
+  (Interest confirmado y actividad dentro del bloque); los journals existentes
+  permanecen `legacy_global_v1` y no se reinterpretan. La consulta no filtra
+  por fecha de actividad y conserva `queryAll` para soft deletes observables.
+- Base de datos: migración aditiva de estrategia y checkpoint de Interest; no
+  altera filas, manifiestos ni publicaciones existentes. El índice único ya
+  existente `(monthly_recovery_id, salesforce_id)` soporta la lectura keyset del
+  bloque fuente, por lo que no se añadió un índice redundante.
+- Seguridad y límites: el comando no realiza lecturas remotas; identificadores
+  sólo se emiten con confirmación explícita. Los 30 IDs F5 adicionales y los
+  valores históricos de hashes F2 se declaran no identificables si el journal
+  no los retuvo. Ausencia de `queryAll` no se presenta como hard delete.
+- Rendimiento: 250 IDs por SOQL, actividades paginadas con máximo configurable
+  (50--1000), sin transacción SQL durante la lectura remota. Falta validar la
+  selectividad real con una ejecución supervisada y autorizada en producción.
+- Verificación: sintaxis PHP, Pint y `git diff --check` correctos. La ejecución
+  local de PHPUnit con `vendor` enlazado falló antes de pruebas por tablas de
+  migración ausentes en ese harness; CI debe validar integración completa.

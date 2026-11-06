@@ -657,6 +657,9 @@ origen y persiste esa evidencia fuera de las tablas de generación. No cambia
 atribución, readiness, métricas, filtros ni exportaciones de Campañas. F5
 `completed` no verifica/certifica F2, por lo que una F2 provisional no habilita
 una fuente mensual en este informe.
+La extracción selectiva por bloques de `WhatId` y la reconciliación local sólo
+acotan esa evidencia; no cambian la generación publicada, atribución, readiness
+ni snapshots de Campañas.
 
 Esta garantía corresponde a la fuente Interest. Las atribuciones materializadas,
 fuentes publicitarias y otras fuentes conservan sus contratos de build/readiness;

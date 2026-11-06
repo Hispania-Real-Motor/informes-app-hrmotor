@@ -807,6 +807,9 @@ F5 mensual conserva Activities sólo si sus IDs Interest pertenecen a la F2
 mensual explícita. No se incorpora a la atribución Opportunity/Interest,
 Rendimiento comercial, auditorías ni exportaciones. F5 `completed` no
 verifica/certifica F2 y una F2 provisional no habilita una fuente mensual aquí.
+Los bloques selectivos por `WhatId` y la reconciliación local posterior sólo
+acotan evidencia y discrepancias; no modifican la generación publicada ni la
+atribución, los cierres o la fuente de Rendimiento comercial.
 `OpportunityInterestAttributionService` conserva el resultado explícito de fuente
 no resuelta cuando no existe generación, sin leer legacy. No se certifican por
 ello las otras fuentes ni se modifican cierres. Pruebas adaptadas:
