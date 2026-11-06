@@ -6880,6 +6880,28 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   y test; Pint pasó sobre esos tres PHP. La última CI de la rama sigue siendo
   la autoridad para la suite completa y los checks de integración.
 
+## 2026-11-06 — integridad de contadores en segunda verificación F5 mensual
+
+- Se separó presencia remota de igualdad de contenido: al terminar la
+  extracción se inicializa `local_missing_remote` con el inventario local F5;
+  cada correspondencia remota/local lo reduce una vez, incluso si su hash es
+  distinto. `verified_at` continúa reservado a hashes iguales, y un cambio de
+  contenido incrementa únicamente `content_changed`.
+- Se añadieron regresiones para contenido modificado, ausencia local real,
+  actividad remota sin fila local y reanudación tras 500 verificaciones. No
+  cambian F2, F5 global, pertenencia mensual, SOQL, lectores, scheduler,
+  publicación, tablas ni migraciones.
+- Seguridad y rendimiento: no se añaden payloads o datos personales a la
+  evidencia ni diagnósticos; se sustituye el conteo final basado en
+  `verified_at` por un único conteo local antes de F5, sin consultas remotas ni
+  consultas SQL adicionales por actividad.
+- Verificación local: Pint, sintaxis PHP y `git diff --check` correctos. La
+  suite local no pudo inicializar su SQLite al reutilizar `vendor` externo y
+  falló antes de ejecutar por tablas de pruebas ausentes; no se ejecutaron
+  migraciones por restricción. CI queda como validación de integración. No hay
+  impacto sobre los seis informes ni cambios documentales funcionales fuera de
+  este handoff; `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian.
+
 ## 2026-11-05 — cobertura temporal de `getDeleted` en recuperación inicial Interests
 
 - Causa corregida: `recover-initial` admitía una respuesta de `getDeleted` con
