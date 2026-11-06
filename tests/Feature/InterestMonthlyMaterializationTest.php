@@ -7,7 +7,6 @@ use App\Services\Salesforce\InterestMonthlyMaterializationService;
 use App\Services\Salesforce\MonthlyInterestRecoveryLeaseLost;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestSyncService;
-use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -192,7 +191,11 @@ final class MonthlyMaterializationFakeClient extends SalesforceClient
     private int $calls = 0;
 
     /** @param list<array<string,mixed>> $records */
-    public function __construct(private array $records = [], private ?int $failOnCall = null, private bool $returnAll = false) {}
+    public function __construct(
+        private array $records = [],
+        private ?int $failOnCall = null,
+        private bool $returnAll = false,
+    ) {}
 
     public function queryPages(string $soql, bool $includeDeleted = false): \Generator
     {
