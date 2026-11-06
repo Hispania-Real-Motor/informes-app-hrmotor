@@ -1,5 +1,15 @@
 # Informe de Campañas
 
+## Nota técnica — materialización F2 mensual provisional
+
+El journal F2 mensual conserva campos de atribución ya existentes del Interest
+(fuente, medio, canal, delegación y UTM), junto con identidad y relaciones
+comerciales, para una futura lectura mensual controlada. No alimenta atribución,
+readiness, detalle, rankings, auditorías ni CSV de Campañas: el informe mantiene
+la generación Interest publicada como fuente. Diferencias, ausencias o soft
+deletes observados bloquean la verificación del journal y no habilitan KPI,
+publicación ni certificación histórica.
+
 ## Disponibilidad con Interests no certificado
 
 Si el lector de la generación certificada de Interests devuelve

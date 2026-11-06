@@ -1,5 +1,15 @@
 # Informe de Reservas / Ventas
 
+## Nota técnica — materialización F2 mensual provisional
+
+El journal F2 mensual puede preservar para una futura integración la identidad
+Interest, relaciones Lead/Account, fecha funcional, owner, fuente/UTM y
+oportunidad inversa necesarios para atribución. Esta PR no conecta ese journal
+con Reservas/Ventas ni Rendimiento comercial: lectores, auditorías, filtros,
+CSV, cálculos y disponibilidad siguen dependiendo de la generación Interest
+publicada y de sus fuentes actuales. La evidencia mensual no certifica historia
+ni habilita KPIs o publicación.
+
 Actualizado: 2026-10-09.
 
 ## Fuente y datos locales

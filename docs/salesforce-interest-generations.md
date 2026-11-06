@@ -374,3 +374,34 @@ solo solo justifica purgados dentro de su ventana de retención. Sin ella, el
 procedimiento correcto es fallar cerrado y mantener el 503 para intervalos no
 certificados; no se presentarán KPIs, comparativas ni exportaciones parciales
 como consistentes.
+
+## Materialización funcional F2 mensual aislada
+
+`interests:monthly-f2-materialization` añade un journal separado para convertir
+las identidades ya congeladas en `salesforce_interest_monthly_recovery_rows` en
+campos funcionales estructurados. `prepare` exige un F2 mensual completado y un
+motivo; `run` exige además `--confirm-salesforce`, procesa bloques de 50 a 500
+IDs con `queryAll` y una consulta `Id IN (...)` acotada. `status`, `manifest` y
+`cancel` no hacen lecturas remotas, y no hay ejecución automática al desplegar.
+
+Las tablas `salesforce_interest_monthly_materializations` y
+`salesforce_interest_monthly_materialized_rows` no escriben generaciones,
+memberships, versiones, puntero de publicación ni los journals F2/F5. Cada fila
+conserva la referencia a su fila F2, ambas huellas SHA-256 y los campos del
+contrato actual de `SalesforceInterestSyncService::mapRecord`: identidades
+Lead/Account/persona, origen de migración, fechas, owner, estado/tipo,
+fuente/medio/canal/delegación, UTM, vehículos, oportunidad inversa y soft
+delete observable. No conserva `raw_payload`.
+
+La huella usa exactamente la normalización mensual F2: excluye payload y tiempos
+técnicos y conserva los campos funcionales. Una presencia con hash distinto
+cuenta solo como cambio; una fila no devuelta cuenta solo como ausencia; un ID
+inesperado o duplicado no entra en la pertenencia congelada. Filas y checkpoint
+se confirman en la misma transacción bajo lease fenced. El manifiesto declara
+cobertura, cambios, ausencias, inesperados, duplicados, soft deletes y si la
+evidencia F2 fuente permanece igual.
+
+`completed` es una finalización técnica, no certificación ni publicación.
+Hard deletes siguen sin observarse y cualquier discrepancia deja
+`verification.verified` en falso. Los lectores e informes oficiales continúan
+usando exclusivamente una generación F2/F5 publicada.

@@ -188,6 +188,59 @@ ORDER BY Id ASC
 SOQL;
     }
 
+    /**
+     * Bounded current-state lookup for identities already frozen in a monthly
+     * inventory. It deliberately does not define period membership.
+     *
+     * @param  list<string>  $ids
+     */
+    public function monthlyMaterializationSoql(array $ids): string
+    {
+        if ($ids === [] || count($ids) > 500 || count($ids) !== count(array_unique($ids))) {
+            throw new RuntimeException('Monthly materialization identifiers are invalid or exceed the bounded query size.');
+        }
+        foreach ($ids as $id) {
+            if (preg_match('/^[A-Za-z0-9]{18}$/', $id) !== 1) {
+                throw new RuntimeException('Monthly materialization identifiers are invalid or exceed the bounded query size.');
+            }
+        }
+        $quoted = implode(', ', array_map(fn (string $id): string => "'{$id}'", $ids));
+
+        return <<<SOQL
+SELECT
+    Id,
+    CreatedDate,
+    LastModifiedDate,
+    SystemModstamp,
+    IsDeleted,
+    IN_Lead__c,
+    IN_Account__c,
+    IN_Lead_Origen_Migracion__c,
+    IN_Fecha_Creacion_Origen__c,
+    OwnerId,
+    Owner.Name,
+    IN_Estado__c,
+    IN_Tipo__c,
+    IN_Fuente_Origen__c,
+    IN_RP_Fuente_Original__c,
+    IN_Medio_Origen__c,
+    IN_Canal__c,
+    IN_Delegacion_Procedencia__c,
+    IN_utm_campaign__c,
+    IN_utm_id__c,
+    IN_utm_source__c,
+    IN_utm_medium__c,
+    IN_utm_content__c,
+    IN_utm_term__c,
+    IN_VEN_Vehiculo__c,
+    IN_TAS_Vehiculo__c,
+    IN_VEN_Oportunidad__c
+FROM Interes__c
+WHERE Id IN ({$quoted})
+ORDER BY Id ASC
+SOQL;
+    }
+
     private function soql(bool $deleted, ?CarbonInterface $windowStart, ?CarbonInterface $cutoff): string
     {
         $lowerBound = $windowStart === null

@@ -1,5 +1,14 @@
 # Informe de Llamadas
 
+## Nota técnica — materialización F2 mensual provisional
+
+La materialización F2 mensual guarda de forma aislada la identidad y contexto
+funcional de Interests ya pertenecientes al inventario mensual, incluido su
+estado de borrado observable. No cambia la resolución de Interests relacionados
+por Llamadas, ni consulta estas tablas desde lectores, clasificaciones, filtros,
+exportaciones o KPI. Al no acreditar hard deletes ni fotografía histórica, el
+journal permanece provisional, no publicado y sin certificación F5.
+
 Actualizado: 2026-10-08.
 
 ## Universo
