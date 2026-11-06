@@ -168,6 +168,9 @@ final class MonthlyInterestActivityRecoveryService
             $this->accumulate($counters, $kind, $records, $mapped);
             $terminal = count($records) < (int) $run->batch_size;
             $next = $terminal ? ($kind === 'Task' ? 'event_extract' : 'verify_task') : $run->phase;
+            if ($terminal && $kind === 'Event') {
+                $counters['local_missing_remote'] = DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', $run->id)->count();
+            }
             $stage = 'checkpoint_update';
             $updated = DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', $run->id)->where('lease_token', $lease)->where('status', 'running')->update(['phase' => $next, 'checkpoint_activity_id' => $terminal ? null : $mapped['last'], 'pages_completed' => DB::raw('pages_completed + 1'), 'counters' => json_encode($counters, JSON_THROW_ON_ERROR), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
             if ($updated !== 1) {
@@ -189,17 +192,19 @@ final class MonthlyInterestActivityRecoveryService
                 $counters['remote_checked']++;
                 if ($local === null) {
                     $counters['remote_missing_local']++;
-                } elseif (hash_equals($local->content_hash, $row['content_hash']) === false) {
-                    $counters['content_changed']++;
                 } else {
-                    DB::table('salesforce_interest_monthly_activity_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
+                    $counters['local_missing_remote']--;
+                    if (hash_equals($local->content_hash, $row['content_hash']) === false) {
+                        $counters['content_changed']++;
+                    } else {
+                        DB::table('salesforce_interest_monthly_activity_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
+                    }
                 }
             }
             $terminal = count($records) < (int) $run->batch_size;
             $next = $terminal ? ($kind === 'Task' ? 'verify_event' : 'completed') : $run->phase;
             $evidence = null;
             if ($terminal && $kind === 'Event') {
-                $counters['local_missing_remote'] = DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', $run->id)->whereNull('verified_at')->count();
                 $source = $this->sourceSnapshot((int) $run->monthly_recovery_id);
                 $sourceEvidence = json_decode($run->source_evidence, true, 64, JSON_THROW_ON_ERROR);
                 $sourceMatches = $source['rows'] === $sourceEvidence['source_rows'] && hash_equals($sourceEvidence['source_sha256'], $source['sha256']);

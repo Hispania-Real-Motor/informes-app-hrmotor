@@ -80,6 +80,88 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->assertSame(502, $completed['evidence']['manifest']['rows']);
     }
 
+    public function test_it_counts_changed_remote_content_without_counting_it_as_missing(): void
+    {
+        $monthlyRecovery = $this->completedMonthlyRecovery();
+        $interest = $this->interestId(1);
+        $original = $this->task(1, $interest, false, '2026-10-06');
+        $changed = $this->task(1, $interest, false, '2026-10-07');
+        $this->monthlyInterest($monthlyRecovery, $interest);
+        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(recordsByCall: [1 => [$original], 2 => [], 3 => [$changed], 4 => []]));
+        $run = $service->prepare($monthlyRecovery, 'Verify that changed activity content remains distinct from absence.');
+
+        $status = $service->run($run, 'Verify that changed activity content remains distinct from absence.');
+
+        $this->assertSame(1, $status['counters']['content_changed']);
+        $this->assertSame(0, $status['counters']['local_missing_remote']);
+        $this->assertSame(0, $status['counters']['remote_missing_local']);
+        $this->assertFalse($status['evidence']['verification']['verified']);
+        $this->assertDatabaseHas('salesforce_interest_monthly_activity_rows', ['monthly_activity_recovery_id' => $run, 'activity_salesforce_id' => $this->taskId(1), 'verified_at' => null]);
+    }
+
+    public function test_it_counts_only_absent_local_rows_as_missing_remote(): void
+    {
+        $monthlyRecovery = $this->completedMonthlyRecovery();
+        $interest = $this->interestId(1);
+        $this->monthlyInterest($monthlyRecovery, $interest);
+        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(recordsByCall: [1 => [$this->task(1, $interest)], 2 => [], 3 => [], 4 => []]));
+        $run = $service->prepare($monthlyRecovery, 'Verify that a truly absent activity remains missing remotely.');
+
+        $status = $service->run($run, 'Verify that a truly absent activity remains missing remotely.');
+
+        $this->assertSame(0, $status['counters']['content_changed']);
+        $this->assertSame(1, $status['counters']['local_missing_remote']);
+        $this->assertSame(0, $status['counters']['remote_missing_local']);
+        $this->assertFalse($status['evidence']['verification']['verified']);
+    }
+
+    public function test_it_counts_remote_rows_without_a_local_activity_separately(): void
+    {
+        $monthlyRecovery = $this->completedMonthlyRecovery();
+        $interest = $this->interestId(1);
+        $this->monthlyInterest($monthlyRecovery, $interest);
+        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(recordsByCall: [1 => [], 2 => [], 3 => [$this->task(1, $interest)], 4 => []]));
+        $run = $service->prepare($monthlyRecovery, 'Verify that a new remote activity has no local counterpart.');
+
+        $status = $service->run($run, 'Verify that a new remote activity has no local counterpart.');
+
+        $this->assertSame(0, $status['counters']['content_changed']);
+        $this->assertSame(0, $status['counters']['local_missing_remote']);
+        $this->assertSame(1, $status['counters']['remote_missing_local']);
+        $this->assertFalse($status['evidence']['verification']['verified']);
+    }
+
+    public function test_it_resumes_verification_without_duplicate_discrepancy_counters(): void
+    {
+        $monthlyRecovery = $this->completedMonthlyRecovery();
+        $tasks = [];
+        for ($index = 1; $index <= 502; $index++) {
+            $id = $this->interestId($index);
+            $this->monthlyInterest($monthlyRecovery, $id);
+            $tasks[] = $this->task($index, $id);
+        }
+        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(tasks: $tasks, failOnCall: 5));
+        $run = $service->prepare($monthlyRecovery, 'Resume the verification checkpoint without duplicate counters.');
+
+        try {
+            $service->run($run, 'Resume the verification checkpoint without duplicate counters.');
+            $this->fail('Expected synthetic verification interruption.');
+        } catch (RuntimeException) {
+            $failed = $service->status($run);
+            $this->assertSame('failed', $failed['status']);
+            $this->assertSame('verify_task', $failed['phase']);
+            $this->assertSame(500, $failed['counters']['remote_checked']);
+            $this->assertSame(2, $failed['counters']['local_missing_remote']);
+        }
+
+        $completed = $service->run($run, 'Resume the verification checkpoint without duplicate counters.', true);
+
+        $this->assertSame('completed', $completed['status']);
+        $this->assertSame(502, $completed['counters']['remote_checked']);
+        $this->assertSame(0, $completed['counters']['local_missing_remote']);
+        $this->assertSame(0, $completed['counters']['content_changed']);
+    }
+
     private function completedMonthlyRecovery(bool $verified = false): int
     {
         return DB::table('salesforce_interest_monthly_recoveries')->insertGetId([
@@ -122,8 +204,8 @@ class MonthlyActivityFakeClient extends SalesforceClient
 
     private int $calls = 0;
 
-    /** @param list<array<string,mixed>> $tasks @param list<array<string,mixed>> $events */
-    public function __construct(private array $tasks = [], private array $events = [], private ?int $failOnCall = null) {}
+    /** @param list<array<string,mixed>> $tasks @param list<array<string,mixed>> $events @param array<int,list<array<string,mixed>>> $recordsByCall */
+    public function __construct(private array $tasks = [], private array $events = [], private ?int $failOnCall = null, private array $recordsByCall = []) {}
 
     public function queryPages(string $soql, bool $includeDeleted = false): \Generator
     {
@@ -132,7 +214,7 @@ class MonthlyActivityFakeClient extends SalesforceClient
         if ($this->failOnCall === $this->calls) {
             throw new RuntimeException('remote secret payload must not escape');
         }
-        $records = str_contains($soql, 'FROM Task') ? $this->tasks : $this->events;
+        $records = $this->recordsByCall[$this->calls] ?? (str_contains($soql, 'FROM Task') ? $this->tasks : $this->events);
         $after = preg_match("/Id > '([^']+)'/", $soql, $matches) === 1 ? $matches[1] : null;
         preg_match('/LIMIT (\d+)/', $soql, $limit);
         $records = array_values(array_filter($records, fn (array $record): bool => $after === null || strcmp($record['Id'], $after) > 0));
