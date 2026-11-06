@@ -7014,3 +7014,24 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Verificación: sintaxis PHP, Pint y `git diff --check` correctos. La ejecución
   local de PHPUnit con `vendor` enlazado falló antes de pruebas por tablas de
   migración ausentes en ese harness; CI debe validar integración completa.
+
+## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
+
+- Causa corregida: el mapeador conserva la clave
+  `monthly_activity_recovery_id` con valor `null` hasta que conoce el run. La
+  unión de arrays con `+` no la reemplazaba y SQLite rechazaba la inserción. La
+  persistencia selectiva ahora asigna explícitamente el ID fenced del run antes
+  del `upsert` de Task/Event.
+- Integridad de verificación: una correspondencia remota reduce
+  `local_missing_remote` aunque cambie su hash, pero `verified_at` sólo se
+  escribe para contenido idéntico. El hash local no se sobrescribe durante la
+  verificación.
+- Pruebas añadidas: se exige la relación F5 no nula para Task y Event, se cubre
+  paginación/reanudación dentro de un bloque con más actividades que la página,
+  y se comprueba que un journal anterior sigue ejecutando el SOQL
+  `legacy_global_v1`, sin checkpoint selectivo. No se han tocado journals,
+  manifiestos ni ejecuciones productivas.
+- Riesgo pendiente: el comportamiento SOQL se valida con el cliente simulado;
+  una lectura real sigue requiriendo autorización y revisión supervisada. La
+  validación completa queda encomendada al CI de la PR porque este worktree no
+  dispone de runtime PHP aislado.

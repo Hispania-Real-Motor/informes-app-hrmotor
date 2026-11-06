@@ -217,7 +217,11 @@ final class MonthlyInterestActivityRecoveryService
         DB::transaction(function () use ($run, $lease, $kind, $records, $mapped, $blockLast, &$stage): void {
             $this->owned((int) $run->id, $lease, true);
             $stage = 'database_persist';
-            $rows = array_map(fn (array $row): array => $row + ['monthly_activity_recovery_id' => $run->id], $mapped['rows']);
+            $rows = array_map(function (array $row) use ($run): array {
+                $row['monthly_activity_recovery_id'] = $run->id;
+
+                return $row;
+            }, $mapped['rows']);
             if ($rows !== []) {
                 DB::table('salesforce_interest_monthly_activity_rows')->upsert($rows, ['monthly_activity_recovery_id', 'activity_kind', 'activity_salesforce_id'], ['interest_salesforce_id', 'who_salesforce_id', 'activity_is_deleted', 'interest_is_deleted', 'activity_date', 'start_datetime', 'salesforce_created_at', 'salesforce_last_modified_at', 'system_modstamp_at', 'content_hash', 'updated_at']);
             }
@@ -248,8 +252,9 @@ final class MonthlyInterestActivityRecoveryService
                     $counters['local_missing_remote']--;
                     if (! hash_equals($local->content_hash, $row['content_hash'])) {
                         $counters['content_changed']++;
+                    } else {
+                        DB::table('salesforce_interest_monthly_activity_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
                     }
-                    DB::table('salesforce_interest_monthly_activity_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
                 }
             }
             $terminal = count($records) < (int) $run->batch_size;

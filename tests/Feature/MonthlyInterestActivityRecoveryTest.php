@@ -41,8 +41,9 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->assertFalse($status['published']);
         $this->assertDatabaseCount('salesforce_interest_monthly_activity_rows', 2);
         $this->assertDatabaseCount('salesforce_interest_activities', 0);
-        $this->assertDatabaseHas('salesforce_interest_monthly_activity_rows', ['activity_kind' => 'Task', 'interest_salesforce_id' => $first, 'activity_date' => '2026-11-06']);
-        $this->assertDatabaseHas('salesforce_interest_monthly_activity_rows', ['activity_kind' => 'Event', 'interest_salesforce_id' => $second, 'activity_is_deleted' => true, 'interest_is_deleted' => true]);
+        $this->assertDatabaseHas('salesforce_interest_monthly_activity_rows', ['monthly_activity_recovery_id' => $run, 'activity_kind' => 'Task', 'interest_salesforce_id' => $first, 'activity_date' => '2026-11-06']);
+        $this->assertDatabaseHas('salesforce_interest_monthly_activity_rows', ['monthly_activity_recovery_id' => $run, 'activity_kind' => 'Event', 'interest_salesforce_id' => $second, 'activity_is_deleted' => true, 'interest_is_deleted' => true]);
+        $this->assertSame(0, DB::table('salesforce_interest_monthly_activity_rows')->whereNull('monthly_activity_recovery_id')->count());
         foreach ($client->soql as $soql) {
             $this->assertStringContainsString('WhatId IN', $soql);
             $this->assertStringNotContainsString('CreatedDate', $soql);
@@ -160,6 +161,59 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->assertSame(502, $completed['counters']['remote_checked']);
         $this->assertSame(0, $completed['counters']['local_missing_remote']);
         $this->assertSame(0, $completed['counters']['content_changed']);
+    }
+
+    public function test_it_pages_within_one_interest_block_and_resumes_without_duplicates(): void
+    {
+        $monthlyRecovery = $this->completedMonthlyRecovery();
+        $interest = $this->interestId(1);
+        $this->monthlyInterest($monthlyRecovery, $interest);
+        $tasks = [];
+        for ($index = 1; $index <= 501; $index++) {
+            $tasks[] = $this->task($index, $interest);
+        }
+        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(tasks: $tasks, failOnCall: 2));
+        $run = $service->prepare($monthlyRecovery, 'Resume inside one selective Interest block without duplicates.');
+
+        try {
+            $service->run($run, 'Resume inside one selective Interest block without duplicates.');
+            $this->fail('Expected the synthetic interruption inside the source block.');
+        } catch (RuntimeException) {
+            $failed = $service->status($run);
+            $this->assertSame('task_extract', $failed['phase']);
+            $this->assertSame(500, DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', $run)->count());
+            $this->assertTrue($failed['checkpoint_present']);
+        }
+
+        $completed = $service->run($run, 'Resume inside one selective Interest block without duplicates.', true);
+
+        $this->assertSame('completed', $completed['status']);
+        $this->assertSame(501, DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', $run)->count());
+        $this->assertSame(501, $completed['evidence']['manifest']['rows']);
+    }
+
+    public function test_it_keeps_pre_migration_journals_on_the_legacy_global_strategy(): void
+    {
+        $monthlyRecovery = $this->completedMonthlyRecovery();
+        $interest = $this->interestId(1);
+        $this->monthlyInterest($monthlyRecovery, $interest);
+        $reason = 'Resume a legacy F5 journal without selective checkpoints.';
+        $run = DB::table('salesforce_interest_monthly_activity_recoveries')->insertGetId([
+            'recovery_identifier' => (string) str()->uuid(), 'monthly_recovery_id' => $monthlyRecovery,
+            'status' => 'prepared', 'phase' => 'task_extract', 'batch_size' => 500, 'pages_completed' => 0,
+            'counters' => json_encode([]), 'source_evidence' => json_encode(['monthly_recovery_id' => $monthlyRecovery, 'f2_verified' => false, 'source_rows' => 1, 'source_sha256' => hash('sha256', $interest.':0'."\n")]),
+            'reason_hash' => hash('sha256', $reason), 'started_at' => now('UTC'), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $client = new MonthlyActivityFakeClient(tasks: [$this->task(1, $interest)]);
+        $service = new MonthlyInterestActivityRecoveryService($client);
+
+        $status = $service->run($run, $reason);
+
+        $this->assertSame('legacy_global_v1', $status['extraction_strategy']);
+        $this->assertSame('completed', $status['status']);
+        $this->assertNotEmpty($client->soql);
+        $this->assertStringContainsString("What.Type = 'Interes__c'", $client->soql[0]);
+        $this->assertStringNotContainsString('WhatId IN', $client->soql[0]);
     }
 
     private function completedMonthlyRecovery(bool $verified = false): int
