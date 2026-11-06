@@ -7035,3 +7035,18 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   una lectura real sigue requiriendo autorización y revisión supervisada. La
   validación completa queda encomendada al CI de la PR porque este worktree no
   dispone de runtime PHP aislado.
+
+## 2026-11-06 — ajuste de regresiones F5 selectiva (PR #118)
+
+- La prueba de SOQL ya no interpreta el campo proyectado `CreatedDate` como un
+  filtro: exige `WhatId IN (...)` y rechaza únicamente predicados temporales
+  sobre `CreatedDate` en `WHERE`/`AND`. La estrategia mantiene ese campo
+  funcional en `SELECT`.
+- La interrupción sintética de la verificación se desplaza a la octava consulta:
+  con tres bloques Task, la séptima verifica el primer bloque y la octava falla
+  dentro de `verify_task`. Por tanto la aserción de fase, checkpoint y
+  contadores prueba el punto real de reanudación, no un resultado accidental de
+  `verify_event`.
+- No cambia código productivo, esquema, evidencia ni documentación funcional de
+  informes. Sin PHP/Composer/gh disponibles en el worktree, el CI de GitHub
+  Actions es el ejecutor de PHPUnit y Pint.

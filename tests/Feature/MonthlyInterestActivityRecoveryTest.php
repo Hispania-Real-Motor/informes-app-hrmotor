@@ -46,7 +46,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->assertSame(0, DB::table('salesforce_interest_monthly_activity_rows')->whereNull('monthly_activity_recovery_id')->count());
         foreach ($client->soql as $soql) {
             $this->assertStringContainsString('WhatId IN', $soql);
-            $this->assertStringNotContainsString('CreatedDate', $soql);
+            $this->assertDoesNotMatchRegularExpression('/(?:WHERE|AND)\\s+CreatedDate\\s*(?:=|<|>|IN|LIKE)/', $soql);
         }
     }
 
@@ -141,7 +141,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
             $this->monthlyInterest($monthlyRecovery, $id);
             $tasks[] = $this->task($index, $id);
         }
-        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(tasks: $tasks, failOnCall: 10));
+        $service = new MonthlyInterestActivityRecoveryService(new MonthlyActivityFakeClient(tasks: $tasks, failOnCall: 8));
         $run = $service->prepare($monthlyRecovery, 'Resume the verification checkpoint without duplicate counters.');
 
         try {
