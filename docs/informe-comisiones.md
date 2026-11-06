@@ -7,6 +7,10 @@ encuentra en `docs/informe-comisiones-financieras.md`. Incluye campos Salesforce
 SOQL de contraste, universo, tramos, fórmulas, lectura de cada columna, ejemplo y
 checklist de aprobación.
 
+La pantalla administrativa provisional de Interests para octubre de 2026 no es
+una fuente de Comisiones: sus journals F2/F2M/F5 aislados no alteran universos,
+fórmulas, cierres, auditorías, filtros, API ni exportaciones de ninguna pestaña.
+
 ## Mes compartido
 
 `CommissionMonthResolver` fija un único mes para:

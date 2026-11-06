@@ -95,6 +95,16 @@ ni habilita los endpoints, comparativas o exportaciones oficiales.
 Un mes sin filas devuelve cero en ambas columnas; los límites mensuales se
 interpretan en `Europe/Madrid`.
 
+La pantalla administrativa distinta
+`/informes/leads/provisional/october-2026` sólo puede resumir la F2, F2M y F5
+mensuales fijadas para octubre de 2026 después de validar su misma procedencia,
+estado terminado y manifiestos. Muestra cobertura y delegación únicamente de
+contenido activo coincidente, con `no-store, private`, y falla 503 ante cualquier
+evidencia incompleta. No es Summary, AJAX ni CSV: no cambia el 503 del dataset
+oficial ni habilita KPI, comparativas, auditorías o exportaciones. Su flag queda
+apagado; F2/F2M/F5 son IDs internos fijos sin parámetros ni configuración que
+pueda redirigir la fuente.
+
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
 Sus lecturas no prueban una fotografía histórica al watermark; los límites y
