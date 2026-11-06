@@ -173,13 +173,6 @@ No altera el lector publicado ni habilita clasificación, reproceso o KPI de
 Llamadas: F5 no está certificado y los hard deletes históricos no se acreditan.
 Los fallos mensuales conservan checkpoint/reanudación y se diagnostican por
 etapa sin mensajes ni datos sensibles; no publican inventario alguno.
-
-### Nota técnica — F5 mensual aislada (2026-11-07)
-
-La F5 mensual materializa Task/Event sólo para IDs presentes en su F2 mensual.
-No modifica `SalesforceCallSyncService`, `relatedInterestMatches()` ni los
-datos de Llamadas. Su finalización es operativa y provisional: no certifica F2
-ni habilita KPI o evidencia histórica para este informe.
 [Contrato transversal y límites](salesforce-interest-generations.md).
 
 La recuperación inicial F2/F5 reanudable mantiene su candidata aislada y no

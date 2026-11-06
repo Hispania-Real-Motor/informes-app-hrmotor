@@ -32,13 +32,6 @@ La instrumentación diagnóstica mensual clasifica los fallos por etapa sin
 exponer mensajes, SQL ni payloads; conserva checkpoint y reanudación, sin
 habilitar ningún lector oficial.
 
-### Nota técnica — F5 mensual aislada (2026-11-07)
-
-La F5 mensual relaciona `Task` y `Event` exclusivamente cuando `WhatId` existe
-en la F2 mensual de origen. Sus filas, checkpoints y manifiesto son evidencia
-administrativa aislada: no alimentan este dashboard ni sus KPI. F5 `completed`
-no verifica ni certifica F2; una F2 provisional sigue sin ser publicable.
-
 El render HTTP no consulta Salesforce. No recupera atributos desde Lead,
 Account o Contact y no utiliza PII como fallback.
 

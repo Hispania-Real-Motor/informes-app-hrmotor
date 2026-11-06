@@ -790,13 +790,6 @@ Rendimiento comercial: F5 no está certificado y los hard deletes históricos no
 están acreditados.
 Sus diagnósticos mensuales son internos y seguros, clasificados por etapa; no
 alteran checkpoints, reanudación, fuente publicada ni KPI de este informe.
-
-### Nota técnica — F5 mensual aislada (2026-11-07)
-
-F5 mensual conserva Activities sólo si sus IDs Interest pertenecen a la F2
-mensual explícita. No se incorpora a la atribución Opportunity/Interest,
-Rendimiento comercial, auditorías ni exportaciones. F5 `completed` no
-verifica/certifica F2 y una F2 provisional no habilita una fuente mensual aquí.
 `OpportunityInterestAttributionService` conserva el resultado explícito de fuente
 no resuelta cuando no existe generación, sin leer legacy. No se certifican por
 ello las otras fuentes ni se modifican cierres. Pruebas adaptadas:
