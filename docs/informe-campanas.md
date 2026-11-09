@@ -12,6 +12,8 @@ publicación ni certificación histórica.
 El lector administrativo provisional de octubre se limita a cobertura y
 delegación de Interests; no habilita atribución, readiness, snapshots, rankings,
 KPI ni CSV de Campañas.
+El requisito de snapshot validado es local a esa pantalla y no invalida ni
+actualiza generación, readiness o snapshots publicados de Campañas.
 
 ## Disponibilidad con Interests no certificado
 

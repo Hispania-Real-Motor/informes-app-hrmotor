@@ -3,6 +3,7 @@
 namespace App\Services\Reports\Leads;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -23,9 +24,45 @@ final class October2026ProvisionalInterestReader
 
     private const ACTIVITY_RUN_ID = 1;
 
+    /** @param null|\Closure():void $beforeValidationPublication @param null|\Closure():void $beforeOverviewFinalCheck */
+    public function __construct(
+        private readonly ?\Closure $beforeValidationPublication = null,
+        private readonly ?\Closure $beforeOverviewFinalCheck = null,
+    ) {}
+
     /** @return array<string, mixed> */
     public function overview(): array
     {
+        try {
+            $revision = $this->revision();
+            $validation = DB::table('salesforce_interest_october_provisional_validations')->where('scope', 'october_2026_provisional')->first();
+            if ($validation === null || (int) $validation->monthly_recovery_id !== self::RECOVERY_ID
+                || (int) $validation->monthly_materialization_id !== self::MATERIALIZATION_ID
+                || (int) $validation->monthly_activity_recovery_id !== self::ACTIVITY_RUN_ID
+                || (int) $validation->integrity_revision !== $revision) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+
+            $overview = $this->json($validation->overview);
+            if ($this->beforeOverviewFinalCheck !== null) {
+                ($this->beforeOverviewFinalCheck)();
+            }
+            if ($this->revision() !== $revision || ! isset($overview['coverage'], $overview['by_delegation'])) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+
+            return $overview;
+        } catch (QueryException) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+    }
+
+    /** Performs the explicit, bounded administrative validation; never called by HTTP. */
+    public function validate(): array
+    {
+        $totalStartedAt = hrtime(true);
+        $metrics = [];
+        $revision = $this->revision();
         $recoveryId = self::RECOVERY_ID;
         $materializationId = self::MATERIALIZATION_ID;
         $activityRunId = self::ACTIVITY_RUN_ID;
@@ -45,7 +82,9 @@ final class October2026ProvisionalInterestReader
         $this->assertCompleted($activity);
         $this->assertOctoberPeriod($recovery);
 
+        $phaseStartedAt = hrtime(true);
         $sourceManifests = $this->sourceManifests($recoveryId);
+        $metrics['f2_source_hash_ns'] = hrtime(true) - $phaseStartedAt;
         $materializationEvidence = $this->json($materialization->evidence);
         $materializationSource = $this->json($materialization->source_evidence);
         $activityEvidence = $this->json($activity->evidence);
@@ -53,9 +92,16 @@ final class October2026ProvisionalInterestReader
 
         $this->assertSourceSnapshot($materializationSource, $sourceManifests['materialization']);
         $this->assertSourceSnapshot($activitySource, $sourceManifests['activity']);
-        $this->assertManifest($materializationEvidence, $this->materializationManifest($materializationId));
-        $this->assertManifest($activityEvidence, $this->activityManifest($activityRunId));
+        $phaseStartedAt = hrtime(true);
+        $materializationManifest = $this->materializationManifest($materializationId);
+        $metrics['f2m_manifest_hash_ns'] = hrtime(true) - $phaseStartedAt;
+        $phaseStartedAt = hrtime(true);
+        $activityManifest = $this->activityManifest($activityRunId);
+        $metrics['f5_manifest_hash_ns'] = hrtime(true) - $phaseStartedAt;
+        $this->assertManifest($materializationEvidence, $materializationManifest);
+        $this->assertManifest($activityEvidence, $activityManifest);
 
+        $phaseStartedAt = hrtime(true);
         $quality = DB::table('salesforce_interest_monthly_materialized_rows')
             ->where('monthly_materialization_id', $materializationId)
             ->selectRaw('COUNT(*) as materialized')
@@ -65,6 +111,8 @@ final class October2026ProvisionalInterestReader
             ->selectRaw('SUM(CASE WHEN is_deleted = 1 THEN 1 ELSE 0 END) as soft_deleted')
             ->selectRaw('SUM(CASE WHEN canonical_person_salesforce_id IS NULL OR canonical_person_salesforce_id = ? THEN 1 ELSE 0 END) as canonical_identity_unavailable', [''])
             ->first();
+        $metrics['coverage_aggregate_ns'] = hrtime(true) - $phaseStartedAt;
+        $phaseStartedAt = hrtime(true);
         $missing = DB::table('salesforce_interest_monthly_recovery_rows as source')
             ->leftJoin('salesforce_interest_monthly_materialized_rows as materialized', function ($join) use ($materializationId): void {
                 $join->on('materialized.salesforce_id', '=', 'source.salesforce_id')
@@ -73,7 +121,9 @@ final class October2026ProvisionalInterestReader
             ->where('source.monthly_recovery_id', $recoveryId)
             ->whereNull('materialized.id')
             ->count();
+        $metrics['missing_aggregate_ns'] = hrtime(true) - $phaseStartedAt;
 
+        $phaseStartedAt = hrtime(true);
         $byDelegation = DB::table('salesforce_interest_monthly_materialized_rows')
             ->where('monthly_materialization_id', $materializationId)
             ->where('content_matches_inventory', true)
@@ -87,8 +137,9 @@ final class October2026ProvisionalInterestReader
             ->get()
             ->map(fn (object $row): array => ['delegation' => $row->delegation, 'interests' => (int) $row->interests])
             ->all();
+        $metrics['delegation_aggregate_ns'] = hrtime(true) - $phaseStartedAt;
 
-        return [
+        $overview = [
             'period' => ['label' => 'Octubre de 2026', 'start_utc' => self::START_UTC, 'end_utc' => self::END_UTC, 'timezone' => 'Europe/Madrid'],
             'coverage' => [
                 'f2_inventory' => $sourceManifests['materialization']['rows'],
@@ -115,6 +166,62 @@ final class October2026ProvisionalInterestReader
                 'campaigns_calls_and_seo' => 'unavailable',
             ],
         ];
+
+        if ($this->revision() !== $revision) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+        if ($this->beforeValidationPublication !== null) {
+            ($this->beforeValidationPublication)();
+        }
+        $metrics['total_ns'] = hrtime(true) - $totalStartedAt;
+        DB::transaction(function () use ($revision, $sourceManifests, $materializationManifest, $activityManifest, $overview, $metrics): void {
+            $current = DB::table('salesforce_interest_monthly_integrity_revisions')->where('scope', 'october_2026_provisional')->lockForUpdate()->value('revision');
+            if ((int) $current !== $revision) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+            DB::table('salesforce_interest_october_provisional_validations')->updateOrInsert(
+                ['scope' => 'october_2026_provisional'],
+                ['monthly_recovery_id' => self::RECOVERY_ID, 'monthly_materialization_id' => self::MATERIALIZATION_ID, 'monthly_activity_recovery_id' => self::ACTIVITY_RUN_ID,
+                    'integrity_revision' => $revision, 'evidence' => json_encode(['algorithms' => ['f2m_source' => 'salesforce_id|content_hash|is_deleted\\n', 'f5_source' => 'salesforce_id:is_deleted\\n'], 'f2m_source' => $sourceManifests['materialization'], 'f5_source' => $sourceManifests['activity'], 'f2m_manifest' => $materializationManifest, 'f5_manifest' => $activityManifest], JSON_THROW_ON_ERROR),
+                    'overview' => json_encode($overview, JSON_THROW_ON_ERROR), 'metrics' => json_encode($metrics, JSON_THROW_ON_ERROR), 'validated_at' => now('UTC'), 'updated_at' => now(), 'created_at' => now()]
+            );
+        });
+
+        return $overview;
+    }
+
+    /** @return array<string, int> */
+    public function validationMetrics(): array
+    {
+        try {
+            $metrics = $this->json(DB::table('salesforce_interest_october_provisional_validations')
+                ->where('scope', 'october_2026_provisional')
+                ->value('metrics'));
+        } catch (QueryException) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        foreach ($metrics as $key => $value) {
+            if (! is_string($key) || ! is_int($value)) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+        }
+
+        return $metrics;
+    }
+
+    private function revision(): int
+    {
+        try {
+            $revision = DB::table('salesforce_interest_monthly_integrity_revisions')->where('scope', 'october_2026_provisional')->value('revision');
+        } catch (\Throwable) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+        if (! is_int($revision) && ! ctype_digit((string) $revision)) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        return (int) $revision;
     }
 
     private function assertCompleted(object $run): void
@@ -149,13 +256,11 @@ final class October2026ProvisionalInterestReader
         $materializationHash = hash_init('sha256');
         $activityHash = hash_init('sha256');
         $rows = 0;
-        DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $recoveryId)->orderBy('salesforce_id')->chunk(500, function ($items) use ($materializationHash, $activityHash, &$rows): void {
-            foreach ($items as $item) {
-                hash_update($materializationHash, $item->salesforce_id.'|'.$item->content_hash.'|'.(int) $item->is_deleted."\n");
-                hash_update($activityHash, $item->salesforce_id.':'.(int) $item->is_deleted."\n");
-                $rows++;
-            }
-        });
+        foreach (DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $recoveryId)->orderBy('salesforce_id')->cursor() as $item) {
+            hash_update($materializationHash, $item->salesforce_id.'|'.$item->content_hash.'|'.(int) $item->is_deleted."\n");
+            hash_update($activityHash, $item->salesforce_id.':'.(int) $item->is_deleted."\n");
+            $rows++;
+        }
 
         return [
             'materialization' => ['rows' => $rows, 'sha256' => hash_final($materializationHash)],
@@ -184,14 +289,12 @@ final class October2026ProvisionalInterestReader
         foreach ($orderBy as $column) {
             $query->orderBy($column);
         }
-        $query->chunk(500, function ($items) use ($hash, &$rows, $table): void {
-            foreach ($items as $item) {
-                hash_update($hash, $table === 'salesforce_interest_monthly_materialized_rows'
-                    ? $item->salesforce_id.'|'.$item->content_hash."\n"
-                    : $item->content_hash."\n");
-                $rows++;
-            }
-        });
+        foreach ($query->cursor() as $item) {
+            hash_update($hash, $table === 'salesforce_interest_monthly_materialized_rows'
+                ? $item->salesforce_id.'|'.$item->content_hash."\n"
+                : $item->content_hash."\n");
+            $rows++;
+        }
 
         return ['rows' => $rows, 'sha256' => hash_final($hash)];
     }

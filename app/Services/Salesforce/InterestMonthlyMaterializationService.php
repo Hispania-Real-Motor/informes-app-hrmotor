@@ -2,6 +2,7 @@
 
 namespace App\Services\Salesforce;
 
+use App\Services\Reports\Leads\October2026ProvisionalEvidenceInvalidator;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,7 @@ final class InterestMonthlyMaterializationService
         private readonly SalesforceClient $client,
         private readonly SalesforceInterestSyncService $interests,
         private readonly InterestMonthlyContentHasher $hasher,
+        private readonly October2026ProvisionalEvidenceInvalidator $octoberEvidence = new October2026ProvisionalEvidenceInvalidator,
     ) {}
 
     public function prepare(int $monthlyRecoveryId, string $reason, int $batch = self::DEFAULT_BATCH_SIZE): int
@@ -247,6 +249,7 @@ final class InterestMonthlyMaterializationService
                     'owner_salesforce_id', 'owner_name', 'status', 'type', 'source', 'original_source', 'medium', 'channel', 'origin_delegation', 'utm_campaign', 'utm_id', 'utm_source', 'utm_medium', 'utm_content', 'utm_term',
                     'sale_vehicle_salesforce_id', 'appraisal_vehicle_salesforce_id', 'inverse_opportunity_salesforce_id', 'canonical_person_type', 'canonical_person_salesforce_id', 'updated_at',
                 ]);
+                $this->octoberEvidence->afterContentMutation((int) $run->monthly_recovery_id);
             }
             $counters['requested'] += count($sourceRows);
             $counters['remote_received'] += count($records);

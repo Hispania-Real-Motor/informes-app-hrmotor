@@ -11,6 +11,8 @@ journal permanece provisional, no publicado y sin certificación F5.
 La pantalla administrativa de octubre que usa F2/F2M/F5 mensuales tampoco
 alimenta clasificación, reproceso, detalle, auditoría ni exportación de
 Llamadas; su disponibilidad no sustituye la generación publicada.
+Su snapshot validado es exclusivo de la pantalla provisional: no modifica
+`relatedInterestMatches()` ni las fuentes o disponibilidad de Llamadas.
 
 Actualizado: 2026-10-08.
 
