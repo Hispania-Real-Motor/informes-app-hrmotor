@@ -7107,6 +7107,32 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   ni es snapshot histórico. `General` sigue no reconocido y sólo suma el
   subcontador `raw_literal_general`; no se añadió alias. No se expusieron IDs.
 
+## 2026-11-09 — Fase B: agregados funcionales de octubre provisional
+
+- La validación administrativa incorpora estado, tipo, fuente, medio y canal
+  sólo de F2M activo/coincidente. Cada distribución reconcilia con
+  `eligible_active_matching`; vacío es `Sin clasificar` y tipo reutiliza
+  `LeadRecordTypeNormalizer`. HTTP sigue leyendo sólo snapshot y revisión.
+- Límite funcional: son agregados provisionales, no KPI oficial. Comercial y
+  delegación comercial quedan `unavailable` sin instantánea histórica de
+  `SalesforceUser`; actividad queda `unavailable` sin estado de relación F5 ni
+  certificación histórica. No se modifican generación publicada, fórmulas,
+  Dirección, comparativas, Reservas/Ventas, Rendimiento, Campañas, Llamadas,
+  SEO, CSV, auditorías ni consumidores oficiales.
+- Verificación: esta revisión documental no ejecutó PHP, Blade, tests, CI,
+  MariaDB, migraciones, Salesforce, benchmark ni producción.
+- Cobertura volumétrica: la fixture representativa de 34.239 F2, 34.229 F2M
+  y 47.572 F5 exige que `functional_kpis_ns` se mida durante validación y que
+  estado, tipo, fuente, medio y canal sumen exactamente las 34.229 filas F2M
+  activas/coincidentes. HTTP sigue comprobándose sin consultas a los tres
+  journals; esta aserción no mide ni acredita un SLA productivo.
+- Cierre de validación: GitHub Actions sobre el SHA de cierre completó PHPUnit
+  (1 omitido, 1.651 correctos y 14.710 aserciones), Pint, build y whitespace;
+  el job MariaDB 11 completó 19 pruebas y 124 aserciones. La fixture
+  representativa tardó 1,84 s dentro de la suite SQLite y 4,10 s dentro de la
+  suite MariaDB, incluyendo su siembra, validación y lectura de snapshot. No
+  son medidas de producción ni autorizan activar la vista.
+
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
 - Causa corregida: el mapeador conserva la clave

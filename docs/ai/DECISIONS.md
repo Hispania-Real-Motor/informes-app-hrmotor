@@ -1332,3 +1332,13 @@ informados y 1.394 literales `General`) se mantiene separada del universo F2M
 válido de octubre (33.811): no se usa como snapshot histórico ni como fuente
 del lector. `General` no recibe alias; cuando aparece en F2M se registra sólo
 en `raw_literal_general`, incluido entre los valores informados no reconocidos.
+
+## 2026-11-09 — Fase B no sustituye KPI comercial ni de actividad
+
+La validación provisional puede agregar campos ya presentes en F2M activo y
+coincidente: estado, tipo normalizado, fuente, medio y canal. No completa esos
+datos desde otras entidades y HTTP sólo sirve el snapshot resultante. Se
+mantienen fuera comercial y delegación comercial por falta de instantánea
+histórica de `SalesforceUser`; actividad queda fuera por falta de estado de
+relación F5 y certificación histórica. Esta frontera evita convertir un
+inventario aislado en fuente de KPI o en sustituto de la generación publicada.

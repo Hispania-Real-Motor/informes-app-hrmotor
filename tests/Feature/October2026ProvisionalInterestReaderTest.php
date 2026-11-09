@@ -34,7 +34,11 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertSame([['delegation' => 'Madrid General', 'interests' => 1]], $overview['by_delegation']);
         $this->assertSame(1, collect($overview['classification']['by_group'])->sum('interests'));
         $this->assertSame(1, collect($overview['classification']['by_zone'])->sum('interests'));
+        $this->assertSame(1, $overview['functional_kpis']['total']);
         $this->assertSame('available_with_coverage_limits', $overview['availability']['leads_interest_overview']);
+        $this->assertSame('available_with_coverage_limits', $overview['availability']['provisional_interest_kpis']);
+        $this->assertSame('unavailable_missing_historical_salesforce_user_snapshot', $overview['availability']['commercials_eligible']);
+        $this->assertSame('unavailable_missing_relationship_status_and_historical_f5_certification', $overview['availability']['activity_kpis']);
         $this->assertSame('unavailable', $overview['availability']['campaigns_calls_and_seo']);
         $this->assertArrayNotHasKey('salesforce_id', $overview);
     }
@@ -108,6 +112,40 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertSame(1, $overview['classification']['raw_empty']);
         $this->assertSame(0, $overview['classification']['raw_unmapped']);
         $this->assertSame(1, $overview['classification']['data_quality_review']['required']);
+    }
+
+    public function test_it_calculates_only_the_functional_kpis_supported_by_valid_f2m_rows(): void
+    {
+        $this->seedValidJournals();
+        DB::table('salesforce_interest_monthly_materialized_rows')->where('monthly_materialization_id', 1)->where('salesforce_id', $this->id(1))->update([
+            'status' => 'Potencial', 'type' => 'Venta', 'source' => 'Web', 'medium' => 'Orgánico', 'channel' => 'Formulario',
+        ]);
+        $this->appendEligibleRows([
+            ['Convertido', 'Venta con cambio', 'Web', 'Pago', 'Llamada'],
+            ['Descartado', 'Tasación', 'Partner', null, null],
+            ['Estado desconocido', 'Tipo no reconocido', null, 'Orgánico', 'Otro'],
+        ]);
+
+        $overview = app(October2026ProvisionalInterestReader::class)->validate();
+
+        $this->assertSame(4, $overview['functional_kpis']['total']);
+        $this->assertSame([
+            ['status' => 'Convertido', 'interests' => 1],
+            ['status' => 'Descartado', 'interests' => 1],
+            ['status' => 'Estado desconocido', 'interests' => 1],
+            ['status' => 'Potencial', 'interests' => 1],
+        ], $overview['functional_kpis']['statuses']);
+        $this->assertSame([
+            ['type' => 'Sin clasificar', 'interests' => 1],
+            ['type' => 'Tasación', 'interests' => 1],
+            ['type' => 'Venta', 'interests' => 1],
+            ['type' => 'Venta con cambio', 'interests' => 1],
+        ], $overview['functional_kpis']['types']);
+        $this->assertSame(4, collect($overview['functional_kpis']['sources'])->sum('interests'));
+        $this->assertSame(4, collect($overview['functional_kpis']['media'])->sum('interests'));
+        $this->assertSame(4, collect($overview['functional_kpis']['channels'])->sum('interests'));
+        $this->assertSame('unavailable_missing_historical_salesforce_user_snapshot', $overview['availability']['commercial_delegations']);
+        $this->assertSame('unavailable_missing_relationship_status_and_historical_f5_certification', $overview['availability']['activity_kpis']);
     }
 
     public function test_it_rejects_pending_validation_and_invalidates_a_same_count_content_change(): void
@@ -300,8 +338,14 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertSame(34_239, $overview['coverage']['f2_inventory']);
         $this->assertSame(34_229, $overview['coverage']['materialized']);
         $this->assertSame(10, $overview['coverage']['missing_from_materialization']);
+        $this->assertSame(34_229, $overview['functional_kpis']['total']);
         $this->assertArrayHasKey('total_ns', $metrics);
         $this->assertGreaterThan(0, $metrics['total_ns']);
+        $this->assertArrayHasKey('functional_kpis_ns', $metrics);
+        $this->assertGreaterThan(0, $metrics['functional_kpis_ns']);
+        foreach (['statuses', 'types', 'sources', 'media', 'channels'] as $dimension) {
+            $this->assertSame(34_229, collect($overview['functional_kpis'][$dimension])->sum('interests'));
+        }
         $this->assertGreaterThan(0, $httpDurationNs);
         $this->assertStringNotContainsString('salesforce_interest_monthly_recovery_rows', $queries);
         $this->assertStringNotContainsString('salesforce_interest_monthly_materialized_rows', $queries);
@@ -435,6 +479,55 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             DB::table('salesforce_interest_monthly_activity_rows')->insert($batch);
         }
         DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update(['evidence' => json_encode(['manifest' => ['rows' => $f5Rows, 'sha256' => hash_final($f5Manifest)], 'verification' => ['verified' => false]])]);
+    }
+
+    /** @param list<array{0:string,1:string,2:?string,3:?string,4:?string}> $rows */
+    private function appendEligibleRows(array $rows): void
+    {
+        $now = now();
+        foreach ($rows as $offset => [$status, $type, $source, $medium, $channel]) {
+            $number = $offset + 3;
+            $hash = hash('sha256', 'synthetic-'.$number);
+            $sourceRowId = DB::table('salesforce_interest_monthly_recovery_rows')->insertGetId([
+                'monthly_recovery_id' => 1, 'salesforce_id' => $this->id($number), 'content_hash' => $hash, 'is_deleted' => false,
+                'functional_created_at' => '2026-10-02 08:00:00', 'created_at' => $now, 'updated_at' => $now,
+            ]);
+            DB::table('salesforce_interest_monthly_materialized_rows')->insert([
+                'monthly_materialization_id' => 1, 'monthly_recovery_row_id' => $sourceRowId, 'salesforce_id' => $this->id($number),
+                'source_content_hash' => $hash, 'content_hash' => $hash, 'content_matches_inventory' => true, 'is_deleted' => false,
+                'salesforce_created_at' => '2026-10-02 08:00:00', 'salesforce_last_modified_at' => '2026-10-02 08:00:00',
+                'functional_created_at' => '2026-10-02 08:00:00', 'status' => $status, 'type' => $type, 'source' => $source,
+                'medium' => $medium, 'channel' => $channel, 'origin_delegation' => 'Madrid', 'created_at' => $now, 'updated_at' => $now,
+            ]);
+        }
+
+        $materializationSource = hash_init('sha256');
+        $activitySource = hash_init('sha256');
+        foreach (DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', 1)->orderBy('salesforce_id')->cursor() as $row) {
+            hash_update($materializationSource, $row->salesforce_id.'|'.$row->content_hash.'|'.(int) $row->is_deleted."\n");
+            hash_update($activitySource, $row->salesforce_id.':'.(int) $row->is_deleted."\n");
+        }
+        $sourceRows = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', 1)->count();
+        $materializationManifest = hash_init('sha256');
+        $materializedRows = 0;
+        foreach (DB::table('salesforce_interest_monthly_materialized_rows')->where('monthly_materialization_id', 1)->orderBy('salesforce_id')->cursor() as $row) {
+            hash_update($materializationManifest, $row->salesforce_id.'|'.$row->content_hash."\n");
+            $materializedRows++;
+        }
+        $activityManifest = hash_init('sha256');
+        $activityRows = 0;
+        foreach (DB::table('salesforce_interest_monthly_activity_rows')->where('monthly_activity_recovery_id', 1)->orderBy('activity_kind')->orderBy('activity_salesforce_id')->cursor() as $row) {
+            hash_update($activityManifest, $row->content_hash."\n");
+            $activityRows++;
+        }
+        DB::table('salesforce_interest_monthly_materializations')->where('id', 1)->update([
+            'source_evidence' => json_encode(['source_rows' => $sourceRows, 'source_sha256' => hash_final($materializationSource)]),
+            'evidence' => json_encode(['manifest' => ['rows' => $materializedRows, 'sha256' => hash_final($materializationManifest)], 'verification' => ['verified' => false]]),
+        ]);
+        DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update([
+            'source_evidence' => json_encode(['source_rows' => $sourceRows, 'source_sha256' => hash_final($activitySource)]),
+            'evidence' => json_encode(['manifest' => ['rows' => $activityRows, 'sha256' => hash_final($activityManifest)], 'verification' => ['verified' => false]]),
+        ]);
     }
 
     private function materializationSourceManifest(): string

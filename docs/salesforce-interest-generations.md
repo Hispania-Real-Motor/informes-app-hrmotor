@@ -369,6 +369,19 @@ F2M válido de 33.811 ni acredita historia. Por ello `General` no recibe alias;
 si aparece en F2M se conserva sólo como `raw_literal_general`, subcontador de
 procedencia no reconocida, sin delegación, grupo o zona asignados.
 
+La Fase B añade al mismo snapshot distribuciones de estado, tipo, fuente, medio
+y canal, calculadas exclusivamente durante la validación sobre F2M activo con
+contenido coincidente. Cada dimensión reconcilia con `eligible_active_matching`;
+los textos vacíos se agrupan como `Sin clasificar` y el tipo se normaliza con
+`LeadRecordTypeNormalizer`. HTTP no consulta los journals ni reejecuta estas
+reglas: sólo entrega la evidencia cuya revisión sigue vigente.
+
+No son KPI comerciales certificados. La atribución a comercial y su delegación
+requieren instantánea histórica de `SalesforceUser`, inexistente en F2M; los
+KPI de actividad requieren estado de relación F5 y certificación histórica,
+también ausentes. Por ello permanecen indisponibles, igual que Dirección,
+comparativas y los consumidores oficiales; no cambia la generación publicada.
+
 La pantalla puede declarar el resumen de Interests disponible **con límites de
 cobertura** sólo dentro de ese contexto administrativo. Dirección, KPI y
 comparativas, Reservas/Ventas y Rendimiento comercial, Campañas, Llamadas y SEO
