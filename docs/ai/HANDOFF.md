@@ -11,6 +11,9 @@
   AJAX o filtros provisionales con el dashboard oficial. No cambian fuente,
   universo, cálculos, proyección, revisión, permisos ni consumidores oficiales,
   por lo que matriz, `PROJECT_CONTEXT.md` y `DECISIONS.md` permanecen vigentes.
+- La prueba HTTP del período oficial comprueba el contrato de inicialización
+  `window.initialLeadPeriod`, que el JavaScript aplica al selector; no depende
+  de una serialización concreta del atributo HTML `selected`.
 - Verificación local: `git diff --check`, lint del controlador, Pint de PHP
   modificado y `node --test tests/js/leads-unavailable.test.mjs` (14/14)
   correctos. PHPUnit completo, MariaDB 11, build y validación documental se
