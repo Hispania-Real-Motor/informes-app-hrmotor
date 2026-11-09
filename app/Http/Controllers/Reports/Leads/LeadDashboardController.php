@@ -19,11 +19,13 @@ class LeadDashboardController extends Controller
         October2026ProvisionalInterestReader $octoberReader,
         InterestGenerationReader $interestGenerations,
     ) {
-        $requestedOctober = $request->query('period') === self::OCTOBER_2026_PROVISIONAL_PERIOD;
+        $requestedPeriod = $request->query('period');
+        $requestedPeriod = is_string($requestedPeriod) ? $requestedPeriod : null;
+        $requestedOctober = $requestedPeriod === self::OCTOBER_2026_PROVISIONAL_PERIOD;
         if ($requestedOctober) {
             $this->assertOctoberAccess($request, $octoberReader);
         }
-        $useOctoberByDefault = ! $requestedOctober
+        $useOctoberByDefault = $requestedPeriod === null
             && $this->canUseOctober($request, $octoberReader)
             && ! $this->officialGenerationAvailable($interestGenerations);
         $usesOctober = $requestedOctober || $useOctoberByDefault;
@@ -33,7 +35,9 @@ class LeadDashboardController extends Controller
             'reportUserCanAudit' => ! $usesOctober && ReportUserAccess::canAuditReport($request, 'leads'),
             'octoberProvisionalEnabled' => config('salesforce.october_2026_provisional_enabled') === true
                 && ReportUserAccess::isAdmin($request),
-            'initialLeadPeriod' => $usesOctober ? self::OCTOBER_2026_PROVISIONAL_PERIOD : null,
+            'initialLeadPeriod' => $usesOctober
+                ? self::OCTOBER_2026_PROVISIONAL_PERIOD
+                : $this->officialInitialPeriod($requestedPeriod),
             'isOctoberProvisional' => $usesOctober,
         ]);
 
@@ -76,5 +80,10 @@ class LeadDashboardController extends Controller
         } catch (InterestDatasetUnavailable) {
             return false;
         }
+    }
+
+    private function officialInitialPeriod(?string $period): ?string
+    {
+        return in_array($period, ['current_month', 'previous_month', 'custom'], true) ? $period : null;
     }
 }

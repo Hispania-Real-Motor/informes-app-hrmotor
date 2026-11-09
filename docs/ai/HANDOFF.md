@@ -1,5 +1,22 @@
 # Handoff para agentes
 
+## 2026-11-12 — correctivo UI tras PR #125
+
+- La UI separa texto y ayuda de tarjetas oficiales frente a tarjetas de octubre
+  provisional. Los agregados provisionales se identifican como período validado;
+  las métricas sin evidencia siguen siendo `No disponible` y no heredan una
+  definición oficial de owner, comercial o actividad.
+- Salir de `october_2026` al seleccionar período oficial o restablecer filtros
+  realiza navegación completa a `/informes/leads?period=…`; evita mezclar estado
+  AJAX o filtros provisionales con el dashboard oficial. No cambian fuente,
+  universo, cálculos, proyección, revisión, permisos ni consumidores oficiales,
+  por lo que matriz, `PROJECT_CONTEXT.md` y `DECISIONS.md` permanecen vigentes.
+- Verificación local: `git diff --check`, lint del controlador, Pint de PHP
+  modificado y `node --test tests/js/leads-unavailable.test.mjs` (14/14)
+  correctos. PHPUnit completo, MariaDB 11, build y validación documental se
+  ejecutan en CI. No se ejecutaron migraciones, Salesforce, benchmark ni
+  producción.
+
 ## 2026-11-12 — PR A: dashboard de octubre mediante proyección provisional
 
 - La validación `reports:validate-october-2026-provisional --confirm` construye

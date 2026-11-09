@@ -24,6 +24,7 @@ function createClassList() {
 
 function createDashboardContext(fetch) {
     const elements = new Map();
+    const navigations = [];
     const element = (id) => {
         if (!elements.has(id)) {
             const listeners = new Map();
@@ -40,6 +41,9 @@ function createDashboardContext(fetch) {
                 setAttribute(name, value) {
                     this.attributes.set(name, value);
                 },
+                insertAdjacentHTML(_position, html) {
+                    this.innerHTML += html;
+                },
             });
         }
 
@@ -55,9 +59,15 @@ function createDashboardContext(fetch) {
         window: {
             localStorage: { getItem: () => null, setItem() {} },
             reportUserCanAudit: false,
+            isOctoberProvisional: false,
+            location: {
+                origin: 'https://informes.example.test',
+                assign: (url) => navigations.push(url),
+            },
         },
         fetch,
         AbortController,
+        URL,
         URLSearchParams,
         Intl,
         Map,
@@ -67,7 +77,7 @@ function createDashboardContext(fetch) {
 
     vm.runInContext(dashboardScript, context);
 
-    return { context, element };
+    return { context, element, navigations };
 }
 
 function hasClass(element, className) {
@@ -288,4 +298,61 @@ test('October provisional controls send exact combined dimensions instead of fil
     assert.equal(query.get('medium'), 'Orgánico');
     assert.equal(query.get('channel'), 'Formulario');
     assert.equal(query.get('status'), 'Potencial');
+});
+
+test('official and provisional KPI cards preserve their own descriptions and unavailable values', () => {
+    const { context, element } = createDashboardContext(async () => ({ ok: true, json: async () => ({}) }));
+    const kpis = {
+        leads_totales: 0,
+        convertidos: 2,
+        descartados: 1,
+        potenciales: 3,
+        conversion_pct: 40,
+        descarte_pct: 20,
+        without_eligible_commercial: null,
+        without_commercial_delegation: null,
+        unclassified: 4,
+        leads_unassigned: null,
+        potenciales_sin_trabajar: null,
+        gestionados: null,
+        gestionados_pct: null,
+        llamadas: null,
+        llamadas_pct: null,
+        formularios: null,
+        formularios_pct: null,
+    };
+
+    vm.runInContext(`renderKpis(${JSON.stringify(kpis)}, false)`, context);
+    assert.match(element('summaryKpis').innerHTML, /Bolsa viva/);
+    assert.match(element('summaryKpis').innerHTML, /Solo Status Potencial/);
+    assert.doesNotMatch(element('summaryKpis').innerHTML, /requiere actividad histórica acreditada/);
+
+    vm.runInContext(`renderKpis(${JSON.stringify(kpis)}, true)`, context);
+    assert.match(element('summaryKpis').innerHTML, /Muestra del período validado/);
+    assert.match(element('summaryKpis').innerHTML, /No disponible/);
+    assert.match(element('summaryKpis').innerHTML, /requiere actividad histórica acreditada/);
+});
+
+test('leaving October provisional and resetting filters reloads the official dashboard', async () => {
+    const calls = [];
+    const { context, element, navigations } = createDashboardContext(async (...args) => {
+        calls.push(args);
+
+        return { ok: true, json: async () => ({}) };
+    });
+    context.window.isOctoberProvisional = true;
+    vm.runInContext('bindFilters(); bindResetFilters();', context);
+
+    const period = element('period');
+    period.value = 'custom';
+    await period.listener('change')({ currentTarget: period });
+    assert.deepEqual(navigations, ['/informes/leads?period=custom']);
+    assert.equal(calls.length, 0);
+
+    await element('resetFilters').listener('click')();
+    assert.deepEqual(navigations, [
+        '/informes/leads?period=custom',
+        '/informes/leads?period=last_30_days',
+    ]);
+    assert.equal(calls.length, 0);
 });

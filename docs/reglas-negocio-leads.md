@@ -178,6 +178,13 @@ cuando no existe generación oficial disponible. La selección explícita
 lectores de Reservas/Ventas, Rendimiento, Campañas, Llamadas, SEO, Comisiones o
 Stock.
 
+La presentación separa las tarjetas oficiales de las provisionales: estas
+últimas identifican su período validado y mantienen como `No disponible` las
+métricas sin evidencia histórica, sin reutilizar las descripciones de KPI
+oficiales. Al abandonar octubre provisional mediante otro período o al
+restablecer filtros, el navegador hace una carga completa del dashboard oficial
+con ese período; no conserva filtros, estado ni respuesta AJAX provisional.
+
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
 Sus lecturas no prueban una fotografía histórica al watermark; los límites y

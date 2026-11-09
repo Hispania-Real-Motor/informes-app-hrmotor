@@ -337,6 +337,11 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             ->assertDontSee('Explorar agregados provisionales');
         $this->asReportUser($viewer)->get('/informes/leads')->assertDontSee('Octubre 2026 · provisional');
         $this->asReportUser($viewer)->get('/informes/leads?period=october_2026')->assertForbidden();
+        $this->asReportUser($admin)->get('/informes/leads?period=current_month')
+            ->assertOk()
+            ->assertSee('value="current_month" selected', false)
+            ->assertDontSee('id="octoberProvisionalNotice"', false)
+            ->assertDontSee('id="octoberGroup"', false);
         $this->asReportUser($admin)->get('/informes/leads?period=october_2026')
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
