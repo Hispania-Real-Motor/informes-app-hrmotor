@@ -318,6 +318,33 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->asReportUser($admin)->get('/informes/leads/provisional/october-2026')->assertStatus(503);
     }
 
+    public function test_the_main_interests_route_renders_the_validated_october_snapshot_without_loading_the_official_dataset(): void
+    {
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.october_2026_provisional_enabled', true);
+        $this->seedValidJournals();
+        app(October2026ProvisionalInterestReader::class)->validate();
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $viewer = $this->user(ReportUser::ROLE_VIEWER);
+
+        $this->asReportUser($admin)->get('/informes/leads')->assertSee('Octubre 2026 · provisional');
+        $this->asReportUser($viewer)->get('/informes/leads')->assertDontSee('Octubre 2026 · provisional');
+        $this->asReportUser($viewer)->get('/informes/leads?period=october_2026')->assertForbidden();
+        $this->asReportUser($admin)->get('/informes/leads?period=october_2026')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertSee('Octubre de 2026: inventario provisional no certificado')
+            ->assertSee('Explorar agregados provisionales')
+            ->assertSee('Agregados provisionales disponibles')
+            ->assertSee('Indicadores no disponibles con esta evidencia')
+            ->assertSee('controles de exploración no son filtros del informe')
+            ->assertSee('data-provisional-distribution="delegation"', false)
+            ->assertDontSee('Información temporalmente no disponible');
+
+        $this->authorisedChange(fn () => DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update(['phase' => 'verify_task']));
+        $this->asReportUser($admin)->get('/informes/leads?period=october_2026')->assertStatus(503);
+    }
+
     public function test_representative_october_volume_is_validated_outside_http_and_http_reads_only_the_snapshot(): void
     {
         $this->seedRepresentativeJournals();

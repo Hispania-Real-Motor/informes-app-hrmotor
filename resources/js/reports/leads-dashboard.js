@@ -178,8 +178,14 @@ function bindFilters() {
         'comparisonStart',
         'comparisonEnd',
     ].forEach((id) => {
-        document.getElementById(id)?.addEventListener('change', async () => {
+        document.getElementById(id)?.addEventListener('change', async (event) => {
             if (id === 'period') {
+                if (event.currentTarget.value === 'october_2026') {
+                    window.location.assign('/informes/leads?period=october_2026');
+
+                    return;
+                }
+
                 toggleCustomPeriods();
             }
 

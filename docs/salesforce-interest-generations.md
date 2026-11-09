@@ -328,14 +328,15 @@ la ausencia de `queryAll`.
 
 ### Lector administrativo provisional de octubre de 2026
 
-`/informes/leads/provisional/october-2026` es una pantalla separada de todos
+`/informes/leads?period=october_2026` selecciona una vista separada de todos
 los lectores oficiales. Requiere administrador autenticado y permanece 404 por
-defecto mientras `SALESFORCE_OCTOBER_2026_PROVISIONAL_ENABLED` sea falso. Al
-habilitarse debe devolver `no-store, private`; cualquier journal inexistente,
-en fase distinta de `completed`, período distinto de octubre de 2026 en
-`Europe/Madrid`, relación F2/F2M/F5 no coincidente o manifiesto/hash que no
-coincida falla cerrado con 503. No hay fallback a la tabla legacy, a otra
-generación, ni a datos Salesforce remotos.
+defecto mientras `SALESFORCE_OCTOBER_2026_PROVISIONAL_ENABLED` sea falso; un
+usuario autenticado sin ese rol recibe 403. Al habilitarse devuelve
+`no-store, private`; cualquier journal inexistente, en fase distinta de
+`completed`, período distinto de octubre de 2026 en `Europe/Madrid`, relación
+F2/F2M/F5 no coincidente o manifiesto/hash que no coincida falla cerrado con
+503. No hay fallback a la tabla legacy, a otra generación, ni a datos
+Salesforce remotos; la ruta no carga el dashboard oficial.
 
 La lectura usa exclusivamente la F2, su materialización F2M y el run F5 con
 ID interno fijo `1`, unidos a la misma F2. No acepta parámetros ni configuración
@@ -422,6 +423,13 @@ ejecutar ese test focal en MariaDB 11, reaplicar la migración y confirmar que n
 crea triggers por fila, también con volumen representativo sintético. El job es
 evidencia pendiente hasta que la CI de la PR termine; las métricas del comando
 son mediciones de sus fases, no un benchmark ni una garantía de rendimiento.
+
+Los controles de exploración de distribución y texto operan exclusivamente en
+el navegador sobre las filas del snapshot ya servido. No son filtros del
+informe: se elige una única distribución precalculada y la búsqueda se limita a
+sus etiquetas. No alteran el universo, manifiestos, cobertura, agregados
+persistidos o su revisión, ni activan AJAX, CSV, auditoría o consumidores de
+los seis informes.
 
 ### Vista provisional administrativa
 

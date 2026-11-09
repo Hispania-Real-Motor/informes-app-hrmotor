@@ -1342,3 +1342,13 @@ mantienen fuera comercial y delegación comercial por falta de instantánea
 histórica de `SalesforceUser`; actividad queda fuera por falta de estado de
 relación F5 y certificación histórica. Esta frontera evita convertir un
 inventario aislado en fuente de KPI o en sustituto de la generación publicada.
+
+## 2026-11-09 — período visible conserva una ruta provisional aislada
+
+El valor de período `october_2026` en la ruta principal de Interests no entra
+en el dashboard oficial: selecciona el lector administrativo validado, sujeto a
+flag y administrador, y falla cerrado sin snapshot vigente. Los filtros de
+distribución y texto se limitan a presentar filas ya incluidas en ese snapshot;
+no producen nuevas consultas de journals, filtros de negocio, cruces ni KPI.
+Así se permite descubrir la lectura acotada sin convertir F2/F2M/F5 en fuente
+de los lectores publicados o de los demás informes.
