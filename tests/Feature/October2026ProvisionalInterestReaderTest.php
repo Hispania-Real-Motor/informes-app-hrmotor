@@ -338,8 +338,14 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertSame(34_239, $overview['coverage']['f2_inventory']);
         $this->assertSame(34_229, $overview['coverage']['materialized']);
         $this->assertSame(10, $overview['coverage']['missing_from_materialization']);
+        $this->assertSame(34_229, $overview['functional_kpis']['total']);
         $this->assertArrayHasKey('total_ns', $metrics);
         $this->assertGreaterThan(0, $metrics['total_ns']);
+        $this->assertArrayHasKey('functional_kpis_ns', $metrics);
+        $this->assertGreaterThan(0, $metrics['functional_kpis_ns']);
+        foreach (['statuses', 'types', 'sources', 'media', 'channels'] as $dimension) {
+            $this->assertSame(34_229, collect($overview['functional_kpis'][$dimension])->sum('interests'));
+        }
         $this->assertGreaterThan(0, $httpDurationNs);
         $this->assertStringNotContainsString('salesforce_interest_monthly_recovery_rows', $queries);
         $this->assertStringNotContainsString('salesforce_interest_monthly_materialized_rows', $queries);

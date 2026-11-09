@@ -7121,6 +7121,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   SEO, CSV, auditorías ni consumidores oficiales.
 - Verificación: esta revisión documental no ejecutó PHP, Blade, tests, CI,
   MariaDB, migraciones, Salesforce, benchmark ni producción.
+- Cobertura volumétrica: la fixture representativa de 34.239 F2, 34.229 F2M
+  y 47.572 F5 exige que `functional_kpis_ns` se mida durante validación y que
+  estado, tipo, fuente, medio y canal sumen exactamente las 34.229 filas F2M
+  activas/coincidentes. HTTP sigue comprobándose sin consultas a los tres
+  journals; esta aserción no mide ni acredita un SLA productivo.
 
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
