@@ -7101,6 +7101,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Verificación: no se ejecutaron PHP, Blade, tests, CI, MariaDB, migraciones,
   Salesforce, benchmark ni producción en esta revisión documental. El job CI y
   las métricas locales siguen siendo evidencia pendiente, no resultados.
+- Evidencia externa comunicada: SOQL de estado actual observó 34.212 Interests,
+  con 21.238 procedencias vacías, 12.974 informadas y 1.394 literal `General`.
+  Es un diagnóstico actual separado: no reemplaza F2M válido de octubre (33.811)
+  ni es snapshot histórico. `General` sigue no reconocido y sólo suma el
+  subcontador `raw_literal_general`; no se añadió alias. No se expusieron IDs.
 
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 

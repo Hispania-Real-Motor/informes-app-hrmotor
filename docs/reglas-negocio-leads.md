@@ -128,6 +128,15 @@ utilizable por los informes oficiales. La vista sigue sin mostrar IDs ni
 payloads, y esta calidad de clasificación no habilita Summary, AJAX, CSV,
 auditoría, comparativas ni KPI oficiales.
 
+Como diagnóstico separado, una consulta SOQL de estado actual comunicada para
+esta revisión observó 34.212 Interests: 21.238 con
+`IN_Delegacion_Procedencia__c` vacío y 12.974 informado, de los cuales 1.394
+contenían literalmente `General`. No es el journal de octubre ni sustituye el
+universo F2M válido de 33.811; no es una fotografía histórica ni altera los
+agregados publicados. En el snapshot F2M, `General` permanece no reconocido y
+se contabiliza sólo como subcontador `raw_literal_general` de los informados no
+reconocidos: no se añade alias ni se convierte en delegación, grupo o zona.
+
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
 Sus lecturas no prueban una fotografía histórica al watermark; los límites y

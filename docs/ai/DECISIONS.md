@@ -1326,3 +1326,9 @@ huella SHA-256 estable; no persiste el valor bruto. La huella sirve para
 agrupar revisión de calidad, no para afirmar anonimización ni certificación.
 HTTP conserva la frontera de sólo lectura de evidencia/revisión y la decisión
 no publica ni redirige consumidores oficiales.
+
+La observación SOQL actual comunicada (34.212 Interests; 21.238 vacíos, 12.974
+informados y 1.394 literales `General`) se mantiene separada del universo F2M
+válido de octubre (33.811): no se usa como snapshot histórico ni como fuente
+del lector. `General` no recibe alias; cuando aparece en F2M se registra sólo
+en `raw_literal_general`, incluido entre los valores informados no reconocidos.

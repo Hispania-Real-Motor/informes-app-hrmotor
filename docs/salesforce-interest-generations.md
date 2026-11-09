@@ -361,6 +361,14 @@ una huella SHA-256 estable y su frecuencia, nunca el valor fuente, IDs ni
 payloads. Esa huella permite agrupar revisión de calidad, no constituye
 anonimización ni certificación histórica.
 
+Una consulta SOQL de estado actual comunicada durante la Fase A contó 34.212
+Interests (21.238 con `IN_Delegacion_Procedencia__c` vacío y 12.974 informado;
+`General` apareció literalmente en 1.394 de los informados). Es observación
+actual de calidad, no journal ni snapshot de octubre: no reemplaza el universo
+F2M válido de 33.811 ni acredita historia. Por ello `General` no recibe alias;
+si aparece en F2M se conserva sólo como `raw_literal_general`, subcontador de
+procedencia no reconocida, sin delegación, grupo o zona asignados.
+
 La pantalla puede declarar el resumen de Interests disponible **con límites de
 cobertura** sólo dentro de ese contexto administrativo. Dirección, KPI y
 comparativas, Reservas/Ventas y Rendimiento comercial, Campañas, Llamadas y SEO
