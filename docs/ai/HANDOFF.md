@@ -7034,6 +7034,25 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   ejecutaron PHP, MariaDB, migraciones, Salesforce, benchmark ni producción;
   queda pendiente el validador sobre HEAD y cuerpo de PR.
 
+## 2026-11-09 — corrección de huellas fuente F2M/F5 de octubre provisional
+
+- Causa: el lector provisional contrastaba F2M y F5 contra una sola huella F2,
+  pese a que sus contratos persistidos no son iguales. F2M incluye identidad,
+  `content_hash` y estado de borrado; F5 conserva sólo identidad y borrado.
+- Corrección: una única lectura ordenada de F2 calcula
+  `Id|content_hash|is_deleted` para F2M y `Id:is_deleted` para F5, y cada
+  `source_evidence` se valida sólo contra su propia huella. Una evidencia F5
+  ajena falla cerrado; no se exponen IDs, payloads ni valores de hash.
+- Alcance: no cambia fuente publicada, generación, permisos, KPI, filtros,
+  fórmulas, CSV, auditorías ni consumidores oficiales. La pantalla continúa
+  administrativa, `no-store, private` y no certificada. `DECISIONS.md` no
+  cambia: se corrige la implementación del contrato de evidencia existente, no
+  una decisión arquitectónica nueva.
+- Verificación documental: pendiente de validador sobre HEAD comprometido y
+  cuerpo de PR. No se ejecutaron PHP, MariaDB, migraciones, Salesforce,
+  benchmark ni producción desde esta revisión. PR: `Docs-Impact: updated`,
+  `Docs-Matrix-Impact: updated`.
+
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
 - Causa corregida: el mapeador conserva la clave

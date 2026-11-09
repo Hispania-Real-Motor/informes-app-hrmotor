@@ -104,6 +104,9 @@ evidencia incompleta. No es Summary, AJAX ni CSV: no cambia el 503 del dataset
 oficial ni habilita KPI, comparativas, auditorías o exportaciones. Su flag queda
 apagado; F2/F2M/F5 son IDs internos fijos sin parámetros ni configuración que
 pueda redirigir la fuente.
+El control fail-closed distingue la evidencia fuente de F2M
+(`Id|content_hash|is_deleted`) de la de F5 (`Id:is_deleted`); una huella de un
+journal no puede validar al otro ni alterar el informe oficial.
 
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
