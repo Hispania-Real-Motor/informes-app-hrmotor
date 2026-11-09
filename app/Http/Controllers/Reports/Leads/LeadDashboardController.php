@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Reports\Leads;
 
 use App\Http\Controllers\Controller;
+use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Reports\Leads\October2026ProvisionalInterestReader;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
-use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Salesforce\InterestGenerationReader;
 use App\Support\ReportUserAccess;
 use Illuminate\Http\Request;
@@ -18,20 +18,19 @@ class LeadDashboardController extends Controller
         Request $request,
         October2026ProvisionalInterestReader $octoberReader,
         InterestGenerationReader $interestGenerations,
-    )
-    {
+    ) {
         $requestedOctober = $request->query('period') === self::OCTOBER_2026_PROVISIONAL_PERIOD;
         if ($requestedOctober) {
             $this->assertOctoberAccess($request, $octoberReader);
         }
-        $useOctoberByDefault = !$requestedOctober
+        $useOctoberByDefault = ! $requestedOctober
             && $this->canUseOctober($request, $octoberReader)
-            && !$this->officialGenerationAvailable($interestGenerations);
+            && ! $this->officialGenerationAvailable($interestGenerations);
         $usesOctober = $requestedOctober || $useOctoberByDefault;
 
         $response = view('reports.leads.index', [
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'leads'),
-            'reportUserCanAudit' => !$usesOctober && ReportUserAccess::canAuditReport($request, 'leads'),
+            'reportUserCanAudit' => ! $usesOctober && ReportUserAccess::canAuditReport($request, 'leads'),
             'octoberProvisionalEnabled' => config('salesforce.october_2026_provisional_enabled') === true
                 && ReportUserAccess::isAdmin($request),
             'initialLeadPeriod' => $usesOctober ? self::OCTOBER_2026_PROVISIONAL_PERIOD : null,
@@ -55,7 +54,7 @@ class LeadDashboardController extends Controller
 
     private function canUseOctober(Request $request, October2026ProvisionalInterestReader $reader): bool
     {
-        if (config('salesforce.october_2026_provisional_enabled') !== true || !ReportUserAccess::isAdmin($request)) {
+        if (config('salesforce.october_2026_provisional_enabled') !== true || ! ReportUserAccess::isAdmin($request)) {
             return false;
         }
 

@@ -32,9 +32,10 @@
   queda oculto; no confunde ese markup estático de recuperación con un bloqueo
   mostrado al administrador.
 - Verificación local posterior: `git diff --check`, sintaxis de ambos scripts y
-  `node --test tests/js/leads-unavailable.test.mjs` (12/12) correctos. PHP,
-  Pint, build, MariaDB 11 y documentación se validan obligatoriamente en
-  GitHub Actions del SHA publicado. No se ejecutaron migraciones, Salesforce,
+  `node --test tests/js/leads-unavailable.test.mjs` (12/12) correctos. Pint
+  local pasó sobre los dos controladores PHP modificados. La suite PHP completa,
+  build, MariaDB 11 y documentación se validan obligatoriamente en GitHub
+  Actions del SHA publicado. No se ejecutaron migraciones, Salesforce,
   benchmark ni producción desde esta revisión.
 
 ## 2026-11-06 — materialización funcional F2 mensual aislada

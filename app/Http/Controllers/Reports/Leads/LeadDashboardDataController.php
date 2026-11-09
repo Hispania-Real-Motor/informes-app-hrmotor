@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Reports\Leads;
 
 use App\Http\Controllers\Controller;
-use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
 use App\Services\Reports\Leads\October2026ProvisionalInterestDashboardDatasetService;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
+use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
 use App\Support\ReportServerTiming;
 use App\Support\ReportUserAccess;
 use Illuminate\Http\JsonResponse;
@@ -146,13 +146,13 @@ class LeadDashboardDataController extends Controller
             $headerWritten = false;
 
             foreach ($rows as $row) {
-                if (!$headerWritten) {
+                if (! $headerWritten) {
                     fputcsv($output, array_keys($row));
                     $headerWritten = true;
                 }
                 fputcsv($output, array_map($this->csvValue(...), $row));
             }
-            if (!$headerWritten) {
+            if (! $headerWritten) {
                 fputcsv($output, ['Interest ID']);
             }
 
@@ -174,13 +174,13 @@ class LeadDashboardDataController extends Controller
             fwrite($output, "\xEF\xBB\xBF");
             $headerWritten = false;
             foreach ($rows as $row) {
-                if (!$headerWritten) {
+                if (! $headerWritten) {
                     fputcsv($output, array_keys($row));
                     $headerWritten = true;
                 }
                 fputcsv($output, array_map($this->csvValue(...), $row));
             }
-            if (!$headerWritten) {
+            if (! $headerWritten) {
                 fputcsv($output, ['Interest ID']);
             }
             fclose($output);
