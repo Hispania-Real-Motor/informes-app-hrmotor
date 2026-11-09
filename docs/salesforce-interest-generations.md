@@ -424,10 +424,12 @@ crea triggers por fila, también con volumen representativo sintético. El job e
 evidencia pendiente hasta que la CI de la PR termine; las métricas del comando
 son mediciones de sus fases, no un benchmark ni una garantía de rendimiento.
 
-Los filtros de distribución y texto de la vista operan exclusivamente en el
-navegador sobre las filas del snapshot ya servido. No alteran el universo,
-manifiestos, cobertura, agregados persistidos o su revisión, ni activan AJAX,
-CSV, auditoría o consumidores de los seis informes.
+Los controles de exploración de distribución y texto operan exclusivamente en
+el navegador sobre las filas del snapshot ya servido. No son filtros del
+informe: se elige una única distribución precalculada y la búsqueda se limita a
+sus etiquetas. No alteran el universo, manifiestos, cobertura, agregados
+persistidos o su revisión, ni activan AJAX, CSV, auditoría o consumidores de
+los seis informes.
 
 ### Vista provisional administrativa
 

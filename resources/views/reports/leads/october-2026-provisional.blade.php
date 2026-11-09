@@ -1,6 +1,9 @@
 <x-reports.app-shell title="Intereses — octubre 2026 provisional" current-report="leads">
     <x-slot:head>
-        @vite('resources/css/reports/leads-dashboard.css')
+        @vite([
+            'resources/css/reports/leads-dashboard.css',
+            'resources/js/reports/october-2026-provisional.js',
+        ])
     </x-slot:head>
 
     <div class="wrap">
@@ -11,7 +14,8 @@
             <p>Periodo funcional: {{ $overview['period']['start_utc'] }} UTC a {{ $overview['period']['end_utc'] }} UTC ({{ $overview['period']['timezone'] }}).</p>
         </section>
 
-        <section class="filters card" aria-labelledby="provisional-filters-title">
+        <section class="filters card" aria-labelledby="provisional-controls-title">
+            <h2 id="provisional-controls-title">Explorar agregados provisionales</h2>
             <div class="filter-group">
                 <label for="provisionalPeriod">Periodo</label>
                 <select id="provisionalPeriod" disabled>
@@ -19,7 +23,7 @@
                 </select>
             </div>
             <div class="filter-group">
-                <label for="provisionalDimension">Distribución</label>
+                <label for="provisionalDimension">Explorar distribución precalculada</label>
                 <select id="provisionalDimension">
                     <option value="">Todas las distribuciones</option>
                     <option value="delegation">Delegación de procedencia</option>
@@ -33,13 +37,14 @@
                 </select>
             </div>
             <div class="filter-group">
-                <label for="provisionalSearch">Filtrar valores</label>
-                <input id="provisionalSearch" type="search" autocomplete="off" placeholder="Buscar en la distribución">
+                <label for="provisionalSearch">Buscar valores de la distribución seleccionada</label>
+                <input id="provisionalSearch" type="search" autocomplete="off" placeholder="Seleccione primero una distribución" disabled>
             </div>
             <div class="filter-actions">
-                <button class="filter-reset" id="resetProvisionalFilters" type="button">Limpiar filtros</button>
+                <button class="filter-reset" id="resetProvisionalFilters" type="button">Restablecer exploración</button>
             </div>
-            <p class="small">Los filtros son de presentación y solo acotan las distribuciones ya calculadas en el snapshot validado. No recalculan KPI ni combinan dimensiones sin evidencia.</p>
+            <p class="small" id="provisionalSelection" aria-live="polite">Seleccione una distribución para consultar sus valores precalculados.</p>
+            <p class="small">Estos controles de exploración no son filtros del informe: solo muestran un agregado independiente ya incluido en el snapshot validado. No recalculan KPI ni combinan dimensiones.</p>
         </section>
 
         <section class="card" aria-labelledby="coverage-title">
@@ -58,10 +63,10 @@
             </table>
         </section>
 
-        <section class="card" aria-labelledby="delegations-title">
+        <section class="card" data-provisional-distribution="delegation" aria-labelledby="delegations-title">
             <h2 id="delegations-title">Intereses activos coincidentes por delegación de procedencia</h2>
             <p>La procedencia se normaliza con el mismo diccionario de delegaciones del informe oficial. No se infiere de owner, comercial, cuenta ni Lead relacionado.</p>
-            <table data-provisional-distribution="delegation">
+            <table>
                 <thead><tr><th>Delegación</th><th>Intereses</th></tr></thead>
                 <tbody>
                     @forelse ($overview['by_delegation'] as $row)
@@ -89,95 +94,79 @@
             <p>Los valores no reconocidos se agregan por frecuencia y huella de auditoría; la pantalla no expone valores libres ni identificadores.</p>
         </section>
 
-        <section class="card" aria-labelledby="groups-title">
-            <h2 id="groups-title">Distribución por grupo y zona de procedencia</h2>
-            <table data-provisional-distribution="group">
-                <thead><tr><th>Grupo</th><th>Intereses</th></tr></thead>
-                <tbody>
-                    @foreach ($overview['classification']['by_group'] as $row)
-                        <tr data-provisional-row data-provisional-label="{{ $row['group'] }}"><td>{{ $row['group'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
-                    @endforeach
-                </tbody>
-            </table>
-            <table data-provisional-distribution="zone">
-                <thead><tr><th>Zona</th><th>Intereses</th></tr></thead>
-                <tbody>
-                    @foreach ($overview['classification']['by_zone'] as $row)
-                        <tr data-provisional-row data-provisional-label="{{ $row['zone'] }}"><td>{{ $row['zone'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </section>
-
-        <section class="card" aria-labelledby="functional-kpis-title">
-            <h2 id="functional-kpis-title">Indicadores funcionales recuperables</h2>
-            <p>Estos agregados se calculan durante la validación administrativa sobre los {{ number_format($overview['functional_kpis']['total'], 0, ',', '.') }} Interests F2M activos y con contenido coincidente. No se recalculan al abrir esta página.</p>
-            <table data-provisional-distribution="status">
-                <thead><tr><th>Estado</th><th>Intereses</th></tr></thead>
-                <tbody>
-                    @foreach ($overview['functional_kpis']['statuses'] as $row)
-                        <tr data-provisional-row data-provisional-label="{{ $row['status'] }}"><td>{{ $row['status'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
-                    @endforeach
-                </tbody>
-            </table>
-            <table data-provisional-distribution="type">
-                <thead><tr><th>Tipo normalizado</th><th>Intereses</th></tr></thead>
-                <tbody>
-                    @foreach ($overview['functional_kpis']['types'] as $row)
-                        <tr data-provisional-row data-provisional-label="{{ $row['type'] }}"><td>{{ $row['type'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
-                    @endforeach
-                </tbody>
-            </table>
-            @foreach (['sources' => 'Fuente', 'media' => 'Medio', 'channels' => 'Canal'] as $dimension => $heading)
-                <table data-provisional-distribution="{{ $dimension === 'sources' ? 'source' : ($dimension === 'media' ? 'medium' : 'channel') }}">
-                    <thead><tr><th>{{ $heading }}</th><th>Intereses</th></tr></thead>
+        <section class="card" data-provisional-collection aria-labelledby="groups-title">
+            <h2 id="groups-title">Distribuciones normalizadas de procedencia</h2>
+            <div data-provisional-distribution="group">
+                <h3>Grupo de procedencia</h3>
+                <table>
+                    <thead><tr><th>Grupo</th><th>Intereses</th></tr></thead>
                     <tbody>
-                        @foreach ($overview['functional_kpis'][$dimension] as $row)
-                            @php($label = $row[$dimension === 'sources' ? 'source' : ($dimension === 'media' ? 'medium' : 'channel')])
-                            <tr data-provisional-row data-provisional-label="{{ $label }}"><td>{{ $label }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        @foreach ($overview['classification']['by_group'] as $row)
+                            <tr data-provisional-row data-provisional-label="{{ $row['group'] }}"><td>{{ $row['group'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
                         @endforeach
                     </tbody>
                 </table>
+            </div>
+            <div data-provisional-distribution="zone">
+                <h3>Zona de procedencia</h3>
+                <table>
+                    <thead><tr><th>Zona</th><th>Intereses</th></tr></thead>
+                    <tbody>
+                        @foreach ($overview['classification']['by_zone'] as $row)
+                            <tr data-provisional-row data-provisional-label="{{ $row['zone'] }}"><td>{{ $row['zone'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card" data-provisional-collection aria-labelledby="functional-kpis-title">
+            <h2 id="functional-kpis-title">Agregados provisionales disponibles</h2>
+            <p>Estado, tipo normalizado, fuente, medio y canal se calculan durante la validación administrativa sobre los {{ number_format($overview['functional_kpis']['total'], 0, ',', '.') }} Interests F2M activos y con contenido coincidente. Son agregados provisionales, no KPI oficiales certificados, y no se recalculan al abrir esta página.</p>
+            <div data-provisional-distribution="status">
+                <h3>Estado</h3>
+                <table>
+                    <thead><tr><th>Estado</th><th>Intereses</th></tr></thead>
+                    <tbody>
+                        @foreach ($overview['functional_kpis']['statuses'] as $row)
+                            <tr data-provisional-row data-provisional-label="{{ $row['status'] }}"><td>{{ $row['status'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            <div data-provisional-distribution="type">
+                <h3>Tipo normalizado</h3>
+                <table>
+                    <thead><tr><th>Tipo normalizado</th><th>Intereses</th></tr></thead>
+                    <tbody>
+                        @foreach ($overview['functional_kpis']['types'] as $row)
+                            <tr data-provisional-row data-provisional-label="{{ $row['type'] }}"><td>{{ $row['type'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @foreach (['sources' => 'Fuente', 'media' => 'Medio', 'channels' => 'Canal'] as $dimension => $heading)
+                <div data-provisional-distribution="{{ $dimension === 'sources' ? 'source' : ($dimension === 'media' ? 'medium' : 'channel') }}">
+                    <h3>{{ $heading }}</h3>
+                    <table>
+                        <thead><tr><th>{{ $heading }}</th><th>Intereses</th></tr></thead>
+                        <tbody>
+                            @foreach ($overview['functional_kpis'][$dimension] as $row)
+                                @php($label = $row[$dimension === 'sources' ? 'source' : ($dimension === 'media' ? 'medium' : 'channel')])
+                                <tr data-provisional-row data-provisional-label="{{ $label }}"><td>{{ $label }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
             @endforeach
         </section>
 
         <section class="card" aria-labelledby="limits-title">
-            <h2 id="limits-title">Límites de uso</h2>
+            <h2 id="limits-title">Indicadores no disponibles con esta evidencia</h2>
             <p>F2 permanece sin certificación histórica: {{ $overview['verification']['f2_verified'] ? 'la comprobación actual no sustituye la certificación histórica.' : 'la verificación F2 original no fue satisfactoria.' }} F5 tampoco certifica este inventario.</p>
             <p>Los comerciales elegibles y sus delegaciones no están disponibles: F2M no conserva la instantánea histórica de usuarios requerida por la fórmula oficial. Tampoco se calculan KPI de actividad: F5 no acredita historia y esta evidencia no conserva el estado de relación requerido por la fórmula oficial.</p>
             <p>Dirección y comparativas; Reservas/Ventas y rendimiento comercial; Campañas, Llamadas y SEO continúan no disponibles desde esta fuente provisional. Los journals no exponen identificadores ni payloads en esta pantalla.</p>
         </section>
     </div>
 
-    <x-slot:scripts>
-        <script>
-            (() => {
-                const dimension = document.getElementById('provisionalDimension');
-                const search = document.getElementById('provisionalSearch');
-                const reset = document.getElementById('resetProvisionalFilters');
-
-                const apply = () => {
-                    const selectedDimension = dimension?.value || '';
-                    const query = (search?.value || '').trim().toLocaleLowerCase('es');
-
-                    document.querySelectorAll('[data-provisional-distribution]').forEach((table) => {
-                        const applies = selectedDimension === '' || table.dataset.provisionalDistribution === selectedDimension;
-
-                        table.querySelectorAll('[data-provisional-row]').forEach((row) => {
-                            const label = (row.dataset.provisionalLabel || '').toLocaleLowerCase('es');
-                            row.hidden = applies && query !== '' && !label.includes(query);
-                        });
-                    });
-                };
-
-                dimension?.addEventListener('change', apply);
-                search?.addEventListener('input', apply);
-                reset?.addEventListener('click', () => {
-                    if (dimension) dimension.value = '';
-                    if (search) search.value = '';
-                    apply();
-                });
-            })();
-        </script>
-    </x-slot:scripts>
 </x-reports.app-shell>

@@ -7128,11 +7128,19 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   snapshot validado, sin cargar el dataset oficial. El flag apagado devuelve
   404; administrador es obligatorio (403 en otro caso), y evidencia no vigente
   devuelve 503. La respuesta conserva `no-store, private`.
-- Los filtros de distribución y texto son sólo de presentación en cliente sobre
-  los agregados del snapshot: no escanean journals, no recalculan, no combinan
-  dimensiones ni activan Summary, AJAX, CSV o auditoría. No cambian F2/F2M/F5,
-  generación publicada, KPI ni disponibilidad de Dirección, Reservas/Ventas,
-  Rendimiento, Campañas, Llamadas, SEO, Comisiones o Stock.
+- Los controles de exploración no son filtros del informe: el usuario elige una
+  sola distribución precalculada y la búsqueda se limita a sus etiquetas. Sólo
+  presentan agregados del snapshot: no escanean journals, no recalculan, no
+  combinan dimensiones ni activan Summary, AJAX, CSV o auditoría. Los agregados
+  disponibles siguen siendo provisionales; no cambian F2/F2M/F5, generación
+  publicada, KPI ni disponibilidad de Dirección, Reservas/Ventas, Rendimiento,
+  Campañas, Llamadas, SEO, Comisiones o Stock.
+- Correctivo PR #124: se renombró el contrato visible a controles de
+  exploración y se limita la búsqueda a la distribución elegida; no cambia la
+  evidencia, el universo ni una decisión arquitectónica, por lo que
+  `DECISIONS.md` no requiere entrada adicional. `git diff --check` es correcto.
+  El validador/pruebas documentales no se ejecutó: el lanzador `python.exe` del
+  entorno no es accesible y no existe `py` disponible.
 - Verificación: revisión documental y `git diff --check` correctos. No se
   ejecutaron PHP, JS, Blade, tests, CI, MariaDB, migraciones, Salesforce,
   benchmark ni producción desde esta documentación.

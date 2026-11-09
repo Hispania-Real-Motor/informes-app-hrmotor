@@ -334,7 +334,10 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Octubre de 2026: inventario provisional no certificado')
-            ->assertSee('filtros son de presentación')
+            ->assertSee('Explorar agregados provisionales')
+            ->assertSee('Agregados provisionales disponibles')
+            ->assertSee('Indicadores no disponibles con esta evidencia')
+            ->assertSee('controles de exploración no son filtros del informe')
             ->assertSee('data-provisional-distribution="delegation"', false)
             ->assertDontSee('Información temporalmente no disponible');
 

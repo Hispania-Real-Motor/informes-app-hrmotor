@@ -111,10 +111,12 @@ El control fail-closed distingue la evidencia fuente de F2M
 (`Id|content_hash|is_deleted`) de la de F5 (`Id:is_deleted`); una huella de un
 journal no puede validar al otro ni alterar el informe oficial.
 
-Los controles de distribución y búsqueda de esta vista son sólo de
-presentación: ocultan o muestran filas de agregados ya presentes en el snapshot
-validado. No filtran F2/F2M/F5, no reejecutan cálculo, no combinan dimensiones
-ni habilitan filtros, endpoints o exportaciones del dashboard oficial.
+Los controles de exploración de esta vista no son filtros del informe. Exigen
+seleccionar una única distribución precalculada; la búsqueda sólo examina las
+etiquetas de esa distribución. Ocultan o muestran filas de agregados ya
+presentes en el snapshot validado: no filtran F2/F2M/F5, no reejecutan cálculo,
+no combinan dimensiones ni habilitan filtros, endpoints o exportaciones del
+dashboard oficial.
 
 ### Clasificación de procedencia en la vista provisional de octubre (Fase A)
 
