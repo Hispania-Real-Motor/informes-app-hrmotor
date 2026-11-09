@@ -38,6 +38,9 @@
                 <option value="last_30_days">Ultimos 30 dias</option>
                 <option value="current_month">Mes actual</option>
                 <option value="previous_month">Mes anterior</option>
+                @if ($octoberProvisionalEnabled ?? false)
+                    <option value="october_2026">Octubre 2026 · provisional</option>
+                @endif
                 <option value="custom">Personalizado</option>
             </select>
         </div>

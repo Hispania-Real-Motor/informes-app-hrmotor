@@ -95,15 +95,14 @@ ni habilita los endpoints, comparativas o exportaciones oficiales.
 Un mes sin filas devuelve cero en ambas columnas; los límites mensuales se
 interpretan en `Europe/Madrid`.
 
-La pantalla administrativa distinta
-`/informes/leads/provisional/october-2026` sólo puede resumir la F2, F2M y F5
-mensuales fijadas para octubre de 2026 después de validar su misma procedencia,
-estado terminado y manifiestos. Muestra cobertura y delegación únicamente de
-contenido activo coincidente, con `no-store, private`, y falla 503 ante cualquier
-evidencia incompleta. No es Summary, AJAX ni CSV: no cambia el 503 del dataset
-oficial ni habilita KPI, comparativas, auditorías o exportaciones. Su flag queda
-apagado; F2/F2M/F5 son IDs internos fijos sin parámetros ni configuración que
-pueda redirigir la fuente.
+La opción de período `october_2026` en `/informes/leads` entrega una vista
+administrativa provisional distinta del dashboard oficial. Sólo puede resumir
+la F2, F2M y F5 mensuales fijadas para octubre de 2026 después de validar su
+misma procedencia, estado terminado y manifiestos. Con flag apagado devuelve
+404; sin rol administrador, 403; y con evidencia incompleta, 503. La respuesta
+es `no-store, private`. No es Summary, AJAX ni CSV: no carga el dataset oficial
+ni habilita KPI, comparativas, auditorías o exportaciones. F2/F2M/F5 son IDs
+internos fijos sin parámetros ni configuración que pueda redirigir la fuente.
 La pantalla sólo está disponible tras `reports:validate-october-2026-provisional
 --confirm`: HTTP lee el snapshot local de la misma revisión de journals y falla
 503 si está pendiente, obsoleto o cambia durante la lectura. Este comando no
@@ -111,6 +110,11 @@ consulta Salesforce ni habilita el dataset, AJAX, CSV, auditoría o KPI oficial.
 El control fail-closed distingue la evidencia fuente de F2M
 (`Id|content_hash|is_deleted`) de la de F5 (`Id:is_deleted`); una huella de un
 journal no puede validar al otro ni alterar el informe oficial.
+
+Los controles de distribución y búsqueda de esta vista son sólo de
+presentación: ocultan o muestran filas de agregados ya presentes en el snapshot
+validado. No filtran F2/F2M/F5, no reejecutan cálculo, no combinan dimensiones
+ni habilitan filtros, endpoints o exportaciones del dashboard oficial.
 
 ### Clasificación de procedencia en la vista provisional de octubre (Fase A)
 

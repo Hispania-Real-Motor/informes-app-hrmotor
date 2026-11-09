@@ -7121,6 +7121,21 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   SEO, CSV, auditorías ni consumidores oficiales.
 - Verificación: esta revisión documental no ejecutó PHP, Blade, tests, CI,
   MariaDB, migraciones, Salesforce, benchmark ni producción.
+
+## 2026-11-09 — acceso visible al snapshot provisional de octubre
+
+- `/informes/leads?period=october_2026` entrega la vista administrativa del
+  snapshot validado, sin cargar el dataset oficial. El flag apagado devuelve
+  404; administrador es obligatorio (403 en otro caso), y evidencia no vigente
+  devuelve 503. La respuesta conserva `no-store, private`.
+- Los filtros de distribución y texto son sólo de presentación en cliente sobre
+  los agregados del snapshot: no escanean journals, no recalculan, no combinan
+  dimensiones ni activan Summary, AJAX, CSV o auditoría. No cambian F2/F2M/F5,
+  generación publicada, KPI ni disponibilidad de Dirección, Reservas/Ventas,
+  Rendimiento, Campañas, Llamadas, SEO, Comisiones o Stock.
+- Verificación: revisión documental y `git diff --check` correctos. No se
+  ejecutaron PHP, JS, Blade, tests, CI, MariaDB, migraciones, Salesforce,
+  benchmark ni producción desde esta documentación.
 - Cobertura volumétrica: la fixture representativa de 34.239 F2, 34.229 F2M
   y 47.572 F5 exige que `functional_kpis_ns` se mida durante validación y que
   estado, tipo, fuente, medio y canal sumen exactamente las 34.229 filas F2M

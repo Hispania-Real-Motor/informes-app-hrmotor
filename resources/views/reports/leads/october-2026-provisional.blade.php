@@ -1,10 +1,45 @@
 <x-reports.app-shell title="Intereses — octubre 2026 provisional" current-report="leads">
+    <x-slot:head>
+        @vite('resources/css/reports/leads-dashboard.css')
+    </x-slot:head>
+
     <div class="wrap">
         <section class="card" aria-labelledby="provisional-october-title">
             <p class="eyebrow">Acceso restringido a administración</p>
             <h1 id="provisional-october-title">Octubre de 2026: inventario provisional no certificado</h1>
             <p>Esta lectura aislada utiliza los journals mensuales validados y no sustituye ninguna fuente publicada, KPI, cierre, exportación ni informe oficial.</p>
             <p>Periodo funcional: {{ $overview['period']['start_utc'] }} UTC a {{ $overview['period']['end_utc'] }} UTC ({{ $overview['period']['timezone'] }}).</p>
+        </section>
+
+        <section class="filters card" aria-labelledby="provisional-filters-title">
+            <div class="filter-group">
+                <label for="provisionalPeriod">Periodo</label>
+                <select id="provisionalPeriod" disabled>
+                    <option>Octubre de 2026 · provisional</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="provisionalDimension">Distribución</label>
+                <select id="provisionalDimension">
+                    <option value="">Todas las distribuciones</option>
+                    <option value="delegation">Delegación de procedencia</option>
+                    <option value="group">Grupo de procedencia</option>
+                    <option value="zone">Zona de procedencia</option>
+                    <option value="status">Estado</option>
+                    <option value="type">Tipo normalizado</option>
+                    <option value="source">Fuente</option>
+                    <option value="medium">Medio</option>
+                    <option value="channel">Canal</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="provisionalSearch">Filtrar valores</label>
+                <input id="provisionalSearch" type="search" autocomplete="off" placeholder="Buscar en la distribución">
+            </div>
+            <div class="filter-actions">
+                <button class="filter-reset" id="resetProvisionalFilters" type="button">Limpiar filtros</button>
+            </div>
+            <p class="small">Los filtros son de presentación y solo acotan las distribuciones ya calculadas en el snapshot validado. No recalculan KPI ni combinan dimensiones sin evidencia.</p>
         </section>
 
         <section class="card" aria-labelledby="coverage-title">
@@ -26,11 +61,11 @@
         <section class="card" aria-labelledby="delegations-title">
             <h2 id="delegations-title">Intereses activos coincidentes por delegación de procedencia</h2>
             <p>La procedencia se normaliza con el mismo diccionario de delegaciones del informe oficial. No se infiere de owner, comercial, cuenta ni Lead relacionado.</p>
-            <table>
+            <table data-provisional-distribution="delegation">
                 <thead><tr><th>Delegación</th><th>Intereses</th></tr></thead>
                 <tbody>
                     @forelse ($overview['by_delegation'] as $row)
-                        <tr><td>{{ $row['delegation'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        <tr data-provisional-row data-provisional-label="{{ $row['delegation'] }}"><td>{{ $row['delegation'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
                     @empty
                         <tr><td colspan="2">No hay filas aptas para mostrar.</td></tr>
                     @endforelse
@@ -56,19 +91,19 @@
 
         <section class="card" aria-labelledby="groups-title">
             <h2 id="groups-title">Distribución por grupo y zona de procedencia</h2>
-            <table>
+            <table data-provisional-distribution="group">
                 <thead><tr><th>Grupo</th><th>Intereses</th></tr></thead>
                 <tbody>
                     @foreach ($overview['classification']['by_group'] as $row)
-                        <tr><td>{{ $row['group'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        <tr data-provisional-row data-provisional-label="{{ $row['group'] }}"><td>{{ $row['group'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
                     @endforeach
                 </tbody>
             </table>
-            <table>
+            <table data-provisional-distribution="zone">
                 <thead><tr><th>Zona</th><th>Intereses</th></tr></thead>
                 <tbody>
                     @foreach ($overview['classification']['by_zone'] as $row)
-                        <tr><td>{{ $row['zone'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        <tr data-provisional-row data-provisional-label="{{ $row['zone'] }}"><td>{{ $row['zone'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
                     @endforeach
                 </tbody>
             </table>
@@ -77,28 +112,29 @@
         <section class="card" aria-labelledby="functional-kpis-title">
             <h2 id="functional-kpis-title">Indicadores funcionales recuperables</h2>
             <p>Estos agregados se calculan durante la validación administrativa sobre los {{ number_format($overview['functional_kpis']['total'], 0, ',', '.') }} Interests F2M activos y con contenido coincidente. No se recalculan al abrir esta página.</p>
-            <table>
+            <table data-provisional-distribution="status">
                 <thead><tr><th>Estado</th><th>Intereses</th></tr></thead>
                 <tbody>
                     @foreach ($overview['functional_kpis']['statuses'] as $row)
-                        <tr><td>{{ $row['status'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        <tr data-provisional-row data-provisional-label="{{ $row['status'] }}"><td>{{ $row['status'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
                     @endforeach
                 </tbody>
             </table>
-            <table>
+            <table data-provisional-distribution="type">
                 <thead><tr><th>Tipo normalizado</th><th>Intereses</th></tr></thead>
                 <tbody>
                     @foreach ($overview['functional_kpis']['types'] as $row)
-                        <tr><td>{{ $row['type'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        <tr data-provisional-row data-provisional-label="{{ $row['type'] }}"><td>{{ $row['type'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
                     @endforeach
                 </tbody>
             </table>
             @foreach (['sources' => 'Fuente', 'media' => 'Medio', 'channels' => 'Canal'] as $dimension => $heading)
-                <table>
+                <table data-provisional-distribution="{{ $dimension === 'sources' ? 'source' : ($dimension === 'media' ? 'medium' : 'channel') }}">
                     <thead><tr><th>{{ $heading }}</th><th>Intereses</th></tr></thead>
                     <tbody>
                         @foreach ($overview['functional_kpis'][$dimension] as $row)
-                            <tr><td>{{ $row[$dimension === 'sources' ? 'source' : ($dimension === 'media' ? 'medium' : 'channel')] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                            @php($label = $row[$dimension === 'sources' ? 'source' : ($dimension === 'media' ? 'medium' : 'channel')])
+                            <tr data-provisional-row data-provisional-label="{{ $label }}"><td>{{ $label }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
                         @endforeach
                     </tbody>
                 </table>
@@ -112,4 +148,36 @@
             <p>Dirección y comparativas; Reservas/Ventas y rendimiento comercial; Campañas, Llamadas y SEO continúan no disponibles desde esta fuente provisional. Los journals no exponen identificadores ni payloads en esta pantalla.</p>
         </section>
     </div>
+
+    <x-slot:scripts>
+        <script>
+            (() => {
+                const dimension = document.getElementById('provisionalDimension');
+                const search = document.getElementById('provisionalSearch');
+                const reset = document.getElementById('resetProvisionalFilters');
+
+                const apply = () => {
+                    const selectedDimension = dimension?.value || '';
+                    const query = (search?.value || '').trim().toLocaleLowerCase('es');
+
+                    document.querySelectorAll('[data-provisional-distribution]').forEach((table) => {
+                        const applies = selectedDimension === '' || table.dataset.provisionalDistribution === selectedDimension;
+
+                        table.querySelectorAll('[data-provisional-row]').forEach((row) => {
+                            const label = (row.dataset.provisionalLabel || '').toLocaleLowerCase('es');
+                            row.hidden = applies && query !== '' && !label.includes(query);
+                        });
+                    });
+                };
+
+                dimension?.addEventListener('change', apply);
+                search?.addEventListener('input', apply);
+                reset?.addEventListener('click', () => {
+                    if (dimension) dimension.value = '';
+                    if (search) search.value = '';
+                    apply();
+                });
+            })();
+        </script>
+    </x-slot:scripts>
 </x-reports.app-shell>
