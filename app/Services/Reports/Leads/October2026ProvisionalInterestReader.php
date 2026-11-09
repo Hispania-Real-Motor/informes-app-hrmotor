@@ -127,9 +127,7 @@ final class October2026ProvisionalInterestReader
         $classification = $this->classification($materializationId);
         $metrics['delegation_classification_ns'] = hrtime(true) - $phaseStartedAt;
 
-        if ($classification['total_included'] !== (int) $quality->eligible_active_matching) {
-            throw new ProvisionalInterestSourceUnavailable;
-        }
+        $this->assertClassificationReconciles($classification, (int) $quality->eligible_active_matching);
 
         $overview = [
             'period' => ['label' => 'Octubre de 2026', 'start_utc' => self::START_UTC, 'end_utc' => self::END_UTC, 'timezone' => 'Europe/Madrid'],
@@ -280,7 +278,7 @@ final class October2026ProvisionalInterestReader
      * represented by a stable fingerprint and frequency so the audit remains
      * actionable without exposing a possible free-text personal value.
      *
-     * @return array{total_included:int,classified:int,unclassified:int,raw_empty:int,raw_unmapped:int,by_delegation:list<array{delegation:string,interests:int}>,by_group:list<array{group:string,interests:int}>,by_zone:list<array{zone:string,interests:int}>,unrecognized_value_frequencies:list<array{fingerprint:string,interests:int}>,data_quality_review:array{required:int,empty_origin:int,unmapped_origin:int}}
+     * @return array{total_included:int,classified:int,unclassified:int,raw_empty:int,raw_unmapped:int,raw_literal_general:int,by_delegation:list<array{delegation:string,interests:int}>,by_group:list<array{group:string,interests:int}>,by_zone:list<array{zone:string,interests:int}>,unrecognized_value_frequencies:list<array{fingerprint:string,interests:int}>,data_quality_review:array{required:int,empty_origin:int,unmapped_origin:int,literal_general:int}}
      */
     private function classification(int $materializationId): array
     {
@@ -289,6 +287,7 @@ final class October2026ProvisionalInterestReader
         $classified = 0;
         $empty = 0;
         $unmapped = 0;
+        $literalGeneral = 0;
         $delegations = [];
         $groups = [];
         $zones = [];
@@ -319,6 +318,9 @@ final class October2026ProvisionalInterestReader
             }
 
             $unmapped++;
+            if (mb_strtolower((string) $normalized['raw']) === 'general') {
+                $literalGeneral++;
+            }
             $fingerprint = hash('sha256', (string) $normalized['raw']);
             $unknownValues[$fingerprint] = ($unknownValues[$fingerprint] ?? 0) + 1;
         }
@@ -329,6 +331,7 @@ final class October2026ProvisionalInterestReader
             'unclassified' => $empty + $unmapped,
             'raw_empty' => $empty,
             'raw_unmapped' => $unmapped,
+            'raw_literal_general' => $literalGeneral,
             'by_delegation' => $this->labelCounts($delegations, 'delegation', $normalizer),
             'by_group' => $this->labelCounts($groups, 'group', $normalizer),
             'by_zone' => $this->labelCounts($zones, 'zone', $normalizer),
@@ -339,6 +342,7 @@ final class October2026ProvisionalInterestReader
                 'required' => $empty + $unmapped,
                 'empty_origin' => $empty,
                 'unmapped_origin' => $unmapped,
+                'literal_general' => $literalGeneral,
             ],
         ];
     }
@@ -349,6 +353,30 @@ final class October2026ProvisionalInterestReader
         return collect($normalizer->sortLabels(array_keys($counts)))
             ->map(fn (string $value): array => [$label => $value, 'interests' => $counts[$value]])
             ->sortByDesc('interests')->values()->all();
+    }
+
+    /** @param array<string, mixed> $classification */
+    private function assertClassificationReconciles(array $classification, int $expectedTotal): void
+    {
+        $total = (int) ($classification['total_included'] ?? -1);
+        $allDimensions = [
+            $classification['by_delegation'] ?? null,
+            $classification['by_group'] ?? null,
+            $classification['by_zone'] ?? null,
+        ];
+
+        if ($total !== $expectedTotal
+            || (int) ($classification['classified'] ?? -1) + (int) ($classification['unclassified'] ?? -1) !== $total
+            || (int) ($classification['raw_empty'] ?? -1) + (int) ($classification['raw_unmapped'] ?? -1) !== (int) ($classification['unclassified'] ?? -1)
+            || (int) ($classification['raw_literal_general'] ?? -1) > (int) ($classification['raw_unmapped'] ?? -1)) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        foreach ($allDimensions as $dimension) {
+            if (! is_array($dimension) || collect($dimension)->sum('interests') !== $total) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+        }
     }
 
     /** @param list<string> $orderBy @return array{rows:int,sha256:string} */

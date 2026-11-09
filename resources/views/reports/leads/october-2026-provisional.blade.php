@@ -48,6 +48,7 @@
                     <tr><td>Sin clasificar</td><td>{{ number_format($overview['classification']['unclassified'], 0, ',', '.') }}</td></tr>
                     <tr><td>Procedencia vacía</td><td>{{ number_format($overview['classification']['raw_empty'], 0, ',', '.') }}</td></tr>
                     <tr><td>Valor no reconocido</td><td>{{ number_format($overview['classification']['raw_unmapped'], 0, ',', '.') }}</td></tr>
+                    <tr><td>Valor literal «General»</td><td>{{ number_format($overview['classification']['raw_literal_general'], 0, ',', '.') }}</td></tr>
                 </tbody>
             </table>
             <p>Los valores no reconocidos se agregan por frecuencia y huella de auditoría; la pantalla no expone valores libres ni identificadores.</p>

@@ -31,6 +31,8 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertSame(1, $overview['classification']['classified']);
         $this->assertSame(0, $overview['classification']['unclassified']);
         $this->assertSame([['delegation' => 'Madrid General', 'interests' => 1]], $overview['by_delegation']);
+        $this->assertSame(1, collect($overview['classification']['by_group'])->sum('interests'));
+        $this->assertSame(1, collect($overview['classification']['by_zone'])->sum('interests'));
         $this->assertSame('available_with_coverage_limits', $overview['availability']['leads_interest_overview']);
         $this->assertSame('unavailable', $overview['availability']['campaigns_calls_and_seo']);
         $this->assertArrayNotHasKey('salesforce_id', $overview);
@@ -67,9 +69,28 @@ class October2026ProvisionalInterestReaderTest extends TestCase
 
         $this->assertSame(0, $overview['classification']['classified']);
         $this->assertSame(1, $overview['classification']['raw_unmapped']);
+        $this->assertSame(0, $overview['classification']['raw_literal_general']);
         $this->assertSame('Sin clasificar', $overview['by_delegation'][0]['delegation']);
         $stored = (string) DB::table('salesforce_interest_october_provisional_validations')->where('scope', 'october_2026_provisional')->value('overview');
         $this->assertStringNotContainsString('not an official delegation', $stored);
+    }
+
+    public function test_it_keeps_the_literal_general_within_the_unrecognized_origin_audit(): void
+    {
+        $this->seedValidJournals();
+        DB::table('salesforce_interest_monthly_materialized_rows')
+            ->where('monthly_materialization_id', 1)
+            ->where('salesforce_id', $this->id(1))
+            ->update(['origin_delegation' => 'General']);
+
+        $overview = app(October2026ProvisionalInterestReader::class)->validate();
+
+        $this->assertSame(1, $overview['classification']['total_included']);
+        $this->assertSame(0, $overview['classification']['classified']);
+        $this->assertSame(1, $overview['classification']['raw_unmapped']);
+        $this->assertSame(1, $overview['classification']['raw_literal_general']);
+        $this->assertSame(1, $overview['classification']['data_quality_review']['literal_general']);
+        $this->assertSame('Sin clasificar', $overview['by_delegation'][0]['delegation']);
     }
 
     public function test_it_distinguishes_an_empty_origin_from_an_unmapped_value_without_reclassifying_it(): void
