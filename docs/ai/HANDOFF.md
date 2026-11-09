@@ -7053,6 +7053,38 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   benchmark ni producción desde esta revisión. PR: `Docs-Impact: updated`,
   `Docs-Matrix-Impact: updated`.
 
+## 2026-11-09 — evidencia validada para lector provisional de octubre
+
+- Se añadió `reports:validate-october-2026-provisional --confirm`. Ejecuta
+  validación local explícita de F2/F2M/F5 fijos, sin llamar a Salesforce, y
+  persiste sólo el agregado de cobertura, huellas, revisión y métricas de fase.
+  Las métricas no son benchmark ni certificación.
+- La migración aditiva crea snapshot de validación y revisión monótona. No hay
+  triggers `FOR EACH ROW`: las rutas Laravel autorizadas invalidan por lote el
+  snapshot e incrementan la revisión en la misma transacción al escribir F2,
+  F2M o F5. HTTP lee exclusivamente la evidencia validada y exige la misma
+  revisión antes y después: sin evidencia, con revisión pendiente/obsoleta o
+  carrera, responde 503. Tras un cambio hay que ejecutar de nuevo el comando
+  aprobado. SQL directo está fuera de esta garantía y requiere revocación
+  operativa explícita y nueva validación.
+- Seguridad/alcance: no se exponen payloads ni IDs, no hay lectura remota ni
+  fallback a generación/legacy. No cambian fuente publicada, lectores oficiales,
+  permisos, KPI, filtros, fórmulas, CSV, auditorías ni consumidores de los seis
+  informes. `DECISIONS.md` registra la persistencia de esta frontera fail-closed.
+- Se añadió a esta PR el job `october-provisional-mariadb`: prepara MariaDB 11 y
+  ejecuta `October2026ProvisionalInterestReaderTest`, incluida reaplicación de
+  migración, aserción de ausencia de triggers por fila y volumen sintético
+  representativo. Es validación prevista de CI, no un resultado ya obtenido.
+  Las métricas del comando son mediciones de fase/total locales, no benchmark.
+- Verificación documental: pendiente de validador sobre HEAD comprometido y
+  cuerpo de PR. No se ejecutaron PHP, MariaDB, migraciones, Salesforce, CI,
+  benchmark ni producción desde esta revisión. PR: `Docs-Impact: updated`,
+  `Docs-Matrix-Impact: updated`.
+- La fixture MariaDB usa las claves primarias F2 realmente persistidas al crear
+  F2M; no presupone que un rollback de prueba reinicie `AUTO_INCREMENT`.
+  Esto conserva la cobertura de claves foráneas tanto en SQLite como en
+  MariaDB sin alterar journals ni lógica productiva.
+
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
 - Causa corregida: el mapeador conserva la clave

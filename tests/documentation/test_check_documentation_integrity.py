@@ -339,7 +339,8 @@ class IntegrityTests(unittest.TestCase):
                 self.assertTrue(checker.unknown_functional(source))
 
     def test_control_files_are_reviewed_in_pairs(self) -> None:
-        for path in (".github/workflows/docs-integrity.yml",
+        for path in (".github/workflows/ci.yml",
+                     ".github/workflows/docs-integrity.yml",
                      "scripts/check_documentation_integrity.py",
                      checker.VALIDATOR_TEST, checker.GUIDE, "AGENTS.md"):
             with self.subTest(path=path):

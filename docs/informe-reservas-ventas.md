@@ -12,6 +12,8 @@ ni habilita KPIs o publicación.
 El lector administrativo provisional de octubre consume esos journals sólo para
 un resumen de Interests con límites de cobertura; no se integra con
 Reservas/Ventas, Rendimiento comercial, auditorías, cierres, filtros o CSV.
+La validación/snapshot local que condiciona esa pantalla no cambia la generación
+publicada de atribución ni requiere revalidar este informe.
 
 Actualizado: 2026-10-09.
 

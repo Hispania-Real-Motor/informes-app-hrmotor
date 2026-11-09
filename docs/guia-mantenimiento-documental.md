@@ -254,4 +254,6 @@ antes de migrar la SQLite sintética; la configuración de test llega de las
 variables del job. Este archivo evita avisos de ausencia de `.env`, no importa
 configuración local ni secretos de producción. El cambio del workflow exige
 revisión conjunta de guía y pruebas documentales por pertenecer a los controles
-críticos; no exime de ejecutar la suite funcional completa.
+críticos; no exime de ejecutar la suite funcional completa. Los jobs de
+compatibilidad de base de datos deben estar aislados, usar sólo datos sintéticos
+y no conectarse a producción.

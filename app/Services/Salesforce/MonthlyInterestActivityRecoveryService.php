@@ -2,6 +2,7 @@
 
 namespace App\Services\Salesforce;
 
+use App\Services\Reports\Leads\October2026ProvisionalEvidenceInvalidator;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
@@ -26,6 +27,7 @@ final class MonthlyInterestActivityRecoveryService
 
     public function __construct(
         private readonly SalesforceClient $client,
+        private readonly October2026ProvisionalEvidenceInvalidator $octoberEvidence = new October2026ProvisionalEvidenceInvalidator,
     ) {}
 
     public function prepare(int $monthlyRecoveryId, string $reason, int $batch = self::DEFAULT_BATCH_SIZE): int
@@ -224,6 +226,7 @@ final class MonthlyInterestActivityRecoveryService
             }, $mapped['rows']);
             if ($rows !== []) {
                 DB::table('salesforce_interest_monthly_activity_rows')->upsert($rows, ['monthly_activity_recovery_id', 'activity_kind', 'activity_salesforce_id'], ['interest_salesforce_id', 'who_salesforce_id', 'activity_is_deleted', 'interest_is_deleted', 'activity_date', 'start_datetime', 'salesforce_created_at', 'salesforce_last_modified_at', 'system_modstamp_at', 'content_hash', 'updated_at']);
+                $this->octoberEvidence->afterContentMutation((int) $run->monthly_recovery_id);
             }
             $counters = $this->counters($run);
             $this->accumulate($counters, $kind, $records, $mapped);
@@ -328,6 +331,7 @@ final class MonthlyInterestActivityRecoveryService
             $stage = 'database_persist';
             if ($mapped['rows'] !== []) {
                 DB::table('salesforce_interest_monthly_activity_rows')->upsert($mapped['rows'], ['monthly_activity_recovery_id', 'activity_kind', 'activity_salesforce_id'], ['interest_salesforce_id', 'who_salesforce_id', 'activity_is_deleted', 'interest_is_deleted', 'activity_date', 'start_datetime', 'salesforce_created_at', 'salesforce_last_modified_at', 'system_modstamp_at', 'content_hash', 'updated_at']);
+                $this->octoberEvidence->afterContentMutation((int) $run->monthly_recovery_id);
             }
             $counters = $this->counters($run);
             $this->accumulate($counters, $kind, $records, $mapped);

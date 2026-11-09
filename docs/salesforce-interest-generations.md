@@ -359,6 +359,39 @@ puntero de publicación ni cambio de generación. El contrato fijo no admite
 configuración de IDs: el único control de despliegue es el flag, que debe
 permanecer apagado salvo habilitación administrativa autorizada.
 
+La validación completa no se ejecuta desde HTTP. Un administrador debe lanzar
+de forma explícita y local:
+
+```text
+php artisan reports:validate-october-2026-provisional --confirm
+```
+
+El comando no consulta Salesforce: comprueba estados, período, vínculos y
+manifiestos F2/F2M/F5 de los IDs fijos, calcula agregados y persiste el snapshot
+de cobertura junto con huellas, revisión de integridad y métricas de duración.
+Las métricas sirven para auditar el coste local de cada fase; no son benchmark
+productivo ni evidencia de certificación. La migración aditiva crea el snapshot
+de validación y una revisión monótona. No hay triggers `FOR EACH ROW`: las rutas
+Laravel autorizadas que escriben en F2, F2M o F5 invalidan esa evidencia e
+incrementan la revisión dentro de la misma transacción y por lote. Por tanto,
+una escritura SQL directa queda fuera del contrato: no debe modificar esos
+journals sin una revocación operativa explícita y posterior validación.
+
+HTTP sólo lee el snapshot cuya revisión coincide antes y después de la petición;
+no vuelve a escanear las tablas de filas. Si no existe validación, si quedó
+obsoleta por un cambio instrumentado de journal o si la revisión cambia durante
+la lectura, responde 503. Vínculos y manifiestos se vuelven a comprobar en la
+validación administrativa, antes de persistir un snapshot nuevo. Tras cualquier
+cambio debe repetirse el comando autorizado. Este control reduce trabajo por
+petición y rechaza carreras en las rutas autorizadas, pero no certifica historia,
+no prueba hard deletes ni altera el aislamiento frente a lectores publicados. No se ha
+validado aquí el comportamiento en MariaDB/CI ni medido rendimiento. La PR
+incorpora el job de GitHub Actions `october-provisional-mariadb`, previsto para
+ejecutar ese test focal en MariaDB 11, reaplicar la migración y confirmar que no
+crea triggers por fila, también con volumen representativo sintético. El job es
+evidencia pendiente hasta que la CI de la PR termine; las métricas del comando
+son mediciones de sus fases, no un benchmark ni una garantía de rendimiento.
+
 ### Vista provisional administrativa
 
 `/informes/leads/provisional/september-october-2026` es distinta de los

@@ -1291,3 +1291,26 @@ journals son internamente fijos y no se aceptan por parámetro ni configuración
 para impedir que un despliegue redirija la fuente. El único control configurable
 es el flag de exposición, que se mantiene apagado hasta una habilitación
 administrativa autorizada.
+
+## 2026-11-09 — evidencia validada explícita antes de HTTP provisional
+
+La pantalla provisional no recalcula manifiestos durante una petición HTTP. Un
+comando local con `--confirm` valida los tres journals fijos y persiste el
+agregado, huellas y revisión exacta; HTTP acepta sólo ese snapshot si su
+revisión coincide antes y después de leerlo. Se prohíben triggers `FOR EACH
+ROW`: toda ruta Laravel autorizada que muta F2, F2M o F5 invalida por lote la
+evidencia e incrementa la revisión dentro de la misma transacción. Se prefiere
+indisponibilidad controlada a servir evidencia pendiente o antigua.
+
+La tabla de evidencia se conserva en rollback para no reabrir silenciosamente
+la lectura de snapshots obsoletos. SQL directo no participa en esta frontera y
+requiere revocación operativa explícita antes de una nueva validación. Las
+métricas de duración son observabilidad local de validación, no un SLO,
+benchmark ni certificación histórica. El diseño sigue separado de
+`InterestGenerationReader` y no cambia publicación ni consumidores oficiales.
+
+La PR incorpora un job focal de GitHub Actions para MariaDB 11. Su propósito es
+ejecutar `October2026ProvisionalInterestReaderTest`, incluida la reaplicación de
+la migración, ausencia de triggers por fila y volumen sintético representativo;
+no sustituye las garantías del contrato ni acredita rendimiento hasta que la CI
+termine. Las métricas que guarda el comando son medidas de ejecución local.

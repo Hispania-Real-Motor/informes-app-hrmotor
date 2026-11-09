@@ -2,6 +2,7 @@
 
 namespace App\Services\Salesforce;
 
+use App\Services\Reports\Leads\October2026ProvisionalEvidenceInvalidator;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
@@ -22,6 +23,7 @@ final class InterestMonthlyRecoveryService
         private readonly SalesforceClient $client,
         private readonly SalesforceInterestSyncService $interests,
         private readonly InterestMonthlyContentHasher $hasher,
+        private readonly October2026ProvisionalEvidenceInvalidator $octoberEvidence = new October2026ProvisionalEvidenceInvalidator,
     ) {}
 
     public function prepare(CarbonInterface $start, CarbonInterface $end, string $reason, int $batch = self::DEFAULT_BATCH_SIZE): int
@@ -152,6 +154,7 @@ final class InterestMonthlyRecoveryService
             if ($rows !== []) {
                 $stage = 'database_persist';
                 DB::table('salesforce_interest_monthly_recovery_rows')->upsert($rows, ['monthly_recovery_id', 'salesforce_id'], ['content_hash', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'updated_at']);
+                $this->octoberEvidence->afterContentMutation((int) $r->id);
             }
             $next = count($records) === (int) $r->batch_size ? 'f2_extract' : 'verify';
             $c = $this->counters($r);

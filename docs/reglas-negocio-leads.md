@@ -104,6 +104,10 @@ evidencia incompleta. No es Summary, AJAX ni CSV: no cambia el 503 del dataset
 oficial ni habilita KPI, comparativas, auditorías o exportaciones. Su flag queda
 apagado; F2/F2M/F5 son IDs internos fijos sin parámetros ni configuración que
 pueda redirigir la fuente.
+La pantalla sólo está disponible tras `reports:validate-october-2026-provisional
+--confirm`: HTTP lee el snapshot local de la misma revisión de journals y falla
+503 si está pendiente, obsoleto o cambia durante la lectura. Este comando no
+consulta Salesforce ni habilita el dataset, AJAX, CSV, auditoría o KPI oficial.
 El control fail-closed distingue la evidencia fuente de F2M
 (`Id|content_hash|is_deleted`) de la de F5 (`Id:is_deleted`); una huella de un
 journal no puede validar al otro ni alterar el informe oficial.
