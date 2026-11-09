@@ -9,6 +9,9 @@ con Reservas/Ventas ni Rendimiento comercial: lectores, auditorías, filtros,
 CSV, cálculos y disponibilidad siguen dependiendo de la generación Interest
 publicada y de sus fuentes actuales. La evidencia mensual no certifica historia
 ni habilita KPIs o publicación.
+El lector administrativo provisional de octubre consume esos journals sólo para
+un resumen de Interests con límites de cobertura; no se integra con
+Reservas/Ventas, Rendimiento comercial, auditorías, cierres, filtros o CSV.
 
 Actualizado: 2026-10-09.
 

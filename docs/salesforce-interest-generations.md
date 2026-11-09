@@ -326,6 +326,35 @@ pertenecer a la misma F2; la reconciliación no los escribe, no repara ausencias
 ni eleva una verificación a certificación. Un hard delete sigue sin probarse por
 la ausencia de `queryAll`.
 
+### Lector administrativo provisional de octubre de 2026
+
+`/informes/leads/provisional/october-2026` es una pantalla separada de todos
+los lectores oficiales. Requiere administrador autenticado y permanece 404 por
+defecto mientras `SALESFORCE_OCTOBER_2026_PROVISIONAL_ENABLED` sea falso. Al
+habilitarse debe devolver `no-store, private`; cualquier journal inexistente,
+en fase distinta de `completed`, período distinto de octubre de 2026 en
+`Europe/Madrid`, relación F2/F2M/F5 no coincidente o manifiesto/hash que no
+coincida falla cerrado con 503. No hay fallback a la tabla legacy, a otra
+generación, ni a datos Salesforce remotos.
+
+La lectura usa exclusivamente la F2, su materialización F2M y el run F5 con
+ID interno fijo `1`, unidos a la misma F2. No acepta parámetros ni configuración
+que redirijan esa fuente. Expone sólo cobertura agregada: tamaño
+F2, materializados, contenido coincidente, activos aptos, ausencias, cambios de
+contenido, soft deletes observados y disponibilidad de identidad canónica. Los
+agregados por delegación incluyen exclusivamente filas activas cuyo contenido
+sigue coincidiendo con F2; no muestra IDs Salesforce, payloads ni detalle de
+discrepancias. F2/F2M/F5 terminados o verificados no acreditan una fotografía
+histórica ni `historical_certification`, que continúa `unavailable`.
+
+La pantalla puede declarar el resumen de Interests disponible **con límites de
+cobertura** sólo dentro de ese contexto administrativo. Dirección, KPI y
+comparativas, Reservas/Ventas y Rendimiento comercial, Campañas, Llamadas y SEO
+siguen indisponibles desde esta fuente; no hay CSV, auditoría, caché compartida,
+puntero de publicación ni cambio de generación. El contrato fijo no admite
+configuración de IDs: el único control de despliegue es el flag, que debe
+permanecer apagado salvo habilitación administrativa autorizada.
+
 ### Vista provisional administrativa
 
 `/informes/leads/provisional/september-october-2026` es distinta de los

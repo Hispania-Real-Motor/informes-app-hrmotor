@@ -8,6 +8,9 @@ estado de borrado observable. No cambia la resolución de Interests relacionados
 por Llamadas, ni consulta estas tablas desde lectores, clasificaciones, filtros,
 exportaciones o KPI. Al no acreditar hard deletes ni fotografía histórica, el
 journal permanece provisional, no publicado y sin certificación F5.
+La pantalla administrativa de octubre que usa F2/F2M/F5 mensuales tampoco
+alimenta clasificación, reproceso, detalle, auditoría ni exportación de
+Llamadas; su disponibilidad no sustituye la generación publicada.
 
 Actualizado: 2026-10-08.
 

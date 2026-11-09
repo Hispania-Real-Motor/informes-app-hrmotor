@@ -9,6 +9,9 @@ readiness, detalle, rankings, auditorías ni CSV de Campañas: el informe mantie
 la generación Interest publicada como fuente. Diferencias, ausencias o soft
 deletes observados bloquean la verificación del journal y no habilitan KPI,
 publicación ni certificación histórica.
+El lector administrativo provisional de octubre se limita a cobertura y
+delegación de Interests; no habilita atribución, readiness, snapshots, rankings,
+KPI ni CSV de Campañas.
 
 ## Disponibilidad con Interests no certificado
 
