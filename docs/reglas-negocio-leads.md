@@ -112,6 +112,22 @@ El control fail-closed distingue la evidencia fuente de F2M
 (`Id|content_hash|is_deleted`) de la de F5 (`Id:is_deleted`); una huella de un
 journal no puede validar al otro ni alterar el informe oficial.
 
+### Clasificación de procedencia en la vista provisional de octubre (Fase A)
+
+Durante esa misma validación administrativa, y nunca desde HTTP, se normaliza
+`origin_delegation` de la única población apta: filas F2M activas cuyo contenido
+sigue coincidiendo con F2. El total clasificado más el no clasificado debe
+igualar el recuento de cobertura `eligible_active_matching`. Se reutiliza
+`LeadDelegationNormalizer`: expone recuentos por delegación, grupo y zona, pero
+no infiere procedencia desde owner, comercial, cuenta ni Lead relacionado.
+
+`Sin clasificar` separa valor vacío de valor no reconocido. Para este último el
+snapshot conserva sólo frecuencia y huella SHA-256 estable, sin el valor bruto;
+la huella es trazabilidad operativa, no anonimización ni dato de procedencia
+utilizable por los informes oficiales. La vista sigue sin mostrar IDs ni
+payloads, y esta calidad de clasificación no habilita Summary, AJAX, CSV,
+auditoría, comparativas ni KPI oficiales.
+
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
 Sus lecturas no prueban una fotografía histórica al watermark; los límites y

@@ -351,6 +351,16 @@ sigue coincidiendo con F2; no muestra IDs Salesforce, payloads ni detalle de
 discrepancias. F2/F2M/F5 terminados o verificados no acreditan una fotografía
 histórica ni `historical_certification`, que continúa `unavailable`.
 
+La Fase A de esa vista calcula al validar, no al servir HTTP, la clasificación
+de procedencia sobre exactamente el mismo universo F2M activo y coincidente.
+Usa `LeadDelegationNormalizer` para agregar delegación, grupo y zona; no deriva
+ninguno de esos valores de owner, comercial, cuenta o Lead. Conserva totales de
+clasificado, sin clasificar, vacío y no reconocido; el total incluido debe
+coincidir con `eligible_active_matching`. Los valores no reconocidos sólo dejan
+una huella SHA-256 estable y su frecuencia, nunca el valor fuente, IDs ni
+payloads. Esa huella permite agrupar revisión de calidad, no constituye
+anonimización ni certificación histórica.
+
 La pantalla puede declarar el resumen de Interests disponible **con límites de
 cobertura** sólo dentro de ese contexto administrativo. Dirección, KPI y
 comparativas, Reservas/Ventas y Rendimiento comercial, Campañas, Llamadas y SEO

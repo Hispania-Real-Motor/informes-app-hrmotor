@@ -50,7 +50,7 @@
                     <tr><td>Valor no reconocido</td><td>{{ number_format($overview['classification']['raw_unmapped'], 0, ',', '.') }}</td></tr>
                 </tbody>
             </table>
-            <p>Los valores no reconocidos se agregan mediante huella no reversible; la pantalla no expone valores libres ni identificadores.</p>
+            <p>Los valores no reconocidos se agregan por frecuencia y huella de auditoría; la pantalla no expone valores libres ni identificadores.</p>
         </section>
 
         <section class="card" aria-labelledby="groups-title">
