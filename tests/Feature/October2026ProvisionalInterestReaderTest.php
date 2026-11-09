@@ -343,7 +343,8 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             ->assertSee('id="leadReportContent"', false)
             ->assertSee('Grupo de procedencia')
             ->assertSee('comerciales, actividad y comparativas permanecen no disponibles')
-            ->assertDontSee('Información temporalmente no disponible');
+            ->assertSee('window.initialLeadPeriod = "october_2026";', false)
+            ->assertSee('<div class="is-hidden" id="leadUnavailableState">', false);
 
         $this->authorisedChange(fn () => DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update(['phase' => 'verify_task']));
         $this->asReportUser($admin)->get('/informes/leads?period=october_2026')->assertStatus(503);

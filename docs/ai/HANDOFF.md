@@ -27,7 +27,10 @@
   se cargan desde un script aislado y sólo se renderizan para el período
   provisional, conservando literalmente el contrato/HTML del dashboard oficial.
   La regresión JavaScript verifica que esos controles aplican parámetros
-  combinados reales, no búsquedas sobre etiquetas renderizadas.
+  combinados reales, no búsquedas sobre etiquetas renderizadas. La regresión
+  HTTP comprueba el estado inicial de octubre y que el bloque de indisponibilidad
+  queda oculto; no confunde ese markup estático de recuperación con un bloqueo
+  mostrado al administrador.
 - Verificación local posterior: `git diff --check`, sintaxis de ambos scripts y
   `node --test tests/js/leads-unavailable.test.mjs` (12/12) correctos. PHP,
   Pint, build, MariaDB 11 y documentación se validan obligatoriamente en
