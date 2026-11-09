@@ -7085,6 +7085,28 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   Esto conserva la cobertura de claves foráneas tanto en SQLite como en
   MariaDB sin alterar journals ni lógica productiva.
 
+## 2026-11-09 — Fase A: clasificación de procedencia en octubre provisional
+
+- Durante `reports:validate-october-2026-provisional --confirm`, la evidencia
+  local añade agregados de `origin_delegation` sólo para F2M activo con contenido
+  coincidente. Reutiliza `LeadDelegationNormalizer` para delegación, grupo y
+  zona; contabiliza clasificado/sin clasificar y distingue vacío de no
+  reconocido. La suma debe igualar `eligible_active_matching`.
+- Seguridad y límites: no se infiere owner, comercial, cuenta ni Lead. Para
+  valores no reconocidos se guardan frecuencia y huella SHA-256 estable, no el
+  valor bruto, IDs ni payloads; la huella no equivale a anonimización. HTTP lee
+  sólo snapshot y revisión: no recorre journals ni clasifica en vivo. Continúan
+  sin cambiar fuentes publicadas, certificación, KPI, CSV, auditoría,
+  comparativas ni consumidores oficiales de los seis informes.
+- Verificación: no se ejecutaron PHP, Blade, tests, CI, MariaDB, migraciones,
+  Salesforce, benchmark ni producción en esta revisión documental. El job CI y
+  las métricas locales siguen siendo evidencia pendiente, no resultados.
+- Evidencia externa comunicada: SOQL de estado actual observó 34.212 Interests,
+  con 21.238 procedencias vacías, 12.974 informadas y 1.394 literal `General`.
+  Es un diagnóstico actual separado: no reemplaza F2M válido de octubre (33.811)
+  ni es snapshot histórico. `General` sigue no reconocido y sólo suma el
+  subcontador `raw_literal_general`; no se añadió alias. No se expusieron IDs.
+
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
 - Causa corregida: el mapeador conserva la clave

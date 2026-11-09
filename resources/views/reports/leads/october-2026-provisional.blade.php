@@ -25,6 +25,7 @@
 
         <section class="card" aria-labelledby="delegations-title">
             <h2 id="delegations-title">Intereses activos coincidentes por delegación de procedencia</h2>
+            <p>La procedencia se normaliza con el mismo diccionario de delegaciones del informe oficial. No se infiere de owner, comercial, cuenta ni Lead relacionado.</p>
             <table>
                 <thead><tr><th>Delegación</th><th>Intereses</th></tr></thead>
                 <tbody>
@@ -33,6 +34,42 @@
                     @empty
                         <tr><td colspan="2">No hay filas aptas para mostrar.</td></tr>
                     @endforelse
+                </tbody>
+            </table>
+        </section>
+
+        <section class="card" aria-labelledby="classification-title">
+            <h2 id="classification-title">Calidad de clasificación de procedencia</h2>
+            <table>
+                <thead><tr><th>Medida</th><th>Intereses</th></tr></thead>
+                <tbody>
+                    <tr><td>Universo incluido</td><td>{{ number_format($overview['classification']['total_included'], 0, ',', '.') }}</td></tr>
+                    <tr><td>Procedencia clasificada</td><td>{{ number_format($overview['classification']['classified'], 0, ',', '.') }}</td></tr>
+                    <tr><td>Sin clasificar</td><td>{{ number_format($overview['classification']['unclassified'], 0, ',', '.') }}</td></tr>
+                    <tr><td>Procedencia vacía</td><td>{{ number_format($overview['classification']['raw_empty'], 0, ',', '.') }}</td></tr>
+                    <tr><td>Valor no reconocido</td><td>{{ number_format($overview['classification']['raw_unmapped'], 0, ',', '.') }}</td></tr>
+                    <tr><td>Valor literal «General»</td><td>{{ number_format($overview['classification']['raw_literal_general'], 0, ',', '.') }}</td></tr>
+                </tbody>
+            </table>
+            <p>Los valores no reconocidos se agregan por frecuencia y huella de auditoría; la pantalla no expone valores libres ni identificadores.</p>
+        </section>
+
+        <section class="card" aria-labelledby="groups-title">
+            <h2 id="groups-title">Distribución por grupo y zona de procedencia</h2>
+            <table>
+                <thead><tr><th>Grupo</th><th>Intereses</th></tr></thead>
+                <tbody>
+                    @foreach ($overview['classification']['by_group'] as $row)
+                        <tr><td>{{ $row['group'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                    @endforeach
+                </tbody>
+            </table>
+            <table>
+                <thead><tr><th>Zona</th><th>Intereses</th></tr></thead>
+                <tbody>
+                    @foreach ($overview['classification']['by_zone'] as $row)
+                        <tr><td>{{ $row['zone'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                    @endforeach
                 </tbody>
             </table>
         </section>

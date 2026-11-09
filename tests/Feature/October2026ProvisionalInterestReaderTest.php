@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ReportUser;
+use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\Leads\October2026ProvisionalEvidenceInvalidator;
 use App\Services\Reports\Leads\October2026ProvisionalInterestReader;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
@@ -27,9 +28,86 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertSame(1, $overview['coverage']['eligible_active_matching']);
         $this->assertSame(1, $overview['coverage']['content_changed']);
         $this->assertSame(1, $overview['coverage']['canonical_identity_unavailable']);
+        $this->assertSame(1, $overview['classification']['total_included']);
+        $this->assertSame(1, $overview['classification']['classified']);
+        $this->assertSame(0, $overview['classification']['unclassified']);
+        $this->assertSame([['delegation' => 'Madrid General', 'interests' => 1]], $overview['by_delegation']);
+        $this->assertSame(1, collect($overview['classification']['by_group'])->sum('interests'));
+        $this->assertSame(1, collect($overview['classification']['by_zone'])->sum('interests'));
         $this->assertSame('available_with_coverage_limits', $overview['availability']['leads_interest_overview']);
         $this->assertSame('unavailable', $overview['availability']['campaigns_calls_and_seo']);
         $this->assertArrayNotHasKey('salesforce_id', $overview);
+    }
+
+    public function test_it_uses_the_official_delegation_normalizer_without_inferencing_a_commercial_delegation(): void
+    {
+        $normalizer = app(LeadDelegationNormalizer::class);
+        $expected = [
+            'HR MOTOR TORREJON' => ['Torrejón', 'Grupo Madrid', 'Zona Sur y Centro'],
+            'Sant Boi de Llobregat' => ['Sant Boi', 'Grupo Barcelona', 'Zona Cataluña'],
+            'Valencia Paterna' => ['Paterna', 'Grupo Valencia', 'Zona Mediterraneo'],
+            'Sevilla-Alcalá de Guadaira-HR Motor' => ['Alcalá de Guadaira', 'Grupo Sevilla', 'Zona Sur y Centro'],
+            'Malaga Centro' => ['Málaga Centro', 'Grupo Málaga', 'Zona Sur y Centro'],
+            'Zona Navarra' => ['Navarra General', 'Grupo Navarra', 'Zona Norte'],
+            'Castellon general' => ['Castellón General', 'Grupo Castellón', 'Zona Mediterraneo'],
+            'HR MOTOR BILBAO' => ['Bilbao', 'Grupo País Vasco', 'Zona Norte'],
+        ];
+        foreach ($expected as $raw => [$delegation, $group, $zone]) {
+            $result = $normalizer->normalize($raw);
+            $this->assertSame($delegation, $result['delegation']);
+            $this->assertSame($group, $result['group']);
+            $this->assertSame($zone, $result['zone']);
+            $this->assertTrue($result['is_classified']);
+        }
+
+        $this->seedValidJournals();
+        DB::table('salesforce_interest_monthly_materialized_rows')
+            ->where('monthly_materialization_id', 1)
+            ->where('salesforce_id', $this->id(1))
+            ->update(['origin_delegation' => 'not an official delegation']);
+
+        $overview = app(October2026ProvisionalInterestReader::class)->validate();
+
+        $this->assertSame(0, $overview['classification']['classified']);
+        $this->assertSame(1, $overview['classification']['raw_unmapped']);
+        $this->assertSame(0, $overview['classification']['raw_literal_general']);
+        $this->assertSame('Sin clasificar', $overview['by_delegation'][0]['delegation']);
+        $stored = (string) DB::table('salesforce_interest_october_provisional_validations')->where('scope', 'october_2026_provisional')->value('overview');
+        $this->assertStringNotContainsString('not an official delegation', $stored);
+    }
+
+    public function test_it_keeps_the_literal_general_within_the_unrecognized_origin_audit(): void
+    {
+        $this->seedValidJournals();
+        DB::table('salesforce_interest_monthly_materialized_rows')
+            ->where('monthly_materialization_id', 1)
+            ->where('salesforce_id', $this->id(1))
+            ->update(['origin_delegation' => 'General']);
+
+        $overview = app(October2026ProvisionalInterestReader::class)->validate();
+
+        $this->assertSame(1, $overview['classification']['total_included']);
+        $this->assertSame(0, $overview['classification']['classified']);
+        $this->assertSame(1, $overview['classification']['raw_unmapped']);
+        $this->assertSame(1, $overview['classification']['raw_literal_general']);
+        $this->assertSame(1, $overview['classification']['data_quality_review']['literal_general']);
+        $this->assertSame('Sin clasificar', $overview['by_delegation'][0]['delegation']);
+    }
+
+    public function test_it_distinguishes_an_empty_origin_from_an_unmapped_value_without_reclassifying_it(): void
+    {
+        $this->seedValidJournals();
+        DB::table('salesforce_interest_monthly_materialized_rows')
+            ->where('monthly_materialization_id', 1)
+            ->where('salesforce_id', $this->id(1))
+            ->update(['origin_delegation' => '   ']);
+
+        $overview = app(October2026ProvisionalInterestReader::class)->validate();
+
+        $this->assertSame(1, $overview['classification']['unclassified']);
+        $this->assertSame(1, $overview['classification']['raw_empty']);
+        $this->assertSame(0, $overview['classification']['raw_unmapped']);
+        $this->assertSame(1, $overview['classification']['data_quality_review']['required']);
     }
 
     public function test_it_rejects_pending_validation_and_invalidates_a_same_count_content_change(): void

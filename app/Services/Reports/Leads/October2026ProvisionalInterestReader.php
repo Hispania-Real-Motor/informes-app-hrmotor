@@ -124,20 +124,10 @@ final class October2026ProvisionalInterestReader
         $metrics['missing_aggregate_ns'] = hrtime(true) - $phaseStartedAt;
 
         $phaseStartedAt = hrtime(true);
-        $byDelegation = DB::table('salesforce_interest_monthly_materialized_rows')
-            ->where('monthly_materialization_id', $materializationId)
-            ->where('content_matches_inventory', true)
-            ->where('is_deleted', false)
-            ->selectRaw("COALESCE(NULLIF(TRIM(origin_delegation), ''), 'Sin clasificar') as delegation")
-            ->selectRaw('COUNT(*) as interests')
-            ->groupBy('delegation')
-            ->orderByDesc('interests')
-            ->orderBy('delegation')
-            ->limit(100)
-            ->get()
-            ->map(fn (object $row): array => ['delegation' => $row->delegation, 'interests' => (int) $row->interests])
-            ->all();
-        $metrics['delegation_aggregate_ns'] = hrtime(true) - $phaseStartedAt;
+        $classification = $this->classification($materializationId);
+        $metrics['delegation_classification_ns'] = hrtime(true) - $phaseStartedAt;
+
+        $this->assertClassificationReconciles($classification, (int) $quality->eligible_active_matching);
 
         $overview = [
             'period' => ['label' => 'Octubre de 2026', 'start_utc' => self::START_UTC, 'end_utc' => self::END_UTC, 'timezone' => 'Europe/Madrid'],
@@ -151,7 +141,8 @@ final class October2026ProvisionalInterestReader
                 'soft_deleted_observed' => (int) $quality->soft_deleted,
                 'canonical_identity_unavailable' => (int) $quality->canonical_identity_unavailable,
             ],
-            'by_delegation' => $byDelegation,
+            'by_delegation' => $classification['by_delegation'],
+            'classification' => $classification,
             'verification' => [
                 'f2_verified' => (bool) data_get($this->json($recovery->evidence), 'verification.verified', false),
                 'materialization_verified' => (bool) data_get($materializationEvidence, 'verification.verified', false),
@@ -278,6 +269,114 @@ final class October2026ProvisionalInterestReader
     private function activityManifest(int $activityRunId): array
     {
         return $this->manifest('salesforce_interest_monthly_activity_rows', 'monthly_activity_recovery_id', $activityRunId, ['activity_kind', 'activity_salesforce_id', 'content_hash']);
+    }
+
+    /**
+     * Applies the same normalizer that the official Interest dashboard uses to
+     * the fixed, valid F2M universe. The input value is intentionally never
+     * persisted in this public-administration snapshot: unknown values are
+     * represented by a stable fingerprint and frequency so the audit remains
+     * actionable without exposing a possible free-text personal value.
+     *
+     * @return array{total_included:int,classified:int,unclassified:int,raw_empty:int,raw_unmapped:int,raw_literal_general:int,by_delegation:list<array{delegation:string,interests:int}>,by_group:list<array{group:string,interests:int}>,by_zone:list<array{zone:string,interests:int}>,unrecognized_value_frequencies:list<array{fingerprint:string,interests:int}>,data_quality_review:array{required:int,empty_origin:int,unmapped_origin:int,literal_general:int}}
+     */
+    private function classification(int $materializationId): array
+    {
+        $normalizer = app(LeadDelegationNormalizer::class);
+        $total = 0;
+        $classified = 0;
+        $empty = 0;
+        $unmapped = 0;
+        $literalGeneral = 0;
+        $delegations = [];
+        $groups = [];
+        $zones = [];
+        $unknownValues = [];
+
+        foreach (DB::table('salesforce_interest_monthly_materialized_rows')
+            ->where('monthly_materialization_id', $materializationId)
+            ->where('content_matches_inventory', true)
+            ->where('is_deleted', false)
+            ->orderBy('salesforce_id')
+            ->cursor() as $row) {
+            $normalized = $normalizer->normalize($row->origin_delegation);
+            $total++;
+            $delegations[$normalized['delegation']] = ($delegations[$normalized['delegation']] ?? 0) + 1;
+            $groups[$normalized['group']] = ($groups[$normalized['group']] ?? 0) + 1;
+            $zones[$normalized['zone']] = ($zones[$normalized['zone']] ?? 0) + 1;
+
+            if ($normalized['is_classified']) {
+                $classified++;
+
+                continue;
+            }
+
+            if ($normalized['raw'] === null) {
+                $empty++;
+
+                continue;
+            }
+
+            $unmapped++;
+            if (mb_strtolower((string) $normalized['raw']) === 'general') {
+                $literalGeneral++;
+            }
+            $fingerprint = hash('sha256', (string) $normalized['raw']);
+            $unknownValues[$fingerprint] = ($unknownValues[$fingerprint] ?? 0) + 1;
+        }
+
+        return [
+            'total_included' => $total,
+            'classified' => $classified,
+            'unclassified' => $empty + $unmapped,
+            'raw_empty' => $empty,
+            'raw_unmapped' => $unmapped,
+            'raw_literal_general' => $literalGeneral,
+            'by_delegation' => $this->labelCounts($delegations, 'delegation', $normalizer),
+            'by_group' => $this->labelCounts($groups, 'group', $normalizer),
+            'by_zone' => $this->labelCounts($zones, 'zone', $normalizer),
+            'unrecognized_value_frequencies' => collect($unknownValues)
+                ->map(fn (int $interests, string $fingerprint): array => ['fingerprint' => $fingerprint, 'interests' => $interests])
+                ->sortByDesc('interests')->values()->all(),
+            'data_quality_review' => [
+                'required' => $empty + $unmapped,
+                'empty_origin' => $empty,
+                'unmapped_origin' => $unmapped,
+                'literal_general' => $literalGeneral,
+            ],
+        ];
+    }
+
+    /** @param array<string, int> $counts @return list<array<string, int|string>> */
+    private function labelCounts(array $counts, string $label, LeadDelegationNormalizer $normalizer): array
+    {
+        return collect($normalizer->sortLabels(array_keys($counts)))
+            ->map(fn (string $value): array => [$label => $value, 'interests' => $counts[$value]])
+            ->sortByDesc('interests')->values()->all();
+    }
+
+    /** @param array<string, mixed> $classification */
+    private function assertClassificationReconciles(array $classification, int $expectedTotal): void
+    {
+        $total = (int) ($classification['total_included'] ?? -1);
+        $allDimensions = [
+            $classification['by_delegation'] ?? null,
+            $classification['by_group'] ?? null,
+            $classification['by_zone'] ?? null,
+        ];
+
+        if ($total !== $expectedTotal
+            || (int) ($classification['classified'] ?? -1) + (int) ($classification['unclassified'] ?? -1) !== $total
+            || (int) ($classification['raw_empty'] ?? -1) + (int) ($classification['raw_unmapped'] ?? -1) !== (int) ($classification['unclassified'] ?? -1)
+            || (int) ($classification['raw_literal_general'] ?? -1) > (int) ($classification['raw_unmapped'] ?? -1)) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        foreach ($allDimensions as $dimension) {
+            if (! is_array($dimension) || collect($dimension)->sum('interests') !== $total) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+        }
     }
 
     /** @param list<string> $orderBy @return array{rows:int,sha256:string} */

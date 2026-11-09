@@ -1314,3 +1314,21 @@ ejecutar `October2026ProvisionalInterestReaderTest`, incluida la reaplicación d
 la migración, ausencia de triggers por fila y volumen sintético representativo;
 no sustituye las garantías del contrato ni acredita rendimiento hasta que la CI
 termine. Las métricas que guarda el comando son medidas de ejecución local.
+
+## 2026-11-09 — clasificación provisional sólo desde la procedencia F2M
+
+La Fase A reutiliza `LeadDelegationNormalizer` durante la validación explícita
+para clasificar exclusivamente `origin_delegation` del universo F2M activo y
+coincidente. No se permite completar procedencia desde owner, comercial, cuenta
+o Lead porque alteraría el origen y el universo del lector aislado. La evidencia
+persiste agregados y, para valores no reconocidos, únicamente frecuencia y
+huella SHA-256 estable; no persiste el valor bruto. La huella sirve para
+agrupar revisión de calidad, no para afirmar anonimización ni certificación.
+HTTP conserva la frontera de sólo lectura de evidencia/revisión y la decisión
+no publica ni redirige consumidores oficiales.
+
+La observación SOQL actual comunicada (34.212 Interests; 21.238 vacíos, 12.974
+informados y 1.394 literales `General`) se mantiene separada del universo F2M
+válido de octubre (33.811): no se usa como snapshot histórico ni como fuente
+del lector. `General` no recibe alias; cuando aparece en F2M se registra sólo
+en `raw_literal_general`, incluido entre los valores informados no reconocidos.
