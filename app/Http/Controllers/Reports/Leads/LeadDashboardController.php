@@ -24,14 +24,14 @@ class LeadDashboardController extends Controller
         if ($requestedOctober) {
             $this->assertOctoberAccess($request, $octoberReader);
         }
-        $useOctoberByDefault = ! $requestedOctober
+        $useOctoberByDefault = !$requestedOctober
             && $this->canUseOctober($request, $octoberReader)
-            && ! $this->officialGenerationAvailable($interestGenerations);
+            && !$this->officialGenerationAvailable($interestGenerations);
         $usesOctober = $requestedOctober || $useOctoberByDefault;
 
         $response = view('reports.leads.index', [
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'leads'),
-            'reportUserCanAudit' => ! $usesOctober && ReportUserAccess::canAuditReport($request, 'leads'),
+            'reportUserCanAudit' => !$usesOctober && ReportUserAccess::canAuditReport($request, 'leads'),
             'octoberProvisionalEnabled' => config('salesforce.october_2026_provisional_enabled') === true
                 && ReportUserAccess::isAdmin($request),
             'initialLeadPeriod' => $usesOctober ? self::OCTOBER_2026_PROVISIONAL_PERIOD : null,
@@ -55,7 +55,7 @@ class LeadDashboardController extends Controller
 
     private function canUseOctober(Request $request, October2026ProvisionalInterestReader $reader): bool
     {
-        if (config('salesforce.october_2026_provisional_enabled') !== true || ! ReportUserAccess::isAdmin($request)) {
+        if (config('salesforce.october_2026_provisional_enabled') !== true || !ReportUserAccess::isAdmin($request)) {
             return false;
         }
 
