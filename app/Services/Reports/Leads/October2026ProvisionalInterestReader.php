@@ -128,6 +128,10 @@ final class October2026ProvisionalInterestReader
         $metrics['delegation_classification_ns'] = hrtime(true) - $phaseStartedAt;
 
         $this->assertClassificationReconciles($classification, (int) $quality->eligible_active_matching);
+        $phaseStartedAt = hrtime(true);
+        $functionalKpis = $this->functionalKpis($materializationId);
+        $metrics['functional_kpis_ns'] = hrtime(true) - $phaseStartedAt;
+        $this->assertFunctionalKpisReconcile($functionalKpis, (int) $quality->eligible_active_matching);
 
         $overview = [
             'period' => ['label' => 'Octubre de 2026', 'start_utc' => self::START_UTC, 'end_utc' => self::END_UTC, 'timezone' => 'Europe/Madrid'],
@@ -143,6 +147,7 @@ final class October2026ProvisionalInterestReader
             ],
             'by_delegation' => $classification['by_delegation'],
             'classification' => $classification,
+            'functional_kpis' => $functionalKpis,
             'verification' => [
                 'f2_verified' => (bool) data_get($this->json($recovery->evidence), 'verification.verified', false),
                 'materialization_verified' => (bool) data_get($materializationEvidence, 'verification.verified', false),
@@ -152,6 +157,10 @@ final class October2026ProvisionalInterestReader
             ],
             'availability' => [
                 'leads_interest_overview' => 'available_with_coverage_limits',
+                'provisional_interest_kpis' => 'available_with_coverage_limits',
+                'commercials_eligible' => 'unavailable_missing_historical_salesforce_user_snapshot',
+                'commercial_delegations' => 'unavailable_missing_historical_salesforce_user_snapshot',
+                'activity_kpis' => 'unavailable_missing_relationship_status_and_historical_f5_certification',
                 'direction_kpis_and_comparisons' => 'unavailable',
                 'reservations_sales_and_commercial_performance' => 'unavailable',
                 'campaigns_calls_and_seo' => 'unavailable',
@@ -345,6 +354,90 @@ final class October2026ProvisionalInterestReader
                 'literal_general' => $literalGeneral,
             ],
         ];
+    }
+
+    /**
+     * Calculates only the Interest dimensions whose value is present in the
+     * valid F2M row. Commercial attribution and activity KPIs deliberately
+     * stay unavailable: their official formula depends on historical user and
+     * relationship evidence that this monthly snapshot does not retain.
+     *
+     * @return array{total:int,statuses:list<array{status:string,interests:int}>,types:list<array{type:string,interests:int}>,sources:list<array{source:string,interests:int}>,media:list<array{medium:string,interests:int}>,channels:list<array{channel:string,interests:int}>}
+     */
+    private function functionalKpis(int $materializationId): array
+    {
+        $types = [];
+        $statuses = [];
+        $sources = [];
+        $media = [];
+        $channels = [];
+        $total = 0;
+        $recordTypes = app(LeadRecordTypeNormalizer::class);
+
+        foreach (DB::table('salesforce_interest_monthly_materialized_rows')
+            ->where('monthly_materialization_id', $materializationId)
+            ->where('content_matches_inventory', true)
+            ->where('is_deleted', false)
+            ->orderBy('salesforce_id')
+            ->cursor() as $row) {
+            $total++;
+            $status = $this->cleanLabel($row->status);
+            $source = $this->cleanLabel($row->source);
+            $medium = $this->cleanLabel($row->medium);
+            $channel = $this->cleanLabel($row->channel);
+            $type = $recordTypes->label($recordTypes->normalize($row->type)) ?? 'Sin clasificar';
+
+            $statuses[$status] = ($statuses[$status] ?? 0) + 1;
+            $types[$type] = ($types[$type] ?? 0) + 1;
+            $sources[$source] = ($sources[$source] ?? 0) + 1;
+            $media[$medium] = ($media[$medium] ?? 0) + 1;
+            $channels[$channel] = ($channels[$channel] ?? 0) + 1;
+        }
+
+        return [
+            'total' => $total,
+            'statuses' => $this->countRows($statuses, 'status'),
+            'types' => $this->countRows($types, 'type'),
+            'sources' => $this->countRows($sources, 'source'),
+            'media' => $this->countRows($media, 'medium'),
+            'channels' => $this->countRows($channels, 'channel'),
+        ];
+    }
+
+    private function cleanLabel(mixed $value): string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? 'Sin clasificar' : $value;
+    }
+
+    /** @param array<string, int> $counts @return list<array<string, int|string>> */
+    private function countRows(array $counts, string $label): array
+    {
+        return collect($counts)
+            ->map(fn (int $interests, string $value): array => [$label => $value, 'interests' => $interests])
+            ->sortBy([
+                ['interests', 'desc'],
+                [$label, 'asc'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** @param array<string, mixed> $functionalKpis */
+    private function assertFunctionalKpisReconcile(array $functionalKpis, int $expectedTotal): void
+    {
+        $total = (int) ($functionalKpis['total'] ?? -1);
+        if ($total !== $expectedTotal) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        foreach (['statuses', 'types', 'sources', 'media', 'channels'] as $dimension) {
+            $rows = $functionalKpis[$dimension] ?? null;
+            if (! is_array($rows) || collect($rows)->sum('interests') !== $total) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+        }
     }
 
     /** @param array<string, int> $counts @return list<array<string, int|string>> */

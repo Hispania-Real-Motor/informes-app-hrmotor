@@ -74,10 +74,42 @@
             </table>
         </section>
 
+        <section class="card" aria-labelledby="functional-kpis-title">
+            <h2 id="functional-kpis-title">Indicadores funcionales recuperables</h2>
+            <p>Estos agregados se calculan durante la validación administrativa sobre los {{ number_format($overview['functional_kpis']['total'], 0, ',', '.') }} Interests F2M activos y con contenido coincidente. No se recalculan al abrir esta página.</p>
+            <table>
+                <thead><tr><th>Estado</th><th>Intereses</th></tr></thead>
+                <tbody>
+                    @foreach ($overview['functional_kpis']['statuses'] as $row)
+                        <tr><td>{{ $row['status'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                    @endforeach
+                </tbody>
+            </table>
+            <table>
+                <thead><tr><th>Tipo normalizado</th><th>Intereses</th></tr></thead>
+                <tbody>
+                    @foreach ($overview['functional_kpis']['types'] as $row)
+                        <tr><td>{{ $row['type'] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                    @endforeach
+                </tbody>
+            </table>
+            @foreach (['sources' => 'Fuente', 'media' => 'Medio', 'channels' => 'Canal'] as $dimension => $heading)
+                <table>
+                    <thead><tr><th>{{ $heading }}</th><th>Intereses</th></tr></thead>
+                    <tbody>
+                        @foreach ($overview['functional_kpis'][$dimension] as $row)
+                            <tr><td>{{ $row[$dimension === 'sources' ? 'source' : ($dimension === 'media' ? 'medium' : 'channel')] }}</td><td>{{ number_format($row['interests'], 0, ',', '.') }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            @endforeach
+        </section>
+
         <section class="card" aria-labelledby="limits-title">
             <h2 id="limits-title">Límites de uso</h2>
             <p>F2 permanece sin certificación histórica: {{ $overview['verification']['f2_verified'] ? 'la comprobación actual no sustituye la certificación histórica.' : 'la verificación F2 original no fue satisfactoria.' }} F5 tampoco certifica este inventario.</p>
-            <p>Dirección, comparativas y KPI; Reservas/Ventas y rendimiento comercial; Campañas, Llamadas y SEO continúan no disponibles desde esta fuente provisional. Los journals no exponen identificadores ni payloads en esta pantalla.</p>
+            <p>Los comerciales elegibles y sus delegaciones no están disponibles: F2M no conserva la instantánea histórica de usuarios requerida por la fórmula oficial. Tampoco se calculan KPI de actividad: F5 no acredita historia y esta evidencia no conserva el estado de relación requerido por la fórmula oficial.</p>
+            <p>Dirección y comparativas; Reservas/Ventas y rendimiento comercial; Campañas, Llamadas y SEO continúan no disponibles desde esta fuente provisional. Los journals no exponen identificadores ni payloads en esta pantalla.</p>
         </section>
     </div>
 </x-reports.app-shell>

@@ -137,6 +137,24 @@ agregados publicados. En el snapshot F2M, `General` permanece no reconocido y
 se contabiliza sólo como subcontador `raw_literal_general` de los informados no
 reconocidos: no se añade alias ni se convierte en delegación, grupo o zona.
 
+### Agregados funcionales de octubre (Fase B)
+
+La misma validación administrativa agrega únicamente las filas F2M activas y
+con contenido coincidente por estado, tipo, fuente, medio y canal. Cada una de
+las cinco distribuciones debe sumar el universo `eligible_active_matching`; los
+valores vacíos se presentan como `Sin clasificar`. El tipo se obtiene con
+`LeadRecordTypeNormalizer`; estado, fuente, medio y canal se conservan como
+etiqueta materializada, sin completar valores desde otras entidades. HTTP sólo
+devuelve este snapshot ya validado y no recalcula los agregados al abrir la
+pantalla.
+
+Son agregados provisionales de campos F2M, no los KPI comerciales oficiales.
+Comerciales elegibles y delegaciones comerciales permanecen indisponibles por
+no existir instantánea histórica de `SalesforceUser`; los KPI de actividad
+siguen indisponibles porque no hay estado de relación F5 ni certificación
+histórica. No habilitan Dirección, comparativas, Reservas/Ventas, Rendimiento,
+Campañas, Llamadas, SEO, CSV ni auditorías oficiales.
+
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.
 Sus lecturas no prueban una fotografía histórica al watermark; los límites y

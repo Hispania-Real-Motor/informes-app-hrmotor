@@ -7107,6 +7107,21 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   ni es snapshot histórico. `General` sigue no reconocido y sólo suma el
   subcontador `raw_literal_general`; no se añadió alias. No se expusieron IDs.
 
+## 2026-11-09 — Fase B: agregados funcionales de octubre provisional
+
+- La validación administrativa incorpora estado, tipo, fuente, medio y canal
+  sólo de F2M activo/coincidente. Cada distribución reconcilia con
+  `eligible_active_matching`; vacío es `Sin clasificar` y tipo reutiliza
+  `LeadRecordTypeNormalizer`. HTTP sigue leyendo sólo snapshot y revisión.
+- Límite funcional: son agregados provisionales, no KPI oficial. Comercial y
+  delegación comercial quedan `unavailable` sin instantánea histórica de
+  `SalesforceUser`; actividad queda `unavailable` sin estado de relación F5 ni
+  certificación histórica. No se modifican generación publicada, fórmulas,
+  Dirección, comparativas, Reservas/Ventas, Rendimiento, Campañas, Llamadas,
+  SEO, CSV, auditorías ni consumidores oficiales.
+- Verificación: esta revisión documental no ejecutó PHP, Blade, tests, CI,
+  MariaDB, migraciones, Salesforce, benchmark ni producción.
+
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
 - Causa corregida: el mapeador conserva la clave
