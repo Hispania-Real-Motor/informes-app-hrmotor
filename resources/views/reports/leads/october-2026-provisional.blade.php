@@ -1,9 +1,6 @@
 <x-reports.app-shell title="Intereses — octubre 2026 provisional" current-report="leads">
     <x-slot:head>
-        @vite([
-            'resources/css/reports/leads-dashboard.css',
-            'resources/js/reports/october-2026-provisional.js',
-        ])
+        @vite('resources/css/reports/leads-dashboard.css')
     </x-slot:head>
 
     <div class="wrap">
@@ -168,5 +165,9 @@
             <p>Dirección y comparativas; Reservas/Ventas y rendimiento comercial; Campañas, Llamadas y SEO continúan no disponibles desde esta fuente provisional. Los journals no exponen identificadores ni payloads en esta pantalla.</p>
         </section>
     </div>
+
+    <x-slot:scripts>
+        <script type="module" src="{{ asset('js/reports/october-2026-provisional.js') }}"></script>
+    </x-slot:scripts>
 
 </x-reports.app-shell>

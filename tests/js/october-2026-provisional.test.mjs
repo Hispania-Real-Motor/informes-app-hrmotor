@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bindProvisionalDistributionControls } from '../../resources/js/reports/october-2026-provisional.js';
+import { bindProvisionalDistributionControls } from '../../public/js/reports/october-2026-provisional.js';
 
 function control(value = '') {
     const listeners = new Map();
