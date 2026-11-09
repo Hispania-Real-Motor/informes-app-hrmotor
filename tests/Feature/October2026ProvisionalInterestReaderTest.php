@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ReportUser;
+use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\Leads\October2026ProvisionalEvidenceInvalidator;
 use App\Services\Reports\Leads\October2026ProvisionalInterestReader;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
@@ -40,7 +41,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
 
     public function test_it_uses_the_official_delegation_normalizer_without_inferencing_a_commercial_delegation(): void
     {
-        $normalizer = app(\App\Services\Reports\Leads\LeadDelegationNormalizer::class);
+        $normalizer = app(LeadDelegationNormalizer::class);
         $expected = [
             'HR MOTOR TORREJON' => ['Torrejón', 'Grupo Madrid', 'Zona Sur y Centro'],
             'Sant Boi de Llobregat' => ['Sant Boi', 'Grupo Barcelona', 'Zona Cataluña'],
