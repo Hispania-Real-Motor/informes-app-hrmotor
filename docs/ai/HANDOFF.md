@@ -7126,6 +7126,12 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   estado, tipo, fuente, medio y canal sumen exactamente las 34.229 filas F2M
   activas/coincidentes. HTTP sigue comprobándose sin consultas a los tres
   journals; esta aserción no mide ni acredita un SLA productivo.
+- Cierre de validación: GitHub Actions sobre el SHA de cierre completó PHPUnit
+  (1 omitido, 1.651 correctos y 14.710 aserciones), Pint, build y whitespace;
+  el job MariaDB 11 completó 19 pruebas y 124 aserciones. La fixture
+  representativa tardó 1,84 s dentro de la suite SQLite y 4,10 s dentro de la
+  suite MariaDB, incluyendo su siembra, validación y lectura de snapshot. No
+  son medidas de producción ni autorizan activar la vista.
 
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
