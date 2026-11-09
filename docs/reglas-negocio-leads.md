@@ -111,12 +111,12 @@ El control fail-closed distingue la evidencia fuente de F2M
 (`Id|content_hash|is_deleted`) de la de F5 (`Id:is_deleted`); una huella de un
 journal no puede validar al otro ni alterar el informe oficial.
 
-Los controles de exploración de esta vista no son filtros del informe. Exigen
-seleccionar una única distribución precalculada; la búsqueda sólo examina las
-etiquetas de esa distribución. Ocultan o muestran filas de agregados ya
-presentes en el snapshot validado: no filtran F2/F2M/F5, no reejecutan cálculo,
-no combinan dimensiones ni habilitan filtros, endpoints o exportaciones del
-dashboard oficial.
+Para octubre provisional, los filtros de tipo, delegación, grupo, zona, fuente,
+medio, canal y estado se aplican conjuntamente sobre la proyección categórica
+validada, no sobre F2/F2M/F5. La página y sus endpoints AJAX sólo leen la misma
+clave de proyección y revisión; una revocación, clave no coincidente o revisión
+cambiante devuelve 503. Los valores disponibles proceden del snapshot y no
+desencadenan SOQL, escaneo de journals ni mezcla con la generación publicada.
 
 ### Clasificación de procedencia en la vista provisional de octubre (Fase A)
 
@@ -160,6 +160,23 @@ no existir instantánea histórica de `SalesforceUser`; los KPI de actividad
 siguen indisponibles porque no hay estado de relación F5 ni certificación
 histórica. No habilitan Dirección, comparativas, Reservas/Ventas, Rendimiento,
 Campañas, Llamadas, SEO, CSV ni auditorías oficiales.
+
+La proyección conserva una fila por Interest F2M apto sólo con las categorías
+filtrables y normalizadas (sin ID de Interest, `raw_payload` ni datos de
+Salesforce sin agregar). Permite total, Convertidos, Descartados, Potenciales,
+porcentajes de conversión/descarte y Sin clasificar dentro del resultado
+filtrado. Permanecen como `No disponible` comercial elegible, delegación
+comercial, owner/no asignados, potenciales sin trabajar, gestionados, llamadas,
+formularios, detalle de actividad y comparativas: exigirían una instantánea
+histórica de usuarios o evidencia F5/relación certificada que esta fuente no
+conserva.
+
+La generación publicada mantiene precedencia: sin período explícito sólo se
+usa octubre provisional para administrador, flag activo y proyección vigente
+cuando no existe generación oficial disponible. La selección explícita
+`period=october_2026` sigue siendo administrativa y no publica ni redirige los
+lectores de Reservas/Ventas, Rendimiento, Campañas, Llamadas, SEO, Comisiones o
+Stock.
 
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.

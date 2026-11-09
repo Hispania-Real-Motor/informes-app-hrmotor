@@ -142,9 +142,13 @@ function bindResetFilters() {
         [
             'portal',
             'leadDelegation',
+            'leadGroup',
             'commercialDelegation',
             'zone',
             'commercial',
+            'leadMedium',
+            'leadChannel',
+            'leadStatus',
             'currentStart',
             'currentEnd',
             'comparisonStart',
@@ -170,9 +174,13 @@ function bindFilters() {
         'portal',
         'leadType',
         'leadDelegation',
+        'leadGroup',
         'commercialDelegation',
         'zone',
         'commercial',
+        'leadMedium',
+        'leadChannel',
+        'leadStatus',
         'currentStart',
         'currentEnd',
         'comparisonStart',
@@ -249,10 +257,14 @@ function bindLeadReloadRetry() {
 
 function renderSummary(data) {
     const updatedBadge = document.getElementById('updatedBadge');
-    updatedBadge.textContent = data.dataset_cutoff_at
+    updatedBadge.textContent = data.provisional
+        ? 'Octubre 2026 · provisional no certificado'
+        : data.dataset_cutoff_at
         ? `Datos certificados hasta: ${formatDateTime(data.dataset_cutoff_at)}${data.generation_stale ? ' · Desactualizados' : ''}`
         : 'Datos certificados: pendiente';
-    updatedBadge.title = [
+    updatedBadge.title = data.provisional
+        ? 'Fuente mensual provisional validada administrativamente. No sustituye una generación oficial publicada.'
+        : [
         data.salesforce_leads_synced_at ? `Intereses: ${formatDateTime(data.salesforce_leads_synced_at)}` : null,
         data.activities_synced_at ? `Actividades: ${formatDateTime(data.activities_synced_at)}` : null,
         data.dataset_generated_at ? `Dataset: ${formatDateTime(data.dataset_generated_at)}` : null,
@@ -277,18 +289,18 @@ function renderSummary(data) {
 function renderKpis(kpis) {
     const root = document.getElementById('summaryKpis');
     const cards = [
-        { label: 'Intereses totales', value: formatNumber(kpis.leads_totales), hint: 'Muestra del periodo', metric: 'leads_totales' },
-        { label: 'Convertidos', value: formatNumber(kpis.convertidos), hint: `${formatPercent(kpis.conversion_pct)} sobre total`, metric: 'convertidos' },
-        { label: 'Descartados', value: formatNumber(kpis.descartados), hint: `${formatPercent(kpis.descarte_pct)} sobre total`, metric: 'descartados' },
-        { label: 'Potenciales', value: formatNumber(kpis.potenciales), hint: 'Bolsa viva', metric: 'potenciales' },
-        { label: 'Sin comercial elegible', value: formatNumber(kpis.without_eligible_commercial), hint: 'Sin usuario activo de perfil comercial válido', metric: 'without_eligible_commercial' },
-        { label: 'Sin delegación comercial', value: formatNumber(kpis.without_commercial_delegation), hint: 'Comercial elegible sin delegación resoluble', metric: 'without_commercial_delegation' },
-        { label: 'Sin clasificar', value: formatNumber(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: 'unclassified' },
-        { label: 'Intereses sin asignar', value: formatNumber(kpis.leads_unassigned), hint: 'Bolsa viva técnica', metric: 'leads_unassigned' },
-        { label: 'Potenciales sin trabajar', value: formatNumber(kpis.potenciales_sin_trabajar), hint: 'Solo Status Potencial', metric: 'potenciales_sin_trabajar' },
-        { label: 'Gestionados', value: formatNumber(kpis.gestionados), hint: `${formatPercent(kpis.gestionados_pct)} sobre total`, metric: 'gestionados' },
-        { label: 'Llamadas', value: formatNumber(kpis.llamadas), hint: `${formatPercent(kpis.llamadas_pct)} del total`, metric: 'llamadas' },
-        { label: 'Formularios', value: formatNumber(kpis.formularios), hint: `${formatPercent(kpis.formularios_pct)} del total`, metric: 'formularios' },
+        { label: 'Intereses totales', value: formatKpiValue(kpis.leads_totales), hint: 'Muestra del periodo', metric: 'leads_totales' },
+        { label: 'Convertidos', value: formatKpiValue(kpis.convertidos), hint: `${formatPercent(kpis.conversion_pct)} sobre total`, metric: 'convertidos' },
+        { label: 'Descartados', value: formatKpiValue(kpis.descartados), hint: `${formatPercent(kpis.descarte_pct)} sobre total`, metric: 'descartados' },
+        { label: 'Potenciales', value: formatKpiValue(kpis.potenciales), hint: 'Estado Potencial acreditado', metric: 'potenciales' },
+        { label: 'Sin comercial elegible', value: formatKpiValue(kpis.without_eligible_commercial), hint: 'No disponible sin snapshot histórico de usuarios', metric: null },
+        { label: 'Sin delegación comercial', value: formatKpiValue(kpis.without_commercial_delegation), hint: 'No disponible sin snapshot histórico de usuarios', metric: null },
+        { label: 'Sin clasificar', value: formatKpiValue(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: 'unclassified' },
+        { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: 'No disponible sin atribución histórica de owner', metric: null },
+        { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
+        { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
+        { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
+        { label: 'Formularios', value: formatKpiValue(kpis.formularios), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
     ];
 
     root.innerHTML = '';
@@ -729,6 +741,10 @@ function renderFilterOptions(filters) {
     fillSelect('commercialDelegation', (filters.commercial_delegations || []).map((item) => ({ id: item, name: item })), 'id', 'name');
     fillSelect('zone', (filters.zones || []).map((item) => ({ id: item, name: item })), 'id', 'name');
     fillSelect('portal', (filters.portals || []).map((item) => ({ id: item, name: item })), 'id', 'name');
+    fillSelect('leadGroup', (filters.groups || []).map((item) => ({ id: item, name: item })), 'id', 'name');
+    fillSelect('leadMedium', (filters.media || []).map((item) => ({ id: item, name: item })), 'id', 'name');
+    fillSelect('leadChannel', (filters.channels || []).map((item) => ({ id: item, name: item })), 'id', 'name');
+    fillSelect('leadStatus', (filters.statuses || []).map((item) => ({ id: item, name: item })), 'id', 'name');
 }
 
 function fillSelect(id, items, valueKey, labelKey) {
@@ -758,9 +774,13 @@ function currentFilters() {
     setParam(params, 'portal', document.getElementById('portal')?.value);
     setParam(params, 'lead_type', document.getElementById('leadType')?.value);
     setParam(params, 'lead_delegation', document.getElementById('leadDelegation')?.value);
+    setParam(params, 'group', document.getElementById('leadGroup')?.value);
     setParam(params, 'commercial_delegation', document.getElementById('commercialDelegation')?.value);
     setParam(params, 'zone', document.getElementById('zone')?.value);
     setParam(params, 'commercial', document.getElementById('commercial')?.value);
+    setParam(params, 'medium', document.getElementById('leadMedium')?.value);
+    setParam(params, 'channel', document.getElementById('leadChannel')?.value);
+    setParam(params, 'status', document.getElementById('leadStatus')?.value);
 
     if (document.getElementById('period')?.value === 'custom') {
         setParam(params, 'current_start', document.getElementById('currentStart')?.value);
@@ -935,6 +955,10 @@ function formatDateTime(value) {
         hour: '2-digit',
         minute: '2-digit',
     }).format(date);
+}
+
+function formatKpiValue(value) {
+    return value === null || value === undefined ? 'No disponible' : formatNumber(value);
 }
 
 function formatNumber(value) {

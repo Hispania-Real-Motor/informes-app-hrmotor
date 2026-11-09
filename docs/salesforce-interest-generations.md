@@ -424,12 +424,36 @@ crea triggers por fila, también con volumen representativo sintético. El job e
 evidencia pendiente hasta que la CI de la PR termine; las métricas del comando
 son mediciones de sus fases, no un benchmark ni una garantía de rendimiento.
 
-Los controles de exploración de distribución y texto operan exclusivamente en
-el navegador sobre las filas del snapshot ya servido. No son filtros del
-informe: se elige una única distribución precalculada y la búsqueda se limita a
-sus etiquetas. No alteran el universo, manifiestos, cobertura, agregados
-persistidos o su revisión, ni activan AJAX, CSV, auditoría o consumidores de
-los seis informes.
+La validación genera además una proyección categórica con una clave UUID y la
+misma revisión de integridad. Cada fila representa exclusivamente un Interest
+F2M activo y coincidente mediante estado, tipo normalizado, fuente, medio,
+canal, delegación/grupo/zona de procedencia y marcas técnicas de la proyección;
+no conserva ID de Interest, `raw_payload` ni una respuesta Salesforce. HTTP y
+AJAX sólo pueden consultar esas filas si clave y revisión siguen vigentes, y
+vuelven a comprobarlas antes de responder; una revocación o carrera falla con
+503. Los journals F2/F2M/F5 no se leen al servir el informe.
+
+El dashboard provisional permite combinar tipo, delegación, grupo, zona, fuente,
+medio, canal y estado sobre esa única proyección. Los totales filtrados y los
+recuentos Convertido, Descartado, Potencial y Sin clasificar son agregados
+provisionales; conversión y descarte usan esos mismos totales y se redondean a
+dos decimales. No se construyen comparativas ni métricas de owner/comercial,
+gestión o actividad. Sus nulos se presentan como `No disponible`, no como cero,
+porque F2M/F5 no prueban la instantánea histórica necesaria.
+
+Una generación publicada sigue siendo la fuente oficial. La navegación sin
+período sólo adopta la proyección de octubre para administrador con flag activo,
+proyección vigente y ausencia de generación oficial; `period=october_2026` es
+una elección administrativa explícita. Ningún camino publica la proyección ni
+cambia lectores, CSV, auditorías o consumidores de los seis informes.
+
+La migración aditiva `2026_11_12_120000_add_october_provisional_interest_projection.php`
+debe ejecutarse antes de desplegar/activar el código que sirve octubre: añade la
+clave de proyección a la evidencia y su tabla indexada. Su rollback conserva
+evidencia para no reabrir lecturas obsoletas. Tras migrar se requiere ejecutar
+`reports:validate-october-2026-provisional --confirm`; sin proyección vigente la
+ruta falla cerrada. La activación del flag continúa siendo una autorización
+administrativa separada y no certifica historia.
 
 ### Vista provisional administrativa
 

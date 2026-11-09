@@ -1352,3 +1352,14 @@ distribución y texto se limitan a presentar filas ya incluidas en ese snapshot;
 no producen nuevas consultas de journals, filtros de negocio, cruces ni KPI.
 Así se permite descubrir la lectura acotada sin convertir F2/F2M/F5 en fuente
 de los lectores publicados o de los demás informes.
+
+## 2026-11-12 — proyección versionada para dashboard provisional de octubre
+
+El dashboard administrativo no consulta journals durante HTTP: la validación
+CLI construye una proyección categórica sin IDs ni payloads y la publica sólo al
+vincular su UUID a la revisión de integridad bajo guardia. Los endpoints vuelven
+a verificar UUID/revisión antes de responder y fallan cerrados ante revocación.
+La proyección permite filtros combinados sólo sobre F2M activo/coincidente, no
+convierte los nulos de evidencia comercial/actividad en ceros ni se publica como
+generación. La generación oficial mantiene precedencia automática; la activación
+provisional requiere flag, administrador, migración y validación explícita.

@@ -1,5 +1,34 @@
 # Handoff para agentes
 
+## 2026-11-12 — PR A: dashboard de octubre mediante proyección provisional
+
+- La validación `reports:validate-october-2026-provisional --confirm` construye
+  una proyección categórica versionada de F2M activo/coincidente y la vincula a
+  la revisión vigente. Sólo conserva categorías filtrables y normalizadas; no
+  guarda ID de Interest ni payload. El dashboard y AJAX leen esa proyección, no
+  los journals F2/F2M/F5, y comprueban otra vez clave/revisión antes de responder.
+- Filtros disponibles y combinables: tipo, delegación/grupo/zona de
+  procedencia, fuente, medio, canal y estado. Los agregados disponibles son
+  total, Convertido, Descartado, Potencial, Sin clasificar y porcentajes de
+  conversión/descarte sobre el resultado filtrado. Se mantienen `No disponible`
+  owner/no asignados, comercial/delegación comercial, potenciales sin trabajar,
+  gestión, llamadas, formularios, actividad y comparativa; no se convierten en
+  cero ni se certifican.
+- Precedencia/seguridad: la generación publicada sigue siendo oficial; sólo si
+  falta puede elegirse automáticamente la proyección vigente para administrador
+  con flag activo. `period=october_2026` es administrativo explícito. Flag
+  apagado=404, no administrador=403 y proyección/revisión no vigente=503, con
+  `no-store, private`. Ningún otro informe o consumidor oficial usa la fuente.
+- Despliegue futuro: aplicar primero la migración aditiva
+  `2026_11_12_120000_add_october_provisional_interest_projection.php`, desplegar
+  código, ejecutar la validación CLI y sólo después autorizar el flag. El
+  rollback conserva evidencia; una proyección ausente falla cerrada.
+- Verificación documental: `git diff --check` correcto. El validador integral
+  sigue requiriendo HEAD y descripción de PR definitivos; las pruebas
+  documentales locales no pudieron iniciarse porque `python.exe` es un alias no
+  accesible en este entorno. No se ejecutaron PHP, JS, MariaDB, migraciones,
+  Salesforce, benchmark ni producción desde esta revisión documental.
+
 ## 2026-11-06 — materialización funcional F2 mensual aislada
 
 - Se añadió `InterestMonthlyMaterializationService`, su comando administrativo

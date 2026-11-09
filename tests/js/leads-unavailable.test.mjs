@@ -253,3 +253,27 @@ test('AJAX requests and CSV exports pin the generation returned by summary', asy
     for (const call of calls.slice(1)) assert.equal(call.headers['X-Interest-Generation'], '42');
     assert.match(vm.runInContext("buildKpiAuditUrl('leads_totales')", context), /interest_generation=42/);
 });
+
+test('October provisional controls send exact combined dimensions instead of filtering rendered labels', () => {
+    const { context, element } = createDashboardContext(async () => ({ ok: true, json: async () => ({}) }));
+
+    ['leadGroup', 'leadMedium', 'leadChannel', 'leadStatus'].forEach((id) => {
+        assert.match(dashboardTemplate, new RegExp(`id="${id}"`));
+    });
+    element('period').value = 'october_2026';
+    element('leadDelegation').value = 'Madrid General';
+    element('leadGroup').value = 'Grupo Madrid';
+    element('portal').value = 'Web';
+    element('leadMedium').value = 'Orgánico';
+    element('leadChannel').value = 'Formulario';
+    element('leadStatus').value = 'Potencial';
+
+    const query = new URLSearchParams(vm.runInContext('currentFilters()', context));
+    assert.equal(query.get('period'), 'october_2026');
+    assert.equal(query.get('lead_delegation'), 'Madrid General');
+    assert.equal(query.get('group'), 'Grupo Madrid');
+    assert.equal(query.get('portal'), 'Web');
+    assert.equal(query.get('medium'), 'Orgánico');
+    assert.equal(query.get('channel'), 'Formulario');
+    assert.equal(query.get('status'), 'Potencial');
+});

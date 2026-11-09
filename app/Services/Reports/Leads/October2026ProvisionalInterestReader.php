@@ -5,6 +5,7 @@ namespace App\Services\Reports\Leads;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Read-only contract for the isolated October 2026 monthly journals.
@@ -53,6 +54,61 @@ final class October2026ProvisionalInterestReader
 
             return $overview;
         } catch (QueryException) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+    }
+
+    /**
+     * Returns the only projection that HTTP is allowed to read.  The
+     * projection contains categorical aggregates inputs, never an Interest
+     * identifier or Salesforce payload, and is bound to the validated
+     * integrity revision.
+     *
+     * @return array{overview:array<string,mixed>,projection_key:string,integrity_revision:int}
+     */
+    public function dashboardProjection(): array
+    {
+        $overview = $this->overview();
+        $revision = $this->revision();
+
+        try {
+            $validation = DB::table('salesforce_interest_october_provisional_validations')
+                ->where('scope', 'october_2026_provisional')
+                ->first(['integrity_revision', 'projection_key']);
+            $projectionKey = is_object($validation) ? $validation->projection_key : null;
+            if (! is_object($validation) || (int) $validation->integrity_revision !== $revision
+                || ! is_string($projectionKey) || ! Str::isUuid($projectionKey)
+                || ! DB::table('salesforce_interest_october_provisional_projection_rows')
+                    ->where('scope', 'october_2026_provisional')
+                    ->where('integrity_revision', $revision)
+                    ->where('projection_key', $projectionKey)
+                    ->exists()) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+        } catch (QueryException) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        if ($this->revision() !== $revision) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        return ['overview' => $overview, 'projection_key' => $projectionKey, 'integrity_revision' => $revision];
+    }
+
+    public function assertDashboardProjectionCurrent(int $revision, string $projectionKey): void
+    {
+        try {
+            $matches = DB::table('salesforce_interest_october_provisional_validations')
+                ->where('scope', 'october_2026_provisional')
+                ->where('integrity_revision', $revision)
+                ->where('projection_key', $projectionKey)
+                ->exists();
+        } catch (QueryException) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        if (! $matches || $this->revision() !== $revision) {
             throw new ProvisionalInterestSourceUnavailable;
         }
     }
@@ -133,6 +189,11 @@ final class October2026ProvisionalInterestReader
         $metrics['functional_kpis_ns'] = hrtime(true) - $phaseStartedAt;
         $this->assertFunctionalKpisReconcile($functionalKpis, (int) $quality->eligible_active_matching);
 
+        $projectionKey = (string) Str::uuid();
+        $phaseStartedAt = hrtime(true);
+        $this->buildDashboardProjection($materializationId, $revision, $projectionKey);
+        $metrics['dashboard_projection_ns'] = hrtime(true) - $phaseStartedAt;
+
         $overview = [
             'period' => ['label' => 'Octubre de 2026', 'start_utc' => self::START_UTC, 'end_utc' => self::END_UTC, 'timezone' => 'Europe/Madrid'],
             'coverage' => [
@@ -174,7 +235,7 @@ final class October2026ProvisionalInterestReader
             ($this->beforeValidationPublication)();
         }
         $metrics['total_ns'] = hrtime(true) - $totalStartedAt;
-        DB::transaction(function () use ($revision, $sourceManifests, $materializationManifest, $activityManifest, $overview, $metrics): void {
+        DB::transaction(function () use ($revision, $projectionKey, $sourceManifests, $materializationManifest, $activityManifest, $overview, $metrics): void {
             $current = DB::table('salesforce_interest_monthly_integrity_revisions')->where('scope', 'october_2026_provisional')->lockForUpdate()->value('revision');
             if ((int) $current !== $revision) {
                 throw new ProvisionalInterestSourceUnavailable;
@@ -182,9 +243,13 @@ final class October2026ProvisionalInterestReader
             DB::table('salesforce_interest_october_provisional_validations')->updateOrInsert(
                 ['scope' => 'october_2026_provisional'],
                 ['monthly_recovery_id' => self::RECOVERY_ID, 'monthly_materialization_id' => self::MATERIALIZATION_ID, 'monthly_activity_recovery_id' => self::ACTIVITY_RUN_ID,
-                    'integrity_revision' => $revision, 'evidence' => json_encode(['algorithms' => ['f2m_source' => 'salesforce_id|content_hash|is_deleted\\n', 'f5_source' => 'salesforce_id:is_deleted\\n'], 'f2m_source' => $sourceManifests['materialization'], 'f5_source' => $sourceManifests['activity'], 'f2m_manifest' => $materializationManifest, 'f5_manifest' => $activityManifest], JSON_THROW_ON_ERROR),
+                    'integrity_revision' => $revision, 'projection_key' => $projectionKey, 'evidence' => json_encode(['algorithms' => ['f2m_source' => 'salesforce_id|content_hash|is_deleted\\n', 'f5_source' => 'salesforce_id:is_deleted\\n'], 'f2m_source' => $sourceManifests['materialization'], 'f5_source' => $sourceManifests['activity'], 'f2m_manifest' => $materializationManifest, 'f5_manifest' => $activityManifest], JSON_THROW_ON_ERROR),
                     'overview' => json_encode($overview, JSON_THROW_ON_ERROR), 'metrics' => json_encode($metrics, JSON_THROW_ON_ERROR), 'validated_at' => now('UTC'), 'updated_at' => now(), 'created_at' => now()]
             );
+            DB::table('salesforce_interest_october_provisional_projection_rows')
+                ->where('scope', 'october_2026_provisional')
+                ->where('projection_key', '!=', $projectionKey)
+                ->delete();
         });
 
         return $overview;
@@ -402,6 +467,57 @@ final class October2026ProvisionalInterestReader
             'media' => $this->countRows($media, 'medium'),
             'channels' => $this->countRows($channels, 'channel'),
         ];
+    }
+
+    /**
+     * Materializes a fresh, isolated candidate projection. It is not made
+     * visible until the validation row is switched under the revision lock.
+     * Abandoned candidates therefore cannot be read by HTTP.
+     */
+    private function buildDashboardProjection(int $materializationId, int $revision, string $projectionKey): void
+    {
+        $normalizer = app(LeadDelegationNormalizer::class);
+        $recordTypes = app(LeadRecordTypeNormalizer::class);
+        $batch = [];
+        $now = now();
+
+        foreach (DB::table('salesforce_interest_monthly_materialized_rows')
+            ->where('monthly_materialization_id', $materializationId)
+            ->where('content_matches_inventory', true)
+            ->where('is_deleted', false)
+            ->orderBy('id')
+            ->cursor() as $row) {
+            $delegation = $normalizer->normalize($row->origin_delegation);
+            $batch[] = [
+                'scope' => 'october_2026_provisional',
+                'integrity_revision' => $revision,
+                'projection_key' => $projectionKey,
+                'interest_status' => $this->projectionLabel($row->status),
+                'interest_type' => $recordTypes->label($recordTypes->normalize($row->type)) ?? 'Sin clasificar',
+                'source' => $this->projectionLabel($row->source),
+                'medium' => $this->projectionLabel($row->medium),
+                'channel' => $this->projectionLabel($row->channel),
+                'origin_delegation' => $this->projectionLabel($delegation['delegation']),
+                'origin_group' => $this->projectionLabel($delegation['group']),
+                'origin_zone' => $this->projectionLabel($delegation['zone']),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            if (count($batch) === 500) {
+                DB::table('salesforce_interest_october_provisional_projection_rows')->insert($batch);
+                $batch = [];
+            }
+        }
+
+        if ($batch !== []) {
+            DB::table('salesforce_interest_october_provisional_projection_rows')->insert($batch);
+        }
+    }
+
+    private function projectionLabel(mixed $value): string
+    {
+        return mb_substr($this->cleanLabel($value), 0, 191);
     }
 
     private function cleanLabel(mixed $value): string
