@@ -339,7 +339,11 @@ generación, ni a datos Salesforce remotos.
 
 La lectura usa exclusivamente la F2, su materialización F2M y el run F5 con
 ID interno fijo `1`, unidos a la misma F2. No acepta parámetros ni configuración
-que redirijan esa fuente. Expone sólo cobertura agregada: tamaño
+que redirijan esa fuente. La evidencia fuente se valida conforme al contrato
+que cada journal persistió: F2M exige la secuencia ordenada
+`Id|content_hash|is_deleted`, mientras F5 exige `Id:is_deleted`. Ambas huellas
+se calculan en una sola lectura ordenada de F2; no son intercambiables. Expone
+sólo cobertura agregada: tamaño
 F2, materializados, contenido coincidente, activos aptos, ausencias, cambios de
 contenido, soft deletes observados y disponibilidad de identidad canónica. Los
 agregados por delegación incluyen exclusivamente filas activas cuyo contenido

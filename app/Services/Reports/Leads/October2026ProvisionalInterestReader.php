@@ -45,14 +45,14 @@ final class October2026ProvisionalInterestReader
         $this->assertCompleted($activity);
         $this->assertOctoberPeriod($recovery);
 
-        $sourceManifest = $this->recoveryManifest($recoveryId);
+        $sourceManifests = $this->sourceManifests($recoveryId);
         $materializationEvidence = $this->json($materialization->evidence);
         $materializationSource = $this->json($materialization->source_evidence);
         $activityEvidence = $this->json($activity->evidence);
         $activitySource = $this->json($activity->source_evidence);
 
-        $this->assertSourceSnapshot($materializationSource, $sourceManifest);
-        $this->assertSourceSnapshot($activitySource, $sourceManifest);
+        $this->assertSourceSnapshot($materializationSource, $sourceManifests['materialization']);
+        $this->assertSourceSnapshot($activitySource, $sourceManifests['activity']);
         $this->assertManifest($materializationEvidence, $this->materializationManifest($materializationId));
         $this->assertManifest($activityEvidence, $this->activityManifest($activityRunId));
 
@@ -91,7 +91,7 @@ final class October2026ProvisionalInterestReader
         return [
             'period' => ['label' => 'Octubre de 2026', 'start_utc' => self::START_UTC, 'end_utc' => self::END_UTC, 'timezone' => 'Europe/Madrid'],
             'coverage' => [
-                'f2_inventory' => $sourceManifest['rows'],
+                'f2_inventory' => $sourceManifests['materialization']['rows'],
                 'materialized' => (int) $quality->materialized,
                 'matching_current_content' => (int) $quality->content_matching,
                 'eligible_active_matching' => (int) $quality->eligible_active_matching,
@@ -138,19 +138,29 @@ final class October2026ProvisionalInterestReader
         }
     }
 
-    /** @return array{rows:int,sha256:string} */
-    private function recoveryManifest(int $recoveryId): array
+    /**
+     * Reproduces the distinct, persisted source-evidence contracts of F2M and
+     * F5 in one ordered scan of their common F2 journal.
+     *
+     * @return array{materialization:array{rows:int,sha256:string},activity:array{rows:int,sha256:string}}
+     */
+    private function sourceManifests(int $recoveryId): array
     {
-        $hash = hash_init('sha256');
+        $materializationHash = hash_init('sha256');
+        $activityHash = hash_init('sha256');
         $rows = 0;
-        DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $recoveryId)->orderBy('salesforce_id')->chunk(500, function ($items) use ($hash, &$rows): void {
+        DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $recoveryId)->orderBy('salesforce_id')->chunk(500, function ($items) use ($materializationHash, $activityHash, &$rows): void {
             foreach ($items as $item) {
-                hash_update($hash, $item->salesforce_id.'|'.$item->content_hash.'|'.(int) $item->is_deleted."\n");
+                hash_update($materializationHash, $item->salesforce_id.'|'.$item->content_hash.'|'.(int) $item->is_deleted."\n");
+                hash_update($activityHash, $item->salesforce_id.':'.(int) $item->is_deleted."\n");
                 $rows++;
             }
         });
 
-        return ['rows' => $rows, 'sha256' => hash_final($hash)];
+        return [
+            'materialization' => ['rows' => $rows, 'sha256' => hash_final($materializationHash)],
+            'activity' => ['rows' => $rows, 'sha256' => hash_final($activityHash)],
+        ];
     }
 
     /** @return array{rows:int,sha256:string} */

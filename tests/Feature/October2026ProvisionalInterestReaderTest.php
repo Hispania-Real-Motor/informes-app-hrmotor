@@ -17,6 +17,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
     public function test_it_reads_only_the_fixed_validated_october_journals_without_exposing_row_identifiers(): void
     {
         $this->seedValidJournals();
+        $this->assertNotSame($this->materializationSourceManifest(), $this->activitySourceManifest());
         $overview = app(October2026ProvisionalInterestReader::class)->overview();
 
         $this->assertSame(2, $overview['coverage']['f2_inventory']);
@@ -27,6 +28,17 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertSame('available_with_coverage_limits', $overview['availability']['leads_interest_overview']);
         $this->assertSame('unavailable', $overview['availability']['campaigns_calls_and_seo']);
         $this->assertArrayNotHasKey('salesforce_id', $overview);
+    }
+
+    public function test_it_rejects_a_f5_source_snapshot_that_does_not_match_its_own_contract(): void
+    {
+        $this->seedValidJournals();
+        DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update([
+            'source_evidence' => json_encode(['source_rows' => 2, 'source_sha256' => str_repeat('f', 64)]),
+        ]);
+
+        $this->expectException(ProvisionalInterestSourceUnavailable::class);
+        app(October2026ProvisionalInterestReader::class)->overview();
     }
 
     public function test_it_fails_closed_when_a_materialization_source_snapshot_no_longer_matches_f2(): void
@@ -81,10 +93,11 @@ class October2026ProvisionalInterestReaderTest extends TestCase
                 'functional_created_at' => '2026-10-02 08:00:00', 'created_at' => $now, 'updated_at' => $now,
             ]);
         }
-        $sourceManifest = $this->recoveryManifest();
+        $materializationSourceManifest = $this->materializationSourceManifest();
+        $activitySourceManifest = $this->activitySourceManifest();
         DB::table('salesforce_interest_monthly_materializations')->insert([
             'id' => 1, 'materialization_identifier' => (string) Str::uuid(), 'monthly_recovery_id' => 1, 'status' => 'completed', 'phase' => 'completed', 'batch_size' => 500, 'pages_completed' => 1,
-            'counters' => '{}', 'source_evidence' => json_encode(['source_rows' => 2, 'source_sha256' => $sourceManifest]), 'reason_hash' => hash('sha256', 'synthetic materialization'),
+            'counters' => '{}', 'source_evidence' => json_encode(['source_rows' => 2, 'source_sha256' => $materializationSourceManifest]), 'reason_hash' => hash('sha256', 'synthetic materialization'),
             'started_at' => $now, 'completed_at' => $now, 'created_at' => $now, 'updated_at' => $now,
         ]);
         foreach ([[1, str_repeat('a', 64), true, false, 'Madrid', $this->id(11)], [2, str_repeat('c', 64), false, true, null, null]] as [$number, $hash, $matching, $deleted, $delegation, $person]) {
@@ -98,14 +111,19 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         DB::table('salesforce_interest_monthly_materializations')->where('id', 1)->update(['evidence' => json_encode(['manifest' => ['rows' => 2, 'sha256' => $materializationManifest], 'verification' => ['verified' => false]])]);
         DB::table('salesforce_interest_monthly_activity_recoveries')->insert([
             'id' => 1, 'recovery_identifier' => (string) Str::uuid(), 'monthly_recovery_id' => 1, 'status' => 'completed', 'phase' => 'completed', 'batch_size' => 500, 'extraction_strategy' => 'selective_whatid_v1', 'pages_completed' => 1,
-            'counters' => '{}', 'source_evidence' => json_encode(['source_rows' => 2, 'source_sha256' => $sourceManifest]), 'evidence' => json_encode(['manifest' => ['rows' => 0, 'sha256' => hash('sha256', '')], 'verification' => ['verified' => false]]),
+            'counters' => '{}', 'source_evidence' => json_encode(['source_rows' => 2, 'source_sha256' => $activitySourceManifest]), 'evidence' => json_encode(['manifest' => ['rows' => 0, 'sha256' => hash('sha256', '')], 'verification' => ['verified' => false]]),
             'reason_hash' => hash('sha256', 'synthetic f5'), 'started_at' => $now, 'completed_at' => $now, 'created_at' => $now, 'updated_at' => $now,
         ]);
     }
 
-    private function recoveryManifest(): string
+    private function materializationSourceManifest(): string
     {
         return hash('sha256', $this->id(1).'|'.str_repeat('a', 64)."|0\n".$this->id(2).'|'.str_repeat('b', 64)."|1\n");
+    }
+
+    private function activitySourceManifest(): string
+    {
+        return hash('sha256', $this->id(1).":0\n".$this->id(2).":1\n");
     }
 
     private function materializationManifest(): string
