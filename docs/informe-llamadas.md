@@ -13,6 +13,9 @@ alimenta clasificación, reproceso, detalle, auditoría ni exportación de
 Llamadas; su disponibilidad no sustituye la generación publicada.
 Su snapshot validado es exclusivo de la pantalla provisional: no modifica
 `relatedInterestMatches()` ni las fuentes o disponibilidad de Llamadas.
+La proyección versionada y los filtros de octubre siguen limitados al dashboard
+de Interests: no aportan estado histórico de relación F5 ni certifican, habilitan
+o recalculan KPI, clasificación, reproceso o exportación de Llamadas.
 
 Actualizado: 2026-10-08.
 

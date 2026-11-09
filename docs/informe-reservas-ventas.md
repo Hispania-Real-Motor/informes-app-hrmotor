@@ -14,6 +14,9 @@ un resumen de Interests con límites de cobertura; no se integra con
 Reservas/Ventas, Rendimiento comercial, auditorías, cierres, filtros o CSV.
 La validación/snapshot local que condiciona esa pantalla no cambia la generación
 publicada de atribución ni requiere revalidar este informe.
+La proyección versionada de octubre y sus filtros multidimensionales pertenecen
+sólo al dashboard de Interests: no habilitan ni certifican atribución, KPI,
+auditoría, cierre, CSV o Rendimiento comercial de Reservas/Ventas.
 
 Actualizado: 2026-10-09.
 
