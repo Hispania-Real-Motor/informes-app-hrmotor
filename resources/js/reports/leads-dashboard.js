@@ -142,13 +142,9 @@ function bindResetFilters() {
         [
             'portal',
             'leadDelegation',
-            'leadGroup',
             'commercialDelegation',
             'zone',
             'commercial',
-            'leadMedium',
-            'leadChannel',
-            'leadStatus',
             'currentStart',
             'currentEnd',
             'comparisonStart',
@@ -159,6 +155,9 @@ function bindResetFilters() {
             if (element) {
                 element.value = '';
             }
+        });
+        document.querySelectorAll('[data-lead-filter-control]').forEach((element) => {
+            element.value = '';
         });
 
         document.getElementById('period').value = 'last_30_days';
@@ -174,13 +173,9 @@ function bindFilters() {
         'portal',
         'leadType',
         'leadDelegation',
-        'leadGroup',
         'commercialDelegation',
         'zone',
         'commercial',
-        'leadMedium',
-        'leadChannel',
-        'leadStatus',
         'currentStart',
         'currentEnd',
         'comparisonStart',
@@ -199,6 +194,10 @@ function bindFilters() {
 
             await reloadAllData();
         });
+    });
+
+    document.querySelectorAll('[data-lead-filter-control]').forEach((element) => {
+        element.addEventListener('change', reloadAllData);
     });
 }
 
@@ -741,10 +740,7 @@ function renderFilterOptions(filters) {
     fillSelect('commercialDelegation', (filters.commercial_delegations || []).map((item) => ({ id: item, name: item })), 'id', 'name');
     fillSelect('zone', (filters.zones || []).map((item) => ({ id: item, name: item })), 'id', 'name');
     fillSelect('portal', (filters.portals || []).map((item) => ({ id: item, name: item })), 'id', 'name');
-    fillSelect('leadGroup', (filters.groups || []).map((item) => ({ id: item, name: item })), 'id', 'name');
-    fillSelect('leadMedium', (filters.media || []).map((item) => ({ id: item, name: item })), 'id', 'name');
-    fillSelect('leadChannel', (filters.channels || []).map((item) => ({ id: item, name: item })), 'id', 'name');
-    fillSelect('leadStatus', (filters.statuses || []).map((item) => ({ id: item, name: item })), 'id', 'name');
+    window.renderOctoberProvisionalFilterOptions?.(filters);
 }
 
 function fillSelect(id, items, valueKey, labelKey) {
@@ -774,13 +770,10 @@ function currentFilters() {
     setParam(params, 'portal', document.getElementById('portal')?.value);
     setParam(params, 'lead_type', document.getElementById('leadType')?.value);
     setParam(params, 'lead_delegation', document.getElementById('leadDelegation')?.value);
-    setParam(params, 'group', document.getElementById('leadGroup')?.value);
     setParam(params, 'commercial_delegation', document.getElementById('commercialDelegation')?.value);
     setParam(params, 'zone', document.getElementById('zone')?.value);
     setParam(params, 'commercial', document.getElementById('commercial')?.value);
-    setParam(params, 'medium', document.getElementById('leadMedium')?.value);
-    setParam(params, 'channel', document.getElementById('leadChannel')?.value);
-    setParam(params, 'status', document.getElementById('leadStatus')?.value);
+    window.applyOctoberProvisionalFilters?.(params);
 
     if (document.getElementById('period')?.value === 'custom') {
         setParam(params, 'current_start', document.getElementById('currentStart')?.value);

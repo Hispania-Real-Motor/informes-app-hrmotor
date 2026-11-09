@@ -23,11 +23,16 @@
   `2026_11_12_120000_add_october_provisional_interest_projection.php`, desplegar
   código, ejecutar la validación CLI y sólo después autorizar el flag. El
   rollback conserva evidencia; una proyección ausente falla cerrada.
-- Verificación documental: `git diff --check` correcto. El validador integral
-  sigue requiriendo HEAD y descripción de PR definitivos; las pruebas
-  documentales locales no pudieron iniciarse porque `python.exe` es un alias no
-  accesible en este entorno. No se ejecutaron PHP, JS, MariaDB, migraciones,
-  Salesforce, benchmark ni producción desde esta revisión documental.
+- Ajuste posterior de compatibilidad de UI: los controles exclusivos de octubre
+  se cargan desde un script aislado y sólo se renderizan para el período
+  provisional, conservando literalmente el contrato/HTML del dashboard oficial.
+  La regresión JavaScript verifica que esos controles aplican parámetros
+  combinados reales, no búsquedas sobre etiquetas renderizadas.
+- Verificación local posterior: `git diff --check`, sintaxis de ambos scripts y
+  `node --test tests/js/leads-unavailable.test.mjs` (12/12) correctos. PHP,
+  Pint, build, MariaDB 11 y documentación se validan obligatoriamente en
+  GitHub Actions del SHA publicado. No se ejecutaron migraciones, Salesforce,
+  benchmark ni producción desde esta revisión.
 
 ## 2026-11-06 — materialización funcional F2 mensual aislada
 

@@ -53,7 +53,9 @@
                 <option value="all">Todos</option>
                 <option value="Tasacion">Tasación</option>
                 <option value="Venta">Venta</option>
-                <option value="Venta con cambio">Venta con cambio</option>
+                @if($isOctoberProvisional ?? false)
+                    <option value="Venta con cambio">Venta con cambio</option>
+                @endif
             </select>
         </div>
 
@@ -64,10 +66,12 @@
             </select>
         </div>
 
-        <div class="filter-group">
-            <label for="leadGroup">Grupo de procedencia</label>
-            <select id="leadGroup"><option value="">Todos</option></select>
-        </div>
+        @if($isOctoberProvisional ?? false)
+            <div class="filter-group">
+                <label for="octoberGroup">Grupo de procedencia</label>
+                <select id="octoberGroup" data-lead-filter-control data-october-filter="group"><option value="">Todos</option></select>
+            </div>
+        @endif
 
         <div class="filter-group" @if($isOctoberProvisional ?? false) hidden @endif>
             <label for="commercialDelegation">Delegacion comercial</label>
@@ -90,20 +94,21 @@
             </select>
         </div>
 
-        <div class="filter-group" @if(! ($isOctoberProvisional ?? false)) hidden @endif>
-            <label for="leadMedium">Medio</label>
-            <select id="leadMedium"><option value="">Todos</option></select>
-        </div>
-
-        <div class="filter-group" @if(! ($isOctoberProvisional ?? false)) hidden @endif>
-            <label for="leadChannel">Canal</label>
-            <select id="leadChannel"><option value="">Todos</option></select>
-        </div>
-
-        <div class="filter-group" @if(! ($isOctoberProvisional ?? false)) hidden @endif>
-            <label for="leadStatus">Estado</label>
-            <select id="leadStatus"><option value="">Todos</option></select>
-        </div>
+        @if($isOctoberProvisional ?? false)
+            <div class="filter-group">
+                <label for="octoberMedium">Medio</label>
+                <select id="octoberMedium" data-lead-filter-control data-october-filter="medium"><option value="">Todos</option></select>
+            </div>
+            <div class="filter-group">
+                <label for="octoberChannel">Canal</label>
+                <select id="octoberChannel" data-lead-filter-control data-october-filter="channel"><option value="">Todos</option></select>
+            </div>
+            <div class="filter-group">
+                <label for="octoberStatus">Estado</label>
+                <select id="octoberStatus" data-lead-filter-control data-october-filter="status"><option value="">Todos</option></select>
+            </div>
+            <script src="{{ asset('js/reports/october-2026-dashboard-filters.js') }}" defer></script>
+        @endif
 
         <div class="filter-group" @if($isOctoberProvisional ?? false) hidden @endif>
             <label for="commercial">Comercial</label>
@@ -330,7 +335,7 @@
                 <div class="panel-title">
                     <div>
                         <h2>Delegaciones de procedencia</h2>
-                        <div class="small">Total de Interests de procedencia. Las métricas de owner técnico no están acreditadas en el inventario provisional.</div>
+                        <div class="small">{{ ($isOctoberProvisional ?? false) ? 'Total de Interests de procedencia. Las métricas de owner técnico no están acreditadas en el inventario provisional.' : 'Total de Intereses frente a potenciales con owner técnico' }}</div>
                     </div>
                 </div>
                 <div class="table-wrap">
@@ -339,8 +344,8 @@
                         <tr>
                             <th>Delegación de procedencia</th>
                             <th class="num">Intereses totales</th>
-                            <th class="num">No asignados</th>
-                            <th class="num">% no asignados</th>
+                            <th class="num">{{ ($isOctoberProvisional ?? false) ? 'No asignados' : 'Potencial con owner generico' }}</th>
+                            <th class="num">{{ ($isOctoberProvisional ?? false) ? '% no asignados' : '% pendiente' }}</th>
                         </tr>
                         </thead>
                         <tbody id="delegationRows"></tbody>
@@ -354,7 +359,7 @@
                 <div class="panel-title">
                     <div>
                         <h2>Fuentes</h2>
-                        <div class="small">Fuente del Interest. Actividad y gestión solo se muestran cuando están acreditadas.</div>
+                        <div class="small">{{ ($isOctoberProvisional ?? false) ? 'Fuente del Interest. Actividad y gestión solo se muestran cuando están acreditadas.' : 'Fuente del Interest en Salesforce' }}</div>
                     </div>
                 </div>
                 <div class="table-wrap">

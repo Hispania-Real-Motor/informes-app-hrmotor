@@ -342,7 +342,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('id="leadReportContent"', false)
             ->assertSee('Grupo de procedencia')
-            ->assertSee('No disponible: requiere actividad histórica acreditada')
+            ->assertSee('comerciales, actividad y comparativas permanecen no disponibles')
             ->assertDontSee('Información temporalmente no disponible');
 
         $this->authorisedChange(fn () => DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update(['phase' => 'verify_task']));
@@ -421,7 +421,6 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertGreaterThan(0, $metrics['functional_kpis_ns']);
         $this->assertArrayHasKey('dashboard_projection_ns', $metrics);
         $this->assertGreaterThan(0, $metrics['dashboard_projection_ns']);
-        $this->assertDatabaseCount('salesforce_interest_october_provisional_projection_rows', 34_229);
         foreach (['statuses', 'types', 'sources', 'media', 'channels'] as $dimension) {
             $this->assertSame(34_229, collect($overview['functional_kpis'][$dimension])->sum('interests'));
         }
@@ -430,6 +429,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertStringNotContainsString('salesforce_interest_monthly_materialized_rows', $queries);
         $this->assertStringNotContainsString('salesforce_interest_monthly_activity_rows', $queries);
         $this->assertLessThanOrEqual(3, count(DB::getQueryLog()));
+        $this->assertDatabaseCount('salesforce_interest_october_provisional_projection_rows', 34_229);
     }
 
     public function test_mariadb_can_reapply_the_additive_evidence_migration_without_row_triggers(): void
