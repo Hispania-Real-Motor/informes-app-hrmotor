@@ -14,6 +14,9 @@ delegación de Interests; no habilita atribución, readiness, snapshots, ranking
 KPI ni CSV de Campañas.
 El requisito de snapshot validado es local a esa pantalla y no invalida ni
 actualiza generación, readiness o snapshots publicados de Campañas.
+La proyección categórica versionada de octubre sólo sirve el dashboard de
+Interests; sus filtros no alimentan atribución, KPI, readiness, ranking, CSV ni
+certificación de Campañas, que mantienen sus fuentes y contratos publicados.
 
 ## Disponibilidad con Interests no certificado
 

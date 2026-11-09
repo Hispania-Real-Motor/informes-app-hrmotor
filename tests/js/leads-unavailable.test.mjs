@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const dashboardScript = readFileSync(new URL('../../resources/js/reports/leads-dashboard.js', import.meta.url), 'utf8');
+const octoberFilterScript = readFileSync(new URL('../../public/js/reports/october-2026-dashboard-filters.js', import.meta.url), 'utf8');
 const dashboardTemplate = readFileSync(new URL('../../resources/views/reports/leads/index.blade.php', import.meta.url), 'utf8');
 
 function createClassList() {
@@ -252,4 +253,39 @@ test('AJAX requests and CSV exports pin the generation returned by summary', asy
     assert.equal(calls[0].headers['X-Interest-Generation'], undefined);
     for (const call of calls.slice(1)) assert.equal(call.headers['X-Interest-Generation'], '42');
     assert.match(vm.runInContext("buildKpiAuditUrl('leads_totales')", context), /interest_generation=42/);
+});
+
+test('October provisional controls send exact combined dimensions instead of filtering rendered labels', () => {
+    const { context, element } = createDashboardContext(async () => ({ ok: true, json: async () => ({}) }));
+    const octoberFilters = [
+        ['octoberGroup', 'group', 'Grupo Madrid'],
+        ['octoberMedium', 'medium', 'Orgánico'],
+        ['octoberChannel', 'channel', 'Formulario'],
+        ['octoberStatus', 'status', 'Potencial'],
+    ].map(([id, dimension, value]) => {
+        const control = element(id);
+        control.dataset = { octoberFilter: dimension };
+        control.value = value;
+
+        return control;
+    });
+
+    context.document.querySelectorAll = (selector) => selector === '[data-october-filter]' ? octoberFilters : [];
+    vm.runInContext(octoberFilterScript, context);
+
+    ['octoberGroup', 'octoberMedium', 'octoberChannel', 'octoberStatus'].forEach((id) => {
+        assert.match(dashboardTemplate, new RegExp(`id="${id}"`));
+    });
+    element('period').value = 'october_2026';
+    element('leadDelegation').value = 'Madrid General';
+    element('portal').value = 'Web';
+
+    const query = new URLSearchParams(vm.runInContext('currentFilters()', context));
+    assert.equal(query.get('period'), 'october_2026');
+    assert.equal(query.get('lead_delegation'), 'Madrid General');
+    assert.equal(query.get('portal'), 'Web');
+    assert.equal(query.get('group'), 'Grupo Madrid');
+    assert.equal(query.get('medium'), 'Orgánico');
+    assert.equal(query.get('channel'), 'Formulario');
+    assert.equal(query.get('status'), 'Potencial');
 });

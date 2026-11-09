@@ -9,6 +9,7 @@ use App\Services\Reports\Leads\October2026ProvisionalInterestReader;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -318,7 +319,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->asReportUser($admin)->get('/informes/leads/provisional/october-2026')->assertStatus(503);
     }
 
-    public function test_the_main_interests_route_renders_the_validated_october_snapshot_without_loading_the_official_dataset(): void
+    public function test_the_original_interests_dashboard_renders_the_validated_october_projection_without_loading_the_official_dataset(): void
     {
         config()->set('services.informes_auth.enabled', true);
         config()->set('salesforce.october_2026_provisional_enabled', true);
@@ -327,22 +328,71 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $admin = $this->user(ReportUser::ROLE_ADMIN);
         $viewer = $this->user(ReportUser::ROLE_VIEWER);
 
-        $this->asReportUser($admin)->get('/informes/leads')->assertSee('Octubre 2026 · provisional');
+        $this->asReportUser($admin)->get('/informes/leads')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertSee('Octubre 2026 · provisional')
+            ->assertSee('id="leadReportContent"', false)
+            ->assertSee('Octubre de 2026 · provisional y no certificado históricamente')
+            ->assertDontSee('Explorar agregados provisionales');
         $this->asReportUser($viewer)->get('/informes/leads')->assertDontSee('Octubre 2026 · provisional');
         $this->asReportUser($viewer)->get('/informes/leads?period=october_2026')->assertForbidden();
         $this->asReportUser($admin)->get('/informes/leads?period=october_2026')
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertSee('Octubre de 2026: inventario provisional no certificado')
-            ->assertSee('Explorar agregados provisionales')
-            ->assertSee('Agregados provisionales disponibles')
-            ->assertSee('Indicadores no disponibles con esta evidencia')
-            ->assertSee('controles de exploración no son filtros del informe')
-            ->assertSee('data-provisional-distribution="delegation"', false)
-            ->assertDontSee('Información temporalmente no disponible');
+            ->assertSee('id="leadReportContent"', false)
+            ->assertSee('Grupo de procedencia')
+            ->assertSee('comerciales, actividad y comparativas permanecen no disponibles')
+            ->assertSee('window.initialLeadPeriod = "october_2026";', false)
+            ->assertSee('<div class="is-hidden" id="leadUnavailableState">', false);
 
         $this->authorisedChange(fn () => DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update(['phase' => 'verify_task']));
         $this->asReportUser($admin)->get('/informes/leads?period=october_2026')->assertStatus(503);
+    }
+
+    public function test_october_dashboard_filters_use_the_versioned_projection_and_reconcile_combined_dimensions(): void
+    {
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.october_2026_provisional_enabled', true);
+        $this->seedValidJournals();
+        $this->appendEligibleRows([
+            ['Convertido', 'Venta', 'Web', 'Pago', 'Formulario', 'Madrid'],
+            ['Descartado', 'Tasación', 'Partner', 'Orgánico', 'Llamada', 'Valencia'],
+            ['Potencial', 'Venta', 'Web', 'Orgánico', 'Formulario', 'Madrid'],
+        ]);
+        app(October2026ProvisionalInterestReader::class)->validate();
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $response = $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026&lead_delegation=Madrid%20General&portal=Web&status=Convertido');
+        $queries = collect(DB::getQueryLog())->pluck('query')->implode("\n");
+
+        $response->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonPath('provisional', true)
+            ->assertJsonPath('kpis.leads_totales', 1)
+            ->assertJsonPath('kpis.convertidos', 1)
+            ->assertJsonPath('kpis.descartados', 0)
+            ->assertJsonPath('kpis.potenciales_sin_trabajar', null);
+        $this->assertStringContainsString('salesforce_interest_october_provisional_projection_rows', $queries);
+        $this->assertStringNotContainsString('salesforce_interest_monthly_materialized_rows', $queries);
+        $this->assertStringNotContainsString('salesforce_interest_monthly_recovery_rows', $queries);
+        $this->assertStringNotContainsString('salesforce_interest_monthly_activity_rows', $queries);
+    }
+
+    public function test_october_dashboard_rejects_a_projection_invalidated_between_query_and_response(): void
+    {
+        $this->seedValidJournals();
+        app(October2026ProvisionalInterestReader::class)->validate();
+        $snapshot = app(October2026ProvisionalInterestReader::class)->dashboardProjection();
+        app(October2026ProvisionalEvidenceInvalidator::class)->revoke();
+
+        $this->expectException(ProvisionalInterestSourceUnavailable::class);
+        app(October2026ProvisionalInterestReader::class)->assertDashboardProjectionCurrent(
+            $snapshot['integrity_revision'],
+            $snapshot['projection_key'],
+        );
     }
 
     public function test_representative_october_volume_is_validated_outside_http_and_http_reads_only_the_snapshot(): void
@@ -370,6 +420,8 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertGreaterThan(0, $metrics['total_ns']);
         $this->assertArrayHasKey('functional_kpis_ns', $metrics);
         $this->assertGreaterThan(0, $metrics['functional_kpis_ns']);
+        $this->assertArrayHasKey('dashboard_projection_ns', $metrics);
+        $this->assertGreaterThan(0, $metrics['dashboard_projection_ns']);
         foreach (['statuses', 'types', 'sources', 'media', 'channels'] as $dimension) {
             $this->assertSame(34_229, collect($overview['functional_kpis'][$dimension])->sum('interests'));
         }
@@ -378,6 +430,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertStringNotContainsString('salesforce_interest_monthly_materialized_rows', $queries);
         $this->assertStringNotContainsString('salesforce_interest_monthly_activity_rows', $queries);
         $this->assertLessThanOrEqual(3, count(DB::getQueryLog()));
+        $this->assertDatabaseCount('salesforce_interest_october_provisional_projection_rows', 34_229);
     }
 
     public function test_mariadb_can_reapply_the_additive_evidence_migration_without_row_triggers(): void
@@ -388,6 +441,8 @@ class October2026ProvisionalInterestReaderTest extends TestCase
 
         $migration = require database_path('migrations/2026_11_11_120000_add_october_provisional_validation_evidence.php');
         $migration->up();
+        $projectionMigration = require database_path('migrations/2026_11_12_120000_add_october_provisional_interest_projection.php');
+        $projectionMigration->up();
         $tables = [
             'salesforce_interest_monthly_recoveries',
             'salesforce_interest_monthly_recovery_rows',
@@ -400,6 +455,8 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $triggers = DB::select("SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND event_object_table IN ({$placeholders})", $tables);
 
         $this->assertDatabaseCount('salesforce_interest_monthly_integrity_revisions', 1);
+        $this->assertTrue(Schema::hasColumn('salesforce_interest_october_provisional_validations', 'projection_key'));
+        $this->assertTrue(Schema::hasTable('salesforce_interest_october_provisional_projection_rows'));
         $this->assertSame([], $triggers);
     }
 
@@ -512,7 +569,9 @@ class October2026ProvisionalInterestReaderTest extends TestCase
     private function appendEligibleRows(array $rows): void
     {
         $now = now();
-        foreach ($rows as $offset => [$status, $type, $source, $medium, $channel]) {
+        foreach ($rows as $offset => $values) {
+            [$status, $type, $source, $medium, $channel] = $values;
+            $delegation = $values[5] ?? 'Madrid';
             $number = $offset + 3;
             $hash = hash('sha256', 'synthetic-'.$number);
             $sourceRowId = DB::table('salesforce_interest_monthly_recovery_rows')->insertGetId([
@@ -524,7 +583,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
                 'source_content_hash' => $hash, 'content_hash' => $hash, 'content_matches_inventory' => true, 'is_deleted' => false,
                 'salesforce_created_at' => '2026-10-02 08:00:00', 'salesforce_last_modified_at' => '2026-10-02 08:00:00',
                 'functional_created_at' => '2026-10-02 08:00:00', 'status' => $status, 'type' => $type, 'source' => $source,
-                'medium' => $medium, 'channel' => $channel, 'origin_delegation' => 'Madrid', 'created_at' => $now, 'updated_at' => $now,
+                'medium' => $medium, 'channel' => $channel, 'origin_delegation' => $delegation, 'created_at' => $now, 'updated_at' => $now,
             ]);
         }
 

@@ -808,3 +808,15 @@ con autorización de lectura, revisión independiente y aprobación explícita.
 Esta arquitectura está implementada en revisión, no desplegada ni habilitada
 para producción; subsisten bloqueos de rendimiento/regresión/conciliación.
 [Esquema, límites y procedimientos](../salesforce-interest-generations.md).
+
+### Proyección administrativa aislada de octubre de 2026
+
+`October2026ProvisionalInterestReader` valida journals mensuales aislados y
+materializa una proyección categórica versionada en
+`salesforce_interest_october_provisional_projection_rows`. El lector HTTP
+`October2026ProvisionalInterestDashboardDatasetService` sólo consulta esa
+proyección ligada a su `projection_key` y revisión de integridad; nunca lee
+F2/F2M/F5 al servir el dashboard. Es un módulo administrativo aislado y no
+extiende `InterestGenerationReader`: una generación publicada conserva
+precedencia, y la proyección no se convierte en publicación ni en fuente de
+otros informes.
