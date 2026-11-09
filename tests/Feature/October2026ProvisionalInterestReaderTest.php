@@ -263,8 +263,9 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             'counters' => json_encode(['persisted' => 2]), 'evidence' => json_encode(['verification' => ['verified' => false]]), 'reason_hash' => hash('sha256', 'synthetic october source'),
             'started_at' => $now, 'completed_at' => $now, 'created_at' => $now, 'updated_at' => $now,
         ]);
+        $sourceRowIds = [];
         foreach ([[1, str_repeat('a', 64), false], [2, str_repeat('b', 64), true]] as [$number, $hash, $deleted]) {
-            DB::table('salesforce_interest_monthly_recovery_rows')->insert([
+            $sourceRowIds[$number] = DB::table('salesforce_interest_monthly_recovery_rows')->insertGetId([
                 'monthly_recovery_id' => 1, 'salesforce_id' => $this->id($number), 'content_hash' => $hash, 'is_deleted' => $deleted,
                 'functional_created_at' => '2026-10-02 08:00:00', 'created_at' => $now, 'updated_at' => $now,
             ]);
@@ -278,7 +279,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         ]);
         foreach ([[1, str_repeat('a', 64), true, false, 'Madrid', $this->id(11)], [2, str_repeat('c', 64), false, true, null, null]] as [$number, $hash, $matching, $deleted, $delegation, $person]) {
             DB::table('salesforce_interest_monthly_materialized_rows')->insert([
-                'monthly_materialization_id' => 1, 'monthly_recovery_row_id' => $number, 'salesforce_id' => $this->id($number), 'source_content_hash' => $number === 1 ? str_repeat('a', 64) : str_repeat('b', 64), 'content_hash' => $hash,
+                'monthly_materialization_id' => 1, 'monthly_recovery_row_id' => $sourceRowIds[$number], 'salesforce_id' => $this->id($number), 'source_content_hash' => $number === 1 ? str_repeat('a', 64) : str_repeat('b', 64), 'content_hash' => $hash,
                 'content_matches_inventory' => $matching, 'is_deleted' => $deleted, 'salesforce_created_at' => '2026-10-02 08:00:00', 'salesforce_last_modified_at' => '2026-10-02 08:00:00', 'functional_created_at' => '2026-10-02 08:00:00',
                 'origin_delegation' => $delegation, 'canonical_person_salesforce_id' => $person, 'created_at' => $now, 'updated_at' => $now,
             ]);
@@ -317,6 +318,10 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             }
             DB::table('salesforce_interest_monthly_recovery_rows')->insert($batch);
         }
+        $sourceRowIds = DB::table('salesforce_interest_monthly_recovery_rows')
+            ->where('monthly_recovery_id', 1)
+            ->pluck('id', 'salesforce_id')
+            ->all();
         DB::table('salesforce_interest_monthly_materializations')->insert([
             'id' => 1, 'materialization_identifier' => (string) Str::uuid(), 'monthly_recovery_id' => 1, 'status' => 'completed', 'phase' => 'completed', 'batch_size' => 500, 'pages_completed' => 69,
             'counters' => '{}', 'source_evidence' => json_encode(['source_rows' => $f2Rows, 'source_sha256' => hash_final($f2Source)]), 'reason_hash' => hash('sha256', 'representative materialization'),
@@ -329,7 +334,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
                 $id = $this->id($number);
                 $sourceHash = hash('sha256', 'source-'.$number);
                 $contentHash = hash('sha256', 'materialized-'.$number);
-                $batch[] = ['monthly_materialization_id' => 1, 'monthly_recovery_row_id' => $number, 'salesforce_id' => $id, 'source_content_hash' => $sourceHash, 'content_hash' => $contentHash, 'content_matches_inventory' => true, 'is_deleted' => false, 'salesforce_created_at' => '2026-10-02 08:00:00', 'salesforce_last_modified_at' => '2026-10-02 08:00:00', 'functional_created_at' => '2026-10-02 08:00:00', 'created_at' => $now, 'updated_at' => $now];
+                $batch[] = ['monthly_materialization_id' => 1, 'monthly_recovery_row_id' => $sourceRowIds[$id], 'salesforce_id' => $id, 'source_content_hash' => $sourceHash, 'content_hash' => $contentHash, 'content_matches_inventory' => true, 'is_deleted' => false, 'salesforce_created_at' => '2026-10-02 08:00:00', 'salesforce_last_modified_at' => '2026-10-02 08:00:00', 'functional_created_at' => '2026-10-02 08:00:00', 'created_at' => $now, 'updated_at' => $now];
                 hash_update($f2mManifest, $id.'|'.$contentHash."\n");
             }
             DB::table('salesforce_interest_monthly_materialized_rows')->insert($batch);

@@ -7080,6 +7080,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   cuerpo de PR. No se ejecutaron PHP, MariaDB, migraciones, Salesforce, CI,
   benchmark ni producción desde esta revisión. PR: `Docs-Impact: updated`,
   `Docs-Matrix-Impact: updated`.
+- La fixture MariaDB usa las claves primarias F2 realmente persistidas al crear
+  F2M; no presupone que un rollback de prueba reinicie `AUTO_INCREMENT`.
+  Esto conserva la cobertura de claves foráneas tanto en SQLite como en
+  MariaDB sin alterar journals ni lógica productiva.
 
 ## 2026-11-06 — correctivo de persistencia selectiva F5 (PR #118)
 
