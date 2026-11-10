@@ -4,6 +4,7 @@ namespace App\Services\Reports\Leads;
 
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -29,6 +30,8 @@ final class October2026ProvisionalInterestDashboardDatasetService
         'medium' => 'medium',
         'channel' => 'channel',
         'status' => 'interest_status',
+        'commercial' => 'owner_key',
+        'commercial_delegation' => 'commercial_delegation',
     ];
 
     public function __construct(private readonly October2026ProvisionalInterestReader $reader) {}
@@ -38,8 +41,9 @@ final class October2026ProvisionalInterestDashboardDatasetService
     {
         $snapshot = $this->snapshot($request);
         $rows = $this->filteredRows($snapshot, $request);
-        $bucket = $this->bucket($rows);
+        $bucket = $this->bucket($rows, $this->hasOwners($snapshot));
         $overview = $snapshot['overview'];
+        $filters = $this->filterOptions($snapshot);
 
         $this->assertCurrent($snapshot);
 
@@ -60,9 +64,9 @@ final class October2026ProvisionalInterestDashboardDatasetService
                 'Datos de octubre: '.$overview['coverage']['eligible_active_matching'].' Intereses activos disponibles.',
                 'Las comparativas y los indicadores de actividad requieren más datos.',
             ],
-            'filters' => $this->filterOptions($snapshot),
+            'filters' => $filters,
             'availability' => [
-                'commercials' => 'Sin datos suficientes de comerciales para octubre.',
+                'commercials' => $this->hasOwners($snapshot) ? 'Propietarios observados en F2M; la asignación histórica no está certificada.' : 'Sin datos suficientes de propietarios para octubre.',
                 'activity' => 'Sin datos suficientes de actividad y gestión para octubre.',
                 'comparison' => 'Sin datos suficientes para comparar con otro período.',
             ],
@@ -74,7 +78,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     public function delegationRows(Request $request): array
     {
         $snapshot = $this->snapshot($request);
-        $items = $this->groupedBuckets($this->filteredRows($snapshot, $request), 'origin_delegation', 'delegacion');
+        $items = $this->groupedBuckets($this->filteredRows($snapshot, $request), 'origin_delegation', 'delegacion', $this->hasOwners($snapshot));
         $this->assertCurrent($snapshot);
 
         return ['items' => $items];
@@ -84,7 +88,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     public function sourceRows(Request $request): array
     {
         $snapshot = $this->snapshot($request);
-        $items = $this->groupedBuckets($this->filteredRows($snapshot, $request), 'source', 'portal');
+        $items = $this->groupedBuckets($this->filteredRows($snapshot, $request), 'source', 'portal', $this->hasOwners($snapshot));
         $this->assertCurrent($snapshot);
 
         return ['items' => $items];
@@ -94,15 +98,53 @@ final class October2026ProvisionalInterestDashboardDatasetService
     public function commercialRows(Request $request): array
     {
         $snapshot = $this->snapshot($request);
+        if (! $this->hasOwners($snapshot)) {
+            $this->assertCurrent($snapshot);
+
+            return ['ok' => true, 'zones' => [], 'delegations' => [], 'commercials' => [], 'items' => [], 'message' => 'Sin datos suficientes de propietarios para octubre.'];
+        }
+        $rows = $this->filteredRows($snapshot, $request);
+        $commercials = (clone $rows)->select(['owner_key', 'commercial_delegation', 'commercial_zone'])
+            ->selectRaw('COUNT(*) as leads_totales')
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' THEN 1 ELSE 0 END) as potenciales")
+            ->groupBy('owner_key', 'commercial_delegation', 'commercial_zone')
+            ->orderByDesc('leads_totales')->get();
+        $labels = $this->ownerLabels($snapshot);
+        $items = $commercials->map(function (object $row) use ($labels): array {
+            $total = (int) $row->leads_totales;
+            $converted = (int) $row->convertidos;
+            $discarded = (int) $row->descartados;
+            $key = (string) $row->owner_key;
+
+            return [
+                'group_key' => $key,
+                'comercial' => ($labels[$key] ?? 'Propietario sin nombre').' · '.substr($key, -6),
+                'commercial_delegation' => (string) $row->commercial_delegation,
+                'zone' => (string) $row->commercial_zone,
+                'leads_totales' => $total,
+                'convertidos' => $converted,
+                'conversion_pct' => $this->percentage($converted, $total),
+                'descartados' => $discarded,
+                'descarte_pct' => $this->percentage($discarded, $total),
+                'potenciales' => (int) $row->potenciales,
+                'potenciales_sin_trabajar' => null,
+                'gestionados' => null,
+                'gestionados_pct' => null,
+            ];
+        })->all();
+        $delegations = $this->groupedCommercialBuckets($rows, 'commercial_delegation', 'commercial_delegation');
+        $zones = $this->groupedCommercialBuckets($rows, 'commercial_zone', 'zone');
         $this->assertCurrent($snapshot);
 
         return [
             'ok' => true,
-            'zones' => [],
-            'delegations' => [],
-            'commercials' => [],
-            'items' => [],
-            'message' => 'Sin datos suficientes de comerciales y delegaciones para octubre.',
+            'zones' => $zones,
+            'delegations' => $delegations,
+            'commercials' => $items,
+            'items' => $items,
+            'message' => 'Propietario F2M observado; delegación según intervalo disponible al corte de octubre.',
         ];
     }
 
@@ -129,6 +171,9 @@ final class October2026ProvisionalInterestDashboardDatasetService
         foreach (self::FILTER_COLUMNS as $parameter => $column) {
             $value = trim($request->string($parameter)->toString());
             if ($value !== '' && $value !== 'all') {
+                if (in_array($parameter, ['commercial', 'commercial_delegation'], true) && ! $this->hasOwners($snapshot)) {
+                    throw new ProvisionalInterestSourceUnavailable;
+                }
                 $rows->where($column, $this->filterValue($parameter, $value));
             }
         }
@@ -153,22 +198,27 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'channels' => $this->labels($functional['channels'] ?? [], 'channel'),
             'statuses' => $this->labels($functional['statuses'] ?? [], 'status'),
             'lead_types' => $this->labels($functional['types'] ?? [], 'type'),
-            'commercials' => [],
-            'commercial_delegations' => [],
+            'commercials' => $this->hasOwners($snapshot) ? $this->ownerFilterOptions($snapshot) : [],
+            'commercial_delegations' => $this->hasOwners($snapshot) ? $this->projectionLabels($snapshot, 'commercial_delegation') : [],
         ];
     }
 
-    private function bucket(Builder $rows): array
+    private function bucket(Builder $rows, bool $hasOwners): array
     {
         $result = (clone $rows)->selectRaw('COUNT(*) as leads_totales')
             ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' THEN 1 ELSE 0 END) as potenciales")
+            ->selectRaw("SUM(CASE WHEN channel = 'Llamada' THEN 1 ELSE 0 END) as llamadas")
+            ->selectRaw("SUM(CASE WHEN channel = 'Formulario' THEN 1 ELSE 0 END) as formularios")
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' AND owner_is_technical = 1 THEN 1 ELSE 0 END) as leads_unassigned")
             ->selectRaw("SUM(CASE WHEN origin_delegation = 'Sin clasificar' THEN 1 ELSE 0 END) as unclassified")
             ->first();
         $total = (int) ($result->leads_totales ?? 0);
         $converted = (int) ($result->convertidos ?? 0);
         $discarded = (int) ($result->descartados ?? 0);
+        $calls = (int) ($result->llamadas ?? 0);
+        $forms = (int) ($result->formularios ?? 0);
 
         return [
             'leads_totales' => $total,
@@ -178,13 +228,13 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'descarte_pct' => $this->percentage($discarded, $total),
             'potenciales' => (int) ($result->potenciales ?? 0),
             'potenciales_sin_trabajar' => null,
-            'leads_unassigned' => null,
+            'leads_unassigned' => $hasOwners ? (int) ($result->leads_unassigned ?? 0) : null,
             'gestionados' => null,
             'gestionados_pct' => null,
-            'llamadas' => null,
-            'llamadas_pct' => null,
-            'formularios' => null,
-            'formularios_pct' => null,
+            'llamadas' => $calls,
+            'llamadas_pct' => $this->percentage($calls, $total),
+            'formularios' => $forms,
+            'formularios_pct' => $this->percentage($forms, $total),
             'without_eligible_commercial' => null,
             'without_commercial_delegation' => null,
             'unclassified' => (int) ($result->unclassified ?? 0),
@@ -192,21 +242,26 @@ final class October2026ProvisionalInterestDashboardDatasetService
     }
 
     /** @return list<array<string,int|float|string>> */
-    private function groupedBuckets(Builder $rows, string $column, string $output): array
+    private function groupedBuckets(Builder $rows, string $column, string $output, bool $hasOwners): array
     {
         return (clone $rows)->select($column)
             ->selectRaw('COUNT(*) as leads_totales')
             ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' THEN 1 ELSE 0 END) as potenciales")
+            ->selectRaw("SUM(CASE WHEN channel = 'Llamada' THEN 1 ELSE 0 END) as llamadas")
+            ->selectRaw("SUM(CASE WHEN channel = 'Formulario' THEN 1 ELSE 0 END) as formularios")
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' AND owner_is_technical = 1 THEN 1 ELSE 0 END) as leads_unassigned")
             ->groupBy($column)
             ->orderByDesc('leads_totales')
             ->orderBy($column)
             ->get()
-            ->map(function (object $row) use ($column, $output): array {
+            ->map(function (object $row) use ($column, $output, $hasOwners): array {
                 $total = (int) $row->leads_totales;
                 $converted = (int) $row->convertidos;
                 $discarded = (int) $row->descartados;
+                $calls = (int) $row->llamadas;
+                $forms = (int) $row->formularios;
 
                 return [
                     $output => (string) $row->{$column},
@@ -219,12 +274,12 @@ final class October2026ProvisionalInterestDashboardDatasetService
                     'potenciales_sin_trabajar' => null,
                     'gestionados' => null,
                     'gestionados_pct' => null,
-                    'llamadas' => null,
-                    'llamadas_pct' => null,
-                    'formularios' => null,
-                    'formularios_pct' => null,
-                    'leads_unassigned' => null,
-                    'leads_unassigned_pct' => null,
+                    'llamadas' => $calls,
+                    'llamadas_pct' => $this->percentage($calls, $total),
+                    'formularios' => $forms,
+                    'formularios_pct' => $this->percentage($forms, $total),
+                    'leads_unassigned' => $hasOwners ? (int) $row->leads_unassigned : null,
+                    'leads_unassigned_pct' => $hasOwners ? $this->percentage((int) $row->leads_unassigned, $total) : null,
                 ];
             })
             ->all();
@@ -244,6 +299,81 @@ final class October2026ProvisionalInterestDashboardDatasetService
     private function filterValue(string $parameter, string $value): string
     {
         return $parameter === 'lead_type' && $value === 'Tasacion' ? 'Tasación' : $value;
+    }
+
+    private function hasOwners(array $snapshot): bool
+    {
+        return ($snapshot['overview']['projection_contract'] ?? null) === 'observed_owners_v1';
+    }
+
+    /** @return array<string, string> */
+    private function ownerLabels(array $snapshot): array
+    {
+        try {
+            return DB::table('salesforce_interest_october_provisional_owners')
+                ->where('projection_key', $snapshot['projection_key'])
+                ->get(['owner_key', 'name_ciphertext'])
+                ->mapWithKeys(fn (object $row): array => [
+                    $row->owner_key => $row->name_ciphertext === null ? 'Sin propietario observado' : Crypt::decryptString($row->name_ciphertext),
+                ])->all();
+        } catch (\Throwable) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+    }
+
+    /** @return list<array{id:string,name:string}> */
+    private function ownerFilterOptions(array $snapshot): array
+    {
+        $options = [];
+        foreach ($this->ownerLabels($snapshot) as $key => $name) {
+            $options[] = ['id' => $key, 'name' => $name.' · '.substr($key, -6)];
+        }
+        usort($options, fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
+
+        return $options;
+    }
+
+    /** @return list<string> */
+    private function projectionLabels(array $snapshot, string $column): array
+    {
+        return DB::table('salesforce_interest_october_provisional_projection_rows')
+            ->where('scope', self::SCOPE)
+            ->where('integrity_revision', $snapshot['integrity_revision'])
+            ->where('projection_key', $snapshot['projection_key'])
+            ->distinct()->orderBy($column)->pluck($column)->all();
+    }
+
+    /** @return list<array<string, int|float|string|null>> */
+    private function groupedCommercialBuckets(Builder $rows, string $column, string $output): array
+    {
+        $groupColumns = $column === 'commercial_delegation' ? ['commercial_delegation', 'commercial_zone'] : ['commercial_zone'];
+
+        return (clone $rows)->select($groupColumns)
+            ->selectRaw('COUNT(*) as leads_totales')
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' THEN 1 ELSE 0 END) as potenciales")
+            ->groupBy(...$groupColumns)
+            ->orderByDesc('leads_totales')->get()
+            ->map(function (object $row) use ($column, $output): array {
+                $total = (int) $row->leads_totales;
+                $converted = (int) $row->convertidos;
+                $discarded = (int) $row->descartados;
+
+                return [
+                    $output => (string) $row->{$column},
+                    'zone' => (string) $row->commercial_zone,
+                    'leads_totales' => $total,
+                    'convertidos' => $converted,
+                    'conversion_pct' => $this->percentage($converted, $total),
+                    'descartados' => $discarded,
+                    'descarte_pct' => $this->percentage($discarded, $total),
+                    'potenciales' => (int) $row->potenciales,
+                    'potenciales_sin_trabajar' => null,
+                    'gestionados' => null,
+                    'gestionados_pct' => null,
+                ];
+            })->all();
     }
 
     /** @param array<int, array<string, mixed>> $rows @return list<string> */

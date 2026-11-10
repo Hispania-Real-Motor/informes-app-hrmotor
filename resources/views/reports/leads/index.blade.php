@@ -73,8 +73,8 @@
             </div>
         @endif
 
-        <div class="filter-group" @if($isOctoberProvisional ?? false) hidden @endif>
-            <label for="commercialDelegation">Delegacion comercial</label>
+        <div class="filter-group">
+            <label for="commercialDelegation">{{ ($isOctoberProvisional ?? false) ? 'Delegación comercial observada' : 'Delegacion comercial' }}</label>
             <select id="commercialDelegation">
                 <option value="">Todas</option>
             </select>
@@ -110,8 +110,8 @@
             <script src="{{ asset('js/reports/october-2026-dashboard-filters.js') }}" defer></script>
         @endif
 
-        <div class="filter-group" @if($isOctoberProvisional ?? false) hidden @endif>
-            <label for="commercial">Comercial</label>
+        <div class="filter-group">
+            <label for="commercial">{{ ($isOctoberProvisional ?? false) ? 'Propietario observado' : 'Comercial' }}</label>
             <select id="commercial">
                 <option value="">Todos</option>
             </select>
@@ -229,7 +229,7 @@
                     </div>
                 </div>
                 @if($isOctoberProvisional ?? false)
-                    <div class="notice">Sin datos suficientes de comerciales y delegaciones para octubre.</div>
+                    <div class="notice">Asignación observada: el propietario disponible no acredita el responsable histórico al cierre de octubre.</div>
                 @endif
                 <div class="table-wrap">
                     <table id="leadCommercialZonesTable">
@@ -267,7 +267,7 @@
                     <table id="leadCommercialDelegationsTable">
                         <thead>
                         <tr>
-                            <th data-column="commercial_delegation">Delegacion comercial</th>
+                            <th data-column="commercial_delegation">{{ ($isOctoberProvisional ?? false) ? 'Delegación observada' : 'Delegacion comercial' }}</th>
                             <th data-column="zone">Zona</th>
                             <th class="num" data-column="leads_totales">Intereses totales</th>
                             <th class="num" data-column="convertidos">Convertidos</th>
@@ -299,15 +299,15 @@
                 <div class="filters card compact-filters">
                     <div class="filter-group">
                         <label for="leadCommercialSearch">Buscar comercial</label>
-                        <input id="leadCommercialSearch" type="search" placeholder="Filtrar por nombre o ID Salesforce">
+                        <input id="leadCommercialSearch" type="search" placeholder="{{ ($isOctoberProvisional ?? false) ? 'Filtrar por nombre o clave' : 'Filtrar por nombre o ID Salesforce' }}">
                     </div>
                 </div>
                 <div class="table-wrap">
                     <table id="leadCommercialTable">
                         <thead>
                         <tr>
-                            <th data-column="comercial">Comercial</th>
-                            <th data-column="commercial_delegation">Delegacion comercial</th>
+                            <th data-column="comercial">{{ ($isOctoberProvisional ?? false) ? 'Propietario observado' : 'Comercial' }}</th>
+                            <th data-column="commercial_delegation">{{ ($isOctoberProvisional ?? false) ? 'Delegación observada' : 'Delegacion comercial' }}</th>
                             <th data-column="zone">Zona</th>
                             <th class="num" data-column="leads_totales">Intereses totales</th>
                             <th class="num" data-column="convertidos">Convertidos</th>

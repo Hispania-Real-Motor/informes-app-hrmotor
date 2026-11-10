@@ -18,6 +18,103 @@
   reversible, compatible por ausencia y sin módulo o contrato de datos nuevo.
   No se ejecutaron PHP, migraciones, scheduler, workers, Salesforce, base de
   datos, benchmark ni producción durante esta revisión documental.
+## 2026-11-10 — preparación de la PR #135 contra main
+
+- La PR #133 fue fusionada en `main` (`2961d732a619af5b6d0012797ac89d2405486ac8`).
+  La rama de propietarios observados incorporó ese HEAD con merge normal.
+- CI y Documentation integrity vuelven a aceptar únicamente PR contra `main`;
+  la prueba documental y la guía reflejan el contrato normal. No se modifica
+  la implementación de propietarios, la migración aditiva ni los journals.
+- Archivos modificados para este ajuste: `.github/workflows/ci.yml`,
+  `.github/workflows/docs-integrity.yml`,
+  `tests/documentation/test_check_documentation_integrity.py`,
+  `docs/guia-mantenimiento-documental.md` y este handoff. No hay cambios de
+  base de datos, seguridad de aplicación ni rendimiento HTTP por esta
+  actualización. Acciones manuales: revisar e integrar la PR #135 antes de
+  cualquier despliegue autorizado; la nueva validación administrativa de
+  octubre se mantiene manual y posterior a la migración.
+- Pruebas locales: 59/59 JavaScript y `git diff --check` correcto. El último
+  SHA de la PR debe superar PHPUnit, MariaDB 11, Pint, build y Documentation
+  integrity en GitHub Actions antes de integrarse. PHP y Composer no están
+  disponibles en este worktree. Riesgo pendiente: los KPI de actividad y
+  elegibilidad siguen sin evidencia
+  histórica suficiente; la proyección de owners sigue siendo provisional.
+
+## 2026-11-10 — CI de la PR apilada de propietarios
+
+- Los workflows CI y Documentation integrity aceptan PR dirigidas a `main` y
+  a la rama de canales de octubre, manteniendo el `push` de CI limitado a
+  `main`. La PR Draft de propietarios
+  permanece basada en la rama de canales de la PR #133. GitHub no ejecutaba los
+  jobs porque ambos workflows filtraban `pull_request` a `main`.
+- Archivos modificados: `.github/workflows/ci.yml`,
+  `.github/workflows/docs-integrity.yml`, la guía, su prueba de control y este
+  handoff. No hay cambios de base
+  de datos, configuración de aplicación, permisos, consultas ni código de
+  informes. El cambio permite validar PR apiladas y no altera la ejecución de
+  los jobs ni elimina controles. La comprobación de `git diff --check` y los
+  resultados de los workflows quedan registrados al cierre de esta revisión.
+- Acción manual posterior: integrar primero la PR #133. Riesgo pendiente:
+  antes de esa integración, la PR apilada debe contrastarse con la misma base
+  y los resultados de CI deben corresponder a su último SHA.
+- La primera ejecución remota detectó que el límite volumétrico de lectura
+  quedó en 15 consultas cuando el filtro de propietarios requiere una lectura
+  única del diccionario cifrado. La prueba exige ahora exactamente esa consulta
+  y como máximo 16 en total, sin permitir N+1 ni acceso HTTP a journals.
+
+## 2026-11-10 — propietarios observados en la proyección aislada de octubre
+
+- La validación administrativa de Interests añade la variante
+  `observed_owners_v1` sobre las mismas filas F2M activas y coincidentes. Agrupa
+  por `owner_key` HMAC y guarda la etiqueta cifrada aparte; la respuesta de
+  administrador puede descifrarla, pero no expone el ID Salesforce ni la
+  convierte en asignación histórica certificada. Se habilitan filtros y
+  desgloses de propietario observado, delegación comercial observada y zona.
+- Delegación/zona proceden sólo de un intervalo único de
+  `commercial_delegation_snapshots` que cubra el corte
+  `2026-10-31T23:00:00Z`. Owner vacío, técnico, falta de intervalo o ambigüedad
+  permanecen diferenciados, sin inferir organigrama. `leads_unassigned` cuenta
+  sólo `Potencial` con owner técnico clasificado; siguen no disponibles comercial
+  elegible, potenciales sin trabajar, gestión y actividad.
+- Las mutaciones de snapshots por rutas Laravel autorizadas revocan la revisión
+  de octubre en la misma transacción sólo si alteran el intervalo que cubre ese
+  corte. HTTP falla cerrado hasta nueva validación y un rollback conserva la
+  evidencia anterior; un cambio posterior que no afecta el intervalo no revoca
+  la proyección. SQL directo no está cubierto. No hay publicación, cambio de
+  lectores oficiales, CSV, auditorías ni KPI de los seis informes. El ajuste del
+  servicio compartido de snapshots no altera los contratos de Reservas/Ventas.
+- Documentación actualizada: `docs/reglas-negocio-leads.md`,
+  `docs/salesforce-interest-generations.md`,
+  `docs/informe-reservas-ventas.md`,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/ai/DECISIONS.md` y este handoff.
+  `PROJECT_CONTEXT.md` no cambia: se extiende una proyección existente, no el
+  módulo ni sus convenciones generales. Esta revisión documental no ejecutó
+  PHP, JavaScript, migraciones, base de datos, Salesforce, benchmark, CI ni
+  producción. Pendiente: validador documental sobre HEAD comprometido y cuerpo
+  de PR. Contrato sugerido: `Docs-Impact: updated` y
+  `Docs-Matrix-Impact: updated`.
+
+## 2026-11-10 — Fase 3: canales Llamadas/Formularios en octubre
+
+- El dashboard administrativo de Intereses de octubre cuenta `Llamadas` y
+  `Formularios` exclusivamente desde `channel = 'Llamada'` y
+  `channel = 'Formulario'` de la proyección F2M activa/coincidente. Aplica los
+  filtros combinados antes de contar; el porcentaje usa el total filtrado,
+  redondeado a dos decimales y es 0 % si dicho total es cero.
+- No son actividades Salesforce: no se leen `salesforce_calls`, `Task`,
+  `CallObject` ni F5, y no representan llamadas atendidas, gestión o formularios
+  de actividad. El informe de Llamadas, sus filtros, clasificación, auditoría y
+  CSV no cambian. Permanecen sin datos suficientes comerciales, delegaciones,
+  owner/no asignados, potenciales sin trabajar, gestionados, detalle de actividad
+  y comparativas; no se certifica ni publica la fuente.
+- Se actualizaron `docs/reglas-negocio-leads.md`,
+  `docs/salesforce-interest-generations.md`, `docs/informe-llamadas.md` y la
+  matriz. No aplican `PROJECT_CONTEXT.md` ni `DECISIONS.md`. Esta revisión
+  documental no ejecutó PHP, migraciones, Salesforce, base de datos,
+  benchmark ni producción. `node --check` del JavaScript y `git diff --check`
+  pasaron; PHP/Pint y la suite completa quedan para GitHub Actions por falta
+  de PHP local. No hay migración ni cambio de configuración. La activación
+  conserva el flag y la validación administrativa existentes.
 
 ## 2026-11-10 — limpieza de lenguaje UX en informes
 
