@@ -51,6 +51,13 @@ El refresco opcional del mes abierto sólo orquesta esa F2/F2M/F5 aislada tras
 autorización explícita de lectura; permanece deshabilitado por defecto y no
 modifica ROT-1, sus filtros, KPI, AJAX, CSV ni la generación publicada.
 
+La etapa administrativa `salesforce:stage-interest-months` guarda referencias
+por lote a F2M y F5 mensuales ya verificadas, con procedencia, checkpoint y
+manifiesto. Rechaza identidades repetidas entre meses y contenido alterado;
+no crea una generación F2/F5 global, no certifica cobertura histórica o hard
+deletes y no modifica el puntero publicado. Este informe y sus filtros, KPI,
+AJAX y CSV conservan exactamente las fuentes anteriores.
+
 ### Nota técnica — F5 mensual aislada (2026-11-07)
 
 La F5 mensual relaciona `Task` y `Event` exclusivamente cuando `WhatId` existe

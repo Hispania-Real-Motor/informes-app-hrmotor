@@ -11,6 +11,12 @@
 > no almacena payload Salesforce ni datos personales de la respuesta remota.
 > Los fallos del journal se clasifican por etapa con metadatos seguros y
 > conservan checkpoint/reanudación; no activan KPI, lectores ni publicación.
+> `InterestMonthlyConsolidationService` añade una etapa local de referencias a
+> revisiones F2M/F5 verificadas. Su manifiesto y sus controles de identidad
+> no prueban cobertura global, borrados físicos ni estado histórico `as-of`;
+> no crean una generación ni cambian el puntero publicado. Ninguna ficha KPI
+> adopta esta etapa como fuente: Intereses, Reservas/Ventas, Llamadas y Campañas
+> conservan sus lectores y criterios de disponibilidad vigentes.
 
 ### Dependencias de Campañas e Interests durante recuperación
 

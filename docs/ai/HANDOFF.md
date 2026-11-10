@@ -1,5 +1,52 @@
 # Handoff para agentes
 
+## 2026-11-10 — staging local de consolidación mensual de Interests (Draft)
+
+- Se añade `InterestMonthlyConsolidationService` y la CLI administrativa
+  `salesforce:stage-interest-months`. Preparan una selección explícita de
+  materializaciones F2M mensuales y sus F5 verificadas, luego guardan
+  referencias de pertenencia por lotes de 500. Cada lote, checkpoint y
+  contador se confirman juntos; lease y recuperación protegen reintentos.
+  Verifica hashes/manifiestos, revisión de integridad, última revisión del mes,
+  pertenencia funcional e identidad Salesforce/origen de migración. Colisiones
+  y evidencias cambiadas bloquean; no se elige una fuente ganadora.
+- Código y pruebas: `.github/workflows/ci.yml`,
+  `app/Console/Commands/StageInterestMonthlyConsolidationCommand.php`,
+  `app/Services/Salesforce/InterestMonthlyConsolidationService.php`,
+  `database/migrations/2026_11_10_120000_create_interest_monthly_consolidation_staging.php`,
+  `tests/Feature/InterestMonthlyConsolidationTest.php` y
+  `tests/documentation/test_check_documentation_integrity.py` (esta última
+  actualizada por el agente principal). Documentación: guía de generaciones,
+  operaciones, reglas de Interests, Reservas/Ventas, Llamadas, Campañas, matriz,
+  guía documental, DECISIONS, PROJECT_CONTEXT y este handoff.
+- Base de datos: tres tablas aditivas de cabecera, orígenes y pertenencias.
+  Se guardan IDs Salesforce técnicos y hashes en almacenamiento restringido;
+  no se copian payloads personales. El rollback rechaza eliminar evidencia
+  existente. No hay modificación de journals F2/F2M/F5 originales, generación
+  global, publication pointer, lectores oficiales ni scheduler.
+- Seguridad: la CLI no accede a Salesforce; errores de consola usan mensaje
+  genérico, y el estado expone IDs de journals/manifiestos técnicos, sin
+  payloads ni excepciones. Operación manual autorizada únicamente; no hay ruta
+  HTTP nueva. Rendimiento: referencias por lotes y checkpoint keyset, sin
+  cargar el universo completo en memoria ni consultar SQL por Interest. Los
+  manifiestos de origen se vuelven a recorrer en CLI; la carga y el impacto
+  real en MariaDB requieren medición representativa.
+- Pruebas: el agente principal añadió regresiones de 501 filas, reanudación,
+  contenido alterado sin cambio de cardinalidad, lease activo, revisión
+  obsoleta, colisión entre meses y ausencia de publicación. Se incluyó el
+  filtro en el job MariaDB 11; resultado de PHPUnit, Pint, CI y validador
+  documental pendiente al redactar esta entrada. `git diff --check` debe
+  ejecutarse tras integrar documentación y pruebas.
+- Límite: el staging no acredita cobertura de todos los meses ni hard deletes,
+  no reconcilia cambios funcionales entre meses y no alinea F2/F5 a un cutoff
+  global. Su manifiesto declara `global_coverage_verified=false`; no se puede
+  certificar ni publicar. Escrituras SQL directas ajenas a invalidadores
+  Laravel requieren revocación/revalidación manual. Acciones futuras:
+  revisar fuentes e intervalos, medir rendimiento, ejecutar CI, validar
+  migración aislada y diseñar después la construcción/validación global con
+  evidencia independiente. No se ejecutaron sincronizaciones ni migraciones
+  productivas ni se consultó Salesforce.
+
 ## 2026-11-10 — refresco operativo mensual aislado de Interests
 
 - `salesforce:sync-interest-monthly-current` orquesta sólo F2, F2M y F5 del

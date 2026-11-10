@@ -1,5 +1,23 @@
 # Decisiones técnicas
 
+## 2026-11-10 — consolidación mensual por referencias antes de una generación global
+
+- Las revisiones mensuales F2M y F5 verificadas se reúnen primero en tres
+  tablas de staging con procedencia, checkpoints y manifiesto. Cada pertenencia
+  apunta a una fila F2M existente; no se copian payloads ni se crea una versión
+  en `salesforce_interest_versions` durante esta etapa. Lotes de 500 y
+  checkpoint comparten transacción; el lease bloquea workers concurrentes.
+- Se bloquean colisiones por Salesforce ID y origen de migración entre meses,
+  cambios de manifiesto, revisión de integridad obsoleta y filas cuya fecha
+  funcional ya no pertenece al origen. No se resuelven conflictos eligiendo
+  automáticamente el mes más reciente.
+- La etapa no usa `InterestGenerationStore::begin()` para evitar que un conjunto
+  parcial de meses parezca una candidata global completa. El manifiesto marca
+  cobertura y certificación históricas como falsas. Convertir referencias a
+  versiones y una generación publicable exige una operación futura separada
+  con cobertura independiente de hard deletes, deduplicación temporal y F5
+  alineada. Los lectores oficiales y el puntero de publicación no cambian.
+
 ## 2026-10-27 — Reconciliación de Campañas mediante reservas operacionales existentes
 
 - La recuperación horaria se incorpora a `OperationalTaskCatalog` y ejecuta

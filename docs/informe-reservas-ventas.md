@@ -23,6 +23,11 @@ publicada de atribución ni requiere revalidar este informe.
 El refresco opcional F2/F2M/F5 del mes abierto sólo mantiene journals aislados
 tras autorización de lectura; deshabilitado por defecto, no cambia atribución,
 cobertura Opportunity, universos, filtros, cálculos, auditorías ni CSV.
+La etapa local de consolidación de meses verificados sólo referencia filas F2M
+y el manifiesto F5 de cada origen; no crea generación Interest publicada ni
+acredita cobertura completa, hard deletes o relaciones históricas. Por ello no
+habilita atribución Opportunity/Interest ni cambia KPI, auditorías, cierres,
+filtros, CSV o Rendimiento comercial de Reservas/Ventas.
 La proyección versionada de octubre y sus filtros multidimensionales pertenecen
 sólo al dashboard de Interests: no habilitan ni certifican atribución, KPI,
 auditoría, cierre, CSV o Rendimiento comercial de Reservas/Ventas.

@@ -1604,6 +1604,39 @@ y certificación histórica indisponible permanecen obligatorios. La migración 
 estar aplicada antes de usar esta operación; no se ha verificado en este
 documento una migración productiva, MariaDB ni CI.
 
+### Staging local de meses verificados, sin publicación
+
+Después de comprobar individualmente F2/F2M/F5 `completed`, sus verificaciones
+y manifiestos, un operador autorizado puede preparar **solo referencias** a
+las materializaciones elegidas. La migración
+`2026_11_10_120000_create_interest_monthly_consolidation_staging.php` debe
+haberse aplicado en el despliegue autorizado antes de usar el comando. Esta
+guía no autoriza ejecutarlo en producción, ni hacer migraciones ahora.
+
+```text
+php artisan salesforce:stage-interest-months --materialization=<id_f2m_octubre> --materialization=<id_f2m_noviembre> --reason="motivo operativo revisado"
+php artisan salesforce:stage-interest-months --run=<id> --status
+php artisan salesforce:stage-interest-months --run=<id> --resume --reason="mismo motivo operativo revisado"
+```
+
+Anotar el ID de staging y conservar su manifiesto en el circuito de evidencia
+restringido. El comando no consulta Salesforce, usa lotes de 500 con
+checkpoint transaccional y lease; un fallo deja el último lote confirmado.
+Si detecta una revisión obsoleta, manifiesto cambiado, fecha fuera de mes,
+Salesforce ID u origen de migración duplicado, no elegir un ganador ni borrar
+filas: investigar el conflicto y preparar otro staging después de resolver
+la evidencia de origen bajo autorización. Las filas originales F2/F2M/F5
+permanecen intactas.
+
+El resultado declara `global_coverage_verified=false`. Aunque todos los meses
+seleccionados terminen, no certifica el universo histórico, hard deletes, F5
+global ni un cutoff común; no invocar por ello certificación o publicación de
+`InterestGenerationStore`, ni cambiar el publication pointer. Para desactivar
+la etapa basta no invocar la CLI; el rollback de esquema rechaza eliminar
+evidencia existente. Una escritura SQL directa fuera de los escritores Laravel
+requiere revocar y revalidar la evidencia mensual antes de preparar o confiar
+en un staging; la revisión de integridad no la detecta automáticamente.
+
 **Carga inicial, tras autorización independiente:** `salesforce:sync-monthly-commercial`
 y `salesforce:sync-opportunities` admiten `--from=2026-11-01` y `--to=YYYY-MM-DD`
 con fin exclusivo al inicio del día Madrid; elegir el día siguiente al último

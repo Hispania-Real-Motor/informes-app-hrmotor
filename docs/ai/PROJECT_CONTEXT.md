@@ -1,6 +1,18 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-10-27.
+Actualizado: 2026-11-10.
+
+## Staging local de revisiones mensuales de Interests
+
+- `InterestMonthlyConsolidationService` consume IDs explícitos de F2M mensual
+  y su F5 verificada, registra orígenes y referencias por Salesforce ID en
+  `salesforce_interest_monthly_consolidation_*` y produce un manifiesto
+  reanudable. La CLI `salesforce:stage-interest-months` es administrativa y
+  solo local: no consulta Salesforce ni crea una generación global.
+- El staging se mantiene separado de `InterestGenerationStore` y de
+  `InterestGenerationReader`; no concede certificación, publicación o KPI.
+  La integridad se revalida durante la operación, pero la cobertura global,
+  hard deletes y simultaneidad F2/F5 siguen pendientes de evidencia.
 
 ## Publicación verificable y cierres de Campañas
 

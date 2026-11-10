@@ -184,10 +184,19 @@ como los de `docs-integrity.yml`, `AGENTS.md`, el TOML, el script, la guía o
 documentales en el diff. No se aplica esta regla al resto de archivos de
 `.github/` sin relación con estos controles.
 La ampliación del job MariaDB 11 para ejecutar `InterestMonthlyRecoveryTest` y
-`SyncCurrentMonthInterestsCommandTest` mantiene el job de octubre y comprueba
-la recuperación mensual y su comando operativo aislado. La garantía se verifica
+`SyncCurrentMonthInterestsCommandTest` y `InterestMonthlyConsolidationTest`
+mantiene el job de octubre y comprueba la recuperación mensual, su comando
+operativo aislado y el staging local de referencias F2M/F5. La garantía se verifica
 en `tests/documentation/test_check_documentation_integrity.py`; cualquier cambio
 posterior de esos filtros requiere revisar esta garantía junto con la CI principal.
+
+`StageInterestMonthlyConsolidationCommand.php` y su migración contienen
+`interest` en el nombre y se mapean a Intereses, Reservas/Ventas, Llamadas y
+Campañas. `InterestMonthlyConsolidationService.php` no coincide todavía con un
+prefijo de servicio del mapa: una PR que lo introduzca debe declarar su ruta
+exacta en `Docs-Outside-Paths`, con motivo y evidencia revisables, además de
+actualizar los documentos de los cuatro informes. Esta excepción no declara
+el staging como fuente de KPI ni como generación publicada.
 
 ## Límites
 
