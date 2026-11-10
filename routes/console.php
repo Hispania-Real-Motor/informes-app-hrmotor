@@ -16,6 +16,6 @@ foreach (app(OperationalTaskCatalog::class)->all() as $key => $task) {
         ->name($key)
         ->cron($task['cron'])
         ->timezone($task['timezone'])
-        ->when(fn (): bool => $task['enabled'] ?? true)
+        ->when(fn (): bool => app(OperationalTaskCatalog::class)->isScheduled($key))
         ->withoutOverlapping($task['window_minutes']);
 }

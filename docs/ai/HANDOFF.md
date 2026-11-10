@@ -1,5 +1,23 @@
 # Handoff para agentes
 
+## 2026-11-10 — allowlist operacional para preparación de noviembre
+
+- `OPERATIONS_SCHEDULED_TASK_KEYS` controla exclusivamente el scheduler del
+  catálogo operativo. Si la variable no existe, conserva el calendario previo;
+  si vale vacío, bloquea nuevas reservas del scheduler; una lista por comas
+  permite únicamente sus claves. La comprobación se hace al evaluar el horario,
+  reservar y arrancar; un run ya iniciado no se interrumpe.
+- Las ejecuciones manuales conservan su autorización independiente. No cambian
+  comandos, permisos, fuentes, lectores, KPI, fórmulas, universos, filtros,
+  exportaciones ni auditorías de los seis informes. Una lista restrictiva puede
+  dejar fuentes desactualizadas, por lo que cada informe mantiene su propia
+  comprobación de cobertura/frescura y ninguna reserva acredita datos.
+- `docs/operaciones-produccion.md` añade el procedimiento controlado de
+  noviembre y esta revisión actualiza la matriz para su trazabilidad operativa.
+  `DECISIONS.md` y `PROJECT_CONTEXT.md` no aplican: es una configuración
+  reversible, compatible por ausencia y sin módulo o contrato de datos nuevo.
+  No se ejecutaron PHP, migraciones, scheduler, workers, Salesforce, base de
+  datos, benchmark ni producción durante esta revisión documental.
 ## 2026-11-10 — preparación de la PR #135 contra main
 
 - La PR #133 fue fusionada en `main` (`2961d732a619af5b6d0012797ac89d2405486ac8`).

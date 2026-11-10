@@ -1502,3 +1502,65 @@ comunicada como íntegra en gzip/checksum, sigue sin restauración ensayada y no
 representa una base anterior certificada. Inventario de filas afectadas y causa
 del volumen extraordinario pendientes. Confirmar estado real del scheduler en
 la intervención; no reactivarlo por la mera presencia de este cambio.
+
+## Noviembre de 2026: preparación controlada del scheduler
+
+Esta entrega añade `OPERATIONS_SCHEDULED_TASK_KEYS` como lista cerrada de claves
+del catálogo, separadas por comas. Su ausencia conserva el comportamiento
+previo; el valor vacío deshabilita todas las reservas del scheduler. Una lista
+explícita permite solo esas claves. El guard se comprueba tanto al evaluar
+`routes/console.php` como al reservar y al empezar un job ya encolado; no
+interrumpe un proceso que haya comenzado. Las acciones manuales conservan su
+autorización administrativa y no se amplían. Antes de cualquier activación,
+configurar la lista explícita, ejecutar `php artisan config:cache` y reiniciar
+los workers con el procedimiento vigente. Comprobar `php artisan schedule:list`
+y los estados persistentes antes de restaurar cron. La lista vacía es también
+el interruptor de nuevas reservas; no borra los mecanismos de integridad.
+
+**Preflight de solo lectura, bajo supervisión del operador:** contrastar SHA
+desplegado, `php artisan migrate:status`, `php artisan schedule:list`, proceso
+cron externo, proceso real del worker `operations`, conexión y cola de este,
+`operational_task_states.active_run_id`, últimos `operational_task_runs` y
+alertas abiertas. Confirmar permisos de ejecución, espacio/carga, configuración
+de integraciones sin imprimir valores secretos, cierre económico y generación
+Interest publicada. La existencia de una reserva o una cola pendiente exige
+resolverla con el protocolo operacional antes de cambiar la selección. La
+conectividad Salesforce/Meta/Google y el consumo de API no se prueban aquí;
+requieren intervención autorizada separada. El monitor existente sirve para
+duración, último éxito y fallos; cron/worker necesitan además observación del
+orquestador. Una lista que incluya `salesforce-sync-interest-reporting` permite
+al pipeline certificar y publicar; no incluirla hasta aprobar expresamente esa
+publicación. Tampoco incluir inicialmente retención, correo, Stock o cierre
+económico sin su revisión específica.
+
+Noviembre es un período **abierto**: inicio civil `2026-11-01 00:00`
+Europe/Madrid = `2026-10-31 23:00:00Z`. El fin operativo es el corte real de
+cada sincronización, no el 1 de diciembre ni un día futuro. Registrar por
+fuente el máximo cubierto y no comparar cortes incompatibles. El selector
+`current_month` de cada informe usa su contrato existente; no crea una fuente
+mensual certificada. `salesforce:interest-generation monthly-prepare` valida
+meses completos y por ello no sirve para construir un inventario F2 mensual
+de noviembre aún abierto. El pipeline ordinario F2/F5 solo puede entrar en una
+secuencia de activación revisada por su publicación automática.
+
+**Carga inicial, tras autorización independiente:** `salesforce:sync-monthly-commercial`
+y `salesforce:sync-opportunities` admiten `--from=2026-11-01` y `--to=YYYY-MM-DD`
+con fin exclusivo al inicio del día Madrid; elegir el día siguiente al último
+día civil que se quiere cubrir y documentar el corte observado. La ventana
+incremental `--days=2` de ambos no reconstruye los días anteriores por sí
+sola. `salesforce:sync-calls` usa solo `--days`; calcular antes una ventana que
+alcance el 1 de noviembre y verificar la fecha mínima/máxima realmente
+persistida. Meta y Google usan `--days=120` en el catálogo, seguidos de
+atribución y `reports:refresh-campaigns` únicamente cuando sus dependencias
+estén listas. Stock genera fotografías diarias y no puede reconstruir una
+fotografía del 1 de noviembre desde vehículos actuales. Comisiones y cierres
+económicos siguen su contrato y autorización propios. Ninguna de estas
+indicaciones ejecuta tareas ni acredita cobertura histórica; registrar los
+resultados y reconciliar antes de permitir lecturas o publicaciones.
+
+**Rollback:** volver a lista vacía, reconstruir caché de configuración y
+comprobar que no se crean reservas nuevas. Dejar terminar o gestionar las ya
+activas mediante su protocolo fenced; restaurar código y configuración del
+release anterior únicamente después de esa comprobación. No eliminar runs,
+snapshots ni journals. La lista ausente volvería al comportamiento previo,
+por lo que no usar ausencia de variable como mecanismo de apagado.

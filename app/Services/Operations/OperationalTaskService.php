@@ -53,6 +53,7 @@ class OperationalTaskService
         if (! in_array($origin, ['scheduler', 'manual'], true)) {
             throw new \InvalidArgumentException('Invalid operational origin.');
         }
+        abort_if($origin === 'scheduler' && ! $this->catalog->isScheduled($key), 403, 'Tarea no habilitada para el scheduler.');
         DB::table('operational_task_states')->insertOrIgnore([
             'task_key' => $key, 'created_at' => now(), 'updated_at' => now(), 'monitoring_started_at' => now(),
         ]);
@@ -94,7 +95,7 @@ class OperationalTaskService
             if ((int) $state->active_run_id !== $run->id || $run->status !== 'queued') {
                 return false;
             }
-            if (! ($task['enabled'] ?? true)) {
+            if (! ($task['enabled'] ?? true) || ($run->origin === 'scheduler' && ! $this->catalog->isScheduled($run->task_key))) {
                 $this->finish($run, false, null, 'Tarea deshabilitada antes de iniciar.');
 
                 return false;
