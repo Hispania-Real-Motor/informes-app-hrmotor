@@ -84,7 +84,28 @@ campañas conserva el camino ordinario y puede responder 503. La ausencia de
 certificación no se presenta como aviso rojo permanente: queda expresada en el
 metadato de disponibilidad y el diagnóstico autorizado.
 
-Actualizado: 2026-11-04. URL: `/informes/campanas`.
+### Enlace directo de octubre de 2026
+
+`/informes/campanas?period=october_2026` es sólo un atajo de presentación: antes
+de la primera carga convierte el parámetro en el preset existente
+`month_2026_10`, con `start_date=2026-10-01` y `end_date=2026-10-31`. No
+introduce un nuevo período para el backend; éste conserva el intervalo civil de
+Madrid que ya procesa esas fechas, incluido el fin exclusivo de la evidencia
+económica al iniciar el 1 de noviembre. Si el preset mensual no está disponible
+en el selector, el parámetro no se aplica. Al escoger otro preset o editar las
+fechas, la URL elimina `period=october_2026`.
+
+El enlace no relaja el contrato de cobertura: Meta y Google sólo muestran sus
+métricas nativas cuando la evidencia económica existente las acredita por
+plataforma (cierre válido o run completo, según corresponda). Si Interests no
+está certificado, el modo `platform_independent_only` conserva exactamente sus
+límites. Los KPI CRM, resultados comerciales, atribución, auditorías y ROI
+siguen bloqueados; no se consultan ni certifican fuentes nuevas, F2/F2M/F5
+mensuales o la proyección provisional de Interests. La regresión JavaScript
+cubre la selección y la retirada del parámetro con DOM sintético; no acredita
+cobertura de octubre en proveedores, Salesforce ni producción.
+
+Actualizado: 2026-11-12. URL: `/informes/campanas`.
 
 ## Contrato funcional ROT-4
 
