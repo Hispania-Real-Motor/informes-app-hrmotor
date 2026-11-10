@@ -1383,6 +1383,18 @@ no producen nuevas consultas de journals, filtros de negocio, cruces ni KPI.
 Así se permite descubrir la lectura acotada sin convertir F2/F2M/F5 en fuente
 de los lectores publicados o de los demás informes.
 
+## 2026-11-10 — proyección mensual provisional por recuperación y revisión
+
+La exposición mensual administrativa se ancla a una única recuperación y a su
+revisión de integridad, no a un fallback de mes ni a una generación publicada.
+Antes de persistir el snapshot exige F2, F2M y F5 `completed` y verificadas,
+además de sus manifiestos diferenciados; si la recuperación más reciente no
+está validada, HTTP queda indisponible en vez de retroceder a otra anterior. La
+proyección versionada evita escanear journals en HTTP y falla cerrada ante una
+revisión concurrente. Esta frontera es deliberada: SQL directo debe revocarla y
+revalidarla explícitamente, y no puede convertirse por configuración en fuente
+oficial.
+
 ## 2026-11-12 — proyección versionada para dashboard provisional de octubre
 
 El dashboard administrativo no consulta journals durante HTTP: la validación

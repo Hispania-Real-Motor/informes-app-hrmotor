@@ -10,6 +10,10 @@ checklist de aprobación.
 La pantalla administrativa provisional de Interests para octubre de 2026 no es
 una fuente de Comisiones: sus journals F2/F2M/F5 aislados no alteran universos,
 fórmulas, cierres, auditorías, filtros, API ni exportaciones de ninguna pestaña.
+El lector mensual administrativo de noviembre conserva esa separación: su
+proyección validada, flag y revisión locales no habilitan ni certifican datos de
+Comisiones, ni cambian universos, fórmulas, cierres, auditorías, filtros, API o
+exportaciones.
 
 ## Mes compartido
 

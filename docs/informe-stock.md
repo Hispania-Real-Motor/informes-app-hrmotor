@@ -24,6 +24,11 @@ El lector administrativo provisional de Interests de octubre de 2026 no
 participa en Stock. La evidencia F2/F2M/F5 aislada no modifica inventario,
 ventas, snapshots, cálculos, filtros, auditoría ni exportaciones.
 
+El lector mensual administrativo de noviembre mantiene la misma separación: su
+validación, flag y revisión locales no cambian fuentes de inventario o ventas,
+snapshots, cálculos, filtros, auditoría ni exportaciones de Stock, ni acreditan
+cobertura histórica.
+
 El stock actual considera `Disponible`, `Reservado` y `Bloqueado`. Las ventas no
 se reconstruyen con el Product2 actual: el snapshot conserva los valores
 económicos del momento de la venta y posteriormente solo se reconcilia su

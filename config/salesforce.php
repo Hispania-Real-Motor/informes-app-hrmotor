@@ -12,6 +12,7 @@ return [
     // Separate, fail-closed contract for the isolated October 2026 monthly journals.
     // It is not a source for any published report or KPI.
     'october_2026_provisional_enabled' => (bool) env('SALESFORCE_OCTOBER_2026_PROVISIONAL_ENABLED', false),
+    'november_2026_provisional_enabled' => (bool) env('SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED', false),
 
     'token_url' => env('SALESFORCE_TOKEN_URL', 'https://login.salesforce.com/services/oauth2/token'),
     'authorize_url' => env('SALESFORCE_AUTHORIZE_URL', 'https://login.salesforce.com/services/oauth2/authorize'),

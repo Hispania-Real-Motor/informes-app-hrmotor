@@ -21,7 +21,7 @@ class LeadDashboardDataController extends Controller
 
     public function resumen(Request $request): JsonResponse
     {
-        if ($this->isOctober($request)) {
+        if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => $this->octoberDataset->summary($request));
         }
 
@@ -35,7 +35,7 @@ class LeadDashboardDataController extends Controller
 
     public function portales(Request $request): JsonResponse
     {
-        if ($this->isOctober($request)) {
+        if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => $this->octoberDataset->sourceRows($request));
         }
 
@@ -49,7 +49,7 @@ class LeadDashboardDataController extends Controller
 
     public function delegaciones(Request $request): JsonResponse
     {
-        if ($this->isOctober($request)) {
+        if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => $this->octoberDataset->delegationRows($request));
         }
 
@@ -58,7 +58,7 @@ class LeadDashboardDataController extends Controller
 
     public function comerciales(Request $request): JsonResponse
     {
-        if ($this->isOctober($request)) {
+        if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => $this->octoberDataset->commercialRows($request));
         }
 
@@ -82,29 +82,32 @@ class LeadDashboardDataController extends Controller
         return $response;
     }
 
-    private function isOctober(Request $request): bool
+    private function isProvisional(Request $request): bool
     {
-        return $request->query('period') === 'october_2026';
+        return in_array($request->query('period'), ['october_2026', 'november_2026'], true);
     }
 
     private function provisionalJson(callable $callback): JsonResponse
     {
-        abort_unless(config('salesforce.october_2026_provisional_enabled') === true, 404);
+        $flag = request()->query('period') === 'november_2026'
+            ? 'salesforce.november_2026_provisional_enabled'
+            : 'salesforce.october_2026_provisional_enabled';
+        abort_unless(config($flag) === true, 404);
         abort_unless(ReportUserAccess::isAdmin(request()), 403);
 
         try {
             return response()->json($callback())->header('Cache-Control', 'no-store, private');
         } catch (ProvisionalInterestSourceUnavailable) {
-            abort(503, 'Los datos de octubre están pendientes de actualización.');
+            abort(503, 'Los datos mensuales están pendientes de validación.');
         }
     }
 
     public function calidadDato(Request $request): JsonResponse
     {
-        if ($this->isOctober($request)) {
+        if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => [
                 'items' => [],
-                'message' => 'El detalle de auditoría no está disponible para octubre.',
+                'message' => 'El detalle de auditoría no está disponible para este inventario mensual.',
             ]);
         }
 
@@ -116,7 +119,7 @@ class LeadDashboardDataController extends Controller
 
     public function kpiAudit(Request $request): JsonResponse
     {
-        abort_if($this->isOctober($request), 404);
+        abort_if($this->isProvisional($request), 404);
         abort_unless(ReportUserAccess::canAuditReport($request, 'leads'), 403);
 
         return response()->json($this->dataset->kpiAudit($request));
@@ -124,7 +127,7 @@ class LeadDashboardDataController extends Controller
 
     public function leadAudit(Request $request): JsonResponse
     {
-        abort_if($this->isOctober($request), 404);
+        abort_if($this->isProvisional($request), 404);
         abort_unless(ReportUserAccess::canAuditReport($request, 'leads'), 403);
 
         $ids = $request->input('ids', []);
@@ -135,7 +138,7 @@ class LeadDashboardDataController extends Controller
 
     public function exportKpiAuditCsv(Request $request): StreamedResponse
     {
-        abort_if($this->isOctober($request), 404);
+        abort_if($this->isProvisional($request), 404);
         abort_unless(ReportUserAccess::canAuditReport($request, 'leads'), 403);
 
         $rows = $this->dataset->kpiAuditRows($request);
@@ -164,7 +167,7 @@ class LeadDashboardDataController extends Controller
 
     public function exportReconciliationAuditCsv(Request $request): StreamedResponse
     {
-        abort_if($this->isOctober($request), 404);
+        abort_if($this->isProvisional($request), 404);
         abort_unless(ReportUserAccess::canAuditReport($request, 'leads'), 403);
 
         $rows = $this->dataset->reconciliationAuditRows($request);

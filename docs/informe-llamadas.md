@@ -22,6 +22,12 @@ La proyección versionada y los filtros de octubre siguen limitados al dashboard
 de Interests: no aportan estado histórico de relación F5 ni certifican, habilitan
 o recalculan KPI, clasificación, reproceso o exportación de Llamadas.
 
+El lector administrativo mensual de noviembre de Interests tampoco alimenta
+Llamadas: aun validado localmente, sólo proyecta agregados F2M y no sustituye
+`salesforce_calls`, `Task`, `CallObject`, `relatedInterestMatches()` ni la
+generación Interest publicada requerida donde corresponda. No acredita
+cobertura, KPI, exportación ni auditoría de Llamadas.
+
 La tarjeta «Llamadas» de octubre dentro de Interests no es un KPI de este
 informe: cuenta únicamente el valor materializado `channel = 'Llamada'` de la
 proyección F2M filtrada. No consulta `salesforce_calls`, `Task` ni `CallObject`,

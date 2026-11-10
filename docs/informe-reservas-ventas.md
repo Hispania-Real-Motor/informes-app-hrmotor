@@ -12,6 +12,12 @@ ni habilita KPIs o publicación.
 El lector administrativo provisional de octubre consume esos journals sólo para
 un resumen de Interests con límites de cobertura; no se integra con
 Reservas/Ventas, Rendimiento comercial, auditorías, cierres, filtros o CSV.
+
+El lector administrativo mensual de noviembre usa asimismo una proyección local
+validada de Interests y no modifica atribución Opportunity/Interest, Rendimiento
+comercial, resultados, filtros, auditorías, cierres o CSV de Reservas/Ventas.
+Su evidencia no acredita cobertura de Opportunity ni reemplaza la generación
+Interest publicada exigida para portal.
 La validación/snapshot local que condiciona esa pantalla no cambia la generación
 publicada de atribución ni requiere revalidar este informe.
 La proyección versionada de octubre y sus filtros multidimensionales pertenecen

@@ -17,6 +17,11 @@ atribución, readiness, snapshots, KPI, filtros o CSV de Campañas.
 El lector administrativo provisional de octubre se limita a cobertura y
 delegación de Interests; no habilita atribución, readiness, snapshots, rankings,
 KPI ni CSV de Campañas.
+
+El lector administrativo mensual de noviembre conserva esta separación: su
+validación F2/F2M/F5 y proyección local no alimentan plataforma, CRM, atribución,
+readiness, KPI, rankings, auditoría ni CSV de Campañas. No acredita cobertura
+de noviembre ni sustituye una generación Interest publicada.
 El requisito de snapshot validado es local a esa pantalla y no invalida ni
 actualiza generación, readiness o snapshots publicados de Campañas.
 La proyección categórica versionada de octubre sólo sirve el dashboard de

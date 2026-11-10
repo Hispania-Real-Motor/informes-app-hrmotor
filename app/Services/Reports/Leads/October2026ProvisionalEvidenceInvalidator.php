@@ -5,11 +5,7 @@ namespace App\Services\Reports\Leads;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
-/**
- * Invalidates only the fixed October 2026 evidence after an authorised
- * journal-content mutation. Callers must invoke it inside that same database
- * transaction, after the content write and before the transaction commits.
- */
+/** Invalidates monthly evidence in the same transaction as a journal mutation. */
 final class October2026ProvisionalEvidenceInvalidator
 {
     public const RECOVERY_ID = 1;
@@ -18,16 +14,34 @@ final class October2026ProvisionalEvidenceInvalidator
 
     public function afterContentMutation(int $monthlyRecoveryId): void
     {
-        if ($monthlyRecoveryId !== self::RECOVERY_ID) {
-            return;
+        $scope = self::monthlyScope($monthlyRecoveryId);
+        DB::table('salesforce_interest_monthly_integrity_revisions')->insertOrIgnore([
+            'scope' => $scope, 'revision' => 0, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->increment($scope);
+
+        if ($monthlyRecoveryId === self::RECOVERY_ID) {
+            $this->increment(self::SCOPE);
+        }
+    }
+
+    public static function monthlyScope(int $monthlyRecoveryId): string
+    {
+        if ($monthlyRecoveryId < 1) {
+            throw new RuntimeException('Monthly recovery identifier is invalid.');
         }
 
+        return 'monthly_recovery_'.$monthlyRecoveryId;
+    }
+
+    private function increment(string $scope): void
+    {
         $updated = DB::table('salesforce_interest_monthly_integrity_revisions')
-            ->where('scope', self::SCOPE)
+            ->where('scope', $scope)
             ->update(['revision' => DB::raw('revision + 1'), 'updated_at' => now()]);
 
         if ($updated !== 1) {
-            throw new RuntimeException('October provisional evidence revision is unavailable.');
+            throw new RuntimeException('Monthly provisional evidence revision is unavailable.');
         }
     }
 

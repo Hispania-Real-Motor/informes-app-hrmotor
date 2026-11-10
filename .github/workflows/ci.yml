@@ -163,3 +163,6 @@ jobs:
 
       - name: Monthly Interest revision MariaDB tests
         run: php artisan test --filter=InterestMonthlyRecoveryTest
+
+      - name: Monthly provisional reader MariaDB tests
+        run: php artisan test --filter=MonthlyInterestProvisionalReaderTest
