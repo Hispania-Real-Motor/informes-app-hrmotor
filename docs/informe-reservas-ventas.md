@@ -850,6 +850,11 @@ deletes mediante un parámetro opcional, sin cambiar su comportamiento por
 defecto. No sustituye la generación publicada de atribución ni habilita
 Rendimiento comercial: F5 no está certificado y los hard deletes históricos no
 están acreditados.
+
+Las revisiones de ese inventario limitan `CreatedDate` a un cutoff UTC, sin
+congelar `SystemModstamp` ni el contenido actual. No constituyen historia
+`as-of`, no cambian la generación publicada ni la vista fija de octubre, y no
+alteran atribución, fórmulas, cierres, filtros, KPI o CSV de Reservas/Ventas.
 Sus diagnósticos mensuales son internos y seguros, clasificados por etapa; no
 alteran checkpoints, reanudación, fuente publicada ni KPI de este informe.
 

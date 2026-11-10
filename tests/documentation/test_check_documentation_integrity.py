@@ -432,6 +432,11 @@ class IntegrityTests(unittest.TestCase):
                 self.assertEqual([], self.check([checker.Change("M", path), checker.Change("M", checker.GUIDE),
                                                  checker.Change("M", checker.VALIDATOR_TEST)], updated()))
 
+    def test_monthly_interest_revision_is_exercised_on_mariadb_11(self) -> None:
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("image: mariadb:11", workflow)
+        self.assertIn("php artisan test --filter=InterestMonthlyRecoveryTest", workflow)
+
     def test_unexpected_git_status_fails_closed(self) -> None:
         errors = self.check([checker.Change("U", checker.DOCS["calls"])], updated())
         self.assertIn("Estado Git", " ".join(errors))

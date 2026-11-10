@@ -160,3 +160,6 @@ jobs:
 
       - name: October provisional MariaDB tests
         run: php artisan test --filter=October2026ProvisionalInterestReaderTest
+
+      - name: Monthly Interest revision MariaDB tests
+        run: php artisan test --filter=InterestMonthlyRecoveryTest

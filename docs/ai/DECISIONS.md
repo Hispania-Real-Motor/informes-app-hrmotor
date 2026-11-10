@@ -1274,6 +1274,19 @@ La migración de estrategia y checkpoint es estrictamente aditiva y su `down()`
 no elimina columnas: hacerlo podría destruir el cursor de un run selectivo
 preparado o fallido y convertirlo silenciosamente en un journal no reanudable.
 
+## 2026-11-10 — revisiones mensuales inmutables con cutoff observado
+
+Los inventarios mensuales aislados se versionan por período funcional y cutoff
+UTC, conservando cada revisión finalizada en vez de sobrescribirla. El cutoff
+aceptado limita `CreatedDate` y avanza estrictamente en una nueva revisión, pero
+no se usa como límite `SystemModstamp`: la lectura conserva contenido actual y
+no puede declararse `as-of`. Se prefiere esta evidencia explícitamente limitada
+frente a simular una fotografía histórica que Salesforce no ha proporcionado.
+
+La decisión no modifica `InterestGenerationReader`, publicación global ni los
+journals fijos del lector administrativo de octubre. El rollback de la
+migración no borra evidencia mensual existente.
+
 ## 2026-11-06 — lector provisional de octubre separado del lector publicado
 
 La pantalla administrativa de octubre de 2026 se ancla a tres journals

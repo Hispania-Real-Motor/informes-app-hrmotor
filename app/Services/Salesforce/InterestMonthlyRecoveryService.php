@@ -26,26 +26,48 @@ final class InterestMonthlyRecoveryService
         private readonly October2026ProvisionalEvidenceInvalidator $octoberEvidence = new October2026ProvisionalEvidenceInvalidator,
     ) {}
 
-    public function prepare(CarbonInterface $start, CarbonInterface $end, string $reason, int $batch = self::DEFAULT_BATCH_SIZE): int
-    {
+    public function prepare(
+        CarbonInterface $start,
+        CarbonInterface $end,
+        string $reason,
+        int $batch = self::DEFAULT_BATCH_SIZE,
+        ?CarbonInterface $effectiveCutoff = null,
+        bool $newRevision = false,
+    ): int {
         $reason = trim($reason);
         $localStart = CarbonImmutable::parse($start, 'Europe/Madrid');
         $localEnd = CarbonImmutable::parse($end, 'Europe/Madrid');
         $start = $localStart->startOfDay()->utc();
         $end = $localEnd->startOfDay()->utc();
+        $cutoff = CarbonImmutable::parse($effectiveCutoff ?? now('UTC'), 'UTC')->utc();
         if (mb_strlen($reason) < 10 || mb_strlen($reason) > 500 || $localStart->day !== 1 || $localEnd->day !== 1
-            || ! $localEnd->startOfDay()->equalTo($localStart->startOfDay()->addMonth()) || $batch < 50 || $batch > 1000) {
+            || ! $localEnd->startOfDay()->equalTo($localStart->startOfDay()->addMonth()) || $batch < 50 || $batch > 1000
+            || $cutoff->lte($start) || $cutoff->gt(now('UTC'))) {
             throw new RuntimeException('Monthly recovery requires one bounded functional month, a reason, and a safe batch size.');
         }
 
-        return DB::transaction(function () use ($start, $end, $reason, $batch): int {
-            $existing = DB::table('salesforce_interest_monthly_recoveries')->where('functional_start_at', $start)->where('functional_end_at', $end)->lockForUpdate()->first();
-            if ($existing !== null) {
+        return DB::transaction(function () use ($start, $end, $cutoff, $reason, $batch, $newRevision): int {
+            $existing = DB::table('salesforce_interest_monthly_recoveries')->where('functional_start_at', $start)->where('functional_end_at', $end)->orderByDesc('revision')->lockForUpdate()->first();
+            if ($existing !== null && ! $newRevision) {
                 return (int) $existing->id;
+            }
+            if ($newRevision && ($existing === null || $existing->status !== 'completed')) {
+                throw new RuntimeException('A new monthly revision requires a completed previous revision.');
+            }
+            if ($existing !== null && $existing->effective_cutoff_at !== null) {
+                $previousCutoff = CarbonImmutable::parse($existing->effective_cutoff_at, 'UTC');
+                if ($cutoff->equalTo($previousCutoff)) {
+                    return (int) $existing->id;
+                }
+                if ($cutoff->lte($previousCutoff)) {
+                    throw new RuntimeException('A monthly revision cannot move its extraction cutoff backwards.');
+                }
             }
 
             return DB::table('salesforce_interest_monthly_recoveries')->insertGetId([
                 'recovery_identifier' => (string) Str::uuid(), 'functional_start_at' => $start, 'functional_end_at' => $end,
+                'revision' => $existing === null ? 1 : (int) $existing->revision + 1,
+                'effective_cutoff_at' => $cutoff,
                 'timezone' => 'Europe/Madrid', 'status' => 'prepared', 'phase' => 'f2_extract', 'batch_size' => $batch,
                 'pages_completed' => 0, 'counters' => json_encode($this->emptyCounters(), JSON_THROW_ON_ERROR),
                 'reason_hash' => hash('sha256', $reason), 'started_at' => now('UTC'), 'created_at' => now(), 'updated_at' => now(),
@@ -64,7 +86,7 @@ final class InterestMonthlyRecoveryService
                 if ($r->phase === 'f2_extract') {
                     $stage = 'salesforce_query';
                     $this->renew($id, $lease);
-                    $records = $this->read($this->interests->functionalPeriodSoql(CarbonImmutable::parse($r->functional_start_at, 'UTC'), CarbonImmutable::parse($r->functional_end_at, 'UTC'), $r->checkpoint_salesforce_id, true)."\nLIMIT ".(int) $r->batch_size, (int) $r->batch_size, $id, $lease);
+                    $records = $this->read($this->interests->functionalPeriodSoql(CarbonImmutable::parse($r->functional_start_at, 'UTC'), CarbonImmutable::parse($r->functional_end_at, 'UTC'), $r->checkpoint_salesforce_id, true, $r->effective_cutoff_at === null ? null : CarbonImmutable::parse($r->effective_cutoff_at, 'UTC'))."\nLIMIT ".(int) $r->batch_size, (int) $r->batch_size, $id, $lease);
                     $this->renew($id, $lease);
                     $this->persistPage($r, $lease, $records, $stage);
 
@@ -108,7 +130,7 @@ final class InterestMonthlyRecoveryService
     {
         $r = DB::table('salesforce_interest_monthly_recoveries')->find($id) ?? throw new RuntimeException('Monthly recovery does not exist.');
 
-        return ['recovery_id' => (int) $r->id, 'period' => ['start' => (string) $r->functional_start_at, 'end' => (string) $r->functional_end_at, 'timezone' => $r->timezone], 'status' => $r->status, 'phase' => $r->phase, 'checkpoint_present' => $r->checkpoint_salesforce_id !== null, 'pages_completed' => (int) $r->pages_completed, 'counters' => json_decode($r->counters, true, 64, JSON_THROW_ON_ERROR), 'evidence' => $r->evidence === null ? null : json_decode($r->evidence, true, 64, JSON_THROW_ON_ERROR), 'diagnostic' => $r->error_code === null ? null : ['stage' => $r->error_stage, 'category' => $r->error_code, 'meta' => $r->error_meta === null ? [] : json_decode($r->error_meta, true, 16, JSON_THROW_ON_ERROR)], 'f5_status' => 'not_attempted_blocked', 'historical_certification' => 'unavailable'];
+        return ['recovery_id' => (int) $r->id, 'revision' => (int) $r->revision, 'period' => ['start' => (string) $r->functional_start_at, 'end' => (string) $r->functional_end_at, 'timezone' => $r->timezone, 'effective_cutoff' => $r->effective_cutoff_at], 'status' => $r->status, 'phase' => $r->phase, 'checkpoint_present' => $r->checkpoint_salesforce_id !== null, 'pages_completed' => (int) $r->pages_completed, 'counters' => json_decode($r->counters, true, 64, JSON_THROW_ON_ERROR), 'evidence' => $r->evidence === null ? null : json_decode($r->evidence, true, 64, JSON_THROW_ON_ERROR), 'diagnostic' => $r->error_code === null ? null : ['stage' => $r->error_stage, 'category' => $r->error_code, 'meta' => $r->error_meta === null ? [] : json_decode($r->error_meta, true, 16, JSON_THROW_ON_ERROR)], 'f5_status' => 'not_attempted_blocked', 'historical_certification' => 'unavailable'];
     }
 
     /** @return list<array<string, mixed>> */
@@ -172,7 +194,7 @@ final class InterestMonthlyRecoveryService
         $cursor = $counters['verify_checkpoint'] ?? null;
         $this->renew((int) $r->id, $lease);
         $stage = 'verification_query';
-        $records = $this->read($this->interests->functionalPeriodSoql(CarbonImmutable::parse($r->functional_start_at, 'UTC'), CarbonImmutable::parse($r->functional_end_at, 'UTC'), $cursor, true)."\nLIMIT ".(int) $r->batch_size, (int) $r->batch_size, (int) $r->id, $lease);
+        $records = $this->read($this->interests->functionalPeriodSoql(CarbonImmutable::parse($r->functional_start_at, 'UTC'), CarbonImmutable::parse($r->functional_end_at, 'UTC'), $cursor, true, $r->effective_cutoff_at === null ? null : CarbonImmutable::parse($r->effective_cutoff_at, 'UTC'))."\nLIMIT ".(int) $r->batch_size, (int) $r->batch_size, (int) $r->id, $lease);
         $last = $cursor;
         DB::transaction(function () use ($r, $lease, $records, &$counters, &$last, &$stage): void {
             $this->owned((int) $r->id, $lease, true);
@@ -203,7 +225,7 @@ final class InterestMonthlyRecoveryService
                 $localOnly = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)->whereNull('verified_at')->count();
                 $counters['local_missing_remote'] += $localOnly;
                 $verified = $counters['remote_missing_local'] === 0 && $counters['local_missing_remote'] === 0 && $counters['content_changed'] === 0;
-                $evidence = ['source' => 'current_state_monthly_inventory', 'rows' => $counters['persisted'], 'verification' => ['verified' => $verified, 'remote_checked' => $counters['remote_checked'], 'remote_missing_local' => $counters['remote_missing_local'], 'local_missing_remote' => $counters['local_missing_remote'], 'content_changed' => $counters['content_changed']], 'hard_deletes' => 'not_observable_without_independent_evidence', 'f5' => 'not_attempted_blocked', 'historical_certification' => false];
+                $evidence = ['source' => 'current_state_monthly_inventory', 'revision' => (int) $r->revision, 'effective_cutoff_at' => $r->effective_cutoff_at, 'month_closed_at_cutoff' => $r->effective_cutoff_at !== null && CarbonImmutable::parse($r->effective_cutoff_at, 'UTC')->gte(CarbonImmutable::parse($r->functional_end_at, 'UTC')), 'as_of_cutoff_certified' => false, 'rows' => $counters['persisted'], 'verification' => ['verified' => $verified, 'remote_checked' => $counters['remote_checked'], 'remote_missing_local' => $counters['remote_missing_local'], 'local_missing_remote' => $counters['local_missing_remote'], 'content_changed' => $counters['content_changed']], 'hard_deletes' => 'not_observable_without_independent_evidence', 'f5' => 'not_attempted_blocked', 'historical_certification' => false];
                 $phase = 'completed';
             } else {
                 $counters['verify_checkpoint'] = $last;

@@ -83,9 +83,10 @@ remotas. No permite reanudar ni reasignar una candidata ajena.
 
 ## Inventario mensual provisional independiente
 
-La CLI `salesforce:interest-generation` ofrece `monthly-prepare`, `monthly-run`,
-`monthly-status` y `monthly-cancel` para reconstruir un único mes funcional en
-`Europe/Madrid` dentro de un journal aislado. El inventario usa `queryAll`,
+La CLI `salesforce:interest-generation` ofrece `monthly-prepare`,
+`monthly-revision-prepare`, `monthly-run`, `monthly-status` y `monthly-cancel`
+para reconstruir un único mes funcional en `Europe/Madrid` dentro de un journal
+aislado. El inventario usa `queryAll`,
 paginación keyset por `Id`, lotes de 50 a 1.000 (500 por defecto), checkpoints
 transaccionales y lease fenced; no consulta `getDeleted`, no copia la semilla,
 no escribe generaciones, no modifica publicación y no habilita lectores. Incluye
@@ -99,6 +100,24 @@ cursor se checkpointa, y el lease se renueva antes, durante y después de cada
 lectura; una pérdida de lease no puede confirmar filas, progreso ni evidencia.
 Un fallo conserva fase y cursor confirmados para reanudar. Cualquier diferencia
 mantiene el resultado provisional no verificado.
+
+Cada recovery guarda una `revision` y un `effective_cutoff_at` UTC. La primera
+preparación recibe un cutoff explícito o usa el instante actual; debe ser
+posterior al inicio civil UTC del mes y no puede estar en el futuro. Tras una
+revisión `completed`, `monthly-revision-prepare` puede abrir otra inmutable sólo
+con un cutoff estrictamente posterior; repetir el mismo cutoff devuelve la
+revisión existente y nunca altera sus filas, contadores ni evidencia. El estado
+expone revisión y cutoff. Que el cutoff alcance el fin civil del mes sólo marca
+`month_closed_at_cutoff`: no certifica que el contenido sea histórico.
+
+El cutoff añade a F2 y a su verificación el límite `CreatedDate <= cutoff`,
+además del período funcional habitual. No filtra `SystemModstamp`: un Interest
+creado antes del cutoff puede devolver su contenido, estado de borrado y campos
+actuales modificados después. Por tanto el inventario es estado actual observado
+con pertenencia limitada por fecha de creación, no una lectura `as-of`, aunque
+la verificación no encuentre discrepancias. `as_of_cutoff_certified` y la
+certificación histórica permanecen siempre en `false`/`unavailable`; los hard
+deletes y F5 siguen sin evidencia suficiente.
 La evidencia mensual persiste solo ID técnico, fechas funcionales/modificación,
 estado de soft delete y un hash canónico; no conserva el payload Salesforce.
 El hash excluye payload y tiempos técnicos de sincronización/creación/actualización
@@ -110,6 +129,13 @@ ni payloads. La reanudación con un lease nuevo limpia el diagnóstico activo.
 Las etapas permitidas distinguen consulta, mapeo, validación, hash, persistencia
 y checkpoint, además de sus equivalentes de verificación; las categorías no
 atribuyen una causa de base de datos a un error de contenido.
+
+La migración de revisiones añade las columnas de revisión/cutoff y sustituye la
+unicidad de período por período más revisión, sin reescribir el contenido de
+revisiones previas. Su rollback rechaza eliminar evidencia mensual existente.
+No cambia el journal fijo que alimenta la vista administrativa provisional de
+octubre ni los IDs F2/F2M/F5 que ésta valida; una revisión mensual nueva tampoco
+publica una generación global ni redirige lectores oficiales.
 
 Cuando no existe una generación publicada, una generación histórica en estado
 `validating` puede utilizarse únicamente como semilla técnica, nunca como

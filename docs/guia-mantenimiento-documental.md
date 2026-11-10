@@ -183,6 +183,10 @@ como los de `docs-integrity.yml`, `AGENTS.md`, el TOML, el script, la guía o
 `tests/documentation/`, requieren `Docs-Impact: updated`, la guía y pruebas
 documentales en el diff. No se aplica esta regla al resto de archivos de
 `.github/` sin relación con estos controles.
+La ampliación del job MariaDB 11 para ejecutar `InterestMonthlyRecoveryTest`
+mantiene el job de octubre y se comprueba en
+`tests/documentation/test_check_documentation_integrity.py`; cualquier cambio
+posterior de ese filtro requiere revisar esta garantía junto con la CI principal.
 
 ## Límites
 
