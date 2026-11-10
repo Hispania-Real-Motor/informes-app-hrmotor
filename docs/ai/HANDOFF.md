@@ -22,6 +22,25 @@
   fórmulas, deduplicación, CSV ni auditoría. Esta revisión documental no
   ejecutó PHP, JavaScript, migraciones, Salesforce, benchmark ni producción.
 
+## 2026-11-12 — enlace directo de octubre en Campañas
+
+- `period=october_2026` aplica antes de la primera carga el preset existente
+  `month_2026_10` y sus fechas `2026-10-01` a `2026-10-31`; no crea un período
+  backend ni cambia filtros, dataset, cierres, snapshots o readiness. Si el
+  preset no existe no se aplica; cambiar preset o fechas elimina el parámetro.
+- La evidencia económica y `platform_independent_only` conservan sus contratos:
+  métricas nativas sólo aparecen con cobertura válida por plataforma. CRM,
+  ROI, atribución, auditorías y exportaciones dependientes continúan bloqueados
+  sin Interests certificado; no se consume la recuperación/proyección mensual
+  de Interests ni se certifica cobertura de octubre.
+- Se actualizó `docs/informe-campanas.md`. La matriz queda sin cambio porque el
+  diff sólo conecta una URL con un preset de fechas preexistente: no altera
+  fuente, universo, KPI, fórmula, disponibilidad ni trazabilidad. Evidencia:
+  `resources/js/reports/campaigns-dashboard.js`. El responsable funcional
+  informó `node --test tests/js/campaign-presentation.test.mjs` correcto
+  (31 pruebas); esta revisión documental no ejecutó Node, PHP, migraciones,
+  Salesforce, benchmark ni producción. No requiere `DECISIONS.md`.
+
 ## 2026-11-12 — correctivo UI tras PR #125
 
 - La UI separa texto y ayuda de tarjetas oficiales frente a tarjetas de octubre

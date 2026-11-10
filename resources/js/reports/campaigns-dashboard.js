@@ -170,6 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     populatePeriodPreset();
     applyCampaignDateBounds();
     setDefaultDates();
+    applyInitialCampaignPeriod();
     bindTabs();
     bindFilters();
     bindResetFilters();
@@ -279,6 +280,7 @@ function bindResetFilters() {
         persistCampaignNameSelections();
         renderCampaignNameChecklist(campaignRows);
         setDefaultDates();
+        syncCampaignPeriodUrl();
         await reloadAllData();
     });
 }
@@ -300,6 +302,7 @@ function bindFilters() {
 
     document.getElementById('periodPreset')?.addEventListener('change', async (event) => {
         applyPeriodPreset(event.target.value);
+        syncCampaignPeriodUrl();
         await reloadAllData();
     });
 
@@ -308,6 +311,7 @@ function bindFilters() {
             const preset = document.getElementById('periodPreset');
             if (preset) {
                 preset.value = 'custom';
+                syncCampaignPeriodUrl();
             }
         });
     });
@@ -2564,6 +2568,30 @@ function populatePeriodPreset() {
         </option>
     `).join('');
     select.value = 'last_30_days';
+}
+
+function applyInitialCampaignPeriod() {
+    if (new URLSearchParams(window.location.search).get('period') !== 'october_2026') {
+        return;
+    }
+
+    const select = document.getElementById('periodPreset');
+    if (!select || ![...select.options].some((option) => option.value === 'month_2026_10')) {
+        return;
+    }
+
+    select.value = 'month_2026_10';
+    applyPeriodPreset(select.value);
+}
+
+function syncCampaignPeriodUrl() {
+    const url = new URL(window.location.href);
+    if (document.getElementById('periodPreset')?.value === 'month_2026_10') {
+        url.searchParams.set('period', 'october_2026');
+    } else {
+        url.searchParams.delete('period');
+    }
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
 
 function monthPresetOptions() {
