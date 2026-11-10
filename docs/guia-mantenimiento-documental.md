@@ -155,7 +155,9 @@ servicios.
 ## GitHub Actions y protección de rama
 
 `.github/workflows/docs-integrity.yml` ejecuta el job estable `docs-integrity`
-en PR hacia `main` cuando se abre, sincroniza, reabre, edita su descripción o
+en PR hacia `main` o hacia la rama de canales de octubre de la PR #133, para
+validar su PR apilada de propietarios observados. La lista es cerrada y CI usa
+las mismas bases. El job se ejecuta cuando la PR se abre, sincroniza, reabre, edita su descripción o
 pasa a lista para revisión (`opened`, `synchronize`, `reopened`, `edited`,
 `ready_for_review`). Usa Python 3.12 para `tomllib`, `contents: read`, checkout
 completo y sin credenciales persistidas. Lee el cuerpo de la PR desde el evento

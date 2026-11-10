@@ -248,7 +248,9 @@ class IntegrityTests(unittest.TestCase):
         self.assertNotIn("pull_request_target", workflow)
         self.assertNotIn("workflow_run", workflow)
         self.assertNotIn("contents: write", workflow)
-        self.assertIn("branches: [main]", workflow)
+        allowed_bases = "branches: [main, codex/october-2026-interest-channel-kpis]"
+        self.assertIn(allowed_bases, workflow)
+        self.assertIn(allowed_bases, (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
         self.assertIn("types: [opened, synchronize, reopened, edited, ready_for_review]", workflow)
         self.assertIn("actions/setup-python@", workflow)
         self.assertIn("python-version: '3.12'", workflow)
