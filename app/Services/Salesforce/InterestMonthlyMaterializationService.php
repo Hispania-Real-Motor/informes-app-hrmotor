@@ -48,6 +48,7 @@ final class InterestMonthlyMaterializationService
                 return (int) $existing->id;
             }
             $snapshot = $this->sourceSnapshot($monthlyRecoveryId);
+            $reuse = $this->reusableMaterialization($source);
 
             return DB::table('salesforce_interest_monthly_materializations')->insertGetId([
                 'materialization_identifier' => (string) Str::uuid(),
@@ -61,6 +62,10 @@ final class InterestMonthlyMaterializationService
                     'monthly_recovery_id' => $monthlyRecoveryId,
                     'source_rows' => $snapshot['rows'],
                     'source_sha256' => $snapshot['sha256'],
+                    'reuse_materialization_id' => $reuse['id'] ?? null,
+                    'reuse_recovery_id' => $reuse['recovery_id'] ?? null,
+                    'reuse_manifest' => $reuse['manifest'] ?? null,
+                    'reuse_source_snapshot' => $reuse['source_snapshot'] ?? null,
                     'f2_verified' => (bool) data_get(json_decode((string) $source->evidence, true) ?: [], 'verification.verified', false),
                     'historical_certification' => false,
                 ], JSON_THROW_ON_ERROR),
@@ -88,9 +93,12 @@ final class InterestMonthlyMaterializationService
 
                         continue;
                     }
+                    $sourceEvidence = json_decode($run->source_evidence, true, 64, JSON_THROW_ON_ERROR);
+                    $reusedRows = $this->reusablePage($run, $sourceRows, $sourceEvidence['reuse_materialization_id'] ?? null);
+                    $pending = array_values(array_filter($sourceRows, fn (object $row): bool => ! isset($reusedRows[$row->salesforce_id])));
                     $stage = 'salesforce_query';
-                    $records = $this->read($this->interests->monthlyMaterializationSoql(array_map(fn (object $row): string => $row->salesforce_id, $sourceRows)), (int) $run->batch_size, $id, $lease);
-                    $this->persistPage($run, $lease, $sourceRows, $records, $stage);
+                    $records = $pending === [] ? [] : $this->read($this->interests->monthlyMaterializationSoql(array_map(fn (object $row): string => $row->salesforce_id, $pending)), (int) $run->batch_size, $id, $lease);
+                    $this->persistPage($run, $lease, $sourceRows, $records, $reusedRows, $stage);
 
                     continue;
                 }
@@ -176,6 +184,68 @@ final class InterestMonthlyMaterializationService
         return $query->get(['id', 'salesforce_id', 'content_hash', 'functional_created_at'])->all();
     }
 
+    /** @return array{id:int,recovery_id:int,manifest:array{rows:int,sha256:string},source_snapshot:array{rows:int,sha256:string}}|null */
+    private function reusableMaterialization(object $source): ?array
+    {
+        if ((int) ($source->revision ?? 1) < 2) {
+            return null;
+        }
+        $previous = DB::table('salesforce_interest_monthly_recoveries')
+            ->where('functional_start_at', $source->functional_start_at)
+            ->where('functional_end_at', $source->functional_end_at)
+            ->where('revision', (int) $source->revision - 1)->first();
+        if ($previous === null || $previous->status !== 'completed') {
+            return null;
+        }
+        $run = DB::table('salesforce_interest_monthly_materializations')
+            ->where('monthly_recovery_id', $previous->id)->where('status', 'completed')->first();
+        if ($run === null) {
+            return null;
+        }
+        $sourceEvidence = json_decode($run->source_evidence, true, 64, JSON_THROW_ON_ERROR);
+        $evidence = json_decode((string) $run->evidence, true, 64, JSON_THROW_ON_ERROR);
+        $previousSnapshot = $this->sourceSnapshot((int) $previous->id);
+        $previousManifest = $this->manifest((int) $run->id);
+        if (! ($sourceEvidence['f2_verified'] ?? false) || ! data_get($evidence, 'verification.verified', false)
+            || $previousSnapshot !== ['rows' => $sourceEvidence['source_rows'] ?? null, 'sha256' => $sourceEvidence['source_sha256'] ?? null]
+            || $previousManifest !== ($evidence['manifest'] ?? null)) {
+            return null;
+        }
+
+        return ['id' => (int) $run->id, 'recovery_id' => (int) $previous->id,
+            'manifest' => $previousManifest, 'source_snapshot' => $previousSnapshot];
+    }
+
+    /** @param list<object> $sourceRows @return array<string,array<string,mixed>> */
+    private function reusablePage(object $run, array $sourceRows, mixed $previousId): array
+    {
+        if (! is_int($previousId) || $previousId < 1) {
+            return [];
+        }
+        $sources = collect($sourceRows)->keyBy('salesforce_id');
+        $rows = [];
+        $previous = DB::table('salesforce_interest_monthly_materialized_rows')
+            ->where('monthly_materialization_id', $previousId)
+            ->whereIn('salesforce_id', $sources->keys()->all())->get();
+        foreach ($previous as $item) {
+            $source = $sources->get($item->salesforce_id);
+            if ($source === null || ! (bool) $item->content_matches_inventory
+                || ! hash_equals($source->content_hash, $item->source_content_hash)
+                || ! hash_equals($item->content_hash, $item->source_content_hash)) {
+                continue;
+            }
+            $row = (array) $item;
+            unset($row['id']);
+            $row['monthly_materialization_id'] = $run->id;
+            $row['monthly_recovery_row_id'] = $source->id;
+            $row['created_at'] = now();
+            $row['updated_at'] = now();
+            $rows[$item->salesforce_id] = $row;
+        }
+
+        return $rows;
+    }
+
     /** @return list<array<string,mixed>> */
     private function read(string $soql, int $limit, int $id, string $lease): array
     {
@@ -194,15 +264,15 @@ final class InterestMonthlyMaterializationService
         return $rows;
     }
 
-    /** @param list<object> $sourceRows @param list<array<string,mixed>> $records */
-    private function persistPage(object $run, string $lease, array $sourceRows, array $records, string &$stage): void
+    /** @param list<object> $sourceRows @param list<array<string,mixed>> $records @param array<string,array<string,mixed>> $reusedRows */
+    private function persistPage(object $run, string $lease, array $sourceRows, array $records, array $reusedRows, string &$stage): void
     {
         $expected = [];
         foreach ($sourceRows as $source) {
             $expected[$source->salesforce_id] = $source;
         }
-        $mappedRows = [];
-        $received = [];
+        $mappedRows = array_values($reusedRows);
+        $received = array_fill_keys(array_keys($reusedRows), true);
         $duplicates = 0;
         $unexpected = 0;
         foreach ($records as $record) {
@@ -238,7 +308,7 @@ final class InterestMonthlyMaterializationService
         }
         $last = (string) $sourceRows[array_key_last($sourceRows)]->salesforce_id;
 
-        DB::transaction(function () use ($run, $lease, $sourceRows, $records, $mappedRows, $missing, $duplicates, $unexpected, $functionalDateChanges, $last, &$stage): void {
+        DB::transaction(function () use ($run, $lease, $sourceRows, $records, $reusedRows, $mappedRows, $missing, $duplicates, $unexpected, $functionalDateChanges, $last, &$stage): void {
             $this->owned((int) $run->id, $lease, true);
             $counters = $this->counters($run);
             if ($mappedRows !== []) {
@@ -253,6 +323,7 @@ final class InterestMonthlyMaterializationService
             }
             $counters['requested'] += count($sourceRows);
             $counters['remote_received'] += count($records);
+            $counters['reused'] += count($reusedRows);
             $counters['materialized'] += count($mappedRows);
             $counters['missing'] += $missing;
             $counters['unexpected'] += $unexpected;
@@ -287,7 +358,10 @@ final class InterestMonthlyMaterializationService
             $sourceEvidence = json_decode($run->source_evidence, true, 64, JSON_THROW_ON_ERROR);
             $sourceMatches = $source['rows'] === $sourceEvidence['source_rows'] && hash_equals($sourceEvidence['source_sha256'], $source['sha256']);
             $manifest = $this->manifest((int) $run->id);
-            $verified = $sourceMatches && $counters['expected'] === $counters['requested'] && $counters['missing'] === 0
+            $reuseId = $sourceEvidence['reuse_materialization_id'] ?? null;
+            $reuseMatches = $reuseId === null || ($this->manifest((int) $reuseId) === ($sourceEvidence['reuse_manifest'] ?? null)
+                && $this->sourceSnapshot((int) $sourceEvidence['reuse_recovery_id']) === ($sourceEvidence['reuse_source_snapshot'] ?? null));
+            $verified = $sourceMatches && $reuseMatches && $counters['expected'] === $counters['requested'] && $counters['missing'] === 0
                 && $counters['unexpected'] === 0 && $counters['duplicates'] === 0 && $counters['content_changed'] === 0 && $counters['functional_date_changed'] === 0;
             $evidence = [
                 'source' => 'current_state_monthly_f2_materialization',
@@ -295,6 +369,7 @@ final class InterestMonthlyMaterializationService
                 'verification' => [
                     'verified' => $verified,
                     'source_f2_unchanged' => $sourceMatches,
+                    'reuse_source_unchanged' => $reuseMatches,
                     'expected' => $counters['expected'], 'materialized' => $counters['materialized'],
                     'missing' => $counters['missing'], 'unexpected' => $counters['unexpected'], 'duplicates' => $counters['duplicates'],
                     'content_changed' => $counters['content_changed'], 'functional_date_changed' => $counters['functional_date_changed'],
@@ -401,7 +476,7 @@ final class InterestMonthlyMaterializationService
     /** @return array<string,int> */
     private function emptyCounters(int $expected): array
     {
-        return ['expected' => $expected, 'requested' => 0, 'remote_received' => 0, 'materialized' => 0, 'content_matching' => 0, 'content_changed' => 0, 'missing' => 0, 'unexpected' => 0, 'duplicates' => 0, 'soft_deleted_observed' => 0, 'functional_date_changed' => 0, 'lead_present' => 0, 'account_present' => 0, 'canonical_person_missing' => 0];
+        return ['expected' => $expected, 'requested' => 0, 'remote_received' => 0, 'reused' => 0, 'materialized' => 0, 'content_matching' => 0, 'content_changed' => 0, 'missing' => 0, 'unexpected' => 0, 'duplicates' => 0, 'soft_deleted_observed' => 0, 'functional_date_changed' => 0, 'lead_present' => 0, 'account_present' => 0, 'canonical_person_missing' => 0];
     }
 
     /** @return array<string,int> */

@@ -198,6 +198,7 @@ final class InterestMonthlyRecoveryService
         $last = $cursor;
         DB::transaction(function () use ($r, $lease, $records, &$counters, &$last, &$stage): void {
             $this->owned((int) $r->id, $lease, true);
+            $remote = [];
             foreach ($records as $record) {
                 $stage = 'verification_mapping';
                 $mapped = $this->interests->mapRecord($record, (bool) data_get($record, 'IsDeleted', false));
@@ -206,9 +207,16 @@ final class InterestMonthlyRecoveryService
                     throw new RuntimeException('Monthly verification cursor is invalid.');
                 }
                 $last = $id;
-                $local = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)->where('salesforce_id', $id)->first();
                 $stage = 'verification_hash';
-                $hash = $this->contentHash($mapped);
+                $remote[$id] = $this->contentHash($mapped);
+            }
+            $stage = 'verification_database';
+            $locals = $remote === [] ? collect() : DB::table('salesforce_interest_monthly_recovery_rows')
+                ->where('monthly_recovery_id', $r->id)->whereIn('salesforce_id', array_keys($remote))
+                ->get(['id', 'salesforce_id', 'content_hash'])->keyBy('salesforce_id');
+            $verifiedIds = [];
+            foreach ($remote as $id => $hash) {
+                $local = $locals->get($id);
                 $counters['remote_checked']++;
                 if ($local === null) {
                     $counters['remote_missing_local']++;
@@ -216,9 +224,12 @@ final class InterestMonthlyRecoveryService
                     if (! hash_equals($local->content_hash, $hash)) {
                         $counters['content_changed']++;
                     }
-                    $stage = 'verification_database';
-                    DB::table('salesforce_interest_monthly_recovery_rows')->where('id', $local->id)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
+                    $verifiedIds[] = $local->id;
                 }
+            }
+            if ($verifiedIds !== []) {
+                DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)
+                    ->whereIn('id', $verifiedIds)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
             }
             $terminal = count($records) < (int) $r->batch_size;
             if ($terminal) {

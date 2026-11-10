@@ -630,6 +630,23 @@ se confirman en la misma transacción bajo lease fenced. El manifiesto declara
 cobertura, cambios, ausencias, inesperados, duplicados, soft deletes y si la
 evidencia F2 fuente permanece igual.
 
+Desde la segunda revisión mensual, `prepare` puede declarar como origen de
+reutilización sólo la materialización `completed` de la revisión inmediatamente
+anterior del mismo período, si su F2 estaba verificada, su propia verificación
+terminó correcta y su snapshot/manifiesto aún coinciden con la evidencia
+guardada. Dentro de cada bloque se copian exclusivamente filas anteriores con
+`content_matches_inventory` y con las dos huellas (F2 fuente y materializada)
+iguales a la huella F2 de la revisión nueva. Las filas nuevas, cambiadas o sin
+esa prueba se siguen consultando y materializando remotamente de forma normal.
+
+La evidencia conserva ID de materialización/recovery, manifiesto y snapshot de
+la reutilización, junto con el contador `reused`. Antes de declarar correcta la
+materialización nueva vuelve a comparar el manifiesto y snapshot del origen
+reutilizado; una diferencia deja `verification.verified` en falso. Este ahorro
+de consultas no crea una fuente `as-of`, no relaja la verificación F2 ni añade
+pertenencia: la lectura sigue siendo estado actual y las mismas limitaciones de
+hard deletes, F5 y certificación histórica permanecen.
+
 `completed` es una finalización técnica, no certificación ni publicación.
 Hard deletes siguen sin observarse y cualquier discrepancia deja
 `verification.verified` en falso. Los lectores e informes oficiales continúan

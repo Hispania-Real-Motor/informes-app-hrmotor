@@ -138,14 +138,50 @@ class InterestMonthlyMaterializationTest extends TestCase
         $this->invokePrivate($service, 'renew', $id, $lease);
     }
 
-    private function completedRecovery(): int
+    public function test_next_revision_reuses_only_unchanged_verified_rows_and_fetches_changed_ids(): void
+    {
+        $first = $this->record(1, '2026-10-02T08:00:00Z');
+        $second = $this->record(2, '2026-10-03T08:00:00Z');
+        $previous = $this->completedRecovery(true);
+        $this->sourceRow($previous, $first);
+        $this->sourceRow($previous, $second);
+        $this->app->instance(SalesforceClient::class, new MonthlyMaterializationFakeClient(records: [$first, $second]));
+        $reason = 'Materialize a verified October revision without changing its source.';
+        $service = app(InterestMonthlyMaterializationService::class);
+        $previousRun = $service->prepare($previous, $reason);
+        $this->assertTrue($service->run($previousRun, $reason)['evidence']['verification']['verified']);
+
+        $changed = $second;
+        $changed['IN_Estado__c'] = 'Changed';
+        $next = $this->completedRecovery(true, 2);
+        $this->sourceRow($next, $first);
+        $this->sourceRow($next, $changed);
+        $client = new MonthlyMaterializationFakeClient(records: [$changed]);
+        $this->app->instance(SalesforceClient::class, $client);
+        $service = app(InterestMonthlyMaterializationService::class);
+        $nextRun = $service->prepare($next, $reason);
+        $status = $service->run($nextRun, $reason);
+
+        $this->assertSame($previousRun, $status['source_evidence']['reuse_materialization_id']);
+        $this->assertSame(1, $client->calls());
+        $this->assertSame(1, $status['counters']['reused']);
+        $this->assertSame(1, $status['counters']['remote_received']);
+        $this->assertSame(2, $status['counters']['materialized']);
+        $this->assertTrue($status['evidence']['verification']['verified']);
+        $this->assertDatabaseHas('salesforce_interest_monthly_materialized_rows', ['monthly_materialization_id' => $nextRun, 'salesforce_id' => $first['Id'], 'status' => 'Open']);
+        $this->assertDatabaseHas('salesforce_interest_monthly_materialized_rows', ['monthly_materialization_id' => $nextRun, 'salesforce_id' => $second['Id'], 'status' => 'Changed']);
+        $this->assertDatabaseCount('salesforce_interest_generations', 0);
+    }
+
+    private function completedRecovery(bool $verified = false, int $revision = 1): int
     {
         return DB::table('salesforce_interest_monthly_recoveries')->insertGetId([
             'recovery_identifier' => (string) Str::uuid(),
             'functional_start_at' => '2026-09-30 22:00:00',
             'functional_end_at' => '2026-10-31 23:00:00',
+            'revision' => $revision, 'effective_cutoff_at' => $revision === 1 ? '2026-11-05 10:00:00' : '2026-11-06 10:00:00',
             'timezone' => 'Europe/Madrid', 'status' => 'completed', 'phase' => 'completed', 'batch_size' => 500,
-            'pages_completed' => 1, 'counters' => json_encode([]), 'evidence' => json_encode(['verification' => ['verified' => false]]),
+            'pages_completed' => 1, 'counters' => json_encode([]), 'evidence' => json_encode(['verification' => ['verified' => $verified]]),
             'reason_hash' => hash('sha256', 'synthetic source'), 'started_at' => now('UTC'), 'completed_at' => now('UTC'), 'created_at' => now(), 'updated_at' => now(),
         ]);
     }
@@ -189,6 +225,11 @@ class InterestMonthlyMaterializationTest extends TestCase
 final class MonthlyMaterializationFakeClient extends SalesforceClient
 {
     private int $calls = 0;
+
+    public function calls(): int
+    {
+        return $this->calls;
+    }
 
     /** @param list<array<string,mixed>> $records */
     public function __construct(
