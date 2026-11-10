@@ -17,7 +17,41 @@ La proyección versionada y los filtros de octubre siguen limitados al dashboard
 de Interests: no aportan estado histórico de relación F5 ni certifican, habilitan
 o recalculan KPI, clasificación, reproceso o exportación de Llamadas.
 
-Actualizado: 2026-10-08.
+## Selector fijo de octubre de 2026
+
+`/informes/llamadas?period=october_2026` es un preset del informe oficial de
+Llamadas, no una vista ni una fuente provisional de Interests. Fija el período
+actual en `[2026-10-01 00:00:00, 2026-11-01 00:00:00)` y el comparado en
+`[2026-09-01 00:00:00, 2026-10-01 00:00:00)`, construidos en
+`Europe/Madrid`. El servicio filtra `salesforce_calls.created_date` con inicio
+inclusivo y fin exclusivo en resumen, agentes, delegaciones, portales y
+auditoría. Por ese contrato, el valor `periodo_actual.fin = 2026-11-01` que
+expone la API no incluye el 1 de noviembre.
+
+Los límites se convierten a UTC antes de cada consulta de
+`created_date`, respetando el cambio horario: octubre se consulta como
+`[2026-09-30 22:00:00Z, 2026-10-31 23:00:00Z)` y el período comparado como
+`[2026-08-31 22:00:00Z, 2026-09-30 22:00:00Z)`. La respuesta conserva
+`inicio` y `fin` civiles de Madrid (`2026-10-01`/`2026-11-01` y
+`2026-09-01`/`2026-10-01`); no expone los límites UTC como si fueran fechas
+de presentación.
+
+La URL directa fija el selector antes de la primera carga; elegir otro período
+o restablecer filtros elimina sólo `period=october_2026` de la URL. Persisten
+las reglas de universo, `CallObject`, clasificación, duración, filtros de
+ámbito, KPI, comparativas, CSV y auditoría ya vigentes. El preset sólo consulta
+la réplica local `salesforce_calls`: no crea cobertura histórica, no acredita
+que la sincronización de octubre esté completa y no se ha verificado contra
+Salesforce ni producción.
+
+Los totales y las llamadas atendidas nativos pueden calcularse sin una
+generación Interest publicada, pero el preset no vuelve a resolver ni certifica
+un portal dependiente de `Task.WhatId`. La fuente Interest de fallback en
+clasificación/sincronización continúa requiriendo la generación publicada y la
+coincidencia local exacta ya documentadas; F2/F2M/F5 mensuales y la proyección
+provisional de Interests no son una alternativa.
+
+Actualizado: 2026-11-12.
 
 ## Universo
 
