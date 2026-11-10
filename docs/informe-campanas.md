@@ -24,6 +24,9 @@ readiness, KPI, rankings, auditoría ni CSV de Campañas. No acredita cobertura
 de noviembre ni sustituye una generación Interest publicada.
 El requisito de snapshot validado es local a esa pantalla y no invalida ni
 actualiza generación, readiness o snapshots publicados de Campañas.
+El refresco opcional F2/F2M/F5 del mes abierto sólo mantiene esos journals
+aislados tras autorización de lectura; deshabilitado por defecto, no altera
+atribución, readiness, cobertura, KPI, auditoría ni CSV de Campañas.
 La proyección categórica versionada de octubre sólo sirve el dashboard de
 Interests; sus filtros no alimentan atribución, KPI, readiness, ranking, CSV ni
 certificación de Campañas, que mantienen sus fuentes y contratos publicados.

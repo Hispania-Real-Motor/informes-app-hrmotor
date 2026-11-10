@@ -137,6 +137,21 @@ No cambia el journal fijo que alimenta la vista administrativa provisional de
 octubre ni los IDs F2/F2M/F5 que ésta valida; una revisión mensual nueva tampoco
 publica una generación global ni redirige lectores oficiales.
 
+El refresco operativo opcional `salesforce:sync-interest-monthly-current` recorre
+F2, F2M y F5 de la recuperación aislada del mes civil abierto en
+`Europe/Madrid`. Exige `--allow-salesforce-read`, usa un cutoff UTC de seguridad
+de dos minutos y reanuda una recuperación no completada antes de preparar otra;
+una revisión completada que ya cubre el cutoff no se vuelve a leer. No comienza
+antes del primer cutoff seguro del mes. Sólo informa éxito tras verificar las
+tres fases, conserva checkpoints ante fallo y no crea generación, publicación o
+lector oficial. La tarea del catálogo está apagada por defecto y requiere tanto
+`SALESFORCE_INTEREST_MONTHLY_CURRENT_SYNC_ENABLED=true` como autorización
+explícita del scheduler; no es evidencia histórica ni certificación F2/F5.
+Cada revisión relee el inventario F2 actual acotado por mes y su F5 selectiva;
+no implementa un delta por `SystemModstamp` ni sustituye el incremental
+publicado. El flag queda preparado y apagado hasta revisión y autorización
+operacional separadas.
+
 Cuando no existe una generación publicada, una generación histórica en estado
 `validating` puede utilizarse únicamente como semilla técnica, nunca como
 evidencia de certificación. El operador autorizado puede ejecutar

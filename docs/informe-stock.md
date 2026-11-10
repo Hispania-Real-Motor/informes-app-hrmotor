@@ -28,6 +28,9 @@ El lector mensual administrativo de noviembre mantiene la misma separación: su
 validación, flag y revisión locales no cambian fuentes de inventario o ventas,
 snapshots, cálculos, filtros, auditoría ni exportaciones de Stock, ni acreditan
 cobertura histórica.
+El refresco opcional F2/F2M/F5 del mes abierto permanece aislado y deshabilitado
+por defecto: no modifica fuentes de Stock, snapshots, cálculos, KPI, filtros,
+auditoría ni exportaciones.
 
 El stock actual considera `Disponible`, `Reservado` y `Bloqueado`. Las ventas no
 se reconstruyen con el Product2 actual: el snapshot conserva los valores

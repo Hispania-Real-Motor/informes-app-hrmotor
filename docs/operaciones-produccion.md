@@ -1554,6 +1554,46 @@ php artisan salesforce:interest-generation monthly-run --period-id=<id> --allow-
 php artisan salesforce:interest-generation monthly-status --period-id=<id>
 ```
 
+### Refresco operativo aislado del mes abierto
+
+`salesforce:sync-interest-monthly-current` automatiza exclusivamente el mismo
+journal mensual aislado para el mes civil abierto en `Europe/Madrid`: calcula un
+cutoff UTC redondeado a minuto de dos minutos de seguridad, reanuda la F2 fallida
+si existe o prepara una revisión nueva, y sólo da éxito después de completar y
+verificar F2, F2M y F5 de esa recuperación. Antes del primer cutoff seguro no
+crea una revisión futura; si el cutoff de la revisión completada ya lo cubre, no
+repite lecturas. El comando exige `--allow-salesforce-read`; sin él falla antes
+de leer Salesforce. Sus mensajes no deben incluir payloads, SOQL ni errores
+remotos.
+
+Esas dos salidas sin lectura (`antes del cutoff` y `cutoff ya cubierto`) se
+marcan como `SKIPPED:`. El catálogo las registra como omisión controlada, no
+como un falso `last-success`: no acreditan refresco, cobertura ni evidencia
+nueva.
+
+Cada revisión vuelve a leer el inventario F2 actual acotado al mes y su F5
+selectiva sobre esa F2; no es un motor incremental por `SystemModstamp`. El
+cutoff limita `CreatedDate`, pero el contenido observado sigue siendo actual.
+Por tanto no usar la tarea para declarar deltas históricos ni sustituir el
+pipeline incremental publicado.
+
+La tarea de catálogo `salesforce-sync-interest-monthly-current` permanece
+deshabilitada, incluso para ejecución manual desde Operaciones, salvo que
+`SALESFORCE_INTEREST_MONTHLY_CURRENT_SYNC_ENABLED=true`. Su cron propuesto es
+03:10 `Europe/Madrid`, con ventana de 240 minutos, gracia de 90 y exclusión
+persistente; si `OPERATIONS_SCHEDULED_TASK_KEYS` está configurada, debe permitir esa clave.
+El despliegue no autoriza cambiar ninguna de esas condiciones ni reactivar el
+scheduler: primero realizar el preflight, la autorización de lectura Salesforce
+y una aprobación operacional separada. Un fallo conserva checkpoints y puede
+reanudarse con la razón compatible y el lease caducado; no iniciar una revisión paralela
+ni eliminar evidencia para repetirla.
+
+La tarea no toca `salesforce_interest_generations`, el puntero de publicación ni
+los lectores oficiales. F2/F2M/F5 completadas son evidencia operativa de estado
+actual, no certificación histórica, cobertura `as-of` ni autorización para
+publicar. Registrar sólo ID/revisión/cutoff/estado y contadores agregados; no
+tratar una reserva del scheduler ni un exitoso local como evidencia productiva.
+
 Tras una revisión `completed`, sólo `monthly-revision-prepare` con las mismas
 opciones y un cutoff estrictamente posterior puede crear la siguiente revisión;
 el mismo cutoff devuelve la existente. Conservar el ID, revisión, cutoff y

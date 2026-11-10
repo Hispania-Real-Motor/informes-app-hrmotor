@@ -47,6 +47,9 @@ de Intereses.
 La instrumentación diagnóstica mensual clasifica los fallos por etapa sin
 exponer mensajes, SQL ni payloads; conserva checkpoint y reanudación, sin
 habilitar ningún lector oficial.
+El refresco opcional del mes abierto sólo orquesta esa F2/F2M/F5 aislada tras
+autorización explícita de lectura; permanece deshabilitado por defecto y no
+modifica ROT-1, sus filtros, KPI, AJAX, CSV ni la generación publicada.
 
 ### Nota técnica — F5 mensual aislada (2026-11-07)
 

@@ -1,5 +1,45 @@
 # Handoff para agentes
 
+## 2026-11-10 — refresco operativo mensual aislado de Interests
+
+- `salesforce:sync-interest-monthly-current` orquesta sólo F2, F2M y F5 del
+  mes civil abierto de Madrid. Exige `--allow-salesforce-read`, usa cutoff UTC
+  con margen de dos minutos, reanuda el journal no completado y sólo informa
+  éxito cuando las tres fases están verificadas. Antes del primer cutoff seguro
+  no crea revisión; una revisión completada que ya cubre el cutoff no relee.
+  Un fallo conserva checkpoints y emite un mensaje saneado, sin payloads, SOQL
+  ni detalles remotos. Cada revisión relee el inventario F2 actual acotado al
+  mes y su F5 selectiva; no es un delta por `SystemModstamp` ni sustituye el
+  incremental publicado. Las dos omisiones sin lectura se emiten como
+  `SKIPPED:` y no actualizan falsamente `last-success`.
+- El task `salesforce-sync-interest-monthly-current` está deshabilitado por
+  defecto, incluido el arranque manual operacional. Habilitarlo requeriría el
+  flag `SALESFORCE_INTEREST_MONTHLY_CURRENT_SYNC_ENABLED=true` y que la
+  allowlist del scheduler admita su clave cuando esté configurada; esta entrega
+  no activa scheduler ni realiza lectura Salesforce. Sus parámetros propuestos son 03:10
+  Europe/Madrid, ventana 240 min, gracia 90 y exclusión persistente.
+- No escribe generación/puntero publicado ni convierte F2/F2M/F5 en
+  certificación histórica, fuente oficial o KPI. Los seis informes preservan
+  fuentes, universos, filtros, fórmulas, auditorías, CSV y presentación. La CI
+  MariaDB 11 se amplía para incluir el test de comando junto al test mensual;
+  su resultado sigue pendiente.
+- Documentación modificada: `docs/operaciones-produccion.md`,
+  `docs/salesforce-interest-generations.md`, `docs/reglas-negocio-leads.md`,
+  `docs/informe-{reservas-ventas,llamadas,campanas,comisiones,stock}.md`,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/guia-mantenimiento-documental.md`
+  y este handoff. No se modifica `PROJECT_CONTEXT.md` ni `DECISIONS.md`: es un
+  comando/tarea reversible sobre el journal mensual existente, sin módulo ni
+  contrato de datos nuevo.
+- Según la entrega de código: `php -l`, Pint y `git diff --check` pasan. El
+  runtime PHP 8.3 local no puede ejecutar la suite completa requerida por
+  Composer; CI queda pendiente. No se ejecutaron migraciones, base de datos,
+  Salesforce, scheduler, benchmark ni producción en esta revisión documental.
+- El contrato `Docs-Outside` de la PR completa contra `main` debe enumerar
+  exactamente los servicios sin mapa documental de las entregas previas y
+  `app/Services/Operations/OperationalTaskCatalog.php` y
+  `app/Services/Operations/OperationalTaskOutput.php`; este último sólo
+  interpreta la omisión controlada del task, sin afectar lectores/KPI.
+
 ## 2026-11-10 — lector mensual administrativo provisional de noviembre
 
 - La ruta `period=november_2026` sólo se expone a administrador con

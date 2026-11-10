@@ -65,6 +65,17 @@ final class OperationalTaskCatalog
                 'manual_allowed' => true, 'risk' => 'moderate',
                 'overlap_policy' => 'exclusive-persistent', 'policy' => 'Ventana ordinaria fija del scheduler.',
             ],
+            'salesforce-sync-interest-monthly-current' => [
+                'label' => 'refresco mensual aislado de Interests', 'module' => 'salesforce',
+                'command' => 'salesforce:sync-interest-monthly-current',
+                'arguments' => ['--allow-salesforce-read' => true],
+                'cron' => '10 3 * * *', 'timezone' => 'Europe/Madrid',
+                'window_minutes' => 240, 'grace_minutes' => 90,
+                'enabled' => (bool) config('salesforce.interest_monthly_current_sync_enabled', false),
+                'manual_allowed' => (bool) config('salesforce.interest_monthly_current_sync_enabled', false),
+                'risk' => 'high', 'overlap_policy' => 'exclusive-persistent',
+                'policy' => 'F2/F2M/F5 aislados, sin certificación ni publicación; requiere activación selectiva explícita.',
+            ],
             'salesforce-sync-tasaciones' => [
                 'label' => 'sincronización de tasaciones', 'module' => 'salesforce',
                 'command' => 'salesforce:sync-tasaciones',
