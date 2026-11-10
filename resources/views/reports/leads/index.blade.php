@@ -130,7 +130,10 @@
 
     @if($isOctoberProvisional ?? false)
         <section class="notice" id="octoberProvisionalNotice" aria-live="polite">
-            <strong>{{ ($initialLeadPeriod ?? null) === 'november_2026' ? 'Noviembre 2026 · datos provisionales.' : 'Octubre 2026 · datos reconstruidos.' }}</strong>
+            <strong>{{ ($initialLeadPeriod ?? null) === 'november_2026' ? 'Noviembre de 2026' : 'Octubre 2026 · datos reconstruidos.' }}</strong>
+            @if(($initialLeadPeriod ?? null) === 'november_2026' && ($provisionalUpdatedUntil ?? null))
+                <span>Actualizado hasta {{ $provisionalUpdatedUntil }}</span>
+            @endif
             Los filtros se aplican a los Intereses activos disponibles de ese mes. Algunas métricas comerciales y de actividad todavía no tienen datos suficientes.
         </section>
     @endif

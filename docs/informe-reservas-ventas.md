@@ -36,6 +36,10 @@ las exportaciones de Reservas/Ventas. Un cambio observado después del corte que
 no altera aquel intervalo no revoca la proyección de octubre. Una escritura SQL
 directa sigue fuera del contrato de revocación y requiere el procedimiento
 operativo de revalidación de la vista provisional.
+La misma captura revoca también la revisión mensual provisional cuando un
+owner incluido tiene una observación anterior al fin funcional del mes; el
+rollback revierte esa revocación. El control sólo protege la lectura aislada de
+Interests y no cambia resultados ni fuentes de Reservas/Ventas.
 
 ## Selector fijo de octubre de 2026
 

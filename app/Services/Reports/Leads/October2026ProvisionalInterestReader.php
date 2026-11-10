@@ -4,7 +4,6 @@ namespace App\Services\Reports\Leads;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -496,6 +495,7 @@ final class October2026ProvisionalInterestReader
     {
         $normalizer = app(LeadDelegationNormalizer::class);
         $recordTypes = app(LeadRecordTypeNormalizer::class);
+        $owners = app(ObservedInterestOwnerProjection::class);
         $now = now();
 
         DB::table('salesforce_interest_monthly_materialized_rows')
@@ -503,37 +503,11 @@ final class October2026ProvisionalInterestReader
             ->where('content_matches_inventory', true)
             ->where('is_deleted', false)
             ->orderBy('id')
-            ->chunkById(500, function ($rows) use ($normalizer, $recordTypes, $revision, $projectionKey, $now): void {
-                $ownerIds = $rows->pluck('owner_salesforce_id')->filter()->unique()->values()->all();
-                $observations = $ownerIds === [] ? collect() : DB::table('commercial_delegation_snapshots')
-                    ->whereIn('salesforce_user_id', $ownerIds)
-                    ->where('observed_from', '<', self::END_UTC)
-                    ->where(function ($query): void {
-                        $query->whereNull('observed_until')->orWhere('observed_until', '>=', self::END_UTC);
-                    })
-                    ->get(['salesforce_user_id', 'delegation', 'zone'])
-                    ->groupBy('salesforce_user_id');
+            ->chunkById(500, function ($rows) use ($normalizer, $recordTypes, $owners, $revision, $projectionKey, $now): void {
+                [$assignments, $labels] = $owners->forRows($rows, self::END_UTC, $projectionKey);
                 $batch = [];
-                $labels = [];
                 foreach ($rows as $row) {
                     $delegation = $normalizer->normalize($row->origin_delegation);
-                    $ownerId = trim((string) $row->owner_salesforce_id);
-                    $ownerName = trim((string) $row->owner_name);
-                    $ownerKey = $ownerId === '' ? 'missing' : hash_hmac('sha256', $ownerId, (string) config('app.key'));
-                    $technical = InterestTechnicalOwnerClassifier::isTechnical($ownerId, $ownerName);
-                    $observed = $ownerId === '' || $technical ? null : $observations->get($ownerId);
-                    $assignment = $observed !== null && $observed->count() === 1 ? $observed->first() : null;
-                    $commercialDelegation = $ownerId === '' ? 'Sin propietario observado' : ($technical ? 'Propietario técnico' : ($assignment->delegation ?? 'Asignación no acreditada'));
-                    $commercialZone = $ownerId === '' ? 'Sin propietario observado' : ($technical ? 'Propietario técnico' : ($assignment->zone ?? 'Asignación no acreditada'));
-                    if (! isset($labels[$ownerKey])) {
-                        $labels[$ownerKey] = [
-                            'projection_key' => $projectionKey,
-                            'owner_key' => $ownerKey,
-                            'name_ciphertext' => $ownerId === '' ? null : Crypt::encryptString(mb_substr($ownerName === '' ? 'Propietario sin nombre' : $ownerName, 0, 191)),
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    }
                     $batch[] = [
                         'scope' => 'october_2026_provisional',
                         'integrity_revision' => $revision,
@@ -546,16 +520,13 @@ final class October2026ProvisionalInterestReader
                         'origin_delegation' => $this->projectionLabel($delegation['delegation']),
                         'origin_group' => $this->projectionLabel($delegation['group']),
                         'origin_zone' => $this->projectionLabel($delegation['zone']),
-                        'owner_key' => $ownerKey,
-                        'owner_is_technical' => $technical,
-                        'commercial_delegation' => $commercialDelegation,
-                        'commercial_zone' => $commercialZone,
+                        ...$assignments[(int) $row->id],
                         'created_at' => $now,
                         'updated_at' => $now,
                     ];
                 }
                 DB::table('salesforce_interest_october_provisional_projection_rows')->insert($batch);
-                DB::table('salesforce_interest_october_provisional_owners')->insertOrIgnore(array_values($labels));
+                DB::table('salesforce_interest_october_provisional_owners')->insertOrIgnore($labels);
             });
     }
 
