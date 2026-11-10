@@ -4,9 +4,12 @@
 
 - `period=october_2026` selecciona `[2026-10-01, 2026-11-01)` como período
   actual y `[2026-09-01, 2026-10-01)` como comparado, construidos en
-  `Europe/Madrid`. Resumen, agentes, delegaciones, portales y auditoría filtran
-  `salesforce_calls.created_date` con inicio inclusivo y fin exclusivo; el
-  `fin` expuesto por API es por tanto frontera, no día incluido.
+  `Europe/Madrid`. Antes de filtrar `salesforce_calls.created_date`, los límites
+  se convierten a UTC: octubre `[2026-09-30 22:00:00Z, 2026-10-31 23:00:00Z)` y
+  comparado `[2026-08-31 22:00:00Z, 2026-09-30 22:00:00Z)`. Resumen, agentes,
+  delegaciones, portales y auditoría aplican inicio inclusivo/fin exclusivo; la
+  API conserva `inicio`/`fin` civiles de Madrid, de modo que `fin` sigue siendo
+  frontera y no día incluido.
 - La ruta directa inicializa el selector antes de cargar; cambiar a otro
   período o restablecer filtros elimina el parámetro. No cambian fuente,
   clasificación, duración, ámbitos, KPI, CSV, auditoría ni permisos. El preset

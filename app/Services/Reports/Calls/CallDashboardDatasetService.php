@@ -1387,12 +1387,22 @@ class CallDashboardDatasetService
         $now = CarbonImmutable::now();
 
         if ($filters['period'] === 'october_2026') {
-            $currentStart = CarbonImmutable::parse('2026-10-01 00:00:00', 'Europe/Madrid');
-            $currentEnd = $currentStart->addMonth();
+            $localStart = CarbonImmutable::parse('2026-10-01 00:00:00', 'Europe/Madrid');
+            $localEnd = $localStart->addMonth();
 
             return [
-                'current' => ['start' => $currentStart, 'end' => $currentEnd],
-                'previous' => ['start' => $currentStart->subMonth(), 'end' => $currentStart],
+                'current' => [
+                    'start' => $localStart->utc(),
+                    'end' => $localEnd->utc(),
+                    'display_start' => $localStart->toDateString(),
+                    'display_end' => $localEnd->toDateString(),
+                ],
+                'previous' => [
+                    'start' => $localStart->subMonth()->utc(),
+                    'end' => $localStart->utc(),
+                    'display_start' => $localStart->subMonth()->toDateString(),
+                    'display_end' => $localStart->toDateString(),
+                ],
             ];
         }
 
@@ -1578,8 +1588,8 @@ class CallDashboardDatasetService
     private function periodPayload(array $period): array
     {
         return [
-            'inicio' => CarbonImmutable::parse($period['start'])->toDateString(),
-            'fin' => CarbonImmutable::parse($period['end'])->toDateString(),
+            'inicio' => $period['display_start'] ?? CarbonImmutable::parse($period['start'])->toDateString(),
+            'fin' => $period['display_end'] ?? CarbonImmutable::parse($period['end'])->toDateString(),
         ];
     }
 

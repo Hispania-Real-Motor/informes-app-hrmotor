@@ -28,6 +28,14 @@ inclusivo y fin exclusivo en resumen, agentes, delegaciones, portales y
 auditoría. Por ese contrato, el valor `periodo_actual.fin = 2026-11-01` que
 expone la API no incluye el 1 de noviembre.
 
+Los límites se convierten a UTC antes de cada consulta de
+`created_date`, respetando el cambio horario: octubre se consulta como
+`[2026-09-30 22:00:00Z, 2026-10-31 23:00:00Z)` y el período comparado como
+`[2026-08-31 22:00:00Z, 2026-09-30 22:00:00Z)`. La respuesta conserva
+`inicio` y `fin` civiles de Madrid (`2026-10-01`/`2026-11-01` y
+`2026-09-01`/`2026-10-01`); no expone los límites UTC como si fueran fechas
+de presentación.
+
 La URL directa fija el selector antes de la primera carga; elegir otro período
 o restablecer filtros elimina sólo `period=october_2026` de la URL. Persisten
 las reglas de universo, `CallObject`, clasificación, duración, filtros de
