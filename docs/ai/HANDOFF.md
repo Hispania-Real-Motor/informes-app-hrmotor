@@ -4,7 +4,9 @@
 
 - El enlace «Octubre 2026» conserva la pestaña y aplica `date_from=2026-10-01`
   y `date_to=2026-10-31`. Ventas válidas y snapshots diarios usan ese rango
-  inclusivo; las tarjetas de inventario continúan describiendo stock actual.
+  inclusivo, implementado como `[date_from, date_to + 1 día)` para incluir el
+  31 de octubre con casts locales de fecha. Las tarjetas de inventario
+  continúan describiendo stock actual.
 - Para períodos pasados, si `stock_daily_snapshots` no cubre al menos el 80 %
   de días esperados, `ventas/stock` y su denominador quedan `null` y se muestra
   indisponibilidad. No se usa `salesforce_vehicles` actual como sustituto. El

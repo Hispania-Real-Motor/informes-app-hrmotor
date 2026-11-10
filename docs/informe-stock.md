@@ -179,6 +179,12 @@ histórico del denominador se lee de `stock_daily_snapshots` por las mismas
 fechas y filtros de stock. No consulta Salesforce ni el lector provisional de
 Interests.
 
+Para conservar esa inclusión en campos locales con cast de fecha, ambas
+consultas aplican el intervalo semiabierto `[date_from, date_to + 1 día)`: el
+31 de octubre permanece incluido y el 1 de noviembre queda fuera. Esta es la
+representación de consulta del rango civil elegido, no un cambio de fuente ni
+de fecha pivote.
+
 El ratio `ventas/stock` usa `ventas válidas / promedio diario de Disponibles`
 únicamente cuando las instantáneas diarias cubren al menos el 80 % de los días
 esperados del período (extremos incluidos). Si `date_to` es anterior a hoy y

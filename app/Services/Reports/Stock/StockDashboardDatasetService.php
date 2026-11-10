@@ -49,7 +49,8 @@ class StockDashboardDatasetService
                     'stock_delegations.zone as filter_delegation_zone',
                 ])
                 ->where('is_valid', true)
-                ->whereBetween('signed_date', [$filters['date_from'], $filters['date_to']])
+                ->where('signed_date', '>=', $filters['date_from'])
+                ->where('signed_date', '<', CarbonImmutable::parse($filters['date_to'])->addDay()->toDateString())
                 ->toBase()
                 ->get()
             : collect();
@@ -577,7 +578,8 @@ class StockDashboardDatasetService
     private function stockHistory(array $filters): array
     {
         $query = StockDailySnapshot::query()
-            ->whereBetween('snapshot_date', [$filters['date_from'], $filters['date_to']]);
+            ->where('snapshot_date', '>=', $filters['date_from'])
+            ->where('snapshot_date', '<', CarbonImmutable::parse($filters['date_to'])->addDay()->toDateString());
         $this->applySnapshotFilters($query, $filters);
         $historyRows = (clone $query)
             ->selectRaw('snapshot_date, state, COUNT(*) as total')
