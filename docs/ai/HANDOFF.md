@@ -12,10 +12,11 @@
   generación Interest publicada, pero la atribución de portal desde
   `Interest.source` sigue requiriendo snapshot directo completo y generación
   publicada; F2/F2M/F5 mensuales y la proyección provisional no se consumen.
-- Límite pendiente: el preset construye fechas en `Europe/Madrid`, pero la
-  metadata técnica del resumen continúa heredando `UTC`; la prueba nueva sólo
-  cubre fechas visibles, no offsets. Alinear y probar ese contrato antes de
-  que otro consumidor use timestamps del período.
+- Los campos de fecha `reservation_date` y `cv_signed_date` conservan límites
+  civiles de Madrid. Para `created_date`, los límites de consulta se convierten
+  a UTC: octubre `[2026-09-30 22:00:00Z, 2026-10-31 23:00:00Z)` y comparado
+  `[2026-08-31 22:00:00Z, 2026-09-30 22:00:00Z)`. El payload técnico declara
+  `Europe/Madrid`; queda retirada la advertencia previa de offset pendiente.
 - Documentación actualizada en `docs/informe-reservas-ventas.md` y
   `docs/matriz-trazabilidad-kpi.md`. No hay migraciones, cambios de permisos,
   fórmulas, deduplicación, CSV ni auditoría. Esta revisión documental no

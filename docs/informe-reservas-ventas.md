@@ -28,11 +28,14 @@ en `[2026-10-01 00:00:00, 2026-11-01 00:00:00)` y el comparado en
 de datos; al elegir otro período o restablecer filtros se elimina sólo este
 parámetro de la URL.
 
-El código mantiene en la respuesta técnica el `dataset_timezone` global `UTC`;
-la nueva prueba sólo acredita las fechas visibles de inicio y fin, no los
-offsets de esos límites. Antes de que un consumidor use timestamps en lugar de
-las fechas inclusivas/exclusivas documentadas, debe alinearse y probarse ese
-metadato con la construcción del período en `Europe/Madrid`.
+Los campos de fecha sin hora de Opportunity mantienen estos límites civiles de
+Madrid: Producción compara `reservation_date` y `cv_signed_date` contra las
+fechas del período. Cuando Cohorte consulta el datetime `created_date`, usa
+límites UTC convertidos: octubre `[2026-09-30 22:00:00Z,
+2026-10-31 23:00:00Z)` y comparado `[2026-08-31 22:00:00Z,
+2026-09-30 22:00:00Z)`. El payload técnico declara `Europe/Madrid` y conserva
+los límites civiles de presentación; no mezcla esos valores con los datetimes
+UTC de consulta.
 
 Se aplican las reglas ya vigentes: Producción toma reservas por
 `reservation_date` y ventas por `cv_signed_date`; Cohorte de oportunidades usa

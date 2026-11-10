@@ -436,8 +436,11 @@ class ReservationsSalesDashboardDatasetService
         $query = SalesforceOpportunity::query()->select($this->cohortColumns());
         $field = $this->dateField($filters['date_criterion']);
 
-        $query->where($field, '>=', $period['start'])
-            ->where($field, '<', $period['end']);
+        $queryStart = $field === 'created_date' ? ($period['datetime_start'] ?? $period['start']) : $period['start'];
+        $queryEnd = $field === 'created_date' ? ($period['datetime_end'] ?? $period['end']) : $period['end'];
+
+        $query->where($field, '>=', $queryStart)
+            ->where($field, '<', $queryEnd);
 
         $this->applyOpportunityTypeFilter($query, $filters['opportunity_type']);
 
@@ -743,8 +746,20 @@ class ReservationsSalesDashboardDatasetService
             $currentEnd = $currentStart->addMonth();
 
             return [
-                'current' => ['start' => $currentStart, 'end' => $currentEnd],
-                'previous' => ['start' => $currentStart->subMonth(), 'end' => $currentStart],
+                'current' => [
+                    'start' => $currentStart,
+                    'end' => $currentEnd,
+                    'datetime_start' => $currentStart->utc(),
+                    'datetime_end' => $currentEnd->utc(),
+                    'timezone' => 'Europe/Madrid',
+                ],
+                'previous' => [
+                    'start' => $currentStart->subMonth(),
+                    'end' => $currentStart,
+                    'datetime_start' => $currentStart->subMonth()->utc(),
+                    'datetime_end' => $currentStart->utc(),
+                    'timezone' => 'Europe/Madrid',
+                ],
             ];
         }
 
@@ -1333,7 +1348,7 @@ class ReservationsSalesDashboardDatasetService
                 'start_inclusive' => CarbonImmutable::parse($period['start'])->toIso8601String(),
                 'end_exclusive' => $end->toIso8601String(),
                 'semantics' => '[start,end)',
-                'timezone' => (string) config('app.timezone'),
+                'timezone' => $period['timezone'] ?? (string) config('app.timezone'),
             ],
         ];
     }
