@@ -18,7 +18,38 @@ La proyección versionada de octubre y sus filtros multidimensionales pertenecen
 sólo al dashboard de Interests: no habilitan ni certifican atribución, KPI,
 auditoría, cierre, CSV o Rendimiento comercial de Reservas/Ventas.
 
-Actualizado: 2026-10-09.
+## Selector fijo de octubre de 2026
+
+`/informes/reservas-ventas?period=october_2026` es un preset del informe de
+Reservas/Ventas, no la vista provisional de Interests. Fija el período actual
+en `[2026-10-01 00:00:00, 2026-11-01 00:00:00)` y el comparado en
+`[2026-09-01 00:00:00, 2026-10-01 00:00:00)`, construidos en
+`Europe/Madrid`. La URL directa selecciona el preset antes de la primera carga
+de datos; al elegir otro período o restablecer filtros se elimina sólo este
+parámetro de la URL.
+
+El código mantiene en la respuesta técnica el `dataset_timezone` global `UTC`;
+la nueva prueba sólo acredita las fechas visibles de inicio y fin, no los
+offsets de esos límites. Antes de que un consumidor use timestamps en lugar de
+las fechas inclusivas/exclusivas documentadas, debe alinearse y probarse ese
+metadato con la construcción del período en `Europe/Madrid`.
+
+Se aplican las reglas ya vigentes: Producción toma reservas por
+`reservation_date` y ventas por `cv_signed_date`; Cohorte de oportunidades usa
+`created_date`; y las pestañas legacy conservan el criterio de fecha elegido.
+La selección no crea una fuente histórica ni certifica cobertura: los totales
+se calculan exclusivamente sobre `salesforce_opportunities` local y conservan
+filtros, deduplicación, redondeos, nulos, auditorías y CSV existentes.
+
+La ausencia de una generación Interest publicada no bloquea esos totales
+nativos de Opportunity. No obstante, tampoco habilita atribución desde el
+inventario mensual ni la proyección provisional de Interests: para resolver
+`Interest.source` en el portal siguen siendo obligatorios el snapshot directo
+Opportunity→Interest completo y la generación Interest publicada. Si faltan,
+la relación queda sin resolver y sólo continúan las fuentes propias de
+Opportunity y sus fallbacks ya documentados.
+
+Actualizado: 2026-11-12.
 
 ## Fuente y datos locales
 

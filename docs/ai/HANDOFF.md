@@ -1,5 +1,26 @@
 # Handoff para agentes
 
+## 2026-11-12 — selector de octubre de 2026 en Reservas/Ventas
+
+- `period=october_2026` añade al informe oficial el intervalo actual
+  `[2026-10-01, 2026-11-01)` y el comparado `[2026-09-01, 2026-10-01)`, en
+  `Europe/Madrid`. La URL directa inicializa el selector antes de la primera
+  carga; cambiar a otro período o restablecer filtros elimina sólo ese
+  parámetro.
+- Producción, cohorte y pestañas legacy conservan sus fechas pivote actuales y
+  consultan `salesforce_opportunities`. Los totales nativos no requieren una
+  generación Interest publicada, pero la atribución de portal desde
+  `Interest.source` sigue requiriendo snapshot directo completo y generación
+  publicada; F2/F2M/F5 mensuales y la proyección provisional no se consumen.
+- Límite pendiente: el preset construye fechas en `Europe/Madrid`, pero la
+  metadata técnica del resumen continúa heredando `UTC`; la prueba nueva sólo
+  cubre fechas visibles, no offsets. Alinear y probar ese contrato antes de
+  que otro consumidor use timestamps del período.
+- Documentación actualizada en `docs/informe-reservas-ventas.md` y
+  `docs/matriz-trazabilidad-kpi.md`. No hay migraciones, cambios de permisos,
+  fórmulas, deduplicación, CSV ni auditoría. Esta revisión documental no
+  ejecutó PHP, JavaScript, migraciones, Salesforce, benchmark ni producción.
+
 ## 2026-11-12 — correctivo UI tras PR #125
 
 - La UI separa texto y ayuda de tarjetas oficiales frente a tarjetas de octubre
