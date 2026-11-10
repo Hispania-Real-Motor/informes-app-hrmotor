@@ -3,13 +3,17 @@
 namespace Tests\Feature;
 
 use App\Models\ReportUser;
+use App\Models\SalesforceUser;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
 use App\Services\Reports\Leads\MonthlyInterestProvisionalReader;
 use App\Services\Reports\Leads\October2026ProvisionalEvidenceInvalidator;
+use App\Services\Reports\Leads\ObservedInterestOwnerProjection;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
+use App\Services\Reports\ReservationsSales\CommercialDelegationSnapshotService;
 use App\Services\Salesforce\InterestMonthlyMaterializationService;
 use App\Services\Salesforce\MonthlyInterestActivityRecoveryService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -33,6 +37,62 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
             ->where('scope', $snapshot['scope'])->where('projection_key', $snapshot['projection_key'])->count());
         $this->assertSame([['delegation' => 'Madrid General', 'interests' => 1]], $overview['by_delegation']);
         $this->assertDatabaseCount('salesforce_interest_generations', 0);
+    }
+
+    public function test_november_owner_uses_stable_identity_encrypted_label_and_observed_commercial_filters(): void
+    {
+        $ownerId = '005000000000000001';
+        $this->seedNovember($ownerId, 'Comercial observado');
+        DB::table('commercial_delegation_snapshots')->insert([
+            'salesforce_user_id' => $ownerId, 'delegation' => 'Madrid', 'zone' => 'Zona Sur y Centro',
+            'observed_from' => '2026-11-05 00:00:00', 'source' => 'salesforce_user_observation',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        app(MonthlyInterestProvisionalReader::class)->validate(2);
+        $key = hash_hmac('sha256', $ownerId, (string) config('app.key'));
+        $projection = DB::table('salesforce_interest_october_provisional_projection_rows')->where('scope', 'monthly_recovery_2')->first();
+        $this->assertSame($key, $projection->owner_key);
+        $this->assertSame('Madrid', $projection->commercial_delegation);
+        $this->assertSame('Zona Sur y Centro', $projection->commercial_zone);
+        $this->assertDatabaseMissing('salesforce_interest_october_provisional_owners', ['name_ciphertext' => 'Comercial observado']);
+
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.november_2026_provisional_enabled', true);
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $this->asReportUser($admin)->getJson('/informes/leads/data/resumen?period=november_2026&commercial='.$key.'&commercial_delegation=Madrid')
+            ->assertOk()->assertJsonPath('kpis.leads_totales', 1);
+        $this->asReportUser($admin)->getJson('/informes/leads/data/resumen?period=november_2026&commercial='.$key.'&commercial_delegation=Barcelona')
+            ->assertOk()->assertJsonPath('kpis.leads_totales', 0);
+    }
+
+    public function test_commercial_observation_invalidates_november_evidence_transactionally(): void
+    {
+        $ownerId = '005000000000000001';
+        $this->seedNovember($ownerId, 'Comercial observado');
+        DB::table('commercial_delegation_snapshots')->insert([
+            'salesforce_user_id' => $ownerId, 'delegation' => 'Madrid', 'zone' => 'Zona Sur y Centro',
+            'observed_from' => '2026-11-05 00:00:00', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        SalesforceUser::query()->create([
+            'salesforce_id' => $ownerId, 'name' => 'Comercial observado', 'is_active' => true,
+            'profile_name' => 'Compra/Venta', 'user_delegation' => 'Barcelona',
+        ]);
+        $reader = app(MonthlyInterestProvisionalReader::class);
+        $reader->validate(2);
+        $snapshot = $reader->dashboardProjection(2);
+
+        try {
+            DB::transaction(function (): void {
+                app(CommercialDelegationSnapshotService::class)->captureCurrentUsers(CarbonImmutable::parse('2026-11-10 10:00:00', 'UTC'));
+                throw new \RuntimeException('Synthetic rollback');
+            });
+        } catch (\RuntimeException) {
+        }
+        $reader->assertCurrent(2, $snapshot['integrity_revision'], $snapshot['projection_key']);
+
+        app(CommercialDelegationSnapshotService::class)->captureCurrentUsers(CarbonImmutable::parse('2026-11-10 10:00:00', 'UTC'));
+        $this->expectException(ProvisionalInterestSourceUnavailable::class);
+        $reader->dashboardProjection(2);
     }
 
     public function test_content_change_invalidates_the_snapshot_in_the_same_transaction_and_rollback_preserves_it(): void
@@ -188,7 +248,8 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
         });
         $this->asReportUser($admin)->get('/informes/leads?period=november_2026')
             ->assertOk()->assertHeader('Cache-Control', 'no-store, private')
-            ->assertSee('Noviembre 2026 · datos provisionales.');
+            ->assertSee('Noviembre de 2026')
+            ->assertSee('Actualizado hasta 10/11/2026 11:00');
         $this->asReportUser($admin)->getJson('/informes/leads/data/resumen?period=november_2026')
             ->assertOk()->assertJsonPath('kpis.leads_totales', 1)
             ->assertJsonPath('kpis.gestionados', null);
@@ -197,7 +258,7 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
             || str_contains($sql, 'salesforce_interest_monthly_activity_rows')));
     }
 
-    private function seedNovember(): void
+    private function seedNovember(?string $ownerId = null, ?string $ownerName = null): void
     {
         $now = now();
         $id = 'a01000000000000001';
@@ -234,6 +295,7 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
             'functional_created_at' => '2026-11-02 08:00:00',
             'status' => 'Potencial', 'type' => 'Venta', 'source' => 'Web', 'medium' => 'Orgánico',
             'channel' => 'Formulario', 'origin_delegation' => 'Madrid',
+            'owner_salesforce_id' => $ownerId, 'owner_name' => $ownerName,
             'created_at' => $now, 'updated_at' => $now,
         ]);
         $f2mManifest = app(InterestMonthlyMaterializationService::class)->manifest(2);
@@ -265,6 +327,7 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
             app(MonthlyInterestActivityRecoveryService::class),
             app(LeadDelegationNormalizer::class),
             app(LeadRecordTypeNormalizer::class),
+            app(ObservedInterestOwnerProjection::class),
             $beforePublication,
             $beforeHttpFinalCheck,
         );

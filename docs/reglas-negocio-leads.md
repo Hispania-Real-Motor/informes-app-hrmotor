@@ -144,17 +144,26 @@ y después una nueva validación. La proyección no incluye IDs ni payloads.
 
 El universo proyectado son sólo filas F2M activas y coincidentes con F2. Puede
 agregar estado, tipo mediante `LeadRecordTypeNormalizer`, fuente, medio, canal
-y procedencia materializada; no completa owner, comercial ni delegación
-comercial. F5 valida evidencia de fuente pero no acredita una relación de
-actividad histórica: gestión, actividad directa, comparativas, comercial,
-auditoría, CSV y los KPI oficiales siguen no disponibles, no cero. La
+y procedencia materializada. La proyección `observed_owners_v1` reutiliza el
+contrato de octubre: agrupa por HMAC del Salesforce User ID observado en F2M,
+cifra el nombre en el diccionario separado y distingue propietario ausente o
+técnico. Delegación y zona comerciales sólo se muestran si un único intervalo
+observado cubre el fin funcional del mes; si no, quedan como asignación no
+acreditada. Los filtros de propietario, delegación y zona comerciales operan
+sobre las mismas filas elegibles y conservan sus totales. No se infiere la
+delegación de procedencia desde el propietario ni se acredita su asignación
+histórica. F5 valida evidencia de fuente pero no acredita una relación de
+actividad histórica: gestión, actividad directa, comparativas, elegibilidad
+comercial, auditoría, CSV y los KPI oficiales siguen no disponibles, no cero. La
 generación publicada conserva precedencia; sin período explícito, la vista de
 noviembre sólo puede ser alternativa administrativa con flag, rol y evidencia
 vigente cuando no exista una generación oficial disponible.
 
-La presentación administrativa llama a este período «Octubre 2026 · datos
-reconstruidos» y, ante ese 503, indica que los datos están pendientes de
-actualización. Son textos de comunicación: no relajan el flag, el permiso, la
+La presentación administrativa llama al período «Noviembre de 2026» y muestra
+«Actualizado hasta» sólo si la recuperación guarda un corte efectivo real,
+convertido a hora de Madrid. No lo presenta como mes cerrado. Ante 503 indica
+que los datos están pendientes de actualización. Son textos de comunicación:
+no relajan el flag, el permiso, la
 revisión, `no-store, private` ni el fallo cerrado, y no declaran certificación
 ni cobertura completa.
 

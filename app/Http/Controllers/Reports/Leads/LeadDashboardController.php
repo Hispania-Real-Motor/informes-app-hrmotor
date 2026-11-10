@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Reports\Leads;
 use App\Http\Controllers\Controller;
 use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Reports\Leads\MonthlyInterestProvisionalReader;
+use App\Services\Reports\Leads\MonthlyInterestProvisionalPeriod;
 use App\Services\Reports\Leads\October2026ProvisionalInterestReader;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use App\Services\Salesforce\InterestGenerationReader;
 use App\Support\ReportUserAccess;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
 class LeadDashboardController extends Controller
@@ -26,23 +28,29 @@ class LeadDashboardController extends Controller
         $requestedPeriod = $request->query('period');
         $requestedPeriod = is_string($requestedPeriod) ? $requestedPeriod : null;
         $requestedOctober = $requestedPeriod === self::OCTOBER_2026_PROVISIONAL_PERIOD;
-        $requestedNovember = $requestedPeriod === self::NOVEMBER_2026_PROVISIONAL_PERIOD;
+        $requestedMonth = MonthlyInterestProvisionalPeriod::forKey($requestedPeriod);
+        $requestedMonthly = $requestedMonth !== null;
         if ($requestedOctober) {
             $this->assertOctoberAccess($request, $octoberReader);
         }
-        if ($requestedNovember) {
-            $this->assertNovemberAccess($request, $monthlyReader);
+        if ($requestedMonthly) {
+            $this->assertMonthlyAccess($request, $monthlyReader, $requestedMonth);
         }
         $officialAvailable = $requestedPeriod === null && $this->officialGenerationAvailable($interestGenerations);
-        $useNovemberByDefault = $requestedPeriod === null && ! $officialAvailable
-            && $this->canUseNovember($request, $monthlyReader);
+        $useMonthlyByDefault = $requestedPeriod === null && ! $officialAvailable
+            && $this->canUseMonthly($request, $monthlyReader, MonthlyInterestProvisionalPeriod::forKey(self::NOVEMBER_2026_PROVISIONAL_PERIOD));
         $useOctoberByDefault = $requestedPeriod === null
-            && ! $useNovemberByDefault
+            && ! $useMonthlyByDefault
             && $this->canUseOctober($request, $octoberReader)
             && ! $officialAvailable;
         $usesOctober = $requestedOctober || $useOctoberByDefault;
-        $usesNovember = $requestedNovember || $useNovemberByDefault;
-        $usesProvisional = $usesOctober || $usesNovember;
+        $usesMonthly = $requestedMonthly || $useMonthlyByDefault;
+        $usesProvisional = $usesOctober || $usesMonthly;
+        $monthlyPeriodKey = $requestedMonthly ? $requestedPeriod : ($useMonthlyByDefault ? self::NOVEMBER_2026_PROVISIONAL_PERIOD : null);
+        $monthlyPeriod = MonthlyInterestProvisionalPeriod::forKey($monthlyPeriodKey);
+        $monthlyCutoff = $monthlyPeriod !== null
+            ? data_get($monthlyReader->latestForMonth($monthlyPeriod['year'], $monthlyPeriod['month']), 'overview.period.effective_cutoff')
+            : null;
 
         $response = view('reports.leads.index', [
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'leads'),
@@ -52,10 +60,13 @@ class LeadDashboardController extends Controller
             'novemberProvisionalEnabled' => config('salesforce.november_2026_provisional_enabled') === true
                 && ReportUserAccess::isAdmin($request),
             'initialLeadPeriod' => $usesProvisional
-                ? ($usesNovember ? self::NOVEMBER_2026_PROVISIONAL_PERIOD : self::OCTOBER_2026_PROVISIONAL_PERIOD)
+                ? ($monthlyPeriodKey ?? self::OCTOBER_2026_PROVISIONAL_PERIOD)
                 : $this->officialInitialPeriod($requestedPeriod),
             'isOctoberProvisional' => $usesProvisional,
-            'provisionalPeriodLabel' => $usesNovember ? 'Noviembre 2026' : 'Octubre 2026',
+            'provisionalPeriodLabel' => $monthlyPeriod['label'] ?? 'Octubre 2026',
+            'provisionalUpdatedUntil' => is_string($monthlyCutoff) && $monthlyCutoff !== ''
+                ? CarbonImmutable::parse($monthlyCutoff, 'UTC')->setTimezone('Europe/Madrid')->format('d/m/Y H:i')
+                : null,
         ]);
 
         return $usesProvisional ? response($response)->header('Cache-Control', 'no-store, private') : $response;
@@ -88,26 +99,28 @@ class LeadDashboardController extends Controller
         }
     }
 
-    private function assertNovemberAccess(Request $request, MonthlyInterestProvisionalReader $reader): void
+    /** @param array{year:int,month:int,flag:string,label:string} $period */
+    private function assertMonthlyAccess(Request $request, MonthlyInterestProvisionalReader $reader, array $period): void
     {
-        abort_unless(config('salesforce.november_2026_provisional_enabled') === true, 404);
+        abort_unless(config($period['flag']) === true, 404);
         abort_unless(ReportUserAccess::isAdmin($request), 403);
 
         try {
-            $reader->latestForMonth(2026, 11);
+            $reader->latestForMonth($period['year'], $period['month']);
         } catch (ProvisionalInterestSourceUnavailable) {
-            abort(503, 'Los datos de noviembre están pendientes de validación.');
+            abort(503, 'Los datos mensuales están pendientes de validación.');
         }
     }
 
-    private function canUseNovember(Request $request, MonthlyInterestProvisionalReader $reader): bool
+    /** @param array{year:int,month:int,flag:string,label:string} $period */
+    private function canUseMonthly(Request $request, MonthlyInterestProvisionalReader $reader, array $period): bool
     {
-        if (config('salesforce.november_2026_provisional_enabled') !== true || ! ReportUserAccess::isAdmin($request)) {
+        if (config($period['flag']) !== true || ! ReportUserAccess::isAdmin($request)) {
             return false;
         }
 
         try {
-            $reader->latestForMonth(2026, 11);
+            $reader->latestForMonth($period['year'], $period['month']);
 
             return true;
         } catch (ProvisionalInterestSourceUnavailable) {

@@ -69,7 +69,7 @@ class CommercialDelegationSnapshotService
                         if (! $isCommerciallyEligible) {
                             if ($open !== null) {
                                 $open->update(['observed_until' => $observedAt, 'open_marker' => null]);
-                                $this->invalidateOctoberEvidence($affectsOctoberCutoff);
+                                $this->invalidateInterestEvidence($affectsOctoberCutoff, $user->salesforce_id, $observedAt);
                                 $closed++;
                             } else {
                                 $unchanged++;
@@ -100,7 +100,7 @@ class CommercialDelegationSnapshotService
                                     $observedAt,
                                 );
                                 $open->update(['delegation' => $delegation, 'zone' => $zone]);
-                                $this->invalidateOctoberEvidence($affectsOctoberCutoff);
+                                $this->invalidateInterestEvidence($affectsOctoberCutoff, $user->salesforce_id, $observedAt);
                                 $unchanged++;
 
                                 return;
@@ -128,7 +128,7 @@ class CommercialDelegationSnapshotService
                             'open_marker' => 1,
                             'source' => self::SOURCE_OBSERVED,
                         ]);
-                        $this->invalidateOctoberEvidence($affectsOctoberCutoff);
+                        $this->invalidateInterestEvidence($affectsOctoberCutoff, $user->salesforce_id, $observedAt);
                         $created++;
                     });
                 }
@@ -249,12 +249,29 @@ class CommercialDelegationSnapshotService
         return $stats;
     }
 
-    private function invalidateOctoberEvidence(bool $affectsOctoberCutoff): void
+    private function invalidateInterestEvidence(bool $affectsOctoberCutoff, string $ownerId, CarbonImmutable $observedAt): void
     {
         if ($affectsOctoberCutoff && DB::table('salesforce_interest_monthly_integrity_revisions')
             ->where('scope', 'october_2026_provisional')->exists()) {
             app(October2026ProvisionalEvidenceInvalidator::class)
                 ->afterContentMutation(October2026ProvisionalEvidenceInvalidator::RECOVERY_ID);
+        }
+
+        $ownerKey = hash_hmac('sha256', $ownerId, (string) config('app.key'));
+        $scopes = DB::table('salesforce_interest_october_provisional_validations as validation')
+            ->join('salesforce_interest_monthly_recoveries as recovery', 'recovery.id', '=', 'validation.monthly_recovery_id')
+            ->join('salesforce_interest_october_provisional_owners as owner', 'owner.projection_key', '=', 'validation.projection_key')
+            ->where('validation.scope', 'like', 'monthly_recovery_%')
+            ->where('owner.owner_key', $ownerKey)
+            ->where('recovery.functional_end_at', '>', $observedAt->toDateTimeString())
+            ->pluck('validation.scope')->all();
+        if ($scopes !== []) {
+            $updated = DB::table('salesforce_interest_monthly_integrity_revisions')
+                ->whereIn('scope', $scopes)
+                ->update(['revision' => DB::raw('revision + 1'), 'updated_at' => now()]);
+            if ($updated !== count($scopes)) {
+                throw new \RuntimeException('Monthly owner evidence revision is unavailable.');
+            }
         }
     }
 

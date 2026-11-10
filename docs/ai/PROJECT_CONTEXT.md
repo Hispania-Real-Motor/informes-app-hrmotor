@@ -830,6 +830,11 @@ vigentes, sin escanear journals. Las mutaciones autorizadas invalidan la revisi�
 en su transacción y el SQL directo requiere revocación y revalidación manual.
 La primera exposición configurada es noviembre de 2026, sujeta a flag apagado
 por defecto y administrador; no publica ni sustituye `InterestGenerationReader`.
+La proyección mensual reutiliza el componente de propietarios observados de
+octubre (HMAC de User ID, nombre cifrado e intervalo de delegación al fin
+funcional), con períodos visibles enumerados y sujetos a su flag. La captura
+autorizada de un cambio relevante de delegación invalida transaccionalmente la
+evidencia mensual afectada.
 
 ### Proyección administrativa aislada de octubre de 2026
 

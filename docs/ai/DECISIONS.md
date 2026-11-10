@@ -1385,6 +1385,14 @@ de los lectores publicados o de los demás informes.
 
 ## 2026-11-10 — proyección mensual provisional por recuperación y revisión
 
+La identidad comercial observada de octubre y de los meses mensuales habilitados
+comparte ahora un único constructor por lotes. El contrato HMAC/cifrado y la
+clasificación técnica permanecen iguales; cada mes aporta su fin funcional UTC
+para seleccionar un intervalo observado único. Una lista explícita de períodos
+y flags controla la exposición HTTP: la capacidad del lector para consultar
+otros meses no autoriza abrirlos automáticamente. Es una decisión de frontera
+de acceso y privacidad, no una certificación de propietario histórico.
+
 La exposición mensual administrativa se ancla a una única recuperación y a su
 revisión de integridad, no a un fallback de mes ni a una generación publicada.
 Antes de persistir el snapshot exige F2, F2M y F5 `completed` y verificadas,

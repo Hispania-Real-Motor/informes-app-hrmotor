@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Reports\Leads;
 
 use App\Http\Controllers\Controller;
 use App\Services\Reports\Leads\October2026ProvisionalInterestDashboardDatasetService;
+use App\Services\Reports\Leads\MonthlyInterestProvisionalPeriod;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
 use App\Support\ReportServerTiming;
@@ -84,14 +85,14 @@ class LeadDashboardDataController extends Controller
 
     private function isProvisional(Request $request): bool
     {
-        return in_array($request->query('period'), ['october_2026', 'november_2026'], true);
+        return $request->query('period') === 'october_2026'
+            || MonthlyInterestProvisionalPeriod::forKey($request->query('period')) !== null;
     }
 
     private function provisionalJson(callable $callback): JsonResponse
     {
-        $flag = request()->query('period') === 'november_2026'
-            ? 'salesforce.november_2026_provisional_enabled'
-            : 'salesforce.october_2026_provisional_enabled';
+        $month = MonthlyInterestProvisionalPeriod::forKey(request()->query('period'));
+        $flag = $month['flag'] ?? 'salesforce.october_2026_provisional_enabled';
         abort_unless(config($flag) === true, 404);
         abort_unless(ReportUserAccess::isAdmin(request()), 403);
 

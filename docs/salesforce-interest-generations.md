@@ -370,6 +370,16 @@ antes de persistir una proyección categórica sin IDs ni `raw_payload`, ligada 
 contenido coincide con F2; F5 sirve de consistencia, no de certificación
 histórica de actividad.
 
+La proyección mensual reutiliza `observed_owners_v1`: conserva una clave HMAC
+por Salesforce User ID observado, cifra el nombre en un diccionario aparte y
+consulta por lote los intervalos de `commercial_delegation_snapshots` que
+cubren el fin funcional del mes. Sin un intervalo único, mantiene la fila con
+asignación comercial no acreditada; distingue owner ausente y técnico. Los
+filtros comerciales son cruces de las mismas filas F2M elegibles, sin inferir
+identidad histórica, elegibilidad ni actividad F5. Una observación autorizada
+que afecte al intervalo del propietario de una validación mensual revoca su
+revisión en la transacción de la escritura; un rollback conserva la evidencia.
+
 `MonthlyInterestProvisionalReader` y HTTP leen sólo esa proyección. Si cambia
 la revisión, falta evidencia o no coincide la clave, fallan cerrados; no hay
 SOQL ni escaneo de journals en HTTP. El lector del mes no retrocede a una
@@ -386,6 +396,10 @@ habilita consumidores oficiales y no convierte cutoff de `CreatedDate` ni
 contenido actual en fotografía histórica `as-of`. La ruta de noviembre exige
 administrador y flag apagado por defecto; la generación publicada conserva
 precedencia.
+Los meses expuestos se enumeran explícitamente con su flag administrativo;
+`latestForMonth(year, month)` permite reutilizar el lector sin abrir otros meses.
+La vista muestra el corte efectivo registrado en hora de Madrid cuando existe,
+sin convertirlo en cierre o certificación histórica.
 
 ### Lector administrativo provisional de octubre de 2026
 

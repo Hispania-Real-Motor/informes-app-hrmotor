@@ -153,15 +153,16 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'delegations' => $delegations,
             'commercials' => $items,
             'items' => $items,
-            'message' => 'Propietario F2M observado; delegación según intervalo disponible al corte de octubre.',
+            'message' => 'Propietario F2M observado; delegación según el intervalo disponible al corte funcional del mes.',
         ];
     }
 
     /** @return array{overview:array<string,mixed>,projection_key:string,integrity_revision:int} */
     private function snapshot(Request $request): array
     {
-        $snapshot = $request->query('period') === 'november_2026'
-            ? $this->monthlyReader->latestForMonth(2026, 11)
+        $month = MonthlyInterestProvisionalPeriod::forKey($request->query('period'));
+        $snapshot = $month !== null
+            ? $this->monthlyReader->latestForMonth($month['year'], $month['month'])
             : $this->reader->dashboardProjection();
         $requested = $request->header('X-Interest-Generation');
         if ($requested !== null && ! hash_equals($snapshot['projection_key'], (string) $requested)) {
