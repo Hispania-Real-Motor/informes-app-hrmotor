@@ -1,5 +1,19 @@
 # Handoff para agentes
 
+## 2026-11-10 — auditoría de recuperación de informes de octubre
+
+- Se creó `docs/ai/OCTOBER_2026_REPORT_RECOVERY_AUDIT.md` desde
+  `4977df8` para inventariar la evidencia disponible, los bloqueos y la
+  secuencia de PR pequeñas. Es una auditoría estática: no hubo Salesforce,
+  producción, migraciones, recuperación ni cambios de datos.
+- F2M conserva atributos funcionales observados, incluido owner, pero no un
+  snapshot histórico de User/delegación; F5 conserva relación y fecha de
+  actividad, no actor/elegibilidad histórica. Los KPI por comercial y actividad
+  de Interests siguen bloqueados y no deben inferirse.
+- No cambian contratos de informe ni matriz: el documento exige un contraste
+  autorizado y una nueva evidencia versionada antes de habilitar bloques de
+  Reservas/Ventas, Llamadas, Campañas, Comisiones o Stock.
+
 ## 2026-11-12 — correctivo UI tras PR #125
 
 - La UI separa texto y ayuda de tarjetas oficiales frente a tarjetas de octubre
