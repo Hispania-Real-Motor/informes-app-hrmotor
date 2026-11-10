@@ -1538,10 +1538,31 @@ Europe/Madrid = `2026-10-31 23:00:00Z`. El fin operativo es el corte real de
 cada sincronización, no el 1 de diciembre ni un día futuro. Registrar por
 fuente el máximo cubierto y no comparar cortes incompatibles. El selector
 `current_month` de cada informe usa su contrato existente; no crea una fuente
-mensual certificada. `salesforce:interest-generation monthly-prepare` valida
-meses completos y por ello no sirve para construir un inventario F2 mensual
-de noviembre aún abierto. El pipeline ordinario F2/F5 solo puede entrar en una
-secuencia de activación revisada por su publicación automática.
+mensual certificada. El inventario mensual aislado puede preparar el intervalo
+civil completo de noviembre aun antes de su final, siempre con un
+`--effective-cutoff` UTC no futuro y posterior al inicio; ese valor limita
+`CreatedDate`, no el contenido actual ni `SystemModstamp`. Por ello la salida
+no es una fotografía histórica `as-of`, no acredita el cierre y no puede entrar
+en el pipeline ordinario F2/F5 ni en publicación.
+
+Operación manual autorizada de un inventario mensual/revisión, sin endpoint ni
+scheduler:
+
+```text
+php artisan salesforce:interest-generation monthly-prepare --functional-start=<primer-día-del-mes> --functional-end=<primer-día-del-mes-siguiente> --effective-cutoff=YYYY-MM-DDTHH:MM:SSZ --batch-size=500 --allow-salesforce-read --reason="motivo operativo revisado"
+php artisan salesforce:interest-generation monthly-run --period-id=<id> --allow-salesforce-read --reason="mismo motivo operativo revisado"
+php artisan salesforce:interest-generation monthly-status --period-id=<id>
+```
+
+Tras una revisión `completed`, sólo `monthly-revision-prepare` con las mismas
+opciones y un cutoff estrictamente posterior puede crear la siguiente revisión;
+el mismo cutoff devuelve la existente. Conservar el ID, revisión, cutoff y
+evidencia de cada ejecución; no cancelar una ejecución activa ni eliminar filas
+para repetirla. `month_closed_at_cutoff` sólo indica que el cutoff alcanzó el
+fin funcional: `as_of_cutoff_certified=false`, F5 no se inicia automáticamente
+y certificación histórica indisponible permanecen obligatorios. La migración de revisiones debe
+estar aplicada antes de usar esta operación; no se ha verificado en este
+documento una migración productiva, MariaDB ni CI.
 
 **Carga inicial, tras autorización independiente:** `salesforce:sync-monthly-commercial`
 y `salesforce:sync-opportunities` admiten `--from=2026-11-01` y `--to=YYYY-MM-DD`

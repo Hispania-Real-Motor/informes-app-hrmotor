@@ -9,6 +9,11 @@ readiness, detalle, rankings, auditorías ni CSV de Campañas: el informe mantie
 la generación Interest publicada como fuente. Diferencias, ausencias o soft
 deletes observados bloquean la verificación del journal y no habilitan KPI,
 publicación ni certificación histórica.
+
+Sus revisiones limitan `CreatedDate` por cutoff UTC, sin limitar
+`SystemModstamp` ni congelar el contenido actual. No son evidencia histórica
+`as-of`, no cambian los journals fijos de octubre ni la generación publicada,
+atribución, readiness, snapshots, KPI, filtros o CSV de Campañas.
 El lector administrativo provisional de octubre se limita a cobertura y
 delegación de Interests; no habilita atribución, readiness, snapshots, rankings,
 KPI ni CSV de Campañas.

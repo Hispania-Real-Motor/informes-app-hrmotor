@@ -809,6 +809,17 @@ Esta arquitectura está implementada en revisión, no desplegada ni habilitada
 para producción; subsisten bloqueos de rendimiento/regresión/conciliación.
 [Esquema, límites y procedimientos](../salesforce-interest-generations.md).
 
+### Revisiones de inventario mensual aislado
+
+`InterestMonthlyRecoveryService` conserva revisiones inmutables por período
+funcional mensual y cutoff efectivo UTC. La pertenencia se limita por
+`CreatedDate <= cutoff`, pero la réplica sigue conteniendo el estado actual de
+Salesforce: no se filtra `SystemModstamp` ni se obtiene una versión histórica
+del contenido. Por ello `month_closed_at_cutoff` no habilita certificación
+`as-of`, publicación global ni consumidores oficiales. Una revisión nueva sólo
+puede seguir a otra `completed` y con cutoff posterior; las anteriores se
+conservan. El lector administrativo fijo de octubre permanece separado.
+
 ### Proyección administrativa aislada de octubre de 2026
 
 `October2026ProvisionalInterestReader` valida journals mensuales aislados y

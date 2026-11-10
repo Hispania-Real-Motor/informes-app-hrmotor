@@ -17,7 +17,7 @@ use RuntimeException;
 class ManageInterestGenerationCommand extends Command
 {
     protected $signature = 'salesforce:interest-generation
-        {action : prepare-initial, recover-initial, recover-status, recover-resume, recover-cancel, monthly-prepare, monthly-run, monthly-status, monthly-cancel, manifest, external-evidence, or publish-initial}
+        {action : prepare-initial, recover-initial, recover-status, recover-resume, recover-cancel, monthly-prepare, monthly-revision-prepare, monthly-run, monthly-status, monthly-cancel, manifest, external-evidence, or publish-initial}
         {--generation= : Candidate identifier}
         {--source-generation= : Unpublished initial seed identifier for recover-initial}
         {--recovery-id= : Persistent initial recovery identifier}
@@ -26,6 +26,7 @@ class ManageInterestGenerationCommand extends Command
         {--resume : Resume only a period whose running heartbeat is stale}
         {--functional-start= : Inclusive YYYY-MM-DD date in Europe/Madrid}
         {--functional-end= : Exclusive YYYY-MM-DD date in Europe/Madrid}
+        {--effective-cutoff= : Optional extraction cutoff YYYY-MM-DDTHH:MM:SSZ; defaults to now}
         {--evidence= : Local reviewed JSON evidence file}
         {--reason= : Operational reason, 10 to 500 characters}
         {--allow-salesforce-read : Explicitly authorize isolated initial extraction}
@@ -78,17 +79,26 @@ class ManageInterestGenerationCommand extends Command
 
                 return self::SUCCESS;
             }
-            if (in_array($action, ['monthly-prepare', 'monthly-run', 'monthly-status', 'monthly-cancel'], true)) {
+            if (in_array($action, ['monthly-prepare', 'monthly-revision-prepare', 'monthly-run', 'monthly-status', 'monthly-cancel'], true)) {
                 $period = (string) $this->option('period-id');
-                if ($action === 'monthly-prepare') {
+                if (in_array($action, ['monthly-prepare', 'monthly-revision-prepare'], true)) {
                     $reason = trim((string) $this->option('reason'));
                     $start = (string) $this->option('functional-start');
                     $end = (string) $this->option('functional-end');
+                    $cutoff = (string) $this->option('effective-cutoff');
                     $batch = filter_var($this->option('batch-size'), FILTER_VALIDATE_INT);
-                    if ($this->option('allow-salesforce-read') !== true || preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) !== 1 || preg_match('/^\d{4}-\d{2}-\d{2}$/', $end) !== 1 || $batch === false) {
-                        throw new RuntimeException('Monthly preparation requires bounded dates, batch size, and read authorization.');
+                    if ($this->option('allow-salesforce-read') !== true || preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) !== 1 || preg_match('/^\d{4}-\d{2}-\d{2}$/', $end) !== 1 || $batch === false
+                        || ($cutoff !== '' && preg_match('/^\d{4}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', $cutoff) !== 1)) {
+                        throw new RuntimeException('Monthly preparation requires bounded dates, UTC cutoff, batch size, and read authorization.');
                     }
-                    $this->line(json_encode($monthlyRecovery->status($monthlyRecovery->prepare(CarbonImmutable::parse($start, 'Europe/Madrid'), CarbonImmutable::parse($end, 'Europe/Madrid'), $reason, $batch)), JSON_THROW_ON_ERROR));
+                    $this->line(json_encode($monthlyRecovery->status($monthlyRecovery->prepare(
+                        CarbonImmutable::parse($start, 'Europe/Madrid'),
+                        CarbonImmutable::parse($end, 'Europe/Madrid'),
+                        $reason,
+                        $batch,
+                        $cutoff === '' ? null : CarbonImmutable::parse($cutoff, 'UTC'),
+                        $action === 'monthly-revision-prepare',
+                    )), JSON_THROW_ON_ERROR));
 
                     return self::SUCCESS;
                 }

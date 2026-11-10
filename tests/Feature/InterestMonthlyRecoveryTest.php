@@ -71,6 +71,83 @@ class InterestMonthlyRecoveryTest extends TestCase
         $this->assertNotContains('payload', Schema::getColumnListing('salesforce_interest_monthly_recovery_rows'));
     }
 
+    public function test_completed_month_can_start_a_new_immutable_revision_without_changing_the_previous_one(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-10-10T10:00:00Z');
+        $this->app->instance(SalesforceClient::class, new class($record) extends SalesforceClient
+        {
+            public function __construct(private array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield [$this->record];
+            }
+        });
+        $service = app(InterestMonthlyRecoveryService::class);
+        $start = CarbonImmutable::parse('2026-10-01', 'Europe/Madrid');
+        $end = CarbonImmutable::parse('2026-11-01', 'Europe/Madrid');
+        $reason = 'Create independent immutable monthly revisions.';
+        $cutoff = CarbonImmutable::parse('2026-11-05T10:00:00Z');
+
+        $first = $service->prepare($start, $end, $reason, 500, $cutoff);
+        $service->run($first, $reason);
+        $this->assertSame($first, $service->prepare($start, $end, $reason, 500, $cutoff));
+        $this->assertSame($first, $service->prepare($start, $end, $reason, 500, $cutoff, true));
+
+        $second = $service->prepare($start, $end, $reason, 500, $cutoff->addDay(), true);
+        $this->assertNotSame($first, $second);
+        $this->assertSame(1, $service->status($first)['revision']);
+        $this->assertSame(2, $service->status($second)['revision']);
+        $this->assertSame('completed', $service->status($first)['status']);
+        $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 1);
+        $service->run($second, $reason);
+        $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 2);
+        $this->assertDatabaseCount('salesforce_interest_generations', 0);
+    }
+
+    public function test_open_november_uses_a_past_effective_cutoff_and_keeps_the_month_open(): void
+    {
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-10T12:00:00Z'));
+        try {
+            $client = new class extends SalesforceClient
+            {
+                public array $queries = [];
+
+                public function __construct() {}
+
+                public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+                {
+                    $this->queries[] = $soql;
+                    yield [];
+                }
+            };
+            $this->app->instance(SalesforceClient::class, $client);
+            $service = app(InterestMonthlyRecoveryService::class);
+            $start = CarbonImmutable::parse('2026-11-01', 'Europe/Madrid');
+            $end = CarbonImmutable::parse('2026-12-01', 'Europe/Madrid');
+            $reason = 'Extract open November only to the authorized cutoff.';
+            $cutoff = CarbonImmutable::parse('2026-11-10T11:55:00Z');
+            $id = $service->prepare($start, $end, $reason, 500, $cutoff);
+            $status = $service->run($id, $reason);
+
+            $this->assertSame(1, $status['revision']);
+            $this->assertFalse($status['evidence']['month_closed_at_cutoff']);
+            $this->assertFalse($status['evidence']['as_of_cutoff_certified']);
+            $this->assertSame('2026-11-10 11:55:00', $status['period']['effective_cutoff']);
+            $this->assertCount(2, $client->queries);
+            foreach ($client->queries as $soql) {
+                $this->assertStringContainsString('CreatedDate <= 2026-11-10T11:55:00Z', $soql);
+                $this->assertStringNotContainsString('SystemModstamp <=', $soql);
+                $this->assertStringContainsString('IN_Fecha_Creacion_Origen__c', $soql);
+            }
+            $this->assertDatabaseCount('salesforce_interest_generations', 0);
+            $this->expectException(\RuntimeException::class);
+            $service->prepare($start, $end, $reason, 500, CarbonImmutable::parse('2026-11-10T12:01:00Z'), true);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_salesforce_failure_exposes_only_safe_monthly_diagnostic(): void
     {
         $this->app->instance(SalesforceClient::class, new class extends SalesforceClient

@@ -38,6 +38,12 @@ admite opcionalmente incluir soft deletes para ese flujo; su valor por defecto
 conserva la consulta anterior. No modifica la generación publicada ni habilita
 este informe o sus KPI: F5 no está certificado y los hard deletes históricos no
 están acreditados.
+
+Las revisiones mensuales nuevas limitan adicionalmente `CreatedDate` por un
+cutoff UTC, pero conservan el contenido actual sin filtrar `SystemModstamp`.
+No son fotografía `as-of`, no modifican la generación publicada ni el lector
+administrativo fijo de octubre, y no cambian filtros, universos o KPI oficiales
+de Intereses.
 La instrumentación diagnóstica mensual clasifica los fallos por etapa sin
 exponer mensajes, SQL ni payloads; conserva checkpoint y reanudación, sin
 habilitar ningún lector oficial.

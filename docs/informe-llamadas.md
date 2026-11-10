@@ -8,6 +8,11 @@ estado de borrado observable. No cambia la resolución de Interests relacionados
 por Llamadas, ni consulta estas tablas desde lectores, clasificaciones, filtros,
 exportaciones o KPI. Al no acreditar hard deletes ni fotografía histórica, el
 journal permanece provisional, no publicado y sin certificación F5.
+
+Las revisiones del inventario limitan `CreatedDate` por cutoff UTC, pero siguen
+leyendo contenido actual sin límite `SystemModstamp`. No acreditan una fuente
+histórica `as-of`, no cambian el journal fijo de octubre ni sustituyen la
+generación publicada usada por Llamadas.
 La pantalla administrativa de octubre que usa F2/F2M/F5 mensuales tampoco
 alimenta clasificación, reproceso, detalle, auditoría ni exportación de
 Llamadas; su disponibilidad no sustituye la generación publicada.

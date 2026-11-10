@@ -1,5 +1,32 @@
 # Handoff para agentes
 
+## 2026-11-10 — revisiones de inventario mensual Interest
+
+- `monthly-revision-prepare` crea una nueva revisión aislada sólo después de
+  que la anterior esté `completed` y con `effective_cutoff_at` UTC estrictamente
+  posterior; el mismo cutoff reutiliza la revisión existente. La migración
+  reemplaza la unicidad de período por período+revisión y preserva la evidencia
+  previa; su rollback rechaza eliminarla si existen filas.
+- El cutoff limita exclusivamente `CreatedDate` en extracción y verificación.
+  El contenido, lifecycle y hash son los observados en la consulta actual, sin
+  límite `SystemModstamp`; por ello `month_closed_at_cutoff` no es fotografía
+  `as-of`, `as_of_cutoff_certified` sigue falso, F5 no se inicia
+  automáticamente y la certificación histórica sigue indisponible. No hay generación global,
+  publicación, lectores oficiales ni KPI nuevos.
+- Octubre provisional no cambia: mantiene sus journals F2/F2M/F5 fijos y su
+  lector administrativo aislado. El cambio es CLI de operador, sin endpoint ni
+  scheduler. La CI añade el test focal mensual MariaDB, previsto para la PR y
+  no presentado como resultado ya superado.
+- Documentación actualizada: `docs/salesforce-interest-generations.md`,
+  `docs/operaciones-produccion.md`, `docs/matriz-trazabilidad-kpi.md`,
+  `docs/reglas-negocio-leads.md`, `docs/informe-reservas-ventas.md`,
+  `docs/informe-llamadas.md`, `docs/informe-campanas.md`,
+  `docs/ai/PROJECT_CONTEXT.md`, `docs/ai/DECISIONS.md` y este handoff. Esta
+  revisión no ejecutó PHP, migraciones, MariaDB, Salesforce, CI, benchmark ni
+  producción. Pendiente el validador documental sobre HEAD comprometido y cuerpo
+  de PR; contrato sugerido: `Docs-Impact: updated`,
+  `Docs-Matrix-Impact: updated`.
+
 ## 2026-11-10 — allowlist operacional para preparación de noviembre
 
 - `OPERATIONS_SCHEDULED_TASK_KEYS` controla exclusivamente el scheduler del
