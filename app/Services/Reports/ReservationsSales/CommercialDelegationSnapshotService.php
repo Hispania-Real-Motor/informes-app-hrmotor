@@ -237,7 +237,12 @@ class CommercialDelegationSnapshotService
                         'updated_at' => now(),
                     ]);
                     if ($inserted === 1) {
-                        $this->invalidateOctoberEvidence($firstObservedAt->greaterThanOrEqualTo(CarbonImmutable::parse('2026-10-31 23:00:00', 'UTC')));
+                        $this->invalidateInterestEvidence(
+                            $firstObservedAt->greaterThanOrEqualTo(CarbonImmutable::parse('2026-10-31 23:00:00', 'UTC')),
+                            $userId,
+                            $bootstrapStart,
+                            $firstObservedAt,
+                        );
                     }
 
                     return $inserted;
@@ -249,7 +254,12 @@ class CommercialDelegationSnapshotService
         return $stats;
     }
 
-    private function invalidateInterestEvidence(bool $affectsOctoberCutoff, string $ownerId, CarbonImmutable $observedAt): void
+    private function invalidateInterestEvidence(
+        bool $affectsOctoberCutoff,
+        string $ownerId,
+        CarbonImmutable $observedAt,
+        ?CarbonImmutable $through = null,
+    ): void
     {
         if ($affectsOctoberCutoff && DB::table('salesforce_interest_monthly_integrity_revisions')
             ->where('scope', 'october_2026_provisional')->exists()) {
@@ -264,6 +274,7 @@ class CommercialDelegationSnapshotService
             ->where('validation.scope', 'like', 'monthly_recovery_%')
             ->where('owner.owner_key', $ownerKey)
             ->where('recovery.functional_end_at', '>', $observedAt->toDateTimeString())
+            ->when($through !== null, fn ($query) => $query->where('recovery.functional_end_at', '<=', $through->toDateTimeString()))
             ->pluck('validation.scope')->all();
         if ($scopes !== []) {
             $updated = DB::table('salesforce_interest_monthly_integrity_revisions')
