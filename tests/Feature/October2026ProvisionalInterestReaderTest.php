@@ -570,7 +570,10 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         foreach (['salesforce_interest_monthly_recovery_rows', 'salesforce_interest_monthly_materialized_rows', 'salesforce_interest_monthly_activity_rows'] as $journal) {
             $this->assertStringNotContainsString($journal, $dashboardQueries);
         }
-        $this->assertLessThanOrEqual(15, count(DB::getQueryLog()));
+        // The observed-owner filter adds one dictionary read; it remains one
+        // bounded query for the whole response, independent of row count.
+        $this->assertSame(1, substr_count($dashboardQueries, 'salesforce_interest_october_provisional_owners'));
+        $this->assertLessThanOrEqual(16, count(DB::getQueryLog()));
         fwrite(STDERR, sprintf(
             "October representative volume: validation_ms=%.2f overview_ms=%.2f http_ms=%.2f http_queries=%d peak_memory_mb=%.1f\n",
             $metrics['total_ns'] / 1_000_000,

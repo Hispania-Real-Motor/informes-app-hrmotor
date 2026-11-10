@@ -17,6 +17,10 @@
 - Acción manual posterior: integrar primero la PR #133. Riesgo pendiente:
   antes de esa integración, la PR apilada debe contrastarse con la misma base
   y los resultados de CI deben corresponder a su último SHA.
+- La primera ejecución remota detectó que el límite volumétrico de lectura
+  quedó en 15 consultas cuando el filtro de propietarios requiere una lectura
+  única del diccionario cifrado. La prueba exige ahora exactamente esa consulta
+  y como máximo 16 en total, sin permitir N+1 ni acceso HTTP a journals.
 
 ## 2026-11-10 — propietarios observados en la proyección aislada de octubre
 
