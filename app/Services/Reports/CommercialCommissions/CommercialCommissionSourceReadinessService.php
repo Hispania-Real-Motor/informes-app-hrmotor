@@ -142,7 +142,7 @@ class CommercialCommissionSourceReadinessService
             ->get(['period_start_at', 'period_end_at', 'completed_at']);
 
         if ($runs->isEmpty()) {
-            return $this->state($label, 'error', true, null, 'No existe una sincronización completada que cubra el mes provisional.');
+            return $this->state($label, 'error', true, null, 'No hay datos completos para el mes seleccionado.');
         }
 
         $coveredUntil = $month;
@@ -151,7 +151,7 @@ class CommercialCommissionSourceReadinessService
             $end = CarbonImmutable::parse($run->period_end_at);
 
             if ($start->greaterThan($coveredUntil)) {
-                return $this->state($label, 'error', true, $run->completed_at->toIso8601String(), 'Existe un hueco real entre sincronizaciones del mes provisional.');
+                return $this->state($label, 'error', true, $run->completed_at->toIso8601String(), 'Faltan datos de una parte del mes seleccionado.');
             }
 
             if ($end->greaterThan($coveredUntil)) {
@@ -161,10 +161,10 @@ class CommercialCommissionSourceReadinessService
 
         $maxAge = max(1, (int) config('commercial_commissions.closure_source_max_age_hours', 48));
         if ($coveredUntil->lt($now->subHours($maxAge))) {
-            return $this->state($label, 'stale', true, $coveredUntil->toIso8601String(), 'El último corte de la sincronización provisional está desactualizado.');
+            return $this->state($label, 'stale', true, $coveredUntil->toIso8601String(), 'Datos pendientes de actualización.');
         }
 
-        return $this->state($label, 'ready', false, $coveredUntil->toIso8601String(), 'Cobertura continua y reciente del mes provisional verificada.');
+        return $this->state($label, 'ready', false, $coveredUntil->toIso8601String(), 'Datos disponibles para el mes seleccionado.');
     }
 
     private function localTableState(string $table, string $label, ?string $month = null): array

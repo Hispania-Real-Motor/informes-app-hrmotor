@@ -111,6 +111,12 @@ El control fail-closed distingue la evidencia fuente de F2M
 (`Id|content_hash|is_deleted`) de la de F5 (`Id:is_deleted`); una huella de un
 journal no puede validar al otro ni alterar el informe oficial.
 
+La presentación administrativa llama a este período «Octubre 2026 · datos
+reconstruidos» y, ante ese 503, indica que los datos están pendientes de
+actualización. Son textos de comunicación: no relajan el flag, el permiso, la
+revisión, `no-store, private` ni el fallo cerrado, y no declaran certificación
+ni cobertura completa.
+
 Para octubre provisional, los filtros de tipo, delegación, grupo, zona, fuente,
 medio, canal y estado se aplican conjuntamente sobre la proyección categórica
 validada, no sobre F2/F2M/F5. La página y sus endpoints AJAX sólo leen la misma
@@ -171,6 +177,12 @@ formularios, detalle de actividad y comparativas: exigirían una instantánea
 histórica de usuarios o evidencia F5/relación certificada que esta fuente no
 conserva.
 
+En la interfaz de octubre esos límites se expresan como «Sin datos suficientes»
+para evitar exponer etapas o siglas internas. La comparativa no se presenta como
+una tabla vacía ni como cero: queda oculta mientras falte un período comparable.
+El cambio de redacción no aporta la evidencia que falta ni modifica los nulos
+internos de esos indicadores.
+
 La generación publicada mantiene precedencia: sin período explícito sólo se
 usa octubre provisional para administrador, flag activo y proyección vigente
 cuando no existe generación oficial disponible. La selección explícita
@@ -184,6 +196,11 @@ métricas sin evidencia histórica, sin reutilizar las descripciones de KPI
 oficiales. Al abandonar octubre provisional mediante otro período o al
 restablecer filtros, el navegador hace una carga completa del dashboard oficial
 con ese período; no conserva filtros, estado ni respuesta AJAX provisional.
+
+La etiqueta breve de esa presentación es «datos reconstruidos». Esta página sólo
+describe agregados de Interests; no debe afirmar que Reservas/Ventas, Campañas,
+Llamadas u otros informes estén disponibles o no desde esta fuente: cada informe
+conserva sus fuentes, controles y reglas propios.
 
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.

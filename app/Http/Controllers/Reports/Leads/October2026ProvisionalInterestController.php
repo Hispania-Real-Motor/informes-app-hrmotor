@@ -18,7 +18,7 @@ final class October2026ProvisionalInterestController extends Controller
         try {
             $overview = $reader->overview();
         } catch (ProvisionalInterestSourceUnavailable) {
-            abort(503, 'La fuente provisional no supera las comprobaciones de integridad.');
+            abort(503, 'Los datos de octubre están pendientes de actualización.');
         }
 
         return response()->view('reports.leads.october-2026-provisional', compact('overview'))

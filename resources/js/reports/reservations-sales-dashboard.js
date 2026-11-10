@@ -335,7 +335,7 @@ function renderPerformanceCurrentMonthNotice(month) {
 
     const isCurrentMonth = month === window.commercialPerformanceCurrentMonth;
     notice.textContent = isCurrentMonth
-        ? 'Mes en curso · Resultado provisional. Los datos muestran la actividad acumulada hasta el momento. El objetivo mensual no se prorratea; el cumplimiento y el estado comparan el avance actual con el objetivo completo del mes.'
+        ? 'Mes en curso. Los datos muestran la actividad acumulada hasta el momento. El objetivo mensual no se prorratea; el cumplimiento y el estado comparan el avance actual con el objetivo completo del mes.'
         : '';
     notice.classList.toggle('is-hidden', !isCurrentMonth);
 }

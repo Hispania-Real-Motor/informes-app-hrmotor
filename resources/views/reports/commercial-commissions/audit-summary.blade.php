@@ -27,7 +27,7 @@
             @foreach ($scope['alerts'] as $alert)<div class="notice">{{ $alert }}</div>@endforeach
             @if ($scope['available'])
                 <div class="table-shell"><table><thead><tr><th>{{ $scope['scope'] === 'delegations' ? 'Delegación' : 'Entidad' }}</th>@if($scope['scope'] === 'delegations')<th>Jefe de tienda</th>@endif<th class="num">Comisión final</th></tr></thead><tbody>
-                    @forelse ($scope['rows'] as $row)<tr><td>{{ $row['name'] }}</td>@if($scope['scope'] === 'delegations')<td>{{ $row['manager_name'] ?? 'No verificable' }}</td>@endif<td class="num">{{ number_format($row['final_total'], 2, ',', '.') }} EUR</td></tr>@empty<tr><td colspan="{{ $scope['scope'] === 'delegations' ? 3 : 2 }}">Sin resultados para este bloque.</td></tr>@endforelse
+                    @forelse ($scope['rows'] as $row)<tr><td>{{ $row['name'] }}</td>@if($scope['scope'] === 'delegations')<td>{{ $row['manager_name'] ?? 'Sin datos suficientes' }}</td>@endif<td class="num">{{ number_format($row['final_total'], 2, ',', '.') }} EUR</td></tr>@empty<tr><td colspan="{{ $scope['scope'] === 'delegations' ? 3 : 2 }}">Sin resultados para este bloque.</td></tr>@endforelse
                 </tbody></table></div>
             @endif
         </section>

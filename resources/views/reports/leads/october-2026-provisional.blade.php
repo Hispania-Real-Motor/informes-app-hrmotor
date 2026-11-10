@@ -1,4 +1,4 @@
-<x-reports.app-shell title="Intereses — octubre 2026 provisional" current-report="leads">
+<x-reports.app-shell title="Intereses — octubre 2026" current-report="leads">
     <x-slot:head>
         @vite('resources/css/reports/leads-dashboard.css')
     </x-slot:head>
@@ -6,17 +6,17 @@
     <div class="wrap">
         <section class="card" aria-labelledby="provisional-october-title">
             <p class="eyebrow">Acceso restringido a administración</p>
-            <h1 id="provisional-october-title">Octubre de 2026: inventario provisional no certificado</h1>
-            <p>Esta lectura aislada utiliza los journals mensuales validados y no sustituye ninguna fuente publicada, KPI, cierre, exportación ni informe oficial.</p>
+            <h1 id="provisional-october-title">Octubre 2026 · datos reconstruidos</h1>
+            <p>Esta consulta administrativa muestra la cobertura y los agregados disponibles de octubre. No modifica otras fuentes ni informes.</p>
             <p>Periodo funcional: {{ $overview['period']['start_utc'] }} UTC a {{ $overview['period']['end_utc'] }} UTC ({{ $overview['period']['timezone'] }}).</p>
         </section>
 
         <section class="filters card" aria-labelledby="provisional-controls-title">
-            <h2 id="provisional-controls-title">Explorar agregados provisionales</h2>
+            <h2 id="provisional-controls-title">Explorar distribuciones de octubre</h2>
             <div class="filter-group">
                 <label for="provisionalPeriod">Periodo</label>
                 <select id="provisionalPeriod" disabled>
-                    <option>Octubre de 2026 · provisional</option>
+                    <option>Octubre 2026</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -41,7 +41,7 @@
                 <button class="filter-reset" id="resetProvisionalFilters" type="button">Restablecer exploración</button>
             </div>
             <p class="small" id="provisionalSelection" aria-live="polite">Seleccione una distribución para consultar sus valores precalculados.</p>
-            <p class="small">Estos controles de exploración no son filtros del informe: solo muestran un agregado independiente ya incluido en el snapshot validado. No recalculan KPI ni combinan dimensiones.</p>
+            <p class="small">Estos controles muestran una distribución cada vez. No combinan filtros ni recalculan los indicadores.</p>
         </section>
 
         <section class="card" aria-labelledby="coverage-title">
@@ -49,10 +49,10 @@
             <table>
                 <thead><tr><th>Medida</th><th>Valor</th><th>Interpretación</th></tr></thead>
                 <tbody>
-                    <tr><td>Inventario F2</td><td>{{ number_format($overview['coverage']['f2_inventory'], 0, ',', '.') }}</td><td>Identidades del journal mensual de origen.</td></tr>
+                    <tr><td>Registros de origen</td><td>{{ number_format($overview['coverage']['f2_inventory'], 0, ',', '.') }}</td><td>Intereses encontrados en el inventario mensual.</td></tr>
                     <tr><td>Materializados</td><td>{{ number_format($overview['coverage']['materialized'], 0, ',', '.') }}</td><td>Estado actual observado; no fotografía histórica.</td></tr>
                     <tr><td>Activos con contenido coincidente</td><td>{{ number_format($overview['coverage']['eligible_active_matching'], 0, ',', '.') }}</td><td>Única población incluida en los agregados inferiores.</td></tr>
-                    <tr><td>Ausentes de materialización</td><td>{{ number_format($overview['coverage']['missing_from_materialization'], 0, ',', '.') }}</td><td>No disponibles para la lectura provisional.</td></tr>
+                    <tr><td>Ausentes de materialización</td><td>{{ number_format($overview['coverage']['missing_from_materialization'], 0, ',', '.') }}</td><td>No incluidos en los agregados de octubre.</td></tr>
                     <tr><td>Contenido cambiado</td><td>{{ number_format($overview['coverage']['content_changed'], 0, ',', '.') }}</td><td>Excluidos: no se reconstruye su valor histórico.</td></tr>
                     <tr><td>Soft deletes observados</td><td>{{ number_format($overview['coverage']['soft_deleted_observed'], 0, ',', '.') }}</td><td>Excluidos de los agregados; hard deletes no acreditados.</td></tr>
                     <tr><td>Sin identidad canónica</td><td>{{ number_format($overview['coverage']['canonical_identity_unavailable'], 0, ',', '.') }}</td><td>Limitación de relación, no una ausencia demostrada.</td></tr>
@@ -118,8 +118,8 @@
         </section>
 
         <section class="card" data-provisional-collection aria-labelledby="functional-kpis-title">
-            <h2 id="functional-kpis-title">Agregados provisionales disponibles</h2>
-            <p>Estado, tipo normalizado, fuente, medio y canal se calculan durante la validación administrativa sobre los {{ number_format($overview['functional_kpis']['total'], 0, ',', '.') }} Interests F2M activos y con contenido coincidente. Son agregados provisionales, no KPI oficiales certificados, y no se recalculan al abrir esta página.</p>
+            <h2 id="functional-kpis-title">Agregados disponibles</h2>
+            <p>Estado, tipo normalizado, fuente, medio y canal se calcularon durante la preparación administrativa sobre {{ number_format($overview['functional_kpis']['total'], 0, ',', '.') }} Intereses activos con contenido coincidente. No se recalculan al abrir esta página.</p>
             <div data-provisional-distribution="status">
                 <h3>Estado</h3>
                 <table>
@@ -160,9 +160,8 @@
 
         <section class="card" aria-labelledby="limits-title">
             <h2 id="limits-title">Indicadores no disponibles con esta evidencia</h2>
-            <p>F2 permanece sin certificación histórica: {{ $overview['verification']['f2_verified'] ? 'la comprobación actual no sustituye la certificación histórica.' : 'la verificación F2 original no fue satisfactoria.' }} F5 tampoco certifica este inventario.</p>
-            <p>Los comerciales elegibles y sus delegaciones no están disponibles: F2M no conserva la instantánea histórica de usuarios requerida por la fórmula oficial. Tampoco se calculan KPI de actividad: F5 no acredita historia y esta evidencia no conserva el estado de relación requerido por la fórmula oficial.</p>
-            <p>Dirección y comparativas; Reservas/Ventas y rendimiento comercial; Campañas, Llamadas y SEO continúan no disponibles desde esta fuente provisional. Los journals no exponen identificadores ni payloads en esta pantalla.</p>
+            <p>Los datos de este inventario no bastan para reconstruir la asignación comercial, la actividad ni una comparativa histórica. Estos indicadores quedan sin datos suficientes.</p>
+            <p>Esta página solo muestra datos de Intereses. Los demás informes utilizan sus propias fuentes y controles.</p>
         </section>
     </div>
 

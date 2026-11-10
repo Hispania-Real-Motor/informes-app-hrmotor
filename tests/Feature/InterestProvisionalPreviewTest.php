@@ -28,7 +28,7 @@ class InterestProvisionalPreviewTest extends TestCase
 
         $this->asReportUser($admin)->get('/informes/leads/provisional/september-october-2026')
             ->assertOk()->assertHeader('Cache-Control', 'no-store, private')
-            ->assertSee('Vista provisional no certificada');
+            ->assertSee('Vista administrativa de Intereses');
         $this->asReportUser($viewer)->get('/informes/leads/provisional/september-october-2026')->assertForbidden();
         $this->asReportUser($admin)->getJson('/informes/leads/data/summary')
             ->assertStatus(503)->assertJsonPath('error', 'interest_dataset_unavailable');

@@ -1,5 +1,30 @@
 # Handoff para agentes
 
+## 2026-11-10 — limpieza de lenguaje UX en informes
+
+- Intereses de octubre se presenta como «datos reconstruidos» y expresa sus
+  límites con «Sin datos suficientes». La comparación se oculta si no existe
+  una fuente comparable. El flag, acceso de administrador, snapshot/revisión,
+  `no-store, private` y 503 fail-closed se conservan; el texto no certifica
+  cobertura ni habilita KPI oficiales.
+- Las vistas administrativas de Interests muestran sólo sus agregados y no
+  declaran la disponibilidad de Reservas/Ventas, Campañas, Llamadas, SEO,
+  Comisiones o Stock, que continúan con fuentes y controles propios.
+- Comisiones presenta `provisional` como «Cálculo en curso» y simplifica el
+  readiness sin cambiar estados, cobertura, frescura, preparación o cierre.
+  Campañas simplifica el tooltip de estado actual sin variar frescura/evidencia;
+  Rendimiento comercial dice «Mes en curso» sin convertir el acumulado en
+  cierre ni prorratear objetivos.
+- Se actualizaron `docs/reglas-negocio-leads.md`,
+  `docs/salesforce-interest-generations.md`, `docs/informe-comisiones.md`,
+  `docs/informe-campanas.md`, `docs/informe-reservas-ventas.md` y la matriz.
+  Llamadas y Stock no tienen cambio de ruta, dato, cálculo ni presentación en
+  este diff. No se requieren `PROJECT_CONTEXT.md` ni `DECISIONS.md`.
+  `node --test` sobre `tests/js/*.test.mjs`: 57 pruebas superadas;
+  `git diff --check`: correcto. PHP/Pint, MariaDB, build y validación documental
+  quedan pendientes de GitHub Actions. No hubo migraciones, Salesforce,
+  benchmark ni acceso a producción.
+
 ## 2026-11-12 — correctivo UI tras PR #125
 
 - La UI separa texto y ayuda de tarjetas oficiales frente a tarjetas de octubre

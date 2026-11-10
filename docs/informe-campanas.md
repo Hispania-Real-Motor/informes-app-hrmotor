@@ -540,6 +540,11 @@ Cada fila incorpora `current_status` con `availability` (`fresh`, `stale`, `unav
 
 Solo es fresco un estado reconocido con antigüedad `0 <= edad < 86400` segundos y cuya referencia de ejecución, no nula, coincide con el último intento registrado de la cuenta, también no nulo y completado (`completed`). Exactamente 24 horas, una ejecución posterior fallida/en curso o un inventario posterior que omite la campaña producen **Estado no actualizado**. Código no reconocido, ausencia de verificación o fecha futura producen **Estado no disponible**. Los fallos no renuevan la fecha previa. La conservación del último válido es diagnóstica, nunca un fallback de vigencia. El frontend vuelve a evaluar la edad al renderizar y muestra la fecha en Europe/Madrid, incluso en cambios de horario. El tooltip distingue estado observado, última verificación y filtro histórico. Si la auditoría desaparece por retención o la referencia queda nula, el dato se degrada a Estado no actualizado aunque la fecha sea reciente; un run fallido con el mismo ID tampoco acredita vigencia. No se modifica la retención en esta entrega.
 
+El tooltip visible puede expresar esos dos casos como «Datos pendientes de
+actualización» o «Sin datos suficientes del estado actual». Cambia sólo la
+redacción: los estados `fresh`/`stale`/`unavailable`, el umbral de 24 horas, la
+evidencia requerida y la clasificación histórica del filtro permanecen iguales.
+
 ### Formato numérico del informe
 
 Los formateadores reales de `campaigns-dashboard.js` usan `Intl.NumberFormat('es-ES', {useGrouping:true})` para agrupar también cuatro cifras: 999 → 999; 1000 → 1.000; 1234 → 1.234; 9999 → 9.999; 1234567 → 1.234.567. Moneda EUR mantiene dos decimales y el espacio propio de Intl: 1234.56 → 1.234,56 €; -1234.5 → -1.234,50 €. Porcentajes mantienen una cifra decimal y multiplicadores dos; solo cambia presentación/localización, no fórmulas.

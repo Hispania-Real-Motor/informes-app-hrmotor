@@ -312,7 +312,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->asReportUser($viewer)->get('/informes/leads/provisional/october-2026')->assertForbidden();
         $this->asReportUser($admin)->get('/informes/leads/provisional/october-2026')
             ->assertOk()->assertHeader('Cache-Control', 'no-store, private')
-            ->assertSee('inventario provisional no certificado')
+            ->assertSee('Octubre 2026 · datos reconstruidos')
             ->assertDontSee($this->id(1));
 
         $this->authorisedChange(fn () => DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update(['phase' => 'verify_task']));
@@ -331,11 +331,12 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->asReportUser($admin)->get('/informes/leads')
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertSee('Octubre 2026 · provisional')
+            ->assertSee('Octubre 2026')
             ->assertSee('id="leadReportContent"', false)
-            ->assertSee('Octubre de 2026 · provisional y no certificado históricamente')
+            ->assertSee('Octubre 2026 · datos reconstruidos')
+            ->assertDontSee('provisional y no certificado históricamente')
             ->assertDontSee('Explorar agregados provisionales');
-        $this->asReportUser($viewer)->get('/informes/leads')->assertDontSee('Octubre 2026 · provisional');
+        $this->asReportUser($viewer)->get('/informes/leads')->assertDontSee('value="october_2026"', false);
         $this->asReportUser($viewer)->get('/informes/leads?period=october_2026')->assertForbidden();
         $this->asReportUser($admin)->get('/informes/leads?period=current_month')
             ->assertOk()

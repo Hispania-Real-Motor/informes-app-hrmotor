@@ -292,12 +292,12 @@ function bindLeadReloadRetry() {
 function renderSummary(data) {
     const updatedBadge = document.getElementById('updatedBadge');
     updatedBadge.textContent = data.provisional
-        ? 'Octubre 2026 · provisional no certificado'
+        ? 'Octubre 2026 · datos reconstruidos'
         : data.dataset_cutoff_at
         ? `Datos certificados hasta: ${formatDateTime(data.dataset_cutoff_at)}${data.generation_stale ? ' · Desactualizados' : ''}`
         : 'Datos certificados: pendiente';
     updatedBadge.title = data.provisional
-        ? 'Fuente mensual provisional validada administrativamente. No sustituye una generación oficial publicada.'
+        ? 'Datos de octubre disponibles. Algunas métricas requieren información adicional.'
         : [
         data.salesforce_leads_synced_at ? `Intereses: ${formatDateTime(data.salesforce_leads_synced_at)}` : null,
         data.activities_synced_at ? `Actividades: ${formatDateTime(data.activities_synced_at)}` : null,
@@ -363,14 +363,14 @@ function provisionalKpiCards(kpis) {
         { label: 'Convertidos', value: formatKpiValue(kpis.convertidos), hint: `${formatPercent(kpis.conversion_pct)} sobre total`, metric: null },
         { label: 'Descartados', value: formatKpiValue(kpis.descartados), hint: `${formatPercent(kpis.descarte_pct)} sobre total`, metric: null },
         { label: 'Potenciales', value: formatKpiValue(kpis.potenciales), hint: 'Estado Potencial acreditado', metric: null },
-        { label: 'Sin comercial elegible', value: formatKpiValue(kpis.without_eligible_commercial), hint: 'No disponible sin snapshot histórico de usuarios', metric: null },
-        { label: 'Sin delegación comercial', value: formatKpiValue(kpis.without_commercial_delegation), hint: 'No disponible sin snapshot histórico de usuarios', metric: null },
+        { label: 'Sin comercial elegible', value: formatKpiValue(kpis.without_eligible_commercial), hint: 'Sin datos suficientes de comerciales', metric: null },
+        { label: 'Sin delegación comercial', value: formatKpiValue(kpis.without_commercial_delegation), hint: 'Sin datos suficientes de delegaciones comerciales', metric: null },
         { label: 'Sin clasificar', value: formatKpiValue(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: null },
-        { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: 'No disponible sin atribución histórica de owner', metric: null },
-        { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
-        { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
-        { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
-        { label: 'Formularios', value: formatKpiValue(kpis.formularios), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
+        { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: 'Sin datos suficientes de asignación', metric: null },
+        { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: 'Sin datos suficientes de actividad', metric: null },
+        { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: 'Sin datos suficientes de actividad', metric: null },
+        { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'Sin datos suficientes de actividad', metric: null },
+        { label: 'Formularios', value: formatKpiValue(kpis.formularios), hint: 'Sin datos suficientes de actividad', metric: null },
     ];
 }
 

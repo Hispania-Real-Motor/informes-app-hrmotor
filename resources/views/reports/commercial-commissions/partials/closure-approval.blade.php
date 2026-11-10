@@ -1,5 +1,5 @@
 @php
-    $closureStatusLabels = ['provisional'=>'Provisional','pending_approval'=>'Pendiente de aprobación','definitive'=>'Definitivo','reopened'=>'Reabierto'];
+    $closureStatusLabels = ['provisional'=>'Cálculo en curso','pending_approval'=>'Pendiente de aprobación','definitive'=>'Definitivo','reopened'=>'Reabierto'];
 @endphp
             @if (($directorApprovalOverview ?? []) !== [])
                 <section class="card panel commission-closure-panel" aria-labelledby="director-approval-title">

@@ -91,6 +91,13 @@ Estados persistentes:
 - `definitive`;
 - `reopened`.
 
+En la presentación, el estado persistido `provisional` se rotula «Cálculo en
+curso». Es una etiqueta de usuario, no un nuevo estado ni una aprobación: el
+bloque conserva sus requisitos de cobertura, frescura, preparación y cierre.
+Los mensajes de readiness describen disponibilidad o necesidad de actualización
+sin exponer huecos o cortes técnicos; no acreditan cobertura completa ni hacen
+un cierre definitivo.
+
 Desde julio de 2026, los seis scopes (Comerciales, Delegaciones, Área Manager,
 Financieros, Call Center y Contact Center) disponen de cierre independiente. Cada
 cierre tiene estado, aprobación, reapertura, eventos y versión de snapshot propios

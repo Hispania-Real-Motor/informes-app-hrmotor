@@ -441,6 +441,13 @@ dos decimales. No se construyen comparativas ni métricas de owner/comercial,
 gestión o actividad. Sus nulos se presentan como `No disponible`, no como cero,
 porque F2M/F5 no prueban la instantánea histórica necesaria.
 
+La UX puede denominar el resultado «datos reconstruidos» y mostrar «Sin datos
+suficientes» en vez de estos nombres técnicos; no cambia el carácter aislado de
+la fuente ni convierte un nulo en cero. La comparativa se oculta mientras no
+exista un período comparable, y los mensajes 503 siguen siendo fail-closed.
+Las vistas administrativas de Interests no determinan la disponibilidad de los
+demás informes, que conservan sus propias fuentes y controles.
+
 Una generación publicada sigue siendo la fuente oficial. La navegación sin
 período sólo adopta la proyección de octubre para administrador con flag activo,
 proyección vigente y ausencia de generación oficial; `period=october_2026` es

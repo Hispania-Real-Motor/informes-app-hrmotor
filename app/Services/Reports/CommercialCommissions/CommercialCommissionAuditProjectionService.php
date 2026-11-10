@@ -114,7 +114,7 @@ class CommercialCommissionAuditProjectionService
                 'pending_approval' => 'Pendiente de aprobación',
                 'definitive' => 'Definitivo',
                 'reopened' => 'Reabierto',
-                default => 'Provisional',
+                default => 'Cálculo en curso',
             },
             'variant' => match ($technicalStatus) {
                 'definitive' => 'group',

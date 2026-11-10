@@ -52,7 +52,7 @@ class LeadDashboardController extends Controller
         try {
             $reader->dashboardProjection();
         } catch (ProvisionalInterestSourceUnavailable) {
-            abort(503, 'La fuente provisional no supera las comprobaciones de integridad.');
+            abort(503, 'Los datos de octubre están pendientes de actualización.');
         }
     }
 

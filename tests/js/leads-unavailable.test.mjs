@@ -7,6 +7,17 @@ const dashboardScript = readFileSync(new URL('../../resources/js/reports/leads-d
 const octoberFilterScript = readFileSync(new URL('../../public/js/reports/october-2026-dashboard-filters.js', import.meta.url), 'utf8');
 const dashboardTemplate = readFileSync(new URL('../../resources/views/reports/leads/index.blade.php', import.meta.url), 'utf8');
 
+test('October copy stays concise and comparison without a source is hidden', () => {
+    assert.match(dashboardTemplate, /value="october_2026"[^>]*>Octubre 2026<\/option>/);
+    assert.match(dashboardTemplate, /Octubre 2026 · datos reconstruidos/);
+    assert.match(dashboardTemplate, /id="comparisonPeriodLabel"/);
+    assert.match(dashboardTemplate, /class="card period-card @if\(\$isOctoberProvisional \?\? false\) is-hidden @endif"/);
+    assert.match(dashboardTemplate, /class="card panel @if\(\$isOctoberProvisional \?\? false\) is-hidden @endif"/);
+    assert.doesNotMatch(dashboardTemplate, /provisional y no certificado|snapshot histórico|\bF2M?\b|\bF5\b/i);
+    assert.match(dashboardScript, /data\.provisional/);
+    assert.doesNotMatch(dashboardScript, /provisional no certificado|snapshot histórico|requiere actividad histórica acreditada/i);
+});
+
 function createClassList() {
     const classes = new Set();
 
@@ -340,8 +351,8 @@ test('official and provisional KPI cards preserve their own descriptions and una
 
     vm.runInContext(`renderKpis(${JSON.stringify(kpis)}, true)`, context);
     assert.match(element('summaryKpis').innerHTML, /Muestra del período validado/);
-    assert.match(element('summaryKpis').innerHTML, /No disponible/);
-    assert.match(element('summaryKpis').innerHTML, /requiere actividad histórica acreditada/);
+    assert.match(element('summaryKpis').innerHTML, /Sin datos suficientes/);
+    assert.doesNotMatch(element('summaryKpis').innerHTML, /provisional|no certificado|snapshot histórico|F5/i);
 });
 
 test('the initial period is applied before the first dashboard request', async (t) => {

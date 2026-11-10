@@ -81,7 +81,7 @@
     ];
     $tooltip = static fn (string $label): string => $kpiTooltips[$label] ?? '';
     $closureStatusLabels = [
-        'provisional' => 'Provisional',
+        'provisional' => 'Cálculo en curso',
         'pending_approval' => 'Pendiente de aprobación',
         'definitive' => 'Definitivo',
         'reopened' => 'Reabierto',
@@ -582,7 +582,7 @@
                                     <tr>
                                         <td>{{ $row['delegation_name'] }}</td>
                                         <td>
-                                            {{ $row['store_manager_name'] ?? 'No verificable' }}
+                                            {{ $row['store_manager_name'] ?? 'Sin datos suficientes' }}
                                             @if ((int) ($row['store_manager_distinct_count'] ?? 0) > 2 && filled($row['store_manager_alert'] ?? null))
                                                 <span class="type-pill pending" title="{{ $row['store_manager_alert'] }}">Revisar</span>
                                             @endif

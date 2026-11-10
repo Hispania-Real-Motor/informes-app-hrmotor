@@ -20,7 +20,7 @@ export function currentStatusPresentation(row, now = Date.now()) {
     const date = Number.isFinite(verified) ? statusDateFormatter.format(verified) : 'sin verificación satisfactoria';
     const observed = Date.parse(status.observed_at);
     const observation = Number.isFinite(observed) ? `Última lectura completa: ${statusDateFormatter.format(observed)} (Europe/Madrid). ` : '';
-    return { text, expiresAt: fresh ? verified + 86400000 : null, tooltip: `${platform}. Estado observado: ${status.raw_status || 'no disponible'}. ${observation}Última verificación válida: ${date} (Europe/Madrid). ${stale ? 'Dato obsoleto; no confirma el estado vigente.' : fresh ? 'Consulta independiente del histórico económico.' : 'Estado actual no verificable.'} El filtro conserva su clasificación histórica.` };
+    return { text, expiresAt: fresh ? verified + 86400000 : null, tooltip: `${platform}. Estado observado: ${status.raw_status || 'no disponible'}. ${observation}Última verificación válida: ${date} (Europe/Madrid). ${stale ? 'Datos pendientes de actualización.' : fresh ? 'Consulta independiente del histórico económico.' : 'Sin datos suficientes del estado actual.'} El filtro conserva su clasificación histórica.` };
 }
 
 export function historicalStatusPresentation(row) {

@@ -175,7 +175,7 @@ class CommercialCommissionAuditProjectionServiceTest extends TestCase
 
         $projection = (new CommercialCommissionAuditProjectionService($closures))->build('2026-07', 'commercials');
 
-        $this->assertSame('Provisional', data_get($projection, 'scope_statuses.commercials.label'));
+        $this->assertSame('Cálculo en curso', data_get($projection, 'scope_statuses.commercials.label'));
         $this->assertSame('Pendiente de aprobación', data_get($projection, 'scope_statuses.delegations.label'));
         $this->assertSame('Definitivo', data_get($projection, 'scope_statuses.area_manager.label'));
         $this->assertSame('group', data_get($projection, 'scope_statuses.area_manager.variant'));
