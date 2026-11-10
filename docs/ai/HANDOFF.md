@@ -14,11 +14,16 @@
 - La prueba HTTP del período oficial comprueba el contrato de inicialización
   `window.initialLeadPeriod`, que el JavaScript aplica al selector; no depende
   de una serialización concreta del atributo HTML `selected`.
-- Verificación local: `git diff --check`, lint del controlador, Pint de PHP
-  modificado y `node --test tests/js/leads-unavailable.test.mjs` (14/14)
-  correctos. PHPUnit completo, MariaDB 11, build y validación documental se
-  ejecutan en CI. No se ejecutaron migraciones, Salesforce, benchmark ni
-  producción.
+- PR #126 aplica `window.initialLeadPeriod` antes de la primera carga AJAX. Los
+  períodos oficiales explícitos incluyen `last_30_days`, `current_month`,
+  `previous_month` y `custom`; un valor no ofrecido por el selector no se
+  aplica y conserva el valor seguro por defecto. Esto sólo alinea navegación,
+  selector y primera petición; no cambia fuente, KPI, filtros de negocio,
+  generación ni matriz de trazabilidad.
+- Verificación local del correctivo de período inicial: `git diff --check` y
+  `node --test tests/js/leads-unavailable.test.mjs` (22/22) correctos. PHPUnit
+  completo, MariaDB 11, Pint, build y validación documental se ejecutan en CI.
+  No se ejecutaron migraciones, Salesforce, benchmark ni producción.
 
 ## 2026-11-12 — PR A: dashboard de octubre mediante proyección provisional
 

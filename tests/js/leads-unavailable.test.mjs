@@ -22,14 +22,19 @@ function createClassList() {
     };
 }
 
-function createDashboardContext(fetch) {
+function createDashboardContext(fetch, {
+    initialLeadPeriod = null,
+    periodOptions = ['last_30_days', 'current_month', 'previous_month', 'october_2026', 'custom'],
+} = {}) {
     const elements = new Map();
     const navigations = [];
+    const documentListeners = new Map();
     const element = (id) => {
         if (!elements.has(id)) {
             const listeners = new Map();
             elements.set(id, {
                 value: '',
+                options: id === 'period' ? periodOptions.map((value) => ({ value })) : [],
                 innerHTML: 'old figures',
                 textContent: '',
                 title: '',
@@ -52,13 +57,14 @@ function createDashboardContext(fetch) {
 
     const context = vm.createContext({
         document: {
-            addEventListener() {},
+            addEventListener: (name, listener) => documentListeners.set(name, listener),
             getElementById: element,
             querySelectorAll: () => [],
         },
         window: {
             localStorage: { getItem: () => null, setItem() {} },
             reportUserCanAudit: false,
+            initialLeadPeriod,
             isOctoberProvisional: false,
             location: {
                 origin: 'https://informes.example.test',
@@ -77,7 +83,12 @@ function createDashboardContext(fetch) {
 
     vm.runInContext(dashboardScript, context);
 
-    return { context, element, navigations };
+    return {
+        context,
+        element,
+        navigations,
+        start: () => documentListeners.get('DOMContentLoaded')?.(),
+    };
 }
 
 function hasClass(element, className) {
@@ -333,7 +344,74 @@ test('official and provisional KPI cards preserve their own descriptions and una
     assert.match(element('summaryKpis').innerHTML, /requiere actividad histórica acreditada/);
 });
 
-test('leaving October provisional and resetting filters reloads the official dashboard', async () => {
+test('the initial period is applied before the first dashboard request', async (t) => {
+    const periods = ['current_month', 'previous_month', 'custom', 'last_30_days', 'october_2026', null];
+
+    for (const initialLeadPeriod of periods) {
+        await t.test(initialLeadPeriod || 'default', async () => {
+            const calls = [];
+            const { context, element, start } = createDashboardContext(async (url) => {
+                calls.push(url);
+
+                return {
+                    ok: true,
+                    json: async () => url.includes('/summary?') ? { generation_id: 42, filters: {} } : {},
+                };
+            }, { initialLeadPeriod });
+
+            element('period').value = 'last_30_days';
+            element('customPeriods').classList.add('is-hidden');
+            vm.runInContext(`
+                bindTabs = bindFilters = bindResetFilters = bindTableSorting = bindLeadCommercialTabs = () => {};
+                initLeadCommercialColumns = initLeadCommercialZoneColumns = initLeadCommercialDelegationColumns = () => {};
+                bindLeadCommercialSearch = bindReconciliationAudit = bindLeadReloadRetry = () => {};
+                renderSummary = renderFilterOptions = renderCommercialZones = renderCommercialDelegations = renderCommercials = renderDelegations = renderPortals = () => {};
+            `, context);
+
+            await start();
+
+            const expectedPeriod = initialLeadPeriod || 'last_30_days';
+            assert.equal(element('period').value, expectedPeriod);
+            assert.equal(
+                new URL(calls[0], 'https://informes.example.test').searchParams.get('period'),
+                expectedPeriod
+            );
+            assert.equal(hasClass(element('customPeriods'), 'is-hidden'), expectedPeriod !== 'custom');
+            assert.equal(element('currentStart').value, '');
+            assert.equal(element('currentEnd').value, '');
+        });
+    }
+
+    await t.test('does not apply October when the authorized option is absent', async () => {
+        const calls = [];
+        const { context, element, start } = createDashboardContext(async (url) => {
+            calls.push(url);
+
+            return {
+                ok: true,
+                json: async () => url.includes('/summary?') ? { generation_id: 42, filters: {} } : {},
+            };
+        }, {
+            initialLeadPeriod: 'october_2026',
+            periodOptions: ['last_30_days', 'current_month', 'previous_month', 'custom'],
+        });
+
+        element('period').value = 'last_30_days';
+        vm.runInContext(`
+            bindTabs = bindFilters = bindResetFilters = bindTableSorting = bindLeadCommercialTabs = () => {};
+            initLeadCommercialColumns = initLeadCommercialZoneColumns = initLeadCommercialDelegationColumns = () => {};
+            bindLeadCommercialSearch = bindReconciliationAudit = bindLeadReloadRetry = () => {};
+            renderSummary = renderFilterOptions = renderCommercialZones = renderCommercialDelegations = renderCommercials = renderDelegations = renderPortals = () => {};
+        `, context);
+
+        await start();
+
+        assert.equal(element('period').value, 'last_30_days');
+        assert.equal(new URL(calls[0], 'https://informes.example.test').searchParams.get('period'), 'last_30_days');
+    });
+});
+
+test('leaving October provisional and resetting filters reloads every official dashboard period', async () => {
     const calls = [];
     const { context, element, navigations } = createDashboardContext(async (...args) => {
         calls.push(args);
@@ -344,14 +422,25 @@ test('leaving October provisional and resetting filters reloads the official das
     vm.runInContext('bindFilters(); bindResetFilters();', context);
 
     const period = element('period');
-    period.value = 'custom';
-    await period.listener('change')({ currentTarget: period });
-    assert.deepEqual(navigations, ['/informes/leads?period=custom']);
+    for (const officialPeriod of ['current_month', 'previous_month', 'custom', 'last_30_days']) {
+        period.value = officialPeriod;
+        await period.listener('change')({ currentTarget: period });
+    }
+
+    assert.deepEqual(navigations, [
+        '/informes/leads?period=current_month',
+        '/informes/leads?period=previous_month',
+        '/informes/leads?period=custom',
+        '/informes/leads?period=last_30_days',
+    ]);
     assert.equal(calls.length, 0);
 
     await element('resetFilters').listener('click')();
     assert.deepEqual(navigations, [
+        '/informes/leads?period=current_month',
+        '/informes/leads?period=previous_month',
         '/informes/leads?period=custom',
+        '/informes/leads?period=last_30_days',
         '/informes/leads?period=last_30_days',
     ]);
     assert.equal(calls.length, 0);

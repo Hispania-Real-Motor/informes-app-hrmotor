@@ -70,9 +70,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindLeadCommercialSearch();
     bindReconciliationAudit();
     bindLeadReloadRetry();
+    applyInitialLeadPeriod();
     toggleCustomPeriods();
     await reloadAllData();
 });
+
+function applyInitialLeadPeriod() {
+    const initialPeriod = window.initialLeadPeriod;
+    const period = document.getElementById('period');
+
+    if (typeof initialPeriod !== 'string' || !period) {
+        return;
+    }
+
+    const existsInSelector = [...period.options].some((option) => option.value === initialPeriod);
+
+    if (existsInSelector) {
+        period.value = initialPeriod;
+    }
+}
 
 function bindReconciliationAudit() {
     document.getElementById('reconciliationAudit')?.addEventListener('click', (event) => {

@@ -84,6 +84,6 @@ class LeadDashboardController extends Controller
 
     private function officialInitialPeriod(?string $period): ?string
     {
-        return in_array($period, ['current_month', 'previous_month', 'custom'], true) ? $period : null;
+        return in_array($period, ['last_30_days', 'current_month', 'previous_month', 'custom'], true) ? $period : null;
     }
 }
