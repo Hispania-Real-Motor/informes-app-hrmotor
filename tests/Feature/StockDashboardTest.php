@@ -11,6 +11,7 @@ use App\Models\StockDailySnapshot;
 use App\Models\StockDelegation;
 use App\Services\Reports\Stock\StockCatalogNormalizer;
 use App\Services\Reports\Stock\StockDashboardDatasetService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
@@ -20,6 +21,78 @@ use ZipArchive;
 class StockDashboardTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_october_2026_reads_sales_and_history_without_using_current_stock_as_historical_denominator(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-10 12:00:00');
+
+        try {
+            $vehicle = SalesforceVehicle::query()->create([
+                'salesforce_id' => '01t-october-stock',
+                'state' => 'Disponible',
+                'is_in_stock' => true,
+            ]);
+            StockDailySnapshot::query()->create([
+                'snapshot_date' => '2026-10-15',
+                'salesforce_vehicle_id' => $vehicle->id,
+                'vehicle_salesforce_id' => $vehicle->salesforce_id,
+                'state' => 'Disponible',
+            ]);
+            foreach (['2026-10-31', '2026-11-01'] as $index => $date) {
+                SalesforceSaleSnapshot::query()->create([
+                    'opportunity_salesforce_id' => '006-october-stock-'.$index,
+                    'signed_date' => $date,
+                    'is_valid' => true,
+                    'captured_at' => now(),
+                ]);
+            }
+
+            $dataset = app(StockDashboardDatasetService::class)->build([
+                'date_from' => '2026-10-01',
+                'date_to' => '2026-10-31',
+            ]);
+            $this->assertSame(1, $dataset['summary']['sales']);
+            $this->assertSame(1, $dataset['stockHistory']['days']);
+            $this->assertNull($dataset['summary']['sales_stock_ratio']);
+            $this->assertTrue($dataset['summary']['sales_stock_unavailable']);
+
+            config()->set('services.informes_auth.enabled', true);
+            $admin = $this->user(ReportUser::ROLE_ADMIN, 'admin-october-stock@hrmotor.com');
+            $this->withSession($this->sessionData($admin))
+                ->get('/informes/stock?date_from=2026-10-01&date_to=2026-10-31')
+                ->assertOk()
+                ->assertSee('Octubre 2026')
+                ->assertSee('Ventas/stock: sin datos suficientes del período');
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_historical_average_includes_snapshot_days_with_zero_available_vehicles(): void
+    {
+        $vehicle = SalesforceVehicle::query()->create([
+            'salesforce_id' => '01t-october-history',
+            'state' => 'Disponible',
+            'is_in_stock' => true,
+        ]);
+        for ($day = 1; $day <= 31; $day++) {
+            StockDailySnapshot::query()->create([
+                'snapshot_date' => sprintf('2026-10-%02d', $day),
+                'salesforce_vehicle_id' => $vehicle->id,
+                'vehicle_salesforce_id' => $vehicle->salesforce_id,
+                'state' => $day <= 15 ? 'Disponible' : 'Reservado',
+            ]);
+        }
+
+        $dataset = app(StockDashboardDatasetService::class)->build([
+            'date_from' => '2026-10-01',
+            'date_to' => '2026-10-31',
+        ]);
+
+        $this->assertSame(31, $dataset['stockHistory']['days']);
+        $this->assertSame(0.5, $dataset['stockHistory']['average_available']);
+        $this->assertFalse($dataset['summary']['sales_stock_unavailable']);
+    }
 
     public function test_stock_es_visible_para_admin_y_las_secciones_son_pestanas_independientes(): void
     {

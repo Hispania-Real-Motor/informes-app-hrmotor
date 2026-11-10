@@ -1,6 +1,6 @@
 # Informe de Stock
 
-Actualizado: 2026-09-21.
+Actualizado: 2026-11-12.
 
 ## Fuentes y fotografía local
 
@@ -169,6 +169,42 @@ recorrido por todas las delegaciones.
   se sustituye por el número de ventas.
 - Las alertas visuales usan todo el stock, no la muestra filtrada.
 - El nombre de delegación aplica un filtro común a stock, ventas y rankings.
+
+### Período octubre de 2026 y ratio ventas/stock histórico
+
+El enlace «Octubre 2026» conserva la pestaña activa y fija
+`date_from=2026-10-01` y `date_to=2026-10-31`. Las ventas válidas se leen de
+`salesforce_sale_snapshots` por `signed_date` dentro de ambos extremos; el
+histórico del denominador se lee de `stock_daily_snapshots` por las mismas
+fechas y filtros de stock. No consulta Salesforce ni el lector provisional de
+Interests.
+
+Para conservar esa inclusión en campos locales con cast de fecha, ambas
+consultas aplican el intervalo semiabierto `[date_from, date_to + 1 día)`: el
+31 de octubre permanece incluido y el 1 de noviembre queda fuera. Esta es la
+representación de consulta del rango civil elegido, no un cambio de fuente ni
+de fecha pivote.
+
+El ratio `ventas/stock` usa `ventas válidas / promedio diario de Disponibles`
+únicamente cuando las instantáneas diarias cubren al menos el 80 % de los días
+esperados del período (extremos incluidos). Si `date_to` es anterior a hoy y
+esa cobertura es insuficiente, el denominador y el ratio son `null` y la
+interfaz informa «sin datos suficientes del período». No se sustituye por el
+stock actual ni se presenta una aproximación histórica. Con período actual o
+futuro, el fallback existente al stock Disponible actual continúa marcado como
+aproximación cuando falte histórico; un denominador cero también deja el ratio
+no disponible.
+
+La media incorpora cada fecha que sí tiene snapshot dentro del rango: si esa
+fecha no contiene ninguna fila en estado `Disponible`, aporta cero al
+denominador. Una fecha sin snapshot no se interpreta como cero; reduce la
+cobertura y puede hacer que el ratio histórico quede no disponible.
+
+Las tarjetas de inventario actual siguen describiendo la fotografía vigente de
+`salesforce_vehicles`, incluso al consultar ventas o snapshots de octubre. La
+selección de fechas no acredita que existan snapshots completos ni ventas
+históricas correctas: esa cobertura se comunica mediante el ratio disponible o
+su estado de indisponibilidad y requiere contraste operativo separado.
 
 Calidad del dato incluye, entre otros, entradas/delegaciones/catálogos ausentes,
 entregados que continúan en stock, firmas inconsistentes, `Cerrada Perdida`,
