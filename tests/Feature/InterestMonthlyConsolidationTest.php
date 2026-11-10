@@ -41,8 +41,11 @@ class InterestMonthlyConsolidationTest extends TestCase
         $this->assertSame(0, Artisan::call('salesforce:stage-interest-months', [
             '--materialization' => ['2'], '--reason' => self::REASON,
         ]));
+        $runId = (int) DB::table('salesforce_interest_monthly_consolidations')->max('id');
+        $this->assertGreaterThan(0, $runId);
+        $this->assertSame('completed', app(InterestMonthlyConsolidationService::class)->status($runId)['status']);
         $this->assertSame(0, Artisan::call('salesforce:stage-interest-months', [
-            '--run' => '1', '--status' => true,
+            '--run' => (string) $runId, '--status' => true,
         ]));
         $this->assertStringContainsString('"published":false', Artisan::output());
         $this->assertDatabaseCount('salesforce_interest_generations', 0);
