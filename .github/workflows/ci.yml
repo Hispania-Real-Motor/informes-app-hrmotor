@@ -169,3 +169,6 @@ jobs:
 
       - name: Current-month Interest operations MariaDB tests
         run: php artisan test --filter=SyncCurrentMonthInterestsCommandTest
+
+      - name: Monthly Interest consolidation MariaDB tests
+        run: php artisan test --filter=InterestMonthlyConsolidationTest
