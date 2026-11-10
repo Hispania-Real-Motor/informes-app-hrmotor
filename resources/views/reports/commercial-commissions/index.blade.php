@@ -106,11 +106,12 @@
                         <input type="hidden" name="call_center_contract_to" value="{{ $callCenterDashboard['contract_to'] }}">
                     @endif
                     <div class="filter-group">
-                        <label for="month">Mes cerrado</label>
+                        <label for="month">Mes del informe</label>
                         <input type="month" id="month" name="month" value="{{ $dashboard['month'] }}">
                     </div>
                     <div class="filter-actions commission-filter-actions">
                         <button type="submit" class="main-tab">Cargar informe</button>
+                        <a href="{{ route('reports.commercial-commissions.index', ['month' => '2026-10', 'tab' => $activeCommissionTab]) }}" class="main-tab">Octubre 2026</a>
                         <a id="commissionExport" href="{{ $commissionExportUrl }}" class="main-tab active">Exportar comisiones</a>
                         @if ($canAuditEconomicReviews)
                             <a href="{{ route('reports.commercial-commissions.export.reviews-audit', ['month' => $dashboard['month']]) }}" class="main-tab">Auditar reseñas</a>

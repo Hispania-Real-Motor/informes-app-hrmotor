@@ -28,6 +28,99 @@
   esperaban el texto anterior (dos de readiness y una de la vista de octubre).
   Se actualizaron para comprobar los nuevos mensajes sin relajar estados ni
   permisos; la nueva ejecución CI es el criterio de validación.
+## 2026-11-12 — acceso a octubre de 2026 en Comisiones
+
+- El enlace «Octubre 2026» de `/informes/comisiones-comerciales` reutiliza el
+  mes existente `2026-10` y conserva la pestaña activa. «Mes cerrado» pasa a
+  llamarse «Mes del informe» para no sugerir una aprobación que el enlace no
+  realiza.
+- No cambian fuentes, cobertura/readiness, universos, fórmulas, cierres,
+  reaperturas, exportaciones ni permisos. El acceso no acredita cobertura de
+  octubre ni convierte ningún scope en definitivo; siguen aplicando los
+  controles ordinarios por scope.
+- Se actualizó `docs/informe-comisiones.md`. La matriz permanece sin cambios:
+  el enlace y la etiqueta no alteran la trazabilidad ni el contrato de un KPI.
+  `PROJECT_CONTEXT.md` y `DECISIONS.md` no aplican. Esta revisión documental no
+  ejecutó PHP, migraciones, Salesforce, base de datos, benchmark ni producción.
+## 2026-11-12 — período octubre y denominador histórico de Stock
+
+- El enlace «Octubre 2026» conserva la pestaña y aplica `date_from=2026-10-01`
+  y `date_to=2026-10-31`. Ventas válidas y snapshots diarios usan ese rango
+  inclusivo, implementado como `[date_from, date_to + 1 día)` para incluir el
+  31 de octubre con casts locales de fecha. Las tarjetas de inventario
+  continúan describiendo stock actual.
+- Para períodos pasados, si `stock_daily_snapshots` no cubre al menos el 80 %
+  de días esperados, `ventas/stock` y su denominador quedan `null` y se muestra
+  indisponibilidad. No se usa `salesforce_vehicles` actual como sustituto. El
+  fallback al stock actual permanece sólo para períodos presente/futuro y se
+  marca como aproximación.
+- La media del denominador incluye cada fecha con snapshot: una fecha sin
+  `Disponible` aporta cero; una fecha sin snapshot reduce cobertura y no se
+  convierte en cero. Así se evita sobrestimar el stock disponible histórico.
+- Se actualizaron `docs/informe-stock.md` y `docs/matriz-trazabilidad-kpi.md`.
+  No hay migraciones, fuente Interest, permisos, exportación ni certificación
+  de cobertura nuevos; `DECISIONS.md` no aplica. Esta revisión documental no
+  ejecutó PHP, migraciones, Salesforce, benchmark ni producción.
+## 2026-11-12 — selector de octubre de 2026 en Llamadas
+
+- `period=october_2026` selecciona `[2026-10-01, 2026-11-01)` como período
+  actual y `[2026-09-01, 2026-10-01)` como comparado, construidos en
+  `Europe/Madrid`. Antes de filtrar `salesforce_calls.created_date`, los límites
+  se convierten a UTC: octubre `[2026-09-30 22:00:00Z, 2026-10-31 23:00:00Z)` y
+  comparado `[2026-08-31 22:00:00Z, 2026-09-30 22:00:00Z)`. Resumen, agentes,
+  delegaciones, portales y auditoría aplican inicio inclusivo/fin exclusivo; la
+  API conserva `inicio`/`fin` civiles de Madrid, de modo que `fin` sigue siendo
+  frontera y no día incluido.
+- La ruta directa inicializa el selector antes de cargar; cambiar a otro
+  período o restablecer filtros elimina el parámetro. No cambian fuente,
+  clasificación, duración, ámbitos, KPI, CSV, auditoría ni permisos. El preset
+  lee sólo llamadas locales: no acredita cobertura completa de octubre.
+- Una generación Interest ausente no bloquea totales nativos, pero no certifica
+  ni re-resuelve portales basados en `WhatId`: la coincidencia local y la
+  generación publicada siguen siendo el único contrato de fallback. F2/F2M/F5
+  mensuales y la proyección provisional no se consumen. No se ejecutaron PHP,
+  JavaScript, migraciones, Salesforce, benchmark ni producción en esta revisión
+  documental; no se requiere `DECISIONS.md` por ser un preset reversible.
+## 2026-11-12 — selector de octubre de 2026 en Reservas/Ventas
+
+- `period=october_2026` añade al informe oficial el intervalo actual
+  `[2026-10-01, 2026-11-01)` y el comparado `[2026-09-01, 2026-10-01)`, en
+  `Europe/Madrid`. La URL directa inicializa el selector antes de la primera
+  carga; cambiar a otro período o restablecer filtros elimina sólo ese
+  parámetro.
+- Producción, cohorte y pestañas legacy conservan sus fechas pivote actuales y
+  consultan `salesforce_opportunities`. Los totales nativos no requieren una
+  generación Interest publicada, pero la atribución de portal desde
+  `Interest.source` sigue requiriendo snapshot directo completo y generación
+  publicada; F2/F2M/F5 mensuales y la proyección provisional no se consumen.
+- Los campos de fecha `reservation_date` y `cv_signed_date` conservan límites
+  civiles de Madrid. Para `created_date`, los límites de consulta se convierten
+  a UTC: octubre `[2026-09-30 22:00:00Z, 2026-10-31 23:00:00Z)` y comparado
+  `[2026-08-31 22:00:00Z, 2026-09-30 22:00:00Z)`. El payload técnico declara
+  `Europe/Madrid`; queda retirada la advertencia previa de offset pendiente.
+- Documentación actualizada en `docs/informe-reservas-ventas.md` y
+  `docs/matriz-trazabilidad-kpi.md`. No hay migraciones, cambios de permisos,
+  fórmulas, deduplicación, CSV ni auditoría. Esta revisión documental no
+  ejecutó PHP, JavaScript, migraciones, Salesforce, benchmark ni producción.
+
+## 2026-11-12 — enlace directo de octubre en Campañas
+
+- `period=october_2026` aplica antes de la primera carga el preset existente
+  `month_2026_10` y sus fechas `2026-10-01` a `2026-10-31`; no crea un período
+  backend ni cambia filtros, dataset, cierres, snapshots o readiness. Si el
+  preset no existe no se aplica; cambiar preset o fechas elimina el parámetro.
+- La evidencia económica y `platform_independent_only` conservan sus contratos:
+  métricas nativas sólo aparecen con cobertura válida por plataforma. CRM,
+  ROI, atribución, auditorías y exportaciones dependientes continúan bloqueados
+  sin Interests certificado; no se consume la recuperación/proyección mensual
+  de Interests ni se certifica cobertura de octubre.
+- Se actualizó `docs/informe-campanas.md`. La matriz queda sin cambio porque el
+  diff sólo conecta una URL con un preset de fechas preexistente: no altera
+  fuente, universo, KPI, fórmula, disponibilidad ni trazabilidad. Evidencia:
+  `resources/js/reports/campaigns-dashboard.js`. El responsable funcional
+  informó `node --test tests/js/campaign-presentation.test.mjs` correcto
+  (31 pruebas); esta revisión documental no ejecutó Node, PHP, migraciones,
+  Salesforce, benchmark ni producción. No requiere `DECISIONS.md`.
 
 ## 2026-11-12 — correctivo UI tras PR #125
 

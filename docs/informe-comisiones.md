@@ -1,6 +1,6 @@
 # Informe de Comisiones
 
-Actualizado: 2026-08-24.
+Actualizado: 2026-11-12.
 
 La guía completa, orientada a presentar y auditar la pestaña **Financieros**, se
 encuentra en `docs/informe-comisiones-financieras.md`. Incluye campos Salesforce,
@@ -26,6 +26,17 @@ fórmulas, cierres, auditorías, filtros, API ni exportaciones de ninguna pesta�
 El mes solicitado se conserva en URL y selector. El mes actual puede consultarse
 y siempre se muestra como `Provisional`; ninguna pestaña cambia por su cuenta al
 último mes cerrado.
+
+### Acceso a octubre de 2026
+
+El enlace «Octubre 2026» solicita el mes ya soportado `2026-10` y conserva la
+pestaña activa (`tab`) de Comisiones. El selector se denomina «Mes del informe»:
+elegir un mes sirve para consultar su misma vista, no declara que esté cerrado.
+No cambia la disponibilidad ni la cobertura de las fuentes, los requisitos de
+readiness, la fórmula económica, los cierres o reaperturas, ni las exportaciones.
+En particular, el enlace no acredita cobertura de octubre ni aprueba ningún
+cierre definitivo; el estado de cada scope se mantiene sujeto a sus controles
+ordinarios.
 
 La proyección local de Opportunity conserva `Captador_de_cita__c` y el nombre
 relacionado como `appointment_setter_id` y `appointment_setter_name` para una
