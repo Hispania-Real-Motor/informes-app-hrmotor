@@ -60,6 +60,7 @@
                 <button type="button" data-period-days="30">30 días</button>
                 <button type="button" data-period-days="120">120 días</button>
                 <button type="button" data-current-month>Mes actual</button>
+                <a class="secondary-button" href="{{ route('reports.stock.index', ['section' => $activeStockTab, 'date_from' => '2026-10-01', 'date_to' => '2026-10-31']) }}">Octubre 2026</a>
             </div>
             <a class="secondary-button" href="{{ route('reports.stock.index', ['section' => $activeStockTab]) }}">Limpiar</a>
             <button class="main-tab active" type="submit">Aplicar filtros</button>

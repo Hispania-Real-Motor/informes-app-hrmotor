@@ -72,10 +72,13 @@ class StockDashboardDatasetService
         $saleValue = (float) $stock->sum(fn ($vehicle) => (float) ($vehicle->sale_price ?? 0));
         $stockHistory = $section === 'summary' ? $this->stockHistory($filters) : $this->emptyStockHistory();
         $currentAvailable = $stock->where('state', 'Disponible')->count();
+        $historicalPeriod = $filters['date_to'] < $today->toDateString();
         $stockDenominator = $stockHistory['sufficient']
             ? $stockHistory['average_available']
-            : $currentAvailable;
-        $salesStockRatio = $stockDenominator > 0 ? round($sales->count() / $stockDenominator, 2) : null;
+            : ($historicalPeriod ? null : $currentAvailable);
+        $salesStockRatio = $stockDenominator !== null && $stockDenominator > 0
+            ? round($sales->count() / $stockDenominator, 2)
+            : null;
         $ageBuckets = $this->ageBuckets($ages, $stock->count());
 
         $detailRows = collect();
@@ -250,7 +253,8 @@ class StockDashboardDatasetService
                 'average_rotation' => $rotations->isNotEmpty() ? round($rotations->average(), 1) : null,
                 'sales' => $sales->count(),
                 'sales_stock_ratio' => $salesStockRatio,
-                'sales_stock_approximate' => ! $stockHistory['sufficient'],
+                'sales_stock_approximate' => ! $stockHistory['sufficient'] && ! $historicalPeriod,
+                'sales_stock_unavailable' => ! $stockHistory['sufficient'] && $historicalPeriod,
                 ...$ageBuckets,
             ],
             'stockHistory' => $stockHistory,
@@ -591,7 +595,9 @@ class StockDashboardDatasetService
             'expected_days' => $expected,
             'coverage' => round($coverage * 100, 1),
             'sufficient' => $coverage >= 0.8,
-            'average_available' => $availableByDate->isNotEmpty() ? round($availableByDate->average(), 1) : 0,
+            'average_available' => $dates->isNotEmpty()
+                ? round($dates->avg(fn (string $date): int => (int) ($availableByDate->get($date) ?? 0)), 1)
+                : 0,
             'series' => $dates->map(function (string $date) use ($historyRows): array {
                 $rows = $historyRows->filter(fn ($row) => $row->snapshot_date->toDateString() === $date);
 

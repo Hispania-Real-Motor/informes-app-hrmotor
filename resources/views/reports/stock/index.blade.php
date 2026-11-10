@@ -29,6 +29,8 @@
                 <span>Corte: {{ $stockDatasetCutoff ? \Carbon\CarbonImmutable::parse($stockDatasetCutoff)->format('d/m/Y H:i:s') : 'pendiente' }}</span>
                 @if ($summary['sales_stock_approximate'])
                     <span class="stock-warning-pill">Ventas/stock: aproximación</span>
+                @elseif ($summary['sales_stock_unavailable'] ?? false)
+                    <span class="stock-warning-pill">Ventas/stock: sin datos suficientes del período</span>
                 @endif
             </div>
         </section>
