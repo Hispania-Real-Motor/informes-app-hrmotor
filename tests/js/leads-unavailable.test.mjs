@@ -22,13 +22,19 @@ function createClassList() {
     };
 }
 
-function createDashboardContext(fetch) {
+function createDashboardContext(fetch, {
+    initialLeadPeriod = null,
+    periodOptions = ['last_30_days', 'current_month', 'previous_month', 'october_2026', 'custom'],
+} = {}) {
     const elements = new Map();
+    const navigations = [];
+    const documentListeners = new Map();
     const element = (id) => {
         if (!elements.has(id)) {
             const listeners = new Map();
             elements.set(id, {
                 value: '',
+                options: id === 'period' ? periodOptions.map((value) => ({ value })) : [],
                 innerHTML: 'old figures',
                 textContent: '',
                 title: '',
@@ -40,6 +46,9 @@ function createDashboardContext(fetch) {
                 setAttribute(name, value) {
                     this.attributes.set(name, value);
                 },
+                insertAdjacentHTML(_position, html) {
+                    this.innerHTML += html;
+                },
             });
         }
 
@@ -48,16 +57,23 @@ function createDashboardContext(fetch) {
 
     const context = vm.createContext({
         document: {
-            addEventListener() {},
+            addEventListener: (name, listener) => documentListeners.set(name, listener),
             getElementById: element,
             querySelectorAll: () => [],
         },
         window: {
             localStorage: { getItem: () => null, setItem() {} },
             reportUserCanAudit: false,
+            initialLeadPeriod,
+            isOctoberProvisional: false,
+            location: {
+                origin: 'https://informes.example.test',
+                assign: (url) => navigations.push(url),
+            },
         },
         fetch,
         AbortController,
+        URL,
         URLSearchParams,
         Intl,
         Map,
@@ -67,7 +83,12 @@ function createDashboardContext(fetch) {
 
     vm.runInContext(dashboardScript, context);
 
-    return { context, element };
+    return {
+        context,
+        element,
+        navigations,
+        start: () => documentListeners.get('DOMContentLoaded')?.(),
+    };
 }
 
 function hasClass(element, className) {
@@ -288,4 +309,139 @@ test('October provisional controls send exact combined dimensions instead of fil
     assert.equal(query.get('medium'), 'Orgánico');
     assert.equal(query.get('channel'), 'Formulario');
     assert.equal(query.get('status'), 'Potencial');
+});
+
+test('official and provisional KPI cards preserve their own descriptions and unavailable values', () => {
+    const { context, element } = createDashboardContext(async () => ({ ok: true, json: async () => ({}) }));
+    const kpis = {
+        leads_totales: 0,
+        convertidos: 2,
+        descartados: 1,
+        potenciales: 3,
+        conversion_pct: 40,
+        descarte_pct: 20,
+        without_eligible_commercial: null,
+        without_commercial_delegation: null,
+        unclassified: 4,
+        leads_unassigned: null,
+        potenciales_sin_trabajar: null,
+        gestionados: null,
+        gestionados_pct: null,
+        llamadas: null,
+        llamadas_pct: null,
+        formularios: null,
+        formularios_pct: null,
+    };
+
+    vm.runInContext(`renderKpis(${JSON.stringify(kpis)}, false)`, context);
+    assert.match(element('summaryKpis').innerHTML, /Bolsa viva/);
+    assert.match(element('summaryKpis').innerHTML, /Solo Status Potencial/);
+    assert.doesNotMatch(element('summaryKpis').innerHTML, /requiere actividad histórica acreditada/);
+
+    vm.runInContext(`renderKpis(${JSON.stringify(kpis)}, true)`, context);
+    assert.match(element('summaryKpis').innerHTML, /Muestra del período validado/);
+    assert.match(element('summaryKpis').innerHTML, /No disponible/);
+    assert.match(element('summaryKpis').innerHTML, /requiere actividad histórica acreditada/);
+});
+
+test('the initial period is applied before the first dashboard request', async (t) => {
+    const periods = ['current_month', 'previous_month', 'custom', 'last_30_days', 'october_2026', null];
+
+    for (const initialLeadPeriod of periods) {
+        await t.test(initialLeadPeriod || 'default', async () => {
+            const calls = [];
+            const { context, element, start } = createDashboardContext(async (url) => {
+                calls.push(url);
+
+                return {
+                    ok: true,
+                    json: async () => url.includes('/summary?') ? { generation_id: 42, filters: {} } : {},
+                };
+            }, { initialLeadPeriod });
+
+            element('period').value = 'last_30_days';
+            element('customPeriods').classList.add('is-hidden');
+            vm.runInContext(`
+                bindTabs = bindFilters = bindResetFilters = bindTableSorting = bindLeadCommercialTabs = () => {};
+                initLeadCommercialColumns = initLeadCommercialZoneColumns = initLeadCommercialDelegationColumns = () => {};
+                bindLeadCommercialSearch = bindReconciliationAudit = bindLeadReloadRetry = () => {};
+                renderSummary = renderFilterOptions = renderCommercialZones = renderCommercialDelegations = renderCommercials = renderDelegations = renderPortals = () => {};
+            `, context);
+
+            await start();
+
+            const expectedPeriod = initialLeadPeriod || 'last_30_days';
+            assert.equal(element('period').value, expectedPeriod);
+            assert.equal(
+                new URL(calls[0], 'https://informes.example.test').searchParams.get('period'),
+                expectedPeriod
+            );
+            assert.equal(hasClass(element('customPeriods'), 'is-hidden'), expectedPeriod !== 'custom');
+            assert.equal(element('currentStart').value, '');
+            assert.equal(element('currentEnd').value, '');
+        });
+    }
+
+    await t.test('does not apply October when the authorized option is absent', async () => {
+        const calls = [];
+        const { context, element, start } = createDashboardContext(async (url) => {
+            calls.push(url);
+
+            return {
+                ok: true,
+                json: async () => url.includes('/summary?') ? { generation_id: 42, filters: {} } : {},
+            };
+        }, {
+            initialLeadPeriod: 'october_2026',
+            periodOptions: ['last_30_days', 'current_month', 'previous_month', 'custom'],
+        });
+
+        element('period').value = 'last_30_days';
+        vm.runInContext(`
+            bindTabs = bindFilters = bindResetFilters = bindTableSorting = bindLeadCommercialTabs = () => {};
+            initLeadCommercialColumns = initLeadCommercialZoneColumns = initLeadCommercialDelegationColumns = () => {};
+            bindLeadCommercialSearch = bindReconciliationAudit = bindLeadReloadRetry = () => {};
+            renderSummary = renderFilterOptions = renderCommercialZones = renderCommercialDelegations = renderCommercials = renderDelegations = renderPortals = () => {};
+        `, context);
+
+        await start();
+
+        assert.equal(element('period').value, 'last_30_days');
+        assert.equal(new URL(calls[0], 'https://informes.example.test').searchParams.get('period'), 'last_30_days');
+    });
+});
+
+test('leaving October provisional and resetting filters reloads every official dashboard period', async () => {
+    const calls = [];
+    const { context, element, navigations } = createDashboardContext(async (...args) => {
+        calls.push(args);
+
+        return { ok: true, json: async () => ({}) };
+    });
+    context.window.isOctoberProvisional = true;
+    vm.runInContext('bindFilters(); bindResetFilters();', context);
+
+    const period = element('period');
+    for (const officialPeriod of ['current_month', 'previous_month', 'custom', 'last_30_days']) {
+        period.value = officialPeriod;
+        await period.listener('change')({ currentTarget: period });
+    }
+
+    assert.deepEqual(navigations, [
+        '/informes/leads?period=current_month',
+        '/informes/leads?period=previous_month',
+        '/informes/leads?period=custom',
+        '/informes/leads?period=last_30_days',
+    ]);
+    assert.equal(calls.length, 0);
+
+    await element('resetFilters').listener('click')();
+    assert.deepEqual(navigations, [
+        '/informes/leads?period=current_month',
+        '/informes/leads?period=previous_month',
+        '/informes/leads?period=custom',
+        '/informes/leads?period=last_30_days',
+        '/informes/leads?period=last_30_days',
+    ]);
+    assert.equal(calls.length, 0);
 });

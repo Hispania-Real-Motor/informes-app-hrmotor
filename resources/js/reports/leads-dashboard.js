@@ -70,9 +70,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindLeadCommercialSearch();
     bindReconciliationAudit();
     bindLeadReloadRetry();
+    applyInitialLeadPeriod();
     toggleCustomPeriods();
     await reloadAllData();
 });
+
+function applyInitialLeadPeriod() {
+    const initialPeriod = window.initialLeadPeriod;
+    const period = document.getElementById('period');
+
+    if (typeof initialPeriod !== 'string' || !period) {
+        return;
+    }
+
+    const existsInSelector = [...period.options].some((option) => option.value === initialPeriod);
+
+    if (existsInSelector) {
+        period.value = initialPeriod;
+    }
+}
 
 function bindReconciliationAudit() {
     document.getElementById('reconciliationAudit')?.addEventListener('click', (event) => {
@@ -139,6 +155,12 @@ function bindLeadCommercialTabs() {
 
 function bindResetFilters() {
     document.getElementById('resetFilters')?.addEventListener('click', async () => {
+        if (window.isOctoberProvisional) {
+            navigateToOfficialPeriod('last_30_days');
+
+            return;
+        }
+
         [
             'portal',
             'leadDelegation',
@@ -189,6 +211,12 @@ function bindFilters() {
                     return;
                 }
 
+                if (window.isOctoberProvisional) {
+                    navigateToOfficialPeriod(event.currentTarget.value);
+
+                    return;
+                }
+
                 toggleCustomPeriods();
             }
 
@@ -199,6 +227,13 @@ function bindFilters() {
     document.querySelectorAll('[data-lead-filter-control]').forEach((element) => {
         element.addEventListener('change', reloadAllData);
     });
+}
+
+function navigateToOfficialPeriod(period) {
+    const url = new URL('/informes/leads', window.location.origin);
+    url.searchParams.set('period', period);
+
+    window.location.assign(`${url.pathname}${url.search}`);
 }
 
 async function reloadAllData() {
@@ -280,27 +315,14 @@ function renderSummary(data) {
     empty.classList.toggle('is-hidden', !hasNoData);
     empty.textContent = data.message || 'No hay Interests que coincidan con el periodo y los filtros seleccionados.';
 
-    renderKpis(data.kpis || {});
+    renderKpis(data.kpis || {}, data.provisional === true);
     renderComparison(data.comparativa || []);
     renderInsights(data.insights || []);
 }
 
-function renderKpis(kpis) {
+function renderKpis(kpis, provisional = false) {
     const root = document.getElementById('summaryKpis');
-    const cards = [
-        { label: 'Intereses totales', value: formatKpiValue(kpis.leads_totales), hint: 'Muestra del periodo', metric: 'leads_totales' },
-        { label: 'Convertidos', value: formatKpiValue(kpis.convertidos), hint: `${formatPercent(kpis.conversion_pct)} sobre total`, metric: 'convertidos' },
-        { label: 'Descartados', value: formatKpiValue(kpis.descartados), hint: `${formatPercent(kpis.descarte_pct)} sobre total`, metric: 'descartados' },
-        { label: 'Potenciales', value: formatKpiValue(kpis.potenciales), hint: 'Estado Potencial acreditado', metric: 'potenciales' },
-        { label: 'Sin comercial elegible', value: formatKpiValue(kpis.without_eligible_commercial), hint: 'No disponible sin snapshot histórico de usuarios', metric: null },
-        { label: 'Sin delegación comercial', value: formatKpiValue(kpis.without_commercial_delegation), hint: 'No disponible sin snapshot histórico de usuarios', metric: null },
-        { label: 'Sin clasificar', value: formatKpiValue(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: 'unclassified' },
-        { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: 'No disponible sin atribución histórica de owner', metric: null },
-        { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
-        { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
-        { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
-        { label: 'Formularios', value: formatKpiValue(kpis.formularios), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
-    ];
+    const cards = provisional ? provisionalKpiCards(kpis) : officialKpiCards(kpis);
 
     root.innerHTML = '';
 
@@ -316,6 +338,40 @@ function renderKpis(kpis) {
             </div>
         `);
     });
+}
+
+function officialKpiCards(kpis) {
+    return [
+        { label: 'Intereses totales', value: formatNumber(kpis.leads_totales), hint: 'Muestra del periodo', metric: 'leads_totales' },
+        { label: 'Convertidos', value: formatNumber(kpis.convertidos), hint: `${formatPercent(kpis.conversion_pct)} sobre total`, metric: 'convertidos' },
+        { label: 'Descartados', value: formatNumber(kpis.descartados), hint: `${formatPercent(kpis.descarte_pct)} sobre total`, metric: 'descartados' },
+        { label: 'Potenciales', value: formatNumber(kpis.potenciales), hint: 'Bolsa viva', metric: 'potenciales' },
+        { label: 'Sin comercial elegible', value: formatNumber(kpis.without_eligible_commercial), hint: 'Sin usuario activo de perfil comercial válido', metric: 'without_eligible_commercial' },
+        { label: 'Sin delegación comercial', value: formatNumber(kpis.without_commercial_delegation), hint: 'Comercial elegible sin delegación resoluble', metric: 'without_commercial_delegation' },
+        { label: 'Sin clasificar', value: formatNumber(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: 'unclassified' },
+        { label: 'Intereses sin asignar', value: formatNumber(kpis.leads_unassigned), hint: 'Bolsa viva técnica', metric: 'leads_unassigned' },
+        { label: 'Potenciales sin trabajar', value: formatNumber(kpis.potenciales_sin_trabajar), hint: 'Solo Status Potencial', metric: 'potenciales_sin_trabajar' },
+        { label: 'Gestionados', value: formatNumber(kpis.gestionados), hint: `${formatPercent(kpis.gestionados_pct)} sobre total`, metric: 'gestionados' },
+        { label: 'Llamadas', value: formatNumber(kpis.llamadas), hint: `${formatPercent(kpis.llamadas_pct)} del total`, metric: 'llamadas' },
+        { label: 'Formularios', value: formatNumber(kpis.formularios), hint: `${formatPercent(kpis.formularios_pct)} del total`, metric: 'formularios' },
+    ];
+}
+
+function provisionalKpiCards(kpis) {
+    return [
+        { label: 'Intereses totales', value: formatKpiValue(kpis.leads_totales), hint: 'Muestra del período validado', metric: null },
+        { label: 'Convertidos', value: formatKpiValue(kpis.convertidos), hint: `${formatPercent(kpis.conversion_pct)} sobre total`, metric: null },
+        { label: 'Descartados', value: formatKpiValue(kpis.descartados), hint: `${formatPercent(kpis.descarte_pct)} sobre total`, metric: null },
+        { label: 'Potenciales', value: formatKpiValue(kpis.potenciales), hint: 'Estado Potencial acreditado', metric: null },
+        { label: 'Sin comercial elegible', value: formatKpiValue(kpis.without_eligible_commercial), hint: 'No disponible sin snapshot histórico de usuarios', metric: null },
+        { label: 'Sin delegación comercial', value: formatKpiValue(kpis.without_commercial_delegation), hint: 'No disponible sin snapshot histórico de usuarios', metric: null },
+        { label: 'Sin clasificar', value: formatKpiValue(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: null },
+        { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: 'No disponible sin atribución histórica de owner', metric: null },
+        { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
+        { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
+        { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
+        { label: 'Formularios', value: formatKpiValue(kpis.formularios), hint: 'No disponible: requiere actividad histórica acreditada', metric: null },
+    ];
 }
 
 function renderComparison(rows) {
