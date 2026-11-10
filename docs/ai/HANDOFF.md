@@ -1,6 +1,6 @@
 # Handoff para agentes
 
-## 2026-11-12 — allowlist operacional para preparación de noviembre
+## 2026-11-10 — allowlist operacional para preparación de noviembre
 
 - `OPERATIONS_SCHEDULED_TASK_KEYS` controla exclusivamente el scheduler del
   catálogo operativo. Si la variable no existe, conserva el calendario previo;

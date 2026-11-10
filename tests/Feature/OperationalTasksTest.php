@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\Process\Process;
 use Tests\Concerns\AssertsOperationalSchedule;
 use Tests\TestCase;
@@ -84,7 +85,7 @@ class OperationalTasksTest extends TestCase
             ->assertExitCode(1);
         $this->assertDatabaseCount('operational_task_runs', 0);
 
-        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $this->expectException(HttpException::class);
         app(OperationalTaskService::class)->claim('salesforce-sync-interest-reporting', 'scheduler');
     }
 
