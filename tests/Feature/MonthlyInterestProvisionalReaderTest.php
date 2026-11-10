@@ -131,18 +131,23 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
         app(MonthlyInterestProvisionalReader::class)->validate(2);
     }
 
-    public function test_newer_completed_revision_without_validation_blocks_older_snapshot(): void
+    public function test_newer_completed_revision_without_validation_preserves_only_an_integral_older_snapshot(): void
     {
         $this->seedNovember();
-        app(MonthlyInterestProvisionalReader::class)->validate(2);
+        $reader = app(MonthlyInterestProvisionalReader::class);
+        $reader->validate(2);
+        $first = $reader->latestForMonth(2026, 11);
         $newer = (array) DB::table('salesforce_interest_monthly_recoveries')->find(2);
         $newer['id'] = 3;
         $newer['recovery_identifier'] = (string) Str::uuid();
         $newer['revision'] = 2;
         DB::table('salesforce_interest_monthly_recoveries')->insert($newer);
 
+        $this->assertSame($first['projection_key'], $reader->latestForMonth(2026, 11)['projection_key']);
+        DB::table('salesforce_interest_monthly_integrity_revisions')
+            ->where('scope', 'monthly_recovery_2')->update(['revision' => DB::raw('revision + 1')]);
         $this->expectException(ProvisionalInterestSourceUnavailable::class);
-        app(MonthlyInterestProvisionalReader::class)->latestForMonth(2026, 11);
+        $reader->latestForMonth(2026, 11);
     }
 
     public function test_validation_chunks_more_than_five_hundred_interests(): void
