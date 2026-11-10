@@ -17,13 +17,13 @@
             <span class="lead-load-state__spinner" aria-hidden="true"></span>
             <span class="lead-load-state__eyebrow">Informe de Intereses</span>
             <h2>Cargando información</h2>
-            <p>Estamos consultando la última información certificada.</p>
+            <p>Estamos consultando los datos disponibles.</p>
         </div>
         <div class="is-hidden" id="leadUnavailableState">
             <span class="lead-load-state__eyebrow">Informe de Intereses</span>
             <h2>Información temporalmente no disponible</h2>
-            <p>Estamos realizando un proceso de reconstrucción y validación de los datos de Salesforce para garantizar la fiabilidad de los indicadores.</p>
-            <p class="lead-load-state__secondary">Los resultados volverán a mostrarse cuando la información esté correctamente verificada.</p>
+            <p>Los datos de este período no están disponibles.</p>
+            <p class="lead-load-state__secondary">Prueba otro período o inténtalo de nuevo más tarde.</p>
         </div>
         <div class="is-hidden" id="leadGenericErrorState" role="alert">
             <span class="lead-load-state__eyebrow">Informe de Intereses</span>
@@ -41,7 +41,7 @@
                 <option value="current_month">Mes actual</option>
                 <option value="previous_month">Mes anterior</option>
                 @if ($octoberProvisionalEnabled ?? false)
-                    <option value="october_2026" @selected(($initialLeadPeriod ?? null) === 'october_2026')>Octubre 2026 · provisional</option>
+                    <option value="october_2026" @selected(($initialLeadPeriod ?? null) === 'october_2026')>Octubre 2026</option>
                 @endif
                 <option value="custom">Personalizado</option>
             </select>
@@ -127,8 +127,8 @@
 
     @if($isOctoberProvisional ?? false)
         <section class="notice" id="octoberProvisionalNotice" aria-live="polite">
-            <strong>Octubre de 2026 · provisional y no certificado históricamente.</strong>
-            Los filtros se aplican al universo mensual validado de Interests activos con contenido coincidente. No sustituye la fuente oficial publicada; comerciales, actividad y comparativas permanecen no disponibles por falta de evidencia histórica suficiente.
+            <strong>Octubre 2026 · datos reconstruidos.</strong>
+            Los filtros se aplican a los Intereses activos disponibles de ese mes. Algunas métricas comerciales y de actividad todavía no tienen datos suficientes.
         </section>
     @endif
 
@@ -177,7 +177,7 @@
                     <span>Periodo actual</span>
                     <strong id="currentPeriodLabel">-</strong>
                 </div>
-                <div class="card period-card">
+                <div class="card period-card @if($isOctoberProvisional ?? false) is-hidden @endif">
                     <span>Periodo comparado</span>
                     <strong id="comparisonPeriodLabel">-</strong>
                 </div>
@@ -185,16 +185,13 @@
 
             <section class="kpis dashboard-kpis" id="summaryKpis"></section>
 
-            <section class="card panel">
+            <section class="card panel @if($isOctoberProvisional ?? false) is-hidden @endif">
                 <div class="panel-title">
                     <div>
                         <h2>Comparativa basica</h2>
                         <div class="small">Periodo actual frente al periodo comparado</div>
                     </div>
                 </div>
-                @if($isOctoberProvisional ?? false)
-                    <div class="notice">No disponible para octubre provisional: no existe un período comparable validado.</div>
-                @endif
                 <div class="table-wrap">
                     <table>
                         <thead>
@@ -232,7 +229,7 @@
                     </div>
                 </div>
                 @if($isOctoberProvisional ?? false)
-                    <div class="notice">No disponible para octubre provisional: falta un snapshot histórico de usuarios comerciales elegibles y su delegación.</div>
+                    <div class="notice">Sin datos suficientes de comerciales y delegaciones para octubre.</div>
                 @endif
                 <div class="table-wrap">
                     <table id="leadCommercialZonesTable">
@@ -335,7 +332,7 @@
                 <div class="panel-title">
                     <div>
                         <h2>Delegaciones de procedencia</h2>
-                        <div class="small">{{ ($isOctoberProvisional ?? false) ? 'Total de Interests de procedencia. Las métricas de owner técnico no están acreditadas en el inventario provisional.' : 'Total de Intereses frente a potenciales con owner técnico' }}</div>
+                        <div class="small">{{ ($isOctoberProvisional ?? false) ? 'Intereses por delegación de procedencia. La asignación comercial no está disponible para octubre.' : 'Total de Intereses frente a potenciales con owner técnico' }}</div>
                     </div>
                 </div>
                 <div class="table-wrap">
@@ -359,7 +356,7 @@
                 <div class="panel-title">
                     <div>
                         <h2>Fuentes</h2>
-                        <div class="small">{{ ($isOctoberProvisional ?? false) ? 'Fuente del Interest. Actividad y gestión solo se muestran cuando están acreditadas.' : 'Fuente del Interest en Salesforce' }}</div>
+                        <div class="small">{{ ($isOctoberProvisional ?? false) ? 'Intereses por fuente. La actividad y la gestión requieren más datos.' : 'Fuente del Interest en Salesforce' }}</div>
                     </div>
                 </div>
                 <div class="table-wrap">

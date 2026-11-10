@@ -1388,7 +1388,7 @@ class ReservationsSalesCommercialPerformanceTest extends TestCase
         $this->assertStringContainsString('id="performanceCurrentMonthNotice"', $html);
         $this->assertStringContainsString('function renderPerformanceCurrentMonthNotice(month)', $javascript);
         $this->assertStringContainsString('month === window.commercialPerformanceCurrentMonth', $javascript);
-        $this->assertStringContainsString('Mes en curso · Resultado provisional.', $javascript);
+        $this->assertStringContainsString('Mes en curso. Los datos muestran la actividad acumulada', $javascript);
         $this->assertStringContainsString('El objetivo mensual no se prorratea', $javascript);
         $this->assertStringContainsString('renderPerformanceCurrentMonthNotice(data.month);', $javascript);
         $this->assertStringContainsString("'performanceCurrentMonthNotice'", $javascript);

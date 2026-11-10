@@ -53,18 +53,18 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'periodo_actual' => ['inicio' => '2026-10-01', 'fin' => '2026-10-31', 'etiqueta' => 'Octubre de 2026'],
             'periodo_comparado' => null,
             'empty' => $bucket['leads_totales'] === 0,
-            'message' => $bucket['leads_totales'] === 0 ? 'No hay Interests que coincidan con los filtros del inventario provisional validado.' : null,
+            'message' => $bucket['leads_totales'] === 0 ? 'No hay Intereses que coincidan con los filtros de octubre.' : null,
             'kpis' => $bucket,
             'comparativa' => [],
             'insights' => [
-                'Inventario mensual provisional: '.$overview['coverage']['eligible_active_matching'].' Interests activos con contenido coincidente.',
-                'No existe una base histórica comparable certificada para octubre; la comparativa y los indicadores de actividad permanecen no disponibles.',
+                'Datos de octubre: '.$overview['coverage']['eligible_active_matching'].' Intereses activos disponibles.',
+                'Las comparativas y los indicadores de actividad requieren más datos.',
             ],
             'filters' => $this->filterOptions($snapshot),
             'availability' => [
-                'commercials' => 'No disponible: falta el snapshot histórico de usuarios comerciales elegibles.',
-                'activity' => 'No disponible: F5 no acredita relaciones y estado histórico suficientes para actividad o gestión.',
-                'comparison' => 'No disponible: no hay período comparable validado.',
+                'commercials' => 'Sin datos suficientes de comerciales para octubre.',
+                'activity' => 'Sin datos suficientes de actividad y gestión para octubre.',
+                'comparison' => 'Sin datos suficientes para comparar con otro período.',
             ],
             'coverage' => $overview['coverage'],
         ];
@@ -102,7 +102,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'delegations' => [],
             'commercials' => [],
             'items' => [],
-            'message' => 'No disponible: la evidencia provisional no conserva un snapshot histórico de usuarios comerciales y sus delegaciones.',
+            'message' => 'Sin datos suficientes de comerciales y delegaciones para octubre.',
         ];
     }
 

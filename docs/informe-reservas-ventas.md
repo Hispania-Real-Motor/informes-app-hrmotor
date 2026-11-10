@@ -392,12 +392,12 @@ El selector de Rendimiento comercial abre en el mes natural anterior de
 Por tanto, el primer día de enero selecciona diciembre del año anterior. El mes
 actual continúa disponible para selección manual.
 
-Al consultar el mes actual se muestra **Mes en curso · Resultado provisional**.
-La actividad es la acumulada hasta el momento, pero el objetivo mensual completo
-no se prorratea: cumplimiento, estado, ranking y comparativas mantienen las
-fórmulas aprobadas y se interpretan como provisionales. Los meses anteriores no
-muestran ese aviso. Durante loading o error el aviso previo se oculta junto con
-los datos de la carga anterior.
+Al consultar el mes actual se muestra **Mes en curso**. La actividad es la
+acumulada hasta el momento, pero el objetivo mensual completo no se prorratea:
+cumplimiento, estado, ranking y comparativas mantienen las fórmulas aprobadas y
+no constituyen un cierre del mes. Los meses anteriores no muestran ese aviso.
+Durante loading o error el aviso previo se oculta junto con los datos de la
+carga anterior.
 
 ### Resiliencia de filtros y auditoría
 

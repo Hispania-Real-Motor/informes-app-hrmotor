@@ -74,7 +74,7 @@ class CommercialCommissionSourceReadinessTest extends TestCase
 
         $this->assertFalse($state['ready']);
         $this->assertSame('stale', data_get($state, 'components.sales.status'));
-        $this->assertStringContainsString('último corte', data_get($state, 'components.sales.message'));
+        $this->assertSame('Datos pendientes de actualización.', data_get($state, 'components.sales.message'));
     }
 
     public function test_current_month_accepts_overlapping_runs_when_the_union_is_continuous(): void
@@ -101,7 +101,7 @@ class CommercialCommissionSourceReadinessTest extends TestCase
         $state = app(CommercialCommissionSourceReadinessService::class)->inspect('call_center', '2026-10', ['issues' => []]);
 
         $this->assertFalse($state['ready']);
-        $this->assertStringContainsString('hueco real', data_get($state, 'components.sales.message'));
+        $this->assertSame('Faltan datos de una parte del mes seleccionado.', data_get($state, 'components.sales.message'));
     }
 
     public function test_closed_month_still_requires_one_completed_run_covering_the_full_natural_month(): void

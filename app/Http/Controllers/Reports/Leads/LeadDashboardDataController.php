@@ -95,7 +95,7 @@ class LeadDashboardDataController extends Controller
         try {
             return response()->json($callback())->header('Cache-Control', 'no-store, private');
         } catch (ProvisionalInterestSourceUnavailable) {
-            abort(503, 'La fuente provisional no supera las comprobaciones de integridad.');
+            abort(503, 'Los datos de octubre están pendientes de actualización.');
         }
     }
 
@@ -104,7 +104,7 @@ class LeadDashboardDataController extends Controller
         if ($this->isOctober($request)) {
             return $this->provisionalJson(fn (): array => [
                 'items' => [],
-                'message' => 'La auditoría detallada no está disponible para el inventario provisional.',
+                'message' => 'El detalle de auditoría no está disponible para octubre.',
             ]);
         }
 
