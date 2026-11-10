@@ -379,9 +379,19 @@ reglas: sólo entrega la evidencia cuya revisión sigue vigente.
 
 No son KPI comerciales certificados. La atribución a comercial y su delegación
 requieren instantánea histórica de `SalesforceUser`, inexistente en F2M; los
-KPI de actividad requieren estado de relación F5 y certificación histórica,
-también ausentes. Por ello permanecen indisponibles, igual que Dirección,
-comparativas y los consumidores oficiales; no cambia la generación publicada.
+KPI de actividad directa requieren estado de relación F5 y certificación
+histórica, también ausentes. Por ello permanecen indisponibles, igual que
+Dirección, comparativas y los consumidores oficiales; no cambia la generación
+publicada.
+
+La Fase 3 añade sólo dos recuentos de canal en la proyección: `Llamadas` cuenta
+filas F2M aptas cuyo `channel` materializado es exactamente `Llamada`, y
+`Formularios` las de valor exactamente `Formulario`. Se calculan después de
+aplicar todos los filtros combinados a la proyección y sus porcentajes usan el
+total filtrado, redondeado a dos decimales (0 % si el total es 0). No son
+actividades `Task` ni resultados de `CallObject`, no leen F5 y no certifican
+gestión, llamadas atendidas, formularios de actividad ni el informe de
+Llamadas.
 
 La pantalla puede declarar el resumen de Interests disponible **con límites de
 cobertura** sólo dentro de ese contexto administrativo. Dirección, KPI y

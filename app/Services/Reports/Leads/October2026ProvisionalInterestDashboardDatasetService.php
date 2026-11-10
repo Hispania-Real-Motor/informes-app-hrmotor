@@ -164,11 +164,15 @@ final class October2026ProvisionalInterestDashboardDatasetService
             ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' THEN 1 ELSE 0 END) as potenciales")
+            ->selectRaw("SUM(CASE WHEN channel = 'Llamada' THEN 1 ELSE 0 END) as llamadas")
+            ->selectRaw("SUM(CASE WHEN channel = 'Formulario' THEN 1 ELSE 0 END) as formularios")
             ->selectRaw("SUM(CASE WHEN origin_delegation = 'Sin clasificar' THEN 1 ELSE 0 END) as unclassified")
             ->first();
         $total = (int) ($result->leads_totales ?? 0);
         $converted = (int) ($result->convertidos ?? 0);
         $discarded = (int) ($result->descartados ?? 0);
+        $calls = (int) ($result->llamadas ?? 0);
+        $forms = (int) ($result->formularios ?? 0);
 
         return [
             'leads_totales' => $total,
@@ -181,10 +185,10 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'leads_unassigned' => null,
             'gestionados' => null,
             'gestionados_pct' => null,
-            'llamadas' => null,
-            'llamadas_pct' => null,
-            'formularios' => null,
-            'formularios_pct' => null,
+            'llamadas' => $calls,
+            'llamadas_pct' => $this->percentage($calls, $total),
+            'formularios' => $forms,
+            'formularios_pct' => $this->percentage($forms, $total),
             'without_eligible_commercial' => null,
             'without_commercial_delegation' => null,
             'unclassified' => (int) ($result->unclassified ?? 0),
@@ -199,6 +203,8 @@ final class October2026ProvisionalInterestDashboardDatasetService
             ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' THEN 1 ELSE 0 END) as potenciales")
+            ->selectRaw("SUM(CASE WHEN channel = 'Llamada' THEN 1 ELSE 0 END) as llamadas")
+            ->selectRaw("SUM(CASE WHEN channel = 'Formulario' THEN 1 ELSE 0 END) as formularios")
             ->groupBy($column)
             ->orderByDesc('leads_totales')
             ->orderBy($column)
@@ -207,6 +213,8 @@ final class October2026ProvisionalInterestDashboardDatasetService
                 $total = (int) $row->leads_totales;
                 $converted = (int) $row->convertidos;
                 $discarded = (int) $row->descartados;
+                $calls = (int) $row->llamadas;
+                $forms = (int) $row->formularios;
 
                 return [
                     $output => (string) $row->{$column},
@@ -219,10 +227,10 @@ final class October2026ProvisionalInterestDashboardDatasetService
                     'potenciales_sin_trabajar' => null,
                     'gestionados' => null,
                     'gestionados_pct' => null,
-                    'llamadas' => null,
-                    'llamadas_pct' => null,
-                    'formularios' => null,
-                    'formularios_pct' => null,
+                    'llamadas' => $calls,
+                    'llamadas_pct' => $this->percentage($calls, $total),
+                    'formularios' => $forms,
+                    'formularios_pct' => $this->percentage($forms, $total),
                     'leads_unassigned' => null,
                     'leads_unassigned_pct' => null,
                 ];

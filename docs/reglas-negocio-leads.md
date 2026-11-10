@@ -163,19 +163,33 @@ pantalla.
 Son agregados provisionales de campos F2M, no los KPI comerciales oficiales.
 Comerciales elegibles y delegaciones comerciales permanecen indisponibles por
 no existir instantánea histórica de `SalesforceUser`; los KPI de actividad
-siguen indisponibles porque no hay estado de relación F5 ni certificación
+directa siguen indisponibles porque no hay estado de relación F5 ni certificación
 histórica. No habilitan Dirección, comparativas, Reservas/Ventas, Rendimiento,
-Campañas, Llamadas, SEO, CSV ni auditorías oficiales.
+Campañas, el informe de Llamadas, SEO, CSV ni auditorías oficiales.
+
+### Fase 3: Llamadas y Formularios por canal materializado
+
+En el mismo universo F2M activo y con contenido coincidente, ya restringido por
+la combinación de filtros de octubre, el resumen y los desgloses por procedencia
+y fuente cuentan `channel = 'Llamada'` y `channel = 'Formulario'`. Cada
+porcentaje es `conteo / total filtrado * 100`, redondeado a dos decimales; si el
+total filtrado es cero, el porcentaje es `0`, no una estimación.
+
+Estos dos indicadores describen el canal materializado del Interest. No leen
+`salesforce_calls`, no consultan `Task`/`CallObject`, no miden llamadas
+atendidas ni gestión, y no utilizan ni certifican F5. Por tanto, no convierten
+la actividad directa, gestionados, potenciales sin trabajar, comerciales,
+delegaciones comerciales, owner/no asignados ni comparativas en disponibles.
 
 La proyección conserva una fila por Interest F2M apto sólo con las categorías
 filtrables y normalizadas (sin ID de Interest, `raw_payload` ni datos de
 Salesforce sin agregar). Permite total, Convertidos, Descartados, Potenciales,
 porcentajes de conversión/descarte y Sin clasificar dentro del resultado
 filtrado. Permanecen como `No disponible` comercial elegible, delegación
-comercial, owner/no asignados, potenciales sin trabajar, gestionados, llamadas,
-formularios, detalle de actividad y comparativas: exigirían una instantánea
-histórica de usuarios o evidencia F5/relación certificada que esta fuente no
-conserva.
+comercial, owner/no asignados, potenciales sin trabajar, gestionados, detalle de
+actividad y comparativas: exigirían una instantánea histórica de usuarios o
+evidencia F5/relación certificada que esta fuente no conserva. Llamadas y
+Formularios son la excepción limitada al canal materializado descrita arriba.
 
 En la interfaz de octubre esos límites se expresan como «Sin datos suficientes»
 para evitar exponer etapas o siglas internas. La comparativa no se presenta como

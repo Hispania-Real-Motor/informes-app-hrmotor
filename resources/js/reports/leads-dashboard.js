@@ -369,8 +369,8 @@ function provisionalKpiCards(kpis) {
         { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: 'Sin datos suficientes de asignación', metric: null },
         { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: 'Sin datos suficientes de actividad', metric: null },
         { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: 'Sin datos suficientes de actividad', metric: null },
-        { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'Sin datos suficientes de actividad', metric: null },
-        { label: 'Formularios', value: formatKpiValue(kpis.formularios), hint: 'Sin datos suficientes de actividad', metric: null },
+        { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'Canal Llamada · ' + formatPercent(kpis.llamadas_pct) + ' del total', metric: null },
+        { label: 'Formularios', value: formatKpiValue(kpis.formularios), hint: 'Canal Formulario · ' + formatPercent(kpis.formularios_pct) + ' del total', metric: null },
     ];
 }
 
