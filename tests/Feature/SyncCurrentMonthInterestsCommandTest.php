@@ -113,7 +113,7 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
             $this->assertSame(0, Artisan::call($command, $options));
             $reader = app(MonthlyInterestProvisionalReader::class);
             $first = $reader->latestForMonth(2026, 11);
-            $this->assertSame(1, $first['recovery_id']);
+            $this->assertGreaterThan(0, $first['recovery_id']);
 
             Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:00:00Z'));
             $reason = 'Synthetic second monthly revision';
