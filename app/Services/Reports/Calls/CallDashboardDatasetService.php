@@ -1386,6 +1386,16 @@ class CallDashboardDatasetService
     {
         $now = CarbonImmutable::now();
 
+        if ($filters['period'] === 'october_2026') {
+            $currentStart = CarbonImmutable::parse('2026-10-01 00:00:00', 'Europe/Madrid');
+            $currentEnd = $currentStart->addMonth();
+
+            return [
+                'current' => ['start' => $currentStart, 'end' => $currentEnd],
+                'previous' => ['start' => $currentStart->subMonth(), 'end' => $currentStart],
+            ];
+        }
+
         if ($filters['period'] === 'custom') {
             $currentStart = $this->parseDate($filters['current_start'], $now->subDays(30))->startOfDay();
             $currentEnd = $this->parseDate($filters['current_end'], $now)->endOfDay();
