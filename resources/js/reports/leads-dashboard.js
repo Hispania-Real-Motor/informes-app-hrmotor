@@ -366,7 +366,7 @@ function provisionalKpiCards(kpis) {
         { label: 'Sin comercial elegible', value: formatKpiValue(kpis.without_eligible_commercial), hint: 'Sin datos suficientes de comerciales', metric: null },
         { label: 'Sin delegación comercial', value: formatKpiValue(kpis.without_commercial_delegation), hint: 'Sin datos suficientes de delegaciones comerciales', metric: null },
         { label: 'Sin clasificar', value: formatKpiValue(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: null },
-        { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: 'Sin datos suficientes de asignación', metric: null },
+        { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: kpis.leads_unassigned === null ? 'Sin datos suficientes de asignación' : 'Potenciales con propietario técnico observado', metric: null },
         { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: 'Sin datos suficientes de actividad', metric: null },
         { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: 'Sin datos suficientes de actividad', metric: null },
         { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'Canal Llamada · ' + formatPercent(kpis.llamadas_pct) + ' del total', metric: null },

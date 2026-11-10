@@ -1,5 +1,37 @@
 # Handoff para agentes
 
+## 2026-11-10 — propietarios observados en la proyección aislada de octubre
+
+- La validación administrativa de Interests añade la variante
+  `observed_owners_v1` sobre las mismas filas F2M activas y coincidentes. Agrupa
+  por `owner_key` HMAC y guarda la etiqueta cifrada aparte; la respuesta de
+  administrador puede descifrarla, pero no expone el ID Salesforce ni la
+  convierte en asignación histórica certificada. Se habilitan filtros y
+  desgloses de propietario observado, delegación comercial observada y zona.
+- Delegación/zona proceden sólo de un intervalo único de
+  `commercial_delegation_snapshots` que cubra el corte
+  `2026-10-31T23:00:00Z`. Owner vacío, técnico, falta de intervalo o ambigüedad
+  permanecen diferenciados, sin inferir organigrama. `leads_unassigned` cuenta
+  sólo `Potencial` con owner técnico clasificado; siguen no disponibles comercial
+  elegible, potenciales sin trabajar, gestión y actividad.
+- Las mutaciones de snapshots por rutas Laravel autorizadas revocan la revisión
+  de octubre en la misma transacción sólo si alteran el intervalo que cubre ese
+  corte. HTTP falla cerrado hasta nueva validación y un rollback conserva la
+  evidencia anterior; un cambio posterior que no afecta el intervalo no revoca
+  la proyección. SQL directo no está cubierto. No hay publicación, cambio de
+  lectores oficiales, CSV, auditorías ni KPI de los seis informes. El ajuste del
+  servicio compartido de snapshots no altera los contratos de Reservas/Ventas.
+- Documentación actualizada: `docs/reglas-negocio-leads.md`,
+  `docs/salesforce-interest-generations.md`,
+  `docs/informe-reservas-ventas.md`,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/ai/DECISIONS.md` y este handoff.
+  `PROJECT_CONTEXT.md` no cambia: se extiende una proyección existente, no el
+  módulo ni sus convenciones generales. Esta revisión documental no ejecutó
+  PHP, JavaScript, migraciones, base de datos, Salesforce, benchmark, CI ni
+  producción. Pendiente: validador documental sobre HEAD comprometido y cuerpo
+  de PR. Contrato sugerido: `Docs-Impact: updated` y
+  `Docs-Matrix-Impact: updated`.
+
 ## 2026-11-10 — Fase 3: canales Llamadas/Formularios en octubre
 
 - El dashboard administrativo de Intereses de octubre cuenta `Llamadas` y

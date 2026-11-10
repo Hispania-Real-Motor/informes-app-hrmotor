@@ -4,6 +4,7 @@ namespace App\Services\Reports\Leads;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -193,6 +194,17 @@ final class October2026ProvisionalInterestReader
         $phaseStartedAt = hrtime(true);
         $this->buildDashboardProjection($materializationId, $revision, $projectionKey);
         $metrics['dashboard_projection_ns'] = hrtime(true) - $phaseStartedAt;
+        $projected = DB::table('salesforce_interest_october_provisional_projection_rows')
+            ->where('projection_key', $projectionKey)->count();
+        $withoutLabel = DB::table('salesforce_interest_october_provisional_projection_rows as row')
+            ->leftJoin('salesforce_interest_october_provisional_owners as owner', function ($join): void {
+                $join->on('owner.projection_key', '=', 'row.projection_key')
+                    ->on('owner.owner_key', '=', 'row.owner_key');
+            })
+            ->where('row.projection_key', $projectionKey)->whereNull('owner.id')->exists();
+        if ($projected !== (int) $quality->eligible_active_matching || $withoutLabel) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
 
         $overview = [
             'period' => ['label' => 'Octubre de 2026', 'start_utc' => self::START_UTC, 'end_utc' => self::END_UTC, 'timezone' => 'Europe/Madrid'],
@@ -209,6 +221,8 @@ final class October2026ProvisionalInterestReader
             'by_delegation' => $classification['by_delegation'],
             'classification' => $classification,
             'functional_kpis' => $functionalKpis,
+            'projection_contract' => 'observed_owners_v1',
+            'owner_assignment' => ['source' => 'f2m_owner_observed', 'delegation_source' => 'commercial_delegation_snapshots', 'delegation_cutoff_utc' => self::END_UTC, 'historical_owner_certified' => false],
             'verification' => [
                 'f2_verified' => (bool) data_get($this->json($recovery->evidence), 'verification.verified', false),
                 'materialization_verified' => (bool) data_get($materializationEvidence, 'verification.verified', false),
@@ -219,6 +233,7 @@ final class October2026ProvisionalInterestReader
             'availability' => [
                 'leads_interest_overview' => 'available_with_coverage_limits',
                 'provisional_interest_kpis' => 'available_with_coverage_limits',
+                'observed_owners' => 'available_observed_not_historically_certified',
                 'commercials_eligible' => 'unavailable_missing_historical_salesforce_user_snapshot',
                 'commercial_delegations' => 'unavailable_missing_historical_salesforce_user_snapshot',
                 'activity_kpis' => 'unavailable_missing_relationship_status_and_historical_f5_certification',
@@ -248,6 +263,9 @@ final class October2026ProvisionalInterestReader
             );
             DB::table('salesforce_interest_october_provisional_projection_rows')
                 ->where('scope', 'october_2026_provisional')
+                ->where('projection_key', '!=', $projectionKey)
+                ->delete();
+            DB::table('salesforce_interest_october_provisional_owners')
                 ->where('projection_key', '!=', $projectionKey)
                 ->delete();
         });
@@ -478,41 +496,67 @@ final class October2026ProvisionalInterestReader
     {
         $normalizer = app(LeadDelegationNormalizer::class);
         $recordTypes = app(LeadRecordTypeNormalizer::class);
-        $batch = [];
         $now = now();
 
-        foreach (DB::table('salesforce_interest_monthly_materialized_rows')
+        DB::table('salesforce_interest_monthly_materialized_rows')
             ->where('monthly_materialization_id', $materializationId)
             ->where('content_matches_inventory', true)
             ->where('is_deleted', false)
             ->orderBy('id')
-            ->cursor() as $row) {
-            $delegation = $normalizer->normalize($row->origin_delegation);
-            $batch[] = [
-                'scope' => 'october_2026_provisional',
-                'integrity_revision' => $revision,
-                'projection_key' => $projectionKey,
-                'interest_status' => $this->projectionLabel($row->status),
-                'interest_type' => $recordTypes->label($recordTypes->normalize($row->type)) ?? 'Sin clasificar',
-                'source' => $this->projectionLabel($row->source),
-                'medium' => $this->projectionLabel($row->medium),
-                'channel' => $this->projectionLabel($row->channel),
-                'origin_delegation' => $this->projectionLabel($delegation['delegation']),
-                'origin_group' => $this->projectionLabel($delegation['group']),
-                'origin_zone' => $this->projectionLabel($delegation['zone']),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ];
-
-            if (count($batch) === 500) {
-                DB::table('salesforce_interest_october_provisional_projection_rows')->insert($batch);
+            ->chunkById(500, function ($rows) use ($normalizer, $recordTypes, $revision, $projectionKey, $now): void {
+                $ownerIds = $rows->pluck('owner_salesforce_id')->filter()->unique()->values()->all();
+                $observations = $ownerIds === [] ? collect() : DB::table('commercial_delegation_snapshots')
+                    ->whereIn('salesforce_user_id', $ownerIds)
+                    ->where('observed_from', '<', self::END_UTC)
+                    ->where(function ($query): void {
+                        $query->whereNull('observed_until')->orWhere('observed_until', '>=', self::END_UTC);
+                    })
+                    ->get(['salesforce_user_id', 'delegation', 'zone'])
+                    ->groupBy('salesforce_user_id');
                 $batch = [];
-            }
-        }
-
-        if ($batch !== []) {
-            DB::table('salesforce_interest_october_provisional_projection_rows')->insert($batch);
-        }
+                $labels = [];
+                foreach ($rows as $row) {
+                    $delegation = $normalizer->normalize($row->origin_delegation);
+                    $ownerId = trim((string) $row->owner_salesforce_id);
+                    $ownerName = trim((string) $row->owner_name);
+                    $ownerKey = $ownerId === '' ? 'missing' : hash_hmac('sha256', $ownerId, (string) config('app.key'));
+                    $technical = InterestTechnicalOwnerClassifier::isTechnical($ownerId, $ownerName);
+                    $observed = $ownerId === '' || $technical ? null : $observations->get($ownerId);
+                    $assignment = $observed !== null && $observed->count() === 1 ? $observed->first() : null;
+                    $commercialDelegation = $ownerId === '' ? 'Sin propietario observado' : ($technical ? 'Propietario técnico' : ($assignment->delegation ?? 'Asignación no acreditada'));
+                    $commercialZone = $ownerId === '' ? 'Sin propietario observado' : ($technical ? 'Propietario técnico' : ($assignment->zone ?? 'Asignación no acreditada'));
+                    if (! isset($labels[$ownerKey])) {
+                        $labels[$ownerKey] = [
+                            'projection_key' => $projectionKey,
+                            'owner_key' => $ownerKey,
+                            'name_ciphertext' => $ownerId === '' ? null : Crypt::encryptString(mb_substr($ownerName === '' ? 'Propietario sin nombre' : $ownerName, 0, 191)),
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                    }
+                    $batch[] = [
+                        'scope' => 'october_2026_provisional',
+                        'integrity_revision' => $revision,
+                        'projection_key' => $projectionKey,
+                        'interest_status' => $this->projectionLabel($row->status),
+                        'interest_type' => $recordTypes->label($recordTypes->normalize($row->type)) ?? 'Sin clasificar',
+                        'source' => $this->projectionLabel($row->source),
+                        'medium' => $this->projectionLabel($row->medium),
+                        'channel' => $this->projectionLabel($row->channel),
+                        'origin_delegation' => $this->projectionLabel($delegation['delegation']),
+                        'origin_group' => $this->projectionLabel($delegation['group']),
+                        'origin_zone' => $this->projectionLabel($delegation['zone']),
+                        'owner_key' => $ownerKey,
+                        'owner_is_technical' => $technical,
+                        'commercial_delegation' => $commercialDelegation,
+                        'commercial_zone' => $commercialZone,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+                DB::table('salesforce_interest_october_provisional_projection_rows')->insert($batch);
+                DB::table('salesforce_interest_october_provisional_owners')->insertOrIgnore(array_values($labels));
+            });
     }
 
     private function projectionLabel(mixed $value): string

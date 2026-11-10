@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\ReportUser;
+use App\Models\SalesforceUser;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\Leads\October2026ProvisionalEvidenceInvalidator;
 use App\Services\Reports\Leads\October2026ProvisionalInterestReader;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
+use App\Services\Reports\ReservationsSales\CommercialDelegationSnapshotService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -412,6 +415,112 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         );
     }
 
+    public function test_observed_owners_are_grouped_by_stable_identity_and_unknown_assignments_keep_the_total(): void
+    {
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.october_2026_provisional_enabled', true);
+        $this->seedValidJournals();
+        $ownerA = '005000000000000001';
+        $ownerB = '005000000000000002';
+        $this->appendEligibleRows([
+            ['Potencial', 'Venta', 'Web', 'Pago', 'Formulario', 'Madrid', $ownerA, 'Nombre repetido'],
+            ['Convertido', 'Venta', 'Web', 'Pago', 'Llamada', 'Madrid', $ownerB, 'Nombre repetido'],
+            ['Potencial', 'Venta', 'Web', 'Pago', 'Formulario', 'Madrid', '0052X00000AP4U5QAL', 'API User'],
+        ]);
+        DB::table('commercial_delegation_snapshots')->insert([
+            ['salesforce_user_id' => $ownerA, 'delegation' => 'Madrid', 'zone' => 'Zona Sur y Centro', 'observed_from' => '2026-10-10 00:00:00', 'observed_until' => null, 'source' => 'salesforce_user_observation', 'created_at' => now(), 'updated_at' => now()],
+            ['salesforce_user_id' => $ownerB, 'delegation' => 'Barcelona', 'zone' => 'Zona Cataluña', 'observed_from' => '2026-10-10 00:00:00', 'observed_until' => null, 'source' => 'salesforce_user_observation', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        app(October2026ProvisionalInterestReader::class)->validate();
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+
+        $summary = $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026');
+        $summary->assertOk()->assertJsonPath('kpis.leads_totales', 4)->assertJsonPath('kpis.leads_unassigned', 1);
+        $commercials = $this->asReportUser($admin)->getJson('/informes/leads/data/commercials?period=october_2026');
+        $commercials->assertOk();
+        $items = $commercials->json('commercials');
+        $this->assertSame(4, collect($items)->sum('leads_totales'));
+        $this->assertCount(4, $items);
+        $this->assertCount(2, collect($items)->filter(fn (array $item): bool => str_contains($item['comercial'], 'Nombre repetido')));
+        $this->assertSame(4, collect($commercials->json('delegations'))->sum('leads_totales'));
+        $this->assertSame(4, collect($commercials->json('zones'))->sum('leads_totales'));
+        $this->assertDatabaseCount('salesforce_interest_october_provisional_owners', 4);
+        $this->assertDatabaseMissing('salesforce_interest_october_provisional_owners', ['name_ciphertext' => 'Nombre repetido']);
+
+        $ownerKey = hash_hmac('sha256', $ownerA, (string) config('app.key'));
+        $this->assertContains($ownerKey, collect($summary->json('filters.commercials'))->pluck('id')->all());
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026&commercial='.$ownerKey.'&channel=Formulario')
+            ->assertOk()->assertJsonPath('kpis.leads_totales', 1)->assertJsonPath('kpis.formularios', 1);
+    }
+
+    public function test_commercial_snapshot_change_invalidates_owner_projection_and_rollback_restores_it(): void
+    {
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.october_2026_provisional_enabled', true);
+        $this->seedValidJournals();
+        $ownerId = '005000000000000001';
+        $this->appendEligibleRows([['Potencial', 'Venta', 'Web', 'Pago', 'Formulario', 'Madrid', $ownerId, 'Comercial observado']]);
+        DB::table('commercial_delegation_snapshots')->insert([
+            'salesforce_user_id' => $ownerId, 'delegation' => 'Madrid', 'zone' => 'Zona Sur y Centro',
+            'observed_from' => '2026-10-10 00:00:00', 'observed_until' => null, 'open_marker' => 1,
+            'source' => 'salesforce_user_observation', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        SalesforceUser::query()->create([
+            'salesforce_id' => $ownerId, 'name' => 'Comercial observado', 'is_active' => true,
+            'profile_name' => 'Compra/Venta', 'user_delegation' => 'Barcelona',
+        ]);
+        $reader = app(October2026ProvisionalInterestReader::class);
+        $reader->validate();
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026')->assertOk();
+        $revision = DB::table('salesforce_interest_monthly_integrity_revisions')->where('scope', 'october_2026_provisional')->value('revision');
+
+        try {
+            DB::transaction(function (): void {
+                app(CommercialDelegationSnapshotService::class)->captureCurrentUsers(CarbonImmutable::parse('2026-10-20 10:00:00', 'UTC'));
+                throw new \RuntimeException('rollback');
+            });
+        } catch (\RuntimeException) {
+            // The source update and evidence invalidation must roll back together.
+        }
+        $this->assertEquals($revision, DB::table('salesforce_interest_monthly_integrity_revisions')->where('scope', 'october_2026_provisional')->value('revision'));
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026')->assertOk();
+
+        app(CommercialDelegationSnapshotService::class)->captureCurrentUsers(CarbonImmutable::parse('2026-10-20 10:00:00', 'UTC'));
+        $this->assertEquals($revision + 1, DB::table('salesforce_interest_monthly_integrity_revisions')->where('scope', 'october_2026_provisional')->value('revision'));
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026')->assertStatus(503);
+
+        $reader->validate();
+        SalesforceUser::query()->where('salesforce_id', $ownerId)->update(['user_delegation' => 'Madrid']);
+        $stableRevision = DB::table('salesforce_interest_monthly_integrity_revisions')->where('scope', 'october_2026_provisional')->value('revision');
+        app(CommercialDelegationSnapshotService::class)->captureCurrentUsers(CarbonImmutable::parse('2026-11-10 10:00:00', 'UTC'));
+        $this->assertEquals($stableRevision, DB::table('salesforce_interest_monthly_integrity_revisions')->where('scope', 'october_2026_provisional')->value('revision'));
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026')->assertOk();
+    }
+
+    public function test_overlapping_commercial_observations_do_not_invent_an_october_delegation(): void
+    {
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.october_2026_provisional_enabled', true);
+        $this->seedValidJournals();
+        $ownerId = '005000000000000001';
+        $this->appendEligibleRows([['Potencial', 'Venta', 'Web', 'Pago', 'Formulario', 'Madrid', $ownerId, 'Comercial observado']]);
+        DB::table('commercial_delegation_snapshots')->insert([
+            ['salesforce_user_id' => $ownerId, 'delegation' => 'Madrid', 'zone' => 'Zona Sur y Centro', 'observed_from' => '2026-10-01 00:00:00', 'observed_until' => '2026-11-10 00:00:00', 'open_marker' => null, 'source' => 'salesforce_user_observation', 'created_at' => now(), 'updated_at' => now()],
+            ['salesforce_user_id' => $ownerId, 'delegation' => 'Barcelona', 'zone' => 'Zona Cataluña', 'observed_from' => '2026-10-20 00:00:00', 'observed_until' => null, 'open_marker' => 1, 'source' => 'salesforce_user_observation', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        app(October2026ProvisionalInterestReader::class)->validate();
+
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $commercials = $this->asReportUser($admin)->getJson('/informes/leads/data/commercials?period=october_2026');
+        $commercials->assertOk();
+        $ownerKey = hash_hmac('sha256', $ownerId, (string) config('app.key'));
+        $ownerRow = collect($commercials->json('commercials'))->firstWhere('group_key', $ownerKey);
+        $this->assertSame('Asignación no acreditada', $ownerRow['commercial_delegation']);
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026')
+            ->assertOk()->assertJsonPath('kpis.without_eligible_commercial', null);
+    }
+
     public function test_representative_october_volume_is_validated_outside_http_and_http_reads_only_the_snapshot(): void
     {
         $this->seedRepresentativeJournals();
@@ -448,6 +557,18 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertStringNotContainsString('salesforce_interest_monthly_activity_rows', $queries);
         $this->assertLessThanOrEqual(3, count(DB::getQueryLog()));
         $this->assertDatabaseCount('salesforce_interest_october_provisional_projection_rows', 34_229);
+
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.october_2026_provisional_enabled', true);
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        DB::flushQueryLog();
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026')
+            ->assertOk()->assertJsonPath('kpis.leads_totales', 34_229);
+        $dashboardQueries = collect(DB::getQueryLog())->pluck('query')->implode("\n");
+        foreach (['salesforce_interest_monthly_recovery_rows', 'salesforce_interest_monthly_materialized_rows', 'salesforce_interest_monthly_activity_rows'] as $journal) {
+            $this->assertStringNotContainsString($journal, $dashboardQueries);
+        }
+        $this->assertLessThanOrEqual(15, count(DB::getQueryLog()));
     }
 
     public function test_mariadb_can_reapply_the_additive_evidence_migration_without_row_triggers(): void
@@ -460,6 +581,9 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $migration->up();
         $projectionMigration = require database_path('migrations/2026_11_12_120000_add_october_provisional_interest_projection.php');
         $projectionMigration->up();
+        $ownerMigration = require database_path('migrations/2026_11_13_120000_add_october_provisional_owner_projection.php');
+        $ownerMigration->up();
+        $ownerMigration->up();
         $tables = [
             'salesforce_interest_monthly_recoveries',
             'salesforce_interest_monthly_recovery_rows',
@@ -474,6 +598,8 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $this->assertDatabaseCount('salesforce_interest_monthly_integrity_revisions', 1);
         $this->assertTrue(Schema::hasColumn('salesforce_interest_october_provisional_validations', 'projection_key'));
         $this->assertTrue(Schema::hasTable('salesforce_interest_october_provisional_projection_rows'));
+        $this->assertTrue(Schema::hasColumn('salesforce_interest_october_provisional_projection_rows', 'owner_key'));
+        $this->assertTrue(Schema::hasTable('salesforce_interest_october_provisional_owners'));
         $this->assertSame([], $triggers);
     }
 
@@ -600,7 +726,9 @@ class October2026ProvisionalInterestReaderTest extends TestCase
                 'source_content_hash' => $hash, 'content_hash' => $hash, 'content_matches_inventory' => true, 'is_deleted' => false,
                 'salesforce_created_at' => '2026-10-02 08:00:00', 'salesforce_last_modified_at' => '2026-10-02 08:00:00',
                 'functional_created_at' => '2026-10-02 08:00:00', 'status' => $status, 'type' => $type, 'source' => $source,
-                'medium' => $medium, 'channel' => $channel, 'origin_delegation' => $delegation, 'created_at' => $now, 'updated_at' => $now,
+                'medium' => $medium, 'channel' => $channel, 'origin_delegation' => $delegation,
+                'owner_salesforce_id' => $values[6] ?? null, 'owner_name' => $values[7] ?? null,
+                'created_at' => $now, 'updated_at' => $now,
             ]);
         }
 

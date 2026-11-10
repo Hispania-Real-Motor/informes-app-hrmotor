@@ -380,8 +380,9 @@ reglas: sólo entrega la evidencia cuya revisión sigue vigente.
 No son KPI comerciales certificados. La atribución a comercial y su delegación
 requieren instantánea histórica de `SalesforceUser`, inexistente en F2M; los
 KPI de actividad directa requieren estado de relación F5 y certificación
-histórica, también ausentes. Por ello permanecen indisponibles, igual que
-Dirección, comparativas y los consumidores oficiales; no cambia la generación
+histórica, también ausentes. La agrupación posterior de propietarios observados
+no satisface esos requisitos. Dirección, comparativas y los consumidores
+oficiales permanecen indisponibles desde esta fuente; no cambia la generación
 publicada.
 
 La Fase 3 añade sólo dos recuentos de canal en la proyección: `Llamadas` cuenta
@@ -392,6 +393,31 @@ total filtrado, redondeado a dos decimales (0 % si el total es 0). No son
 actividades `Task` ni resultados de `CallObject`, no leen F5 y no certifican
 gestión, llamadas atendidas, formularios de actividad ni el informe de
 Llamadas.
+
+La proyección de propietarios observados (`observed_owners_v1`) añade sólo la
+identidad técnica necesaria para agrupar las mismas filas F2M activas y
+coincidentes. La identidad se persiste como `owner_key` HMAC del identificador
+de owner; su nombre queda cifrado, en la tabla de etiquetas de la proyección, y
+se descifra únicamente para la vista administrativa autorizada. No se persiste
+ni se expone el identificador Salesforce en la proyección HTTP. Esto evita
+fusionar homónimos, pero no acredita quién era comercial, elegible o responsable
+al cierre.
+
+Delegación y zona comercial se resuelven sólo desde un único intervalo de
+`commercial_delegation_snapshots` que cubra el corte final del período,
+`2026-10-31T23:00:00Z`; sin ese intervalo, con varios intervalos o para owner
+técnico/vacío, se materializa la categoría de falta de acreditación pertinente.
+Los filtros de propietario observado y delegación comercial observada, y los
+desgloses por propietario/delegación/zona, operan sólo sobre clave y revisión
+vigentes de la proyección. No son filtros del dashboard oficial ni constituyen
+certificación histórica.
+
+El único indicador adicional es `leads_unassigned`: cuenta exclusivamente las
+filas `Potencial` cuyo owner cumple la clasificación técnica común del
+dashboard. No cuenta owners vacíos y no sustituye `potenciales_sin_trabajar`,
+gestión, elegibilidad comercial ni actividad, que siguen siendo nulos/no
+disponibles. La tabla de propietarios y las columnas de owner/delegación/zona
+son una migración aditiva necesaria antes de validar esta variante.
 
 La pantalla puede declarar el resumen de Interests disponible **con límites de
 cobertura** sólo dentro de ese contexto administrativo. Dirección, KPI y
@@ -419,6 +445,16 @@ incrementan la revisión dentro de la misma transacción y por lote. Por tanto,
 una escritura SQL directa queda fuera del contrato: no debe modificar esos
 journals sin una revocación operativa explícita y posterior validación.
 
+Las rutas Laravel autorizadas que crean, cierran o corrigen intervalos de
+`commercial_delegation_snapshots` también revocan en la misma transacción la
+evidencia de octubre si cambia el intervalo que cubre el corte final del período.
+Tras ese cambio, HTTP responde 503 hasta una nueva ejecución del comando; un
+rollback no invalida la evidencia previa. Un cambio observado después del corte
+que no altera aquel intervalo no revoca la proyección de octubre. Las
+modificaciones SQL directas de esos snapshots no están cubiertas y requieren la
+misma revocación operativa y revalidación explícitas. Este fencing de evidencia
+no publica generaciones ni hace que la observación de owner sea certificación.
+
 HTTP sólo lee el snapshot cuya revisión coincide antes y después de la petición;
 no vuelve a escanear las tablas de filas. Si no existe validación, si quedó
 obsoleta por un cambio instrumentado de journal o si la revisión cambia durante
@@ -444,12 +480,15 @@ vuelven a comprobarlas antes de responder; una revocación o carrera falla con
 503. Los journals F2/F2M/F5 no se leen al servir el informe.
 
 El dashboard provisional permite combinar tipo, delegación, grupo, zona, fuente,
-medio, canal y estado sobre esa única proyección. Los totales filtrados y los
-recuentos Convertido, Descartado, Potencial y Sin clasificar son agregados
-provisionales; conversión y descarte usan esos mismos totales y se redondean a
-dos decimales. No se construyen comparativas ni métricas de owner/comercial,
-gestión o actividad. Sus nulos se presentan como `No disponible`, no como cero,
-porque F2M/F5 no prueban la instantánea histórica necesaria.
+medio, canal, estado y —cuando existe la proyección de propietarios observados—
+propietario y delegación comercial observados, siempre sobre esa única
+proyección. Los totales filtrados y los recuentos Convertido, Descartado,
+Potencial y Sin clasificar son agregados provisionales; conversión y descarte
+usan esos mismos totales y se redondean a dos decimales. Sólo
+`leads_unassigned` tiene la definición técnica limitada anterior. No se
+construyen comparativas ni métricas de elegibilidad comercial, potencial sin
+trabajar, gestión o actividad. Sus nulos se presentan como `No disponible`, no
+como cero, porque F2M/F5 no prueban la instantánea histórica necesaria.
 
 La UX puede denominar el resultado «datos reconstruidos» y mostrar «Sin datos
 suficientes» en vez de estos nombres técnicos; no cambia el carácter aislado de
