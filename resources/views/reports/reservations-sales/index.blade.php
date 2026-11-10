@@ -38,6 +38,7 @@
                 <option value="last_30_days">Ultimos 30 dias</option>
                 <option value="current_month">Mes actual</option>
                 <option value="previous_month">Mes anterior</option>
+                <option value="october_2026" @selected(($initialPeriod ?? null) === 'october_2026')>Octubre 2026</option>
                 <option value="custom">Personalizado</option>
             </select>
         </div>

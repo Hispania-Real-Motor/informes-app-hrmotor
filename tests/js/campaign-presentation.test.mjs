@@ -61,6 +61,32 @@ const createDashboardSandbox = (document) => {
     return isolated;
 };
 
+test('October deep link selects native campaign period before fetching and clears on change', () => {
+    const select = { value: 'last_30_days', options: [{ value: 'month_2026_10', dataset: { start: '2026-10-01', end: '2026-10-31' } }] };
+    const start = { value: '' };
+    const end = { value: '' };
+    const elements = { periodPreset: select, startDate: start, endDate: end };
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => elements[id] || null,
+        querySelectorAll: (selector) => selector === '#periodPreset option' ? select.options : [],
+    });
+    const urls = [];
+    isolated.URL = URL;
+    isolated.window.location = { href: 'https://example.test/informes/campanas?period=october_2026', search: '?period=october_2026' };
+    isolated.window.history = { replaceState: (_state, _title, url) => urls.push(url) };
+
+    vm.runInContext('applyInitialCampaignPeriod()', isolated);
+    assert.equal(select.value, 'month_2026_10');
+    assert.equal(start.value, '2026-10-01');
+    assert.equal(end.value, '2026-10-31');
+    assert.match(vm.runInContext('currentFilters()', isolated), /start_date=2026-10-01&end_date=2026-10-31/);
+
+    select.value = 'custom';
+    vm.runInContext('syncCampaignPeriodUrl()', isolated);
+    assert.equal(urls.at(-1), '/informes/campanas');
+});
+
 test('recovery mode remains technical state without a permanent public alert, while unavailable platforms stay visible', () => {
     const warnings = {innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; }};
     sandbox.document.getElementById = (id) => id === 'warnings' ? warnings : null;
