@@ -81,6 +81,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     initReservationsCommercialColumns();
     bindReservationsCommercialSearch();
     bindCommercialPerformance();
+    const requestedPeriod = new URLSearchParams(window.location.search).get('period');
+    if (requestedPeriod === 'october_2026' && document.getElementById('period')) {
+        document.getElementById('period').value = requestedPeriod;
+    }
     setFilterMode('panel-resumen');
     toggleCustomPeriods();
     await reloadAllData();
@@ -812,6 +816,7 @@ function bindResetFilters() {
         });
 
         document.getElementById('period').value = 'last_30_days';
+        syncPeriodUrl();
         document.getElementById('dateCriterion').value = 'created_date';
         document.getElementById('opportunityType').value = 'all';
         toggleCustomPeriods();
@@ -849,11 +854,23 @@ function bindFilters() {
         document.getElementById(id)?.addEventListener('change', async () => {
             if (id === 'period') {
                 toggleCustomPeriods();
+                syncPeriodUrl();
             }
 
             await reloadAllData();
         });
     });
+}
+
+function syncPeriodUrl() {
+    const url = new URL(window.location.href);
+    const period = document.getElementById('period')?.value;
+    if (period === 'october_2026') {
+        url.searchParams.set('period', period);
+    } else {
+        url.searchParams.delete('period');
+    }
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
 
 async function reloadAllData() {

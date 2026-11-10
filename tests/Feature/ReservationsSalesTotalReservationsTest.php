@@ -22,6 +22,36 @@ class ReservationsSalesTotalReservationsTest extends TestCase
         Cache::flush();
     }
 
+    public function test_october_2026_uses_native_opportunity_dates_without_published_interests(): void
+    {
+        $this->reservation('006-october-start', '2026-10-01', [
+            'created_date' => '2026-09-30 22:30:00',
+            'vehicle_interest_id' => '01t-october-start',
+        ]);
+        $this->reservation('006-october', '2026-10-31', [
+            'created_date' => '2026-10-01 10:00:00',
+            'vehicle_interest_id' => '01t-october',
+        ]);
+        $this->reservation('006-november', '2026-11-01', [
+            'created_date' => '2026-10-31 23:00:00',
+            'vehicle_interest_id' => '01t-november',
+        ]);
+
+        $this->get('/informes/reservas-ventas?period=october_2026')
+            ->assertOk()
+            ->assertSee('value="october_2026" selected', false);
+
+        $this->getJson('/informes/reservas-ventas/data/summary?period=october_2026')
+            ->assertOk()
+            ->assertJsonPath('periodo_actual.inicio', '2026-10-01')
+            ->assertJsonPath('periodo_actual.fin', '2026-10-31')
+            ->assertJsonPath('periodo_actual.technical.timezone', 'Europe/Madrid')
+            ->assertJsonPath('periodo_actual.technical.start_inclusive', '2026-10-01T00:00:00+02:00')
+            ->assertJsonPath('periodo_actual.technical.end_exclusive', '2026-11-01T00:00:00+01:00')
+            ->assertJsonPath('kpis.oportunidades_totales', 2)
+            ->assertJsonPath('kpis.reservas_totales', 2);
+    }
+
     public function test_reservas_totales_usa_fecha_de_reserva_estado_independiente_y_compara_periodos(): void
     {
         $this->reservation('006-live-a', '2026-05-10', [

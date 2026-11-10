@@ -1,5 +1,27 @@
 # Handoff para agentes
 
+## 2026-11-12 — selector de octubre de 2026 en Reservas/Ventas
+
+- `period=october_2026` añade al informe oficial el intervalo actual
+  `[2026-10-01, 2026-11-01)` y el comparado `[2026-09-01, 2026-10-01)`, en
+  `Europe/Madrid`. La URL directa inicializa el selector antes de la primera
+  carga; cambiar a otro período o restablecer filtros elimina sólo ese
+  parámetro.
+- Producción, cohorte y pestañas legacy conservan sus fechas pivote actuales y
+  consultan `salesforce_opportunities`. Los totales nativos no requieren una
+  generación Interest publicada, pero la atribución de portal desde
+  `Interest.source` sigue requiriendo snapshot directo completo y generación
+  publicada; F2/F2M/F5 mensuales y la proyección provisional no se consumen.
+- Los campos de fecha `reservation_date` y `cv_signed_date` conservan límites
+  civiles de Madrid. Para `created_date`, los límites de consulta se convierten
+  a UTC: octubre `[2026-09-30 22:00:00Z, 2026-10-31 23:00:00Z)` y comparado
+  `[2026-08-31 22:00:00Z, 2026-09-30 22:00:00Z)`. El payload técnico declara
+  `Europe/Madrid`; queda retirada la advertencia previa de offset pendiente.
+- Documentación actualizada en `docs/informe-reservas-ventas.md` y
+  `docs/matriz-trazabilidad-kpi.md`. No hay migraciones, cambios de permisos,
+  fórmulas, deduplicación, CSV ni auditoría. Esta revisión documental no
+  ejecutó PHP, JavaScript, migraciones, Salesforce, benchmark ni producción.
+
 ## 2026-11-12 — enlace directo de octubre en Campañas
 
 - `period=october_2026` aplica antes de la primera carga el preset existente

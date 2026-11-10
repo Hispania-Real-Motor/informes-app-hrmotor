@@ -15,6 +15,7 @@ class ReservationsSalesDashboardController extends Controller
             'reportUserCanViewCommercialPerformance' => ReportUserAccess::canViewCommercialPerformance($request),
             'reportUserCanManageCommercialPerformanceTarget' => ReportUserAccess::canManageCommercialPerformanceTarget($request),
             'reportUserCanAuditCommercialPerformance' => ReportUserAccess::canAuditCommercialPerformance($request),
+            'initialPeriod' => $request->query('period') === 'october_2026' ? 'october_2026' : null,
         ]);
     }
 }
