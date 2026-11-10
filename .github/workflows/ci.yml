@@ -85,11 +85,7 @@ jobs:
 
           mapfile -t php_files < <(git diff --name-only --diff-filter=ACM "${base}" "${GITHUB_SHA}" -- '*.php')
           if (( ${#php_files[@]} > 0 )); then
-            if ! vendor/bin/pint --test "${php_files[@]}"; then
-              vendor/bin/pint "${php_files[@]}"
-              git diff -- "${php_files[@]}"
-              exit 1
-            fi
+            vendor/bin/pint --test "${php_files[@]}"
           fi
 
       - name: Set up Node.js

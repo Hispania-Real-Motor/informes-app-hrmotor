@@ -259,8 +259,7 @@ class CommercialDelegationSnapshotService
         string $ownerId,
         CarbonImmutable $observedAt,
         ?CarbonImmutable $through = null,
-    ): void
-    {
+    ): void {
         if ($affectsOctoberCutoff && DB::table('salesforce_interest_monthly_integrity_revisions')
             ->where('scope', 'october_2026_provisional')->exists()) {
             app(October2026ProvisionalEvidenceInvalidator::class)
