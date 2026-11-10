@@ -1,5 +1,19 @@
 # Handoff para agentes
 
+## 2026-11-12 — acceso a octubre de 2026 en Comisiones
+
+- El enlace «Octubre 2026» de `/informes/comisiones-comerciales` reutiliza el
+  mes existente `2026-10` y conserva la pestaña activa. «Mes cerrado» pasa a
+  llamarse «Mes del informe» para no sugerir una aprobación que el enlace no
+  realiza.
+- No cambian fuentes, cobertura/readiness, universos, fórmulas, cierres,
+  reaperturas, exportaciones ni permisos. El acceso no acredita cobertura de
+  octubre ni convierte ningún scope en definitivo; siguen aplicando los
+  controles ordinarios por scope.
+- Se actualizó `docs/informe-comisiones.md`. La matriz permanece sin cambios:
+  el enlace y la etiqueta no alteran la trazabilidad ni el contrato de un KPI.
+  `PROJECT_CONTEXT.md` y `DECISIONS.md` no aplican. Esta revisión documental no
+  ejecutó PHP, migraciones, Salesforce, base de datos, benchmark ni producción.
 ## 2026-11-12 — período octubre y denominador histórico de Stock
 
 - El enlace «Octubre 2026» conserva la pestaña y aplica `date_from=2026-10-01`
