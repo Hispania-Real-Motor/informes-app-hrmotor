@@ -1,5 +1,21 @@
 # Handoff para agentes
 
+## 2026-11-10 — CI de la PR apilada de propietarios
+
+- Los workflows CI y Documentation integrity aceptan PR dirigidas a cualquier
+  rama, manteniendo el `push` de CI limitado a `main`. La PR Draft de propietarios
+  permanece basada en la rama de canales de la PR #133. GitHub no ejecutaba los
+  jobs porque ambos workflows filtraban `pull_request` a `main`.
+- Archivos modificados: `.github/workflows/ci.yml`,
+  `.github/workflows/docs-integrity.yml` y este handoff. No hay cambios de base
+  de datos, configuración de aplicación, permisos, consultas ni código de
+  informes. El cambio permite validar PR apiladas y no altera la ejecución de
+  los jobs ni elimina controles. La comprobación de `git diff --check` y los
+  resultados de los workflows quedan registrados al cierre de esta revisión.
+- Acción manual posterior: integrar primero la PR #133. Riesgo pendiente:
+  antes de esa integración, la PR apilada debe contrastarse con la misma base
+  y los resultados de CI deben corresponder a su último SHA.
+
 ## 2026-11-10 — propietarios observados en la proyección aislada de octubre
 
 - La validación administrativa de Interests añade la variante
