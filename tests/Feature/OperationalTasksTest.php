@@ -57,6 +57,37 @@ class OperationalTasksTest extends TestCase
         }
     }
 
+    public function test_scheduler_allowlist_is_explicit_and_does_not_expand_manual_permissions(): void
+    {
+        $catalog = app(OperationalTaskCatalog::class);
+        config()->set('operations.scheduled_task_keys', '');
+        $this->assertFalse($catalog->isScheduled('salesforce-sync-monthly-commercial'));
+        $this->assertFalse($catalog->isScheduled('salesforce-sync-interest-reporting'));
+        $this->assertFalse($catalog->isScheduled('stock-sync-daily'));
+
+        config()->set('operations.scheduled_task_keys', 'salesforce-sync-monthly-commercial, salesforce-sync-calls');
+        $this->assertTrue($catalog->isScheduled('salesforce-sync-monthly-commercial'));
+        $this->assertTrue($catalog->isScheduled('salesforce-sync-calls'));
+        $this->assertFalse($catalog->isScheduled('salesforce-sync-interest-reporting'));
+        $this->assertFalse($catalog->isScheduled('stock-sync-daily'));
+        $this->assertFalse($catalog->get('stock-sync-daily')['manual_allowed']);
+
+        config()->set('operations.scheduled_task_keys', null);
+        $this->assertTrue($catalog->isScheduled('salesforce-sync-interest-reporting'));
+    }
+
+    public function test_scheduler_cannot_claim_a_task_removed_from_the_allowlist(): void
+    {
+        config()->set('operations.scheduled_task_keys', 'salesforce-sync-calls');
+
+        $this->artisan('operations:run', ['task' => 'salesforce-sync-interest-reporting'])
+            ->assertExitCode(1);
+        $this->assertDatabaseCount('operational_task_runs', 0);
+
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        app(OperationalTaskService::class)->claim('salesforce-sync-interest-reporting', 'scheduler');
+    }
+
     public static function roles(): array
     {
         return array_map(fn ($role) => [$role], ['director', 'direction', 'direccion', 'viewer', 'commission_auditor', 'area_manager', 'area_manager_own_area', 'delegation_manager', 'marketing', 'financial', 'commercial', 'stock_only']);

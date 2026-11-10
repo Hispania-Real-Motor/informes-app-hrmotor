@@ -234,4 +234,19 @@ final class OperationalTaskCatalog
     {
         return $this->all()[$key] ?? throw new \InvalidArgumentException('Unknown operational task.');
     }
+
+    public function isScheduled(string $key): bool
+    {
+        $task = $this->get($key);
+        if (! ($task['enabled'] ?? true)) {
+            return false;
+        }
+
+        $allowed = config('operations.scheduled_task_keys');
+        if ($allowed === null) {
+            return true;
+        }
+
+        return in_array($key, array_filter(array_map('trim', explode(',', (string) $allowed))), true);
+    }
 }
