@@ -33,8 +33,7 @@ final class InterestMonthlyRecoveryService
         int $batch = self::DEFAULT_BATCH_SIZE,
         ?CarbonInterface $effectiveCutoff = null,
         bool $newRevision = false,
-    ): int
-    {
+    ): int {
         $reason = trim($reason);
         $localStart = CarbonImmutable::parse($start, 'Europe/Madrid');
         $localEnd = CarbonImmutable::parse($end, 'Europe/Madrid');
