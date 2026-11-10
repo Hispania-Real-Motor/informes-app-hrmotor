@@ -562,13 +562,23 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         config()->set('salesforce.october_2026_provisional_enabled', true);
         $admin = $this->user(ReportUser::ROLE_ADMIN);
         DB::flushQueryLog();
+        $dashboardStartedAt = hrtime(true);
         $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026')
             ->assertOk()->assertJsonPath('kpis.leads_totales', 34_229);
+        $dashboardDurationNs = hrtime(true) - $dashboardStartedAt;
         $dashboardQueries = collect(DB::getQueryLog())->pluck('query')->implode("\n");
         foreach (['salesforce_interest_monthly_recovery_rows', 'salesforce_interest_monthly_materialized_rows', 'salesforce_interest_monthly_activity_rows'] as $journal) {
             $this->assertStringNotContainsString($journal, $dashboardQueries);
         }
         $this->assertLessThanOrEqual(15, count(DB::getQueryLog()));
+        fwrite(STDERR, sprintf(
+            "October representative volume: validation_ms=%.2f overview_ms=%.2f http_ms=%.2f http_queries=%d peak_memory_mb=%.1f\n",
+            $metrics['total_ns'] / 1_000_000,
+            $httpDurationNs / 1_000_000,
+            $dashboardDurationNs / 1_000_000,
+            count(DB::getQueryLog()),
+            memory_get_peak_usage(true) / 1_048_576,
+        ));
     }
 
     public function test_mariadb_can_reapply_the_additive_evidence_migration_without_row_triggers(): void
