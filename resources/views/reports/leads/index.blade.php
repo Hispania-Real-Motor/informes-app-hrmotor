@@ -229,7 +229,7 @@
                     </div>
                 </div>
                 @if($isOctoberProvisional ?? false)
-                    <div class="notice">Asignación observada: el propietario de F2M no acredita el responsable histórico al cierre de octubre.</div>
+                    <div class="notice">Asignación observada: el propietario disponible no acredita el responsable histórico al cierre de octubre.</div>
                 @endif
                 <div class="table-wrap">
                     <table id="leadCommercialZonesTable">

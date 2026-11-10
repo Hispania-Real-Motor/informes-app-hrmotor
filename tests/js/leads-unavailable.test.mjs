@@ -18,6 +18,17 @@ test('October copy stays concise and comparison without a source is hidden', () 
     assert.doesNotMatch(dashboardScript, /provisional no certificado|snapshot histórico|requiere actividad histórica acreditada/i);
 });
 
+test('the October unassigned card labels observed technical owners without claiming commercial eligibility', () => {
+    const { context } = createDashboardContext(async () => ({ ok: true, json: async () => ({}) }));
+    const cards = vm.runInContext('provisionalKpiCards({ leads_unassigned: 2 })', context);
+    const unassigned = cards.find((card) => card.label === 'Intereses sin asignar');
+    assert.equal(unassigned.value, '2');
+    assert.match(unassigned.hint, /propietario técnico observado/);
+    const unavailable = vm.runInContext('provisionalKpiCards({ leads_unassigned: null })', context)
+        .find((card) => card.label === 'Intereses sin asignar');
+    assert.match(unavailable.hint, /Sin datos suficientes/);
+});
+
 function createClassList() {
     const classes = new Set();
 
