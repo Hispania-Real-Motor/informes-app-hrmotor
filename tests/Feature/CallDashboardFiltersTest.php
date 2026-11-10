@@ -78,6 +78,24 @@ class CallDashboardFiltersTest extends TestCase
             ->assertJsonPath('kpis.answered', 1);
     }
 
+    public function test_october_2026_selects_native_calls_without_interest_generation(): void
+    {
+        $this->callRow('00T-october-start', ['created_date' => '2026-09-30 22:30:00']);
+        $this->callRow('00T-october', ['created_date' => '2026-10-31 10:00:00']);
+        $this->callRow('00T-november-start', ['created_date' => '2026-10-31 23:00:00']);
+
+        $this->get('/informes/llamadas?period=october_2026')
+            ->assertOk()
+            ->assertSee('value="october_2026" selected', false);
+
+        $this->getJson('/informes/llamadas/data/summary?period=october_2026')
+            ->assertOk()
+            ->assertJsonPath('periodo_actual.inicio', '2026-10-01')
+            ->assertJsonPath('periodo_actual.fin', '2026-11-01')
+            ->assertJsonPath('kpis.total_calls', 2)
+            ->assertJsonPath('kpis.answered', 2);
+    }
+
     private function callRow(string $id, array $overrides = []): void
     {
         SalesforceCall::create(array_merge([

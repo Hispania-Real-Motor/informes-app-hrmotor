@@ -1,5 +1,25 @@
 # Handoff para agentes
 
+## 2026-11-12 — selector de octubre de 2026 en Llamadas
+
+- `period=october_2026` selecciona `[2026-10-01, 2026-11-01)` como período
+  actual y `[2026-09-01, 2026-10-01)` como comparado, construidos en
+  `Europe/Madrid`. Antes de filtrar `salesforce_calls.created_date`, los límites
+  se convierten a UTC: octubre `[2026-09-30 22:00:00Z, 2026-10-31 23:00:00Z)` y
+  comparado `[2026-08-31 22:00:00Z, 2026-09-30 22:00:00Z)`. Resumen, agentes,
+  delegaciones, portales y auditoría aplican inicio inclusivo/fin exclusivo; la
+  API conserva `inicio`/`fin` civiles de Madrid, de modo que `fin` sigue siendo
+  frontera y no día incluido.
+- La ruta directa inicializa el selector antes de cargar; cambiar a otro
+  período o restablecer filtros elimina el parámetro. No cambian fuente,
+  clasificación, duración, ámbitos, KPI, CSV, auditoría ni permisos. El preset
+  lee sólo llamadas locales: no acredita cobertura completa de octubre.
+- Una generación Interest ausente no bloquea totales nativos, pero no certifica
+  ni re-resuelve portales basados en `WhatId`: la coincidencia local y la
+  generación publicada siguen siendo el único contrato de fallback. F2/F2M/F5
+  mensuales y la proyección provisional no se consumen. No se ejecutaron PHP,
+  JavaScript, migraciones, Salesforce, benchmark ni producción en esta revisión
+  documental; no se requiere `DECISIONS.md` por ser un preset reversible.
 ## 2026-11-12 — selector de octubre de 2026 en Reservas/Ventas
 
 - `period=october_2026` añade al informe oficial el intervalo actual

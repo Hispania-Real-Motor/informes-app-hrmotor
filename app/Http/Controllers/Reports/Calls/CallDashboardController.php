@@ -12,6 +12,7 @@ class CallDashboardController extends Controller
     {
         return view('reports.calls.index', [
             'reportUserCanAudit' => ReportUserAccess::canAuditReport($request, 'calls'),
+            'initialPeriod' => $request->query('period') === 'october_2026' ? 'october_2026' : null,
         ]);
     }
 }

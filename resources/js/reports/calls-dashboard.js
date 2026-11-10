@@ -8,6 +8,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindFilters();
     bindResetFilters();
     bindTableSorting();
+    const requestedPeriod = new URLSearchParams(window.location.search).get('period');
+    if (requestedPeriod === 'october_2026' && document.getElementById('period')) {
+        document.getElementById('period').value = requestedPeriod;
+    }
     toggleCustomPeriods();
     await reloadAllData();
 });
@@ -43,6 +47,7 @@ function bindFilters() {
         document.getElementById(id)?.addEventListener('change', async () => {
             if (id === 'period') {
                 toggleCustomPeriods();
+                syncPeriodUrl();
             }
 
             await reloadAllData();
@@ -74,6 +79,7 @@ function bindResetFilters() {
         });
 
         document.getElementById('period').value = 'last_30_days';
+        syncPeriodUrl();
         toggleCustomPeriods();
         await reloadAllData();
     });
@@ -599,6 +605,16 @@ function currentFilters() {
     }
 
     return params.toString();
+}
+
+function syncPeriodUrl() {
+    const url = new URL(window.location.href);
+    if (document.getElementById('period')?.value === 'october_2026') {
+        url.searchParams.set('period', 'october_2026');
+    } else {
+        url.searchParams.delete('period');
+    }
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
 }
 
 function setLoadingState(isLoading) {
