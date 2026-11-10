@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, codex/october-2026-interest-channel-kpis]
+    branches: [main]
 
 permissions:
   contents: read

@@ -1,5 +1,27 @@
 # Handoff para agentes
 
+## 2026-11-10 — preparación de la PR #135 contra main
+
+- La PR #133 fue fusionada en `main` (`2961d732a619af5b6d0012797ac89d2405486ac8`).
+  La rama de propietarios observados incorporó ese HEAD con merge normal.
+- CI y Documentation integrity vuelven a aceptar únicamente PR contra `main`;
+  la prueba documental y la guía reflejan el contrato normal. No se modifica
+  la implementación de propietarios, la migración aditiva ni los journals.
+- Archivos modificados para este ajuste: `.github/workflows/ci.yml`,
+  `.github/workflows/docs-integrity.yml`,
+  `tests/documentation/test_check_documentation_integrity.py`,
+  `docs/guia-mantenimiento-documental.md` y este handoff. No hay cambios de
+  base de datos, seguridad de aplicación ni rendimiento HTTP por esta
+  actualización. Acciones manuales: revisar e integrar la PR #135 antes de
+  cualquier despliegue autorizado; la nueva validación administrativa de
+  octubre se mantiene manual y posterior a la migración.
+- Pruebas locales: 59/59 JavaScript y `git diff --check` correcto. El último
+  SHA de la PR debe superar PHPUnit, MariaDB 11, Pint, build y Documentation
+  integrity en GitHub Actions antes de integrarse. PHP y Composer no están
+  disponibles en este worktree. Riesgo pendiente: los KPI de actividad y
+  elegibilidad siguen sin evidencia
+  histórica suficiente; la proyección de owners sigue siendo provisional.
+
 ## 2026-11-10 — CI de la PR apilada de propietarios
 
 - Los workflows CI y Documentation integrity aceptan PR dirigidas a `main` y
