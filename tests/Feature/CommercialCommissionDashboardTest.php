@@ -59,9 +59,31 @@ class CommercialCommissionDashboardTest extends TestCase
             ->get('/informes/comisiones-comerciales')
             ->assertOk()
             ->assertSee('Comisiones Comerciales')
-            ->assertSee('Mes cerrado')
+            ->assertSee('Mes del informe')
             ->assertSee('Exportar comisiones')
             ->assertSee('Diagnostico de datos base');
+    }
+
+    public function test_october_link_keeps_the_selected_commission_scope_without_approving_it(): void
+    {
+        config()->set('services.informes_auth.enabled', true);
+        CarbonImmutable::setTestNow('2026-11-10 12:00:00');
+
+        try {
+            $this->withSession($this->authenticatedSession(ReportUser::ROLE_ADMIN))
+                ->get('/informes/comisiones-comerciales?month=2026-10&tab=call-center')
+                ->assertOk()
+                ->assertSee('value="2026-10"', false)
+                ->assertSee('month=2026-10&amp;tab=call-center', false)
+                ->assertSee('Mes del informe');
+
+            $this->assertDatabaseMissing('commercial_commission_closures', [
+                'month' => '2026-10',
+                'status' => 'definitive',
+            ]);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
     }
 
     public function test_director_ve_tab_y_puede_entrar_a_comisiones_comerciales_sin_ser_admin(): void
