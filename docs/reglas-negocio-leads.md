@@ -161,11 +161,13 @@ devuelve este snapshot ya validado y no recalcula los agregados al abrir la
 pantalla.
 
 Son agregados provisionales de campos F2M, no los KPI comerciales oficiales.
-Comerciales elegibles y delegaciones comerciales permanecen indisponibles por
-no existir instantánea histórica de `SalesforceUser`; los KPI de actividad
+Por sí mismos no acreditan comercial elegible ni delegación comercial: la
+instantánea histórica de `SalesforceUser` sigue ausente. Los KPI de actividad
 directa siguen indisponibles porque no hay estado de relación F5 ni certificación
-histórica. No habilitan Dirección, comparativas, Reservas/Ventas, Rendimiento,
-Campañas, el informe de Llamadas, SEO, CSV ni auditorías oficiales.
+histórica. La proyección posterior de propietarios observados no elimina esos
+límites; sólo aporta la lectura acotada descrita más abajo. Nada de esta fase
+habilita Dirección, comparativas, Reservas/Ventas, Rendimiento, Campañas, el
+informe de Llamadas, SEO, CSV ni auditorías oficiales.
 
 ### Fase 3: Llamadas y Formularios por canal materializado
 
@@ -215,6 +217,46 @@ La etiqueta breve de esa presentación es «datos reconstruidos». Esta página 
 describe agregados de Interests; no debe afirmar que Reservas/Ventas, Campañas,
 Llamadas u otros informes estén disponibles o no desde esta fuente: cada informe
 conserva sus fuentes, controles y reglas propios.
+
+### Propietarios observados y distribución comercial de octubre
+
+La validación administrativa puede añadir a la misma proyección una agrupación
+de **propietario observado en F2M**, nunca una asignación comercial histórica
+certificada. Cada fila F2M activa y coincidente conserva una clave estable
+`owner_key`, calculada como HMAC del identificador de owner, y la etiqueta se
+guarda cifrada en una tabla separada de propietarios de la proyección. Así se
+pueden distinguir propietarios con el mismo nombre y filtrar o agrupar la vista
+sin exponer el identificador Salesforce ni conservarlo en la proyección HTTP.
+El nombre se descifra sólo para la respuesta administrativa autorizada; no se
+incluye en esta documentación ni se considera prueba de pertenencia histórica.
+
+La delegación y la zona comercial se toman exclusivamente de
+`commercial_delegation_snapshots` cuando un único intervalo observado cubre el
+corte final del período (`2026-10-31T23:00:00Z`): debe haber empezado antes del
+corte y permanecer abierto o alcanzar dicho instante. Una ausencia, solape o
+ambigüedad se presenta como «Asignación no acreditada»; owner vacío y owner
+técnico se distinguen como tales. Estas categorías permiten los filtros de
+propietario observado y delegación comercial observada, y los desgloses por
+propietario, delegación y zona sobre las mismas filas F2M, pero no reconstruyen
+el organigrama, la elegibilidad ni una asignación al cierre.
+
+`Intereses sin asignar` queda disponible únicamente como conteo técnico de
+filas `Potencial` cuyo owner satisface la clasificación técnica ya usada por el
+dashboard. No cuenta owner vacío, no mide carga de trabajo y no equivale a
+«potenciales sin trabajar». Continúan en `No disponible` comercial elegible,
+sin comercial elegible, sin delegación comercial, potenciales sin trabajar,
+gestionados y actividad: requerirían la evidencia histórica o F5 que este
+snapshot no conserva.
+
+Una mutación capturada por las rutas Laravel autorizadas en
+`commercial_delegation_snapshots` revoca la revisión de octubre en la misma
+transacción sólo si altera el intervalo que cubre ese corte final. La pantalla
+falla cerrada hasta repetir la validación administrativa; si la transacción
+revierte, la evidencia anterior sigue vigente. Un cambio observado después del
+corte, que no altera ese intervalo, no revoca la proyección de octubre. Las
+escrituras SQL directas permanecen fuera de esta garantía y requieren revocación
+operativa y nueva validación. La revocación no publica la proyección ni modifica
+los lectores oficiales.
 
 La recuperación inicial excepcional puede certificar una candidata mediante
 reconciliación del estado actual y F5 nuevo, antes de una publicación separada.

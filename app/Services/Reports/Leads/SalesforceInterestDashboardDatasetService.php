@@ -22,14 +22,6 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
 
     private const COMMERCIAL_PROFILES = ['Compra/Venta', 'Comerciales Partner Community'];
 
-    private const TECHNICAL_OWNER_IDS = [
-        '0052X00000AP4U5QAL',
-        '0057R00000AKkz0QAD',
-        '0057R00000CQGZaQAP',
-    ];
-
-    private const TECHNICAL_OWNER_NAMES = ['admin adesso', 'api user', 'carlos torres'];
-
     private ?array $sourceContext = null;
 
     private ?Collection $interestCommercialUsers = null;
@@ -237,7 +229,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
             && $lastActivityAt->lessThanOrEqualTo($referenceDate)
             && $lastActivityAt->greaterThanOrEqualTo($referenceDate->subDays(3));
         $isPotential = $status === 'Potencial';
-        $isUnassigned = $isPotential && $this->isTechnicalOwner($ownerId, $ownerName);
+        $isUnassigned = $isPotential && InterestTechnicalOwnerClassifier::isTechnical($ownerId, $ownerName);
         $source = $this->cleanValue(data_get($interest, 'source')) ?? 'Sin clasificar';
         $channel = $this->cleanValue(data_get($interest, 'channel'));
 
@@ -639,12 +631,6 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
             ->whereIn('profile_name', self::COMMERCIAL_PROFILES)
             ->get(['salesforce_id', 'name', 'profile_name', 'user_delegation'])
             ->keyBy('salesforce_id');
-    }
-
-    private function isTechnicalOwner(?string $ownerId, ?string $ownerName): bool
-    {
-        return in_array((string) $ownerId, self::TECHNICAL_OWNER_IDS, true)
-            || in_array(mb_strtolower(trim((string) $ownerName)), self::TECHNICAL_OWNER_NAMES, true);
     }
 
     private function passesAccessScopeInterest(array $interest, array $filters): bool

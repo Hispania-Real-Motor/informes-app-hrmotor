@@ -6,6 +6,7 @@ use App\Models\CommercialDelegationSnapshot;
 use App\Models\SalesforceUser;
 use App\Services\Operations\OperationalAlertService;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
+use App\Services\Reports\Leads\October2026ProvisionalEvidenceInvalidator;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -34,6 +35,7 @@ class CommercialDelegationSnapshotService
     public function captureCurrentUsers(?CarbonInterface $observedAt = null): array
     {
         $observedAt = CarbonImmutable::parse($observedAt ?? now())->utc()->startOfSecond();
+        $affectsOctoberCutoff = $observedAt->lessThan(CarbonImmutable::parse('2026-10-31 23:00:00', 'UTC'));
         $created = 0;
         $closed = 0;
         $unchanged = 0;
@@ -46,9 +48,9 @@ class CommercialDelegationSnapshotService
                         ->select('salesforce_user_id'));
             })
             ->orderBy('id')
-            ->chunkById(500, function ($users) use ($observedAt, &$created, &$closed, &$unchanged): void {
+            ->chunkById(500, function ($users) use ($observedAt, $affectsOctoberCutoff, &$created, &$closed, &$unchanged): void {
                 foreach ($users as $user) {
-                    DB::transaction(function () use ($user, $observedAt, &$created, &$closed, &$unchanged): void {
+                    DB::transaction(function () use ($user, $observedAt, $affectsOctoberCutoff, &$created, &$closed, &$unchanged): void {
                         SalesforceUser::query()
                             ->whereKey($user->getKey())
                             ->lockForUpdate()
@@ -67,6 +69,7 @@ class CommercialDelegationSnapshotService
                         if (! $isCommerciallyEligible) {
                             if ($open !== null) {
                                 $open->update(['observed_until' => $observedAt, 'open_marker' => null]);
+                                $this->invalidateOctoberEvidence($affectsOctoberCutoff);
                                 $closed++;
                             } else {
                                 $unchanged++;
@@ -97,6 +100,7 @@ class CommercialDelegationSnapshotService
                                     $observedAt,
                                 );
                                 $open->update(['delegation' => $delegation, 'zone' => $zone]);
+                                $this->invalidateOctoberEvidence($affectsOctoberCutoff);
                                 $unchanged++;
 
                                 return;
@@ -124,6 +128,7 @@ class CommercialDelegationSnapshotService
                             'open_marker' => 1,
                             'source' => self::SOURCE_OBSERVED,
                         ]);
+                        $this->invalidateOctoberEvidence($affectsOctoberCutoff);
                         $created++;
                     });
                 }
@@ -219,22 +224,38 @@ class CommercialDelegationSnapshotService
                     return;
                 }
 
-                $inserted = CommercialDelegationSnapshot::query()->insertOrIgnore([
-                    'salesforce_user_id' => $userId,
-                    'delegation' => $firstObserved->delegation,
-                    'zone' => $firstObserved->zone,
-                    'observed_from' => $bootstrapStart->toDateTimeString(),
-                    'observed_until' => $firstObservedAt->toDateTimeString(),
-                    'open_marker' => null,
-                    'source' => self::SOURCE_BUSINESS_BOOTSTRAP,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                $inserted = DB::transaction(function () use ($userId, $firstObserved, $bootstrapStart, $firstObservedAt): int {
+                    $inserted = CommercialDelegationSnapshot::query()->insertOrIgnore([
+                        'salesforce_user_id' => $userId,
+                        'delegation' => $firstObserved->delegation,
+                        'zone' => $firstObserved->zone,
+                        'observed_from' => $bootstrapStart->toDateTimeString(),
+                        'observed_until' => $firstObservedAt->toDateTimeString(),
+                        'open_marker' => null,
+                        'source' => self::SOURCE_BUSINESS_BOOTSTRAP,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    if ($inserted === 1) {
+                        $this->invalidateOctoberEvidence($firstObservedAt->greaterThanOrEqualTo(CarbonImmutable::parse('2026-10-31 23:00:00', 'UTC')));
+                    }
+
+                    return $inserted;
+                });
 
                 $stats[$inserted === 1 ? 'created' : 'already_present']++;
             });
 
         return $stats;
+    }
+
+    private function invalidateOctoberEvidence(bool $affectsOctoberCutoff): void
+    {
+        if ($affectsOctoberCutoff && DB::table('salesforce_interest_monthly_integrity_revisions')
+            ->where('scope', 'october_2026_provisional')->exists()) {
+            app(October2026ProvisionalEvidenceInvalidator::class)
+                ->afterContentMutation(October2026ProvisionalEvidenceInvalidator::RECOVERY_ID);
+        }
     }
 
     private function openOrganisationChangeAlert(

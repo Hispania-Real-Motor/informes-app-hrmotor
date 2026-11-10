@@ -1343,6 +1343,23 @@ histórica de `SalesforceUser`; actividad queda fuera por falta de estado de
 relación F5 y certificación histórica. Esta frontera evita convertir un
 inventario aislado en fuente de KPI o en sustituto de la generación publicada.
 
+## 2026-11-10 — owner observado de octubre: seudónimo estable y etiqueta cifrada
+
+La proyección administrativa aislada de octubre separa identidad de
+presentación: agrupa owner por una clave HMAC estable y conserva la etiqueta
+cifrada en una tabla de propietarios ligada a la revisión/proyección. De este
+modo no fusiona homónimos ni expone el identificador Salesforce en las filas
+proyectadas o filtros, mientras que la etiqueta sólo se descifra en la respuesta
+administrativa autorizada. Esta frontera de persistencia y privacidad es
+deliberada y no debe sustituirse por ID o nombre en claro para simplificar
+consultas.
+
+La delegación/zona se añade únicamente como observación de un intervalo de
+`commercial_delegation_snapshots` que cubra el corte de octubre. No representa
+jerarquía ni atribución histórica certificada. Una mutación autorizada revoca
+transaccionalmente la evidencia sólo si altera ese intervalo; no publica la
+fuente ni habilita los consumidores oficiales.
+
 ## 2026-11-09 — período visible conserva una ruta provisional aislada
 
 El valor de período `october_2026` en la ruta principal de Interests no entra

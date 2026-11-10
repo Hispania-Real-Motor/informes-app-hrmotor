@@ -166,6 +166,11 @@ ejecutar Python, comprueba desde Git que `scripts/`, `tests/` y
 documentales rastreadas son archivos regulares; así no ejecuta un entry point
 convertido en symlink. La comprobación se limita a esas rutas de control.
 
+Cuando la base de una PR apilada se integra en `main`, la PR dependiente debe
+volver a dirigirse a `main`. Si la pila requirió una base temporal en los
+workflows, retírala de CI y Documentation integrity y actualiza la prueba de
+control antes de considerar válidos los checks del nuevo SHA.
+
 Un administrador debe configurar manualmente `docs-integrity` como required
 status check en la protección de `main` después de que aparezca en una PR. La
 Action por sí sola no impide una fusión si esa protección no está configurada.

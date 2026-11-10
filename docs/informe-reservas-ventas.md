@@ -18,6 +18,16 @@ La proyección versionada de octubre y sus filtros multidimensionales pertenecen
 sólo al dashboard de Interests: no habilitan ni certifican atribución, KPI,
 auditoría, cierre, CSV o Rendimiento comercial de Reservas/Ventas.
 
+La captura autorizada de `commercial_delegation_snapshots` también revoca, en
+la misma transacción, la evidencia de propietarios observados de la proyección
+aislada de Interests de octubre sólo si la mutación altera el intervalo que
+cubre su corte final. Es un control de frescura de esa pantalla: no altera los
+intervalos, la atribución, los universos, las fórmulas, los KPI, el cierre ni
+las exportaciones de Reservas/Ventas. Un cambio observado después del corte que
+no altera aquel intervalo no revoca la proyección de octubre. Una escritura SQL
+directa sigue fuera del contrato de revocación y requiere el procedimiento
+operativo de revalidación de la vista provisional.
+
 ## Selector fijo de octubre de 2026
 
 `/informes/reservas-ventas?period=october_2026` es un preset del informe de
