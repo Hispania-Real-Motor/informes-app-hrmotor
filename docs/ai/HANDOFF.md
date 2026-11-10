@@ -24,6 +24,10 @@
   `git diff --check`: correcto. PHP/Pint, MariaDB, build y validación documental
   quedan pendientes de GitHub Actions. No hubo migraciones, Salesforce,
   benchmark ni acceso a producción.
+- La primera ejecución CI del SHA `b646049` señaló tres aserciones que aún
+  esperaban el texto anterior (dos de readiness y una de la vista de octubre).
+  Se actualizaron para comprobar los nuevos mensajes sin relajar estados ni
+  permisos; la nueva ejecución CI es el criterio de validación.
 
 ## 2026-11-12 — correctivo UI tras PR #125
 

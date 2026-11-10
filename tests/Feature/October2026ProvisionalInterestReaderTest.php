@@ -348,7 +348,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('id="leadReportContent"', false)
             ->assertSee('Grupo de procedencia')
-            ->assertSee('comerciales, actividad y comparativas permanecen no disponibles')
+            ->assertSee('Algunas métricas comerciales y de actividad todavía no tienen datos suficientes.')
             ->assertSee('window.initialLeadPeriod = "october_2026";', false)
             ->assertSee('<div class="is-hidden" id="leadUnavailableState">', false);
 
