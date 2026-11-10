@@ -1,5 +1,24 @@
 # Handoff para agentes
 
+## 2026-11-12 — período octubre y denominador histórico de Stock
+
+- El enlace «Octubre 2026» conserva la pestaña y aplica `date_from=2026-10-01`
+  y `date_to=2026-10-31`. Ventas válidas y snapshots diarios usan ese rango
+  inclusivo, implementado como `[date_from, date_to + 1 día)` para incluir el
+  31 de octubre con casts locales de fecha. Las tarjetas de inventario
+  continúan describiendo stock actual.
+- Para períodos pasados, si `stock_daily_snapshots` no cubre al menos el 80 %
+  de días esperados, `ventas/stock` y su denominador quedan `null` y se muestra
+  indisponibilidad. No se usa `salesforce_vehicles` actual como sustituto. El
+  fallback al stock actual permanece sólo para períodos presente/futuro y se
+  marca como aproximación.
+- La media del denominador incluye cada fecha con snapshot: una fecha sin
+  `Disponible` aporta cero; una fecha sin snapshot reduce cobertura y no se
+  convierte en cero. Así se evita sobrestimar el stock disponible histórico.
+- Se actualizaron `docs/informe-stock.md` y `docs/matriz-trazabilidad-kpi.md`.
+  No hay migraciones, fuente Interest, permisos, exportación ni certificación
+  de cobertura nuevos; `DECISIONS.md` no aplica. Esta revisión documental no
+  ejecutó PHP, migraciones, Salesforce, benchmark ni producción.
 ## 2026-11-12 — selector de octubre de 2026 en Llamadas
 
 - `period=october_2026` selecciona `[2026-10-01, 2026-11-01)` como período
