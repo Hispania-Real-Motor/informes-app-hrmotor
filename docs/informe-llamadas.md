@@ -17,6 +17,12 @@ La proyección versionada y los filtros de octubre siguen limitados al dashboard
 de Interests: no aportan estado histórico de relación F5 ni certifican, habilitan
 o recalculan KPI, clasificación, reproceso o exportación de Llamadas.
 
+La tarjeta «Llamadas» de octubre dentro de Interests no es un KPI de este
+informe: cuenta únicamente el valor materializado `channel = 'Llamada'` de la
+proyección F2M filtrada. No consulta `salesforce_calls`, `Task` ni `CallObject`,
+no representa llamadas atendidas y no altera esta fuente, sus filtros, CSV,
+auditoría o clasificación.
+
 ## Selector fijo de octubre de 2026
 
 `/informes/llamadas?period=october_2026` es un preset del informe oficial de

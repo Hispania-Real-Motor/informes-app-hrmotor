@@ -380,7 +380,18 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             ->assertJsonPath('kpis.leads_totales', 1)
             ->assertJsonPath('kpis.convertidos', 1)
             ->assertJsonPath('kpis.descartados', 0)
+            ->assertJsonPath('kpis.llamadas', 0)
+            ->assertJsonPath('kpis.formularios', 1)
+            ->assertJsonPath('kpis.formularios_pct', 100)
             ->assertJsonPath('kpis.potenciales_sin_trabajar', null);
+        $this->asReportUser($admin)->getJson('/informes/leads/data/summary?period=october_2026&portal=Partner&channel=Llamada')
+            ->assertOk()
+            ->assertJsonPath('kpis.leads_totales', 1)
+            ->assertJsonPath('kpis.llamadas', 1)
+            ->assertJsonPath('kpis.formularios', 0);
+        $this->asReportUser($admin)->getJson('/informes/leads/data/delegations?period=october_2026')
+            ->assertOk()
+            ->assertJsonPath('items.0.llamadas', 0);
         $this->assertStringContainsString('salesforce_interest_october_provisional_projection_rows', $queries);
         $this->assertStringNotContainsString('salesforce_interest_monthly_materialized_rows', $queries);
         $this->assertStringNotContainsString('salesforce_interest_monthly_recovery_rows', $queries);

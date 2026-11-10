@@ -1,5 +1,27 @@
 # Handoff para agentes
 
+## 2026-11-10 — Fase 3: canales Llamadas/Formularios en octubre
+
+- El dashboard administrativo de Intereses de octubre cuenta `Llamadas` y
+  `Formularios` exclusivamente desde `channel = 'Llamada'` y
+  `channel = 'Formulario'` de la proyección F2M activa/coincidente. Aplica los
+  filtros combinados antes de contar; el porcentaje usa el total filtrado,
+  redondeado a dos decimales y es 0 % si dicho total es cero.
+- No son actividades Salesforce: no se leen `salesforce_calls`, `Task`,
+  `CallObject` ni F5, y no representan llamadas atendidas, gestión o formularios
+  de actividad. El informe de Llamadas, sus filtros, clasificación, auditoría y
+  CSV no cambian. Permanecen sin datos suficientes comerciales, delegaciones,
+  owner/no asignados, potenciales sin trabajar, gestionados, detalle de actividad
+  y comparativas; no se certifica ni publica la fuente.
+- Se actualizaron `docs/reglas-negocio-leads.md`,
+  `docs/salesforce-interest-generations.md`, `docs/informe-llamadas.md` y la
+  matriz. No aplican `PROJECT_CONTEXT.md` ni `DECISIONS.md`. Esta revisión
+  documental no ejecutó PHP, migraciones, Salesforce, base de datos,
+  benchmark ni producción. `node --check` del JavaScript y `git diff --check`
+  pasaron; PHP/Pint y la suite completa quedan para GitHub Actions por falta
+  de PHP local. No hay migración ni cambio de configuración. La activación
+  conserva el flag y la validación administrativa existentes.
+
 ## 2026-11-10 — limpieza de lenguaje UX en informes
 
 - Intereses de octubre se presenta como «datos reconstruidos» y expresa sus
