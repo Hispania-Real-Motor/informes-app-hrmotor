@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Services\Operations\OperationalTaskCatalog;
 use App\Services\Operations\OperationalTaskOutput;
+use App\Services\Reports\Leads\MonthlyInterestProvisionalReader;
+use App\Services\Salesforce\InterestMonthlyMaterializationService;
 use App\Services\Salesforce\InterestMonthlyRecoveryService;
+use App\Services\Salesforce\MonthlyInterestActivityRecoveryService;
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
@@ -87,6 +90,59 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
             $output = new OperationalTaskOutput('salesforce-sync-interest-monthly-current');
             $output->writeln(Artisan::output());
             $this->assertTrue($output->skipped);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_new_revision_stays_invisible_until_dependents_and_projection_are_complete(): void
+    {
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-10T12:00:00Z'));
+        try {
+            $this->app->instance(SalesforceClient::class, new class extends SalesforceClient
+            {
+                public function __construct() {}
+
+                public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+                {
+                    yield [];
+                }
+            });
+            $command = 'salesforce:sync-interest-monthly-current';
+            $options = ['--allow-salesforce-read' => true];
+            $this->assertSame(0, Artisan::call($command, $options));
+            $reader = app(MonthlyInterestProvisionalReader::class);
+            $first = $reader->latestForMonth(2026, 11);
+            $this->assertGreaterThan(0, $first['recovery_id']);
+
+            Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:00:00Z'));
+            $reason = 'Synthetic second monthly revision';
+            $f2 = app(InterestMonthlyRecoveryService::class);
+            $secondId = $f2->prepare(
+                CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+                CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'),
+                $reason,
+                500,
+                CarbonImmutable::parse('2026-11-11T11:58:00Z'),
+                true,
+            );
+            $this->assertSame($first['projection_key'], $reader->latestForMonth(2026, 11)['projection_key']);
+            $f2->run($secondId, $reason);
+            $this->assertSame($first['projection_key'], $reader->latestForMonth(2026, 11)['projection_key']);
+            $f2m = app(InterestMonthlyMaterializationService::class);
+            $f2m->run($f2m->prepare($secondId, $reason), $reason);
+            $this->assertSame($first['projection_key'], $reader->latestForMonth(2026, 11)['projection_key']);
+            $f5 = app(MonthlyInterestActivityRecoveryService::class);
+            $f5->run($f5->prepare($secondId, $reason), $reason);
+            $this->assertSame($first['projection_key'], $reader->latestForMonth(2026, 11)['projection_key']);
+
+            $this->assertSame(0, Artisan::call($command, $options));
+            $second = $reader->latestForMonth(2026, 11);
+            $this->assertSame($secondId, $second['recovery_id']);
+            $this->assertNotSame($first['projection_key'], $second['projection_key']);
+            $this->assertSame(0, Artisan::call($command, $options));
+            $this->assertSame($second['projection_key'], $reader->latestForMonth(2026, 11)['projection_key']);
+            $this->assertDatabaseCount('salesforce_interest_generations', 0);
         } finally {
             Carbon::setTestNow();
         }

@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Reports\Leads\MonthlyInterestProvisionalReader;
+use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use App\Services\Salesforce\InterestMonthlyMaterializationService;
 use App\Services\Salesforce\InterestMonthlyRecoveryService;
 use App\Services\Salesforce\MonthlyInterestActivityRecoveryService;
@@ -25,6 +27,7 @@ final class SyncCurrentMonthInterestsCommand extends Command
         InterestMonthlyRecoveryService $f2,
         InterestMonthlyMaterializationService $f2m,
         MonthlyInterestActivityRecoveryService $f5,
+        MonthlyInterestProvisionalReader $reader,
     ): int {
         if ($this->option('allow-salesforce-read') !== true) {
             $this->error('Monthly Interest refresh requires explicit read authorization.');
@@ -50,12 +53,13 @@ final class SyncCurrentMonthInterestsCommand extends Command
                 ->orderByDesc('revision')->first();
             if ($latest !== null && $latest->status === 'completed') {
                 $this->assertVerified($f2->status((int) $latest->id));
-                if (! $this->completeDependents((int) $latest->id, $f2m, $f5)) {
-                    return self::SUCCESS;
-                }
+                $this->completeDependents((int) $latest->id, $f2m, $f5);
+                $projectionCreated = $this->ensureProjection((int) $latest->id, $reader);
                 if ($latest->effective_cutoff_at !== null
                     && CarbonImmutable::parse($latest->effective_cutoff_at, 'UTC')->gte($cutoff)) {
-                    $this->line('SKIPPED: monthly Interest revision is already current for this cutoff.');
+                    $this->line($projectionCreated
+                        ? json_encode(['monthly_recovery_id' => (int) $latest->id, 'status' => 'completed', 'published' => false], JSON_THROW_ON_ERROR)
+                        : 'SKIPPED: monthly Interest revision is already current for this cutoff.');
 
                     return self::SUCCESS;
                 }
@@ -70,6 +74,7 @@ final class SyncCurrentMonthInterestsCommand extends Command
             }
             $this->assertVerified($status);
             $this->completeDependents($id, $f2m, $f5);
+            $this->ensureProjection($id, $reader);
             $this->line(json_encode(['monthly_recovery_id' => $id, 'status' => 'completed', 'published' => false], JSON_THROW_ON_ERROR));
 
             return self::SUCCESS;
@@ -85,7 +90,7 @@ final class SyncCurrentMonthInterestsCommand extends Command
         int $recoveryId,
         InterestMonthlyMaterializationService $f2m,
         MonthlyInterestActivityRecoveryService $f5,
-    ): bool {
+    ): void {
         $materialization = DB::table('salesforce_interest_monthly_materializations')
             ->where('monthly_recovery_id', $recoveryId)->first();
         $materializationId = $materialization === null
@@ -107,9 +112,20 @@ final class SyncCurrentMonthInterestsCommand extends Command
             $activityStatus = $f5->run($activityId, self::REASON, $activityStatus['status'] !== 'prepared');
         }
         $this->assertVerified($activityStatus);
+    }
 
-        return $materialization !== null && $materialization->status === 'completed'
-            && $activity !== null && $activity->status === 'completed';
+    private function ensureProjection(int $recoveryId, MonthlyInterestProvisionalReader $reader): bool
+    {
+        try {
+            $reader->dashboardProjection($recoveryId);
+
+            return false;
+        } catch (ProvisionalInterestSourceUnavailable) {
+            $reader->validate($recoveryId);
+            $reader->dashboardProjection($recoveryId);
+
+            return true;
+        }
     }
 
     /** @param array<string, mixed> $status */

@@ -18,6 +18,7 @@ final class MonthlyInterestProvisionalReader
         private readonly MonthlyInterestActivityRecoveryService $activities,
         private readonly LeadDelegationNormalizer $delegations,
         private readonly LeadRecordTypeNormalizer $types,
+        private readonly ObservedInterestOwnerProjection $owners,
         private readonly ?\Closure $beforePublication = null,
         private readonly ?\Closure $beforeHttpFinalCheck = null,
     ) {}
@@ -74,7 +75,7 @@ final class MonthlyInterestProvisionalReader
             throw new ProvisionalInterestSourceUnavailable;
         }
         $key = (string) Str::uuid();
-        $this->buildProjection((int) $materialization->id, $scope, $revision, $key);
+        $this->buildProjection((int) $materialization->id, $scope, $revision, $key, (string) $recovery->functional_end_at);
         $projection = DB::table('salesforce_interest_october_provisional_projection_rows')
             ->where('scope', $scope)->where('projection_key', $key);
         if ((clone $projection)->count() !== (int) $quality->eligible || $this->revision($scope) !== $revision) {
@@ -98,9 +99,11 @@ final class MonthlyInterestProvisionalReader
                 'sources' => $this->distribution($projection, 'source', 'source'),
                 'media' => $this->distribution($projection, 'medium', 'medium'),
                 'channels' => $this->distribution($projection, 'channel', 'channel')],
-            'projection_contract' => 'categorical_monthly_v1',
+            'projection_contract' => 'observed_owners_v1',
             'verification' => ['f2_verified' => true, 'materialization_verified' => true, 'f5_verified' => true,
                 'historical_certification' => 'unavailable'],
+            'owner_assignment' => ['source' => 'f2m_owner_observed', 'delegation_source' => 'commercial_delegation_snapshots',
+                'delegation_cutoff_utc' => (string) $recovery->functional_end_at, 'historical_owner_certified' => false],
         ];
         $overview['by_delegation'] = $overview['classification']['by_delegation'];
 
@@ -157,7 +160,7 @@ final class MonthlyInterestProvisionalReader
         }
     }
 
-    /** A newer completed revision without validated evidence blocks older snapshots. */
+    /** A prepared revision never displaces the last complete validated projection. */
     public function latestForMonth(int $year, int $month): array
     {
         if ($year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
@@ -165,10 +168,13 @@ final class MonthlyInterestProvisionalReader
         }
         $start = CarbonImmutable::create($year, $month, 1, 0, 0, 0, 'Europe/Madrid');
         try {
-            $run = DB::table('salesforce_interest_monthly_recoveries')
+            $run = DB::table('salesforce_interest_monthly_recoveries as recovery')
+                ->join('salesforce_interest_october_provisional_validations as validation', 'validation.monthly_recovery_id', '=', 'recovery.id')
                 ->where('functional_start_at', $start->utc())
                 ->where('functional_end_at', $start->addMonth()->utc())
-                ->where('status', 'completed')->orderByDesc('revision')->first(['id']);
+                ->where('recovery.status', 'completed')
+                ->where('recovery.phase', 'completed')
+                ->orderByDesc('recovery.revision')->first(['recovery.id']);
         } catch (Throwable) {
             throw new ProvisionalInterestSourceUnavailable;
         }
@@ -220,12 +226,13 @@ final class MonthlyInterestProvisionalReader
             'f5' => ['rows' => $count, 'sha256' => hash_final($f5)]];
     }
 
-    private function buildProjection(int $materializationId, string $scope, int $revision, string $key): void
+    private function buildProjection(int $materializationId, string $scope, int $revision, string $key, string $cutoffUtc): void
     {
         DB::table('salesforce_interest_monthly_materialized_rows')
             ->where('monthly_materialization_id', $materializationId)
             ->where('content_matches_inventory', true)->where('is_deleted', false)
-            ->orderBy('id')->chunkById(500, function ($rows) use ($scope, $revision, $key): void {
+            ->orderBy('id')->chunkById(500, function ($rows) use ($scope, $revision, $key, $cutoffUtc): void {
+                [$assignments, $labels] = $this->owners->forRows($rows, $cutoffUtc, $key);
                 $batch = [];
                 foreach ($rows as $row) {
                     $delegation = $this->delegations->normalize($row->origin_delegation);
@@ -235,10 +242,10 @@ final class MonthlyInterestProvisionalReader
                         'source' => $this->label($row->source), 'medium' => $this->label($row->medium),
                         'channel' => $this->label($row->channel), 'origin_delegation' => $this->label($delegation['delegation']),
                         'origin_group' => $this->label($delegation['group']), 'origin_zone' => $this->label($delegation['zone']),
-                        'owner_key' => null, 'commercial_delegation' => null, 'commercial_zone' => null,
-                        'owner_is_technical' => false, 'created_at' => now(), 'updated_at' => now()];
+                        ...$assignments[(int) $row->id], 'created_at' => now(), 'updated_at' => now()];
                 }
                 DB::table('salesforce_interest_october_provisional_projection_rows')->insert($batch);
+                DB::table('salesforce_interest_october_provisional_owners')->insertOrIgnore($labels);
             });
     }
 

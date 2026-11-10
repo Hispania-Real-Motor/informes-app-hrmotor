@@ -142,8 +142,9 @@ F2, F2M y F5 de la recuperación aislada del mes civil abierto en
 `Europe/Madrid`. Exige `--allow-salesforce-read`, usa un cutoff UTC de seguridad
 de dos minutos y reanuda una recuperación no completada antes de preparar otra;
 una revisión completada que ya cubre el cutoff no se vuelve a leer. No comienza
-antes del primer cutoff seguro del mes. Sólo informa éxito tras verificar las
-tres fases, conserva checkpoints ante fallo y no crea generación, publicación o
+antes del primer cutoff seguro del mes. Sólo informa finalización tras verificar
+las tres fases y la proyección mensual administrativa; conserva checkpoints ante
+fallo y no crea generación, publicación o
 lector oficial. La tarea del catálogo está apagada por defecto y requiere tanto
 `SALESFORCE_INTEREST_MONTHLY_CURRENT_SYNC_ENABLED=true` como autorización
 explícita del scheduler; no es evidencia histórica ni certificación F2/F5.
@@ -438,11 +439,26 @@ antes de persistir una proyección categórica sin IDs ni `raw_payload`, ligada 
 contenido coincide con F2; F5 sirve de consistencia, no de certificación
 histórica de actividad.
 
+La proyección mensual reutiliza `observed_owners_v1`: conserva una clave HMAC
+por Salesforce User ID observado, cifra el nombre en un diccionario aparte y
+consulta por lote los intervalos de `commercial_delegation_snapshots` que
+cubren el fin funcional del mes. Sin un intervalo único, mantiene la fila con
+asignación comercial no acreditada; distingue owner ausente y técnico. Los
+filtros comerciales son cruces de las mismas filas F2M elegibles, sin inferir
+identidad histórica, elegibilidad ni actividad F5. Una observación autorizada
+que afecte al intervalo del propietario de una validación mensual revoca su
+revisión en la transacción de la escritura; un rollback conserva la evidencia.
+
 `MonthlyInterestProvisionalReader` y HTTP leen sólo esa proyección. Si cambia
 la revisión, falta evidencia o no coincide la clave, fallan cerrados; no hay
-SOQL ni escaneo de journals en HTTP. El lector del mes no retrocede a una
-revisión anterior: si la más reciente `completed` no tiene evidencia validada,
-queda indisponible. Las rutas Laravel autorizadas invalidan la revisión dentro
+SOQL ni escaneo de journals en HTTP. El lector escoge la revisión `completed`
+más reciente con proyección validada: una revisión F2 más nueva todavía sin
+proyección no desplaza a la anterior, cuyo cutoff real permanece visible. Si la
+última proyección validada se invalida, el lector falla 503 sin retroceder más.
+El comando operativo construye y valida la proyección tras completar F2M/F5;
+si ésta ya existe y conserva integridad, no vuelve a calcularla. La publicación
+de la validación cambia la revisión visible sin servir filas parcialmente
+construidas. Las rutas Laravel autorizadas invalidan la revisión dentro
 de su transacción. SQL directo no está cubierto y exige revocar primero con:
 
 ```text
@@ -454,6 +470,10 @@ habilita consumidores oficiales y no convierte cutoff de `CreatedDate` ni
 contenido actual en fotografía histórica `as-of`. La ruta de noviembre exige
 administrador y flag apagado por defecto; la generación publicada conserva
 precedencia.
+Los meses expuestos se enumeran explícitamente con su flag administrativo;
+`latestForMonth(year, month)` permite reutilizar el lector sin abrir otros meses.
+La vista muestra el corte efectivo registrado en hora de Madrid cuando existe,
+sin convertirlo en cierre o certificación histórica.
 
 ### Lector administrativo provisional de octubre de 2026
 

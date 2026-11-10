@@ -1559,17 +1559,26 @@ php artisan salesforce:interest-generation monthly-status --period-id=<id>
 `salesforce:sync-interest-monthly-current` automatiza exclusivamente el mismo
 journal mensual aislado para el mes civil abierto en `Europe/Madrid`: calcula un
 cutoff UTC redondeado a minuto de dos minutos de seguridad, reanuda la F2 fallida
-si existe o prepara una revisión nueva, y sólo da éxito después de completar y
-verificar F2, F2M y F5 de esa recuperación. Antes del primer cutoff seguro no
+si existe o prepara una revisión nueva, y sólo informa finalización después de
+completar y verificar F2, F2M y F5 de esa recuperación, construir y validar su
+proyección administrativa mensual. Antes del primer cutoff seguro no
 crea una revisión futura; si el cutoff de la revisión completada ya lo cubre, no
 repite lecturas. El comando exige `--allow-salesforce-read`; sin él falla antes
 de leer Salesforce. Sus mensajes no deben incluir payloads, SOQL ni errores
 remotos.
 
-Esas dos salidas sin lectura (`antes del cutoff` y `cutoff ya cubierto`) se
-marcan como `SKIPPED:`. El catálogo las registra como omisión controlada, no
-como un falso `last-success`: no acreditan refresco, cobertura ni evidencia
-nueva.
+Antes del cutoff seguro se emite `SKIPPED:`. Si una revisión ya cubre el cutoff,
+se emite `SKIPPED:` sólo cuando F2M/F5 y la proyección siguen verificadas. Si
+faltaba la proyección o estaba revocada, el comando la revalida y comunica
+finalización sin repetir la lectura Salesforce. El catálogo no registra una
+omisión como un falso `last-success`.
+
+Durante una revisión nueva, el dashboard conserva la última proyección
+`completed` validada con su cutoff real. Una F2 más reciente sin F2M/F5 o sin
+proyección no la desplaza. La promoción se hace al publicar la validación de la
+nueva proyección; si la evidencia anterior pierde integridad, HTTP falla 503.
+No iniciar otra revisión ni habilitar el flag por interpretar una F2 completada
+como dashboard listo.
 
 Cada revisión vuelve a leer el inventario F2 actual acotado al mes y su F5
 selectiva sobre esa F2; no es un motor incremental por `SystemModstamp`. El

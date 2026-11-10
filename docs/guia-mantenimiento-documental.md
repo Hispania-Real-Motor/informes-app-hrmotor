@@ -276,3 +276,6 @@ revisión conjunta de guía y pruebas documentales por pertenecer a los controle
 críticos; no exime de ejecutar la suite funcional completa. Los jobs de
 compatibilidad de base de datos deben estar aislados, usar sólo datos sintéticos
 y no conectarse a producción.
+La proyección provisional mensual de Intereses se prueba también en el job
+MariaDB 11 mediante `MonthlyInterestProvisionalReaderTest`; esta comprobación
+cubre la compatibilidad del lector y su evidencia sin ejecutar Salesforce real.

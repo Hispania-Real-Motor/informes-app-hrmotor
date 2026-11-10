@@ -836,12 +836,23 @@ conservan. El lector administrativo fijo de octubre permanece separado.
 
 `MonthlyInterestProvisionalReader` materializa una proyección administrativa por
 recuperación mensual y revisión, con alcance `monthly_recovery_<id>`. Una
-validación CLI explícita exige F2, F2M y F5 terminadas/verificadas y sus
+validación CLI explícita o el comando operativo autorizado exigen F2, F2M y F5
+terminadas/verificadas y sus
 manifiestos correspondientes; HTTP sólo lee la proyección con clave y revisión
 vigentes, sin escanear journals. Las mutaciones autorizadas invalidan la revisión
 en su transacción y el SQL directo requiere revocación y revalidación manual.
+La revisión visible es la más reciente `completed` que tiene una proyección
+validada; una F2 posterior sin F2M/F5/proyección no desplaza la anterior. Si la
+última evidencia validada se invalida, la lectura falla cerrada en vez de
+retroceder a otra más antigua. El comando operativo construye la proyección
+antes de informar finalización.
 La primera exposición configurada es noviembre de 2026, sujeta a flag apagado
 por defecto y administrador; no publica ni sustituye `InterestGenerationReader`.
+La proyección mensual reutiliza el componente de propietarios observados de
+octubre (HMAC de User ID, nombre cifrado e intervalo de delegación al fin
+funcional), con períodos visibles enumerados y sujetos a su flag. La captura
+autorizada de un cambio relevante de delegación invalida transaccionalmente la
+evidencia mensual afectada.
 
 ### Proyección administrativa aislada de octubre de 2026
 

@@ -133,16 +133,27 @@ journal no puede validar al otro ni alterar el informe oficial.
 una extensión del lector publicado. Exige el flag
 `SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED` (apagado por defecto) y rol
 administrador: con el flag apagado responde 404, sin ese rol 403 y sin una
-proyección vigente 503; la respuesta es `no-store, private`. Sólo puede usar la
-revisión mensual más reciente `completed` de noviembre de 2026 en
-`Europe/Madrid` si F2, F2M y F5 están terminadas y verificadas para la misma
-recuperación. No hace fallback a una revisión anterior cuya evidencia fuera
-válida. La validación local explícita
+proyección vigente 503; la respuesta es `no-store, private`. Usa la revisión
+`completed` más reciente que ya tenga proyección validada para noviembre de
+2026 en `Europe/Madrid`, siempre con F2, F2M y F5 terminadas y verificadas para
+la misma recuperación. Una F2 nueva todavía en preparación o completada sin
+proyección no desplaza la anterior validada; la interfaz conserva el corte real
+de esta última. Si esa evidencia anterior se invalida, falla 503 sin retroceder
+a otra revisión. La validación local explícita
 `reports:validate-monthly-interest-provisional --recovery-id=<id> --confirm`
 comprueba los manifiestos F2M (`Id|content_hash|is_deleted`) y F5
 (`Id:is_deleted`), y persiste una proyección con alcance
 `monthly_recovery_<id>` y revisión; no consulta Salesforce ni convierte la
 evidencia en generación publicada.
+
+El comando operativo `salesforce:sync-interest-monthly-current`, cuando se
+autorice expresamente, completa y verifica F2, F2M y F5 antes de construir la
+nueva proyección administrativa. La activación de la revisión visible ocurre al
+publicar su validación con clave y revisión de integridad; un fallo intermedio
+deja visible la anterior sólo si conserva sus propios controles vigentes. Una
+revisión completada y con cutoff aún actual se omite únicamente si su
+proyección sigue válida; si falta o está revocada, se revalida antes de informar
+finalización. No se construye la proyección durante HTTP.
 
 HTTP sólo lee la proyección y comprueba alcance, clave y revisión antes y
 después de responder; nunca escanea F2/F2M/F5 ni hace SOQL. Una mutación por
@@ -154,17 +165,26 @@ y después una nueva validación. La proyección no incluye IDs ni payloads.
 
 El universo proyectado son sólo filas F2M activas y coincidentes con F2. Puede
 agregar estado, tipo mediante `LeadRecordTypeNormalizer`, fuente, medio, canal
-y procedencia materializada; no completa owner, comercial ni delegación
-comercial. F5 valida evidencia de fuente pero no acredita una relación de
-actividad histórica: gestión, actividad directa, comparativas, comercial,
-auditoría, CSV y los KPI oficiales siguen no disponibles, no cero. La
+y procedencia materializada. La proyección `observed_owners_v1` reutiliza el
+contrato de octubre: agrupa por HMAC del Salesforce User ID observado en F2M,
+cifra el nombre en el diccionario separado y distingue propietario ausente o
+técnico. Delegación y zona comerciales sólo se muestran si un único intervalo
+observado cubre el fin funcional del mes; si no, quedan como asignación no
+acreditada. Los filtros de propietario, delegación y zona comerciales operan
+sobre las mismas filas elegibles y conservan sus totales. No se infiere la
+delegación de procedencia desde el propietario ni se acredita su asignación
+histórica. F5 valida evidencia de fuente pero no acredita una relación de
+actividad histórica: gestión, actividad directa, comparativas, elegibilidad
+comercial, auditoría, CSV y los KPI oficiales siguen no disponibles, no cero. La
 generación publicada conserva precedencia; sin período explícito, la vista de
 noviembre sólo puede ser alternativa administrativa con flag, rol y evidencia
 vigente cuando no exista una generación oficial disponible.
 
-La presentación administrativa llama a este período «Octubre 2026 · datos
-reconstruidos» y, ante ese 503, indica que los datos están pendientes de
-actualización. Son textos de comunicación: no relajan el flag, el permiso, la
+La presentación administrativa llama al período «Noviembre de 2026» y muestra
+«Actualizado hasta» sólo si la recuperación guarda un corte efectivo real,
+convertido a hora de Madrid. No lo presenta como mes cerrado. Ante 503 indica
+que los datos están pendientes de actualización. Son textos de comunicación:
+no relajan el flag, el permiso, la
 revisión, `no-store, private` ni el fallo cerrado, y no declaran certificación
 ni cobertura completa.
 
