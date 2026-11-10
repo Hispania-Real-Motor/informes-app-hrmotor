@@ -148,6 +148,46 @@ class InterestMonthlyRecoveryTest extends TestCase
         }
     }
 
+    public function test_verification_of_more_than_two_batches_uses_bounded_sql_queries(): void
+    {
+        $records = [];
+        for ($i = 1; $i <= 1001; $i++) {
+            $records[] = $this->record(sprintf('a01%015d', $i), '2026-10-10T10:00:00Z');
+        }
+        $this->app->instance(SalesforceClient::class, new class($records) extends SalesforceClient
+        {
+            public function __construct(private array $records) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                $after = preg_match("/Id > '([^']+)'/", $soql, $matches) === 1 ? $matches[1] : null;
+                $page = array_values(array_filter($this->records, fn (array $row): bool => $after === null || strcmp($row['Id'], $after) > 0));
+                yield array_slice($page, 0, 500);
+            }
+        });
+        $batchSelects = 0;
+        $batchUpdates = 0;
+        DB::listen(function ($query) use (&$batchSelects, &$batchUpdates): void {
+            $sql = strtolower($query->sql);
+            if (! str_contains($sql, 'salesforce_interest_monthly_recovery_rows') || ! str_contains($sql, ' in (')) {
+                return;
+            }
+            $batchSelects += (int) str_starts_with($sql, 'select');
+            $batchUpdates += (int) str_starts_with($sql, 'update');
+        });
+
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Verify a large monthly inventory in bounded database batches.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-10-01', 'Europe/Madrid'), CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'), $reason, 500);
+        $status = $service->run($id, $reason);
+
+        $this->assertSame(1001, $status['counters']['remote_checked']);
+        $this->assertTrue($status['evidence']['verification']['verified']);
+        $this->assertSame(3, $batchSelects);
+        $this->assertSame(3, $batchUpdates);
+        $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 1001);
+    }
+
     public function test_salesforce_failure_exposes_only_safe_monthly_diagnostic(): void
     {
         $this->app->instance(SalesforceClient::class, new class extends SalesforceClient

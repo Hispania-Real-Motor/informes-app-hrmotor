@@ -1,5 +1,43 @@
 # Handoff para agentes
 
+## 2026-11-10 — reutilización F2M entre revisiones mensuales
+
+- Una revisión F2M nueva puede reutilizar únicamente filas sin cambio de la
+  materialización `completed` de la revisión inmediatamente anterior del mismo
+  mes, si F2/F2M previas estaban verificadas y siguen coincidiendo su snapshot
+  de fuente y manifiesto. Cada fila reutilizada conserva coincidencia de las
+  huellas F2 y materializada; IDs cambiados, nuevos o no verificables se leen
+  remotamente como antes.
+- La evidencia persiste la procedencia reutilizada y el contador `reused`; antes
+  de completar se vuelve a comprobar manifiesto/snapshot del origen. Cualquier
+  diferencia deja la verificación F2M en falso. No es una fuente histórica ni
+  reduce los límites de cutoff/estado actual, hard deletes, F5 o certificación.
+  No hay publicación, generación global, lector ni KPI nuevos, y octubre fijo
+  no cambia.
+- Se actualizan runbook y matriz por el nuevo linaje operativo. No se añade
+  `DECISIONS.md` ni `PROJECT_CONTEXT.md`: no hay módulo, configuración o
+  decisión transversal nueva; es una condición de reutilización verificable
+  dentro del journal existente. Cambio intermedio de B, no cierre de entrega.
+
+## 2026-11-10 — optimización intermedia de verificación F2 mensual
+
+- En cada página de verificación de hasta 500 filas, el journal mensual sustituye
+  la selección y actualización por Interest por una selección y una actualización
+  acotadas por lote. Conserva el mismo hash, contadores de remoto/ausente/cambio,
+  `verified_at`, checkpoint, lease y evidencia final; no cambia fuente, cutoff,
+  revisiones, F5, publicación ni lectores.
+- La regresión sintética de 1.001 filas comprueba tres selecciones y tres
+  actualizaciones por lote, además de los mismos contadores y verificación. Es
+  una aserción de consultas locales, no un benchmark ni evidencia de rendimiento
+  productivo. Este es un cambio intermedio de B: no declara B ni la entrega
+  incremental cerradas.
+- La optimización F2 por sí sola no cambia origen, universo, filtros, fórmulas,
+  KPI, auditoría, presentación ni contrato de evidencia. En el diff combinado,
+  la reutilización F2M sí actualiza runbook y matriz por su nuevo linaje. No se
+  ejecutaron PHP, MariaDB, CI, migraciones, Salesforce, base de datos, benchmark
+  ni producción en esta revisión documental. Contrato sugerido para el conjunto:
+  `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`.
+
 ## 2026-11-10 — revisiones de inventario mensual Interest
 
 - `monthly-revision-prepare` crea una nueva revisión aislada sólo después de
