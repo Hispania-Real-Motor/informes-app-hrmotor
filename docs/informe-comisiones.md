@@ -116,6 +116,33 @@ Los mensajes de readiness describen disponibilidad o necesidad de actualización
 sin exponer huecos o cortes técnicos; no acreditan cobertura completa ni hacen
 un cierre definitivo.
 
+### Fuente económica visible según el estado
+
+La vista normal autorizada y la proyección restringida de Auditoría resuelven la
+misma fuente económica para cada uno de los seis scopes:
+
+| Estado del bloque | Fuente mostrada |
+| --- | --- |
+| `provisional` | Cálculo live del mes. |
+| `pending_approval` | Snapshot candidato persistido en la `snapshot_version` del cierre. |
+| `definitive` | Snapshot definitivo persistido en la `snapshot_version` del cierre. |
+| `reopened` | Cálculo live; el snapshot histórico se conserva para auditoría, pero no alimenta el dashboard. |
+
+`CommercialCommissionClosureService::candidateOrDefinitiveSnapshot()` centraliza
+la selección del candidato o definitivo. Por ello, durante
+`pending_approval`, Administración/Dirección y Auditoría revisan exactamente el
+mismo payload preparado aunque las fuentes vivas cambien después. Comerciales y
+Delegaciones conservan en el payload el estado real `pending_approval`; el
+candidato no se presenta como definitivo. Cuando el snapshot contiene
+`formula_settings`, la vista normal usa esos settings congelados.
+
+Si existe un cierre `pending_approval` pero no es accesible el snapshot de la
+versión indicada, ambas superficies conservan el fallback seguro existente al
+cálculo live. Este fallback no regenera ni persiste un candidato, no altera
+snapshots anteriores y no inventa una comisión cero. La aprobación cambia el
+estado del cierre y certifica exactamente el candidato persistido: no vuelve a
+consultar fuentes vivas ni recalcula el mes.
+
 Desde julio de 2026, los seis scopes (Comerciales, Delegaciones, Área Manager,
 Financieros, Call Center y Contact Center) disponen de cierre independiente. Cada
 cierre tiene estado, aprobación, reapertura, eventos y versión de snapshot propios
