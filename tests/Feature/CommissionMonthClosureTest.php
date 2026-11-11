@@ -186,7 +186,7 @@ class CommissionMonthClosureTest extends TestCase
         $this->assertSame('pending_approval', $service->status('2026-06', CommercialCommissionClosure::SCOPE_DELEGATIONS)['status']);
     }
 
-    public function test_area_manager_definitivo_lee_el_snapshot_para_direccion_y_zona_restringida(): void
+    public function test_area_manager_pendiente_y_definitivo_leen_el_snapshot_para_direccion_y_zona_restringida(): void
     {
         $director = $this->user(ReportUser::ROLE_DIRECTOR);
         $manager = ReportUser::query()->create([
@@ -195,7 +195,7 @@ class CommissionMonthClosureTest extends TestCase
         ]);
         $closure = CommercialCommissionClosure::query()->create([
             'month' => '2026-06', 'closure_scope' => CommercialCommissionClosure::SCOPE_AREA_MANAGER,
-            'status' => CommercialCommissionClosure::STATUS_DEFINITIVE, 'snapshot_version' => 1,
+            'status' => CommercialCommissionClosure::STATUS_PENDING_APPROVAL, 'snapshot_version' => 1,
             'formula_version' => 'test', 'data_cutoff_at' => now(),
         ]);
         CommercialCommissionSnapshot::query()->create([
@@ -215,6 +215,186 @@ class CommissionMonthClosureTest extends TestCase
         $this->actingAsReportUser($manager)->get('/informes/comisiones-comerciales?tab=area-manager&month=2026-06')
             ->assertOk()
             ->assertViewHas('areaManagerDashboard', fn (array $dashboard): bool => data_get($dashboard, 'summary_rows.0.final_total') === 222);
+
+        $closure->update(['status' => CommercialCommissionClosure::STATUS_DEFINITIVE]);
+
+        $this->actingAsReportUser($director)->get('/informes/comisiones-comerciales?tab=area-manager&month=2026-06')
+            ->assertOk()
+            ->assertViewHas('areaManagerDashboard', fn (array $dashboard): bool => data_get($dashboard, 'summary_rows.0.final_total') === 111);
+        $this->actingAsReportUser($manager)->get('/informes/comisiones-comerciales?tab=area-manager&month=2026-06')
+            ->assertOk()
+            ->assertViewHas('areaManagerDashboard', fn (array $dashboard): bool => data_get($dashboard, 'summary_rows.0.final_total') === 222);
+    }
+
+    public function test_financieros_pendiente_muestra_el_mismo_candidato_a_administrador_y_auditoria(): void
+    {
+        CarbonImmutable::setTestNow('2026-08-05 10:00:00');
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $auditor = $this->user(ReportUser::ROLE_COMMISSION_AUDITOR);
+        $candidate = $this->financialDashboard('2026-07', 903.31, 'candidate-v3');
+        $this->closureWithSnapshot(
+            '2026-07',
+            CommercialCommissionClosure::SCOPE_FINANCIALS,
+            CommercialCommissionClosure::STATUS_PENDING_APPROVAL,
+            [
+                'financials' => $candidate,
+                'formula_settings' => ['synthetic_source' => 'candidate-v3'],
+            ],
+            3,
+        );
+
+        $financials = Mockery::mock(FinancialCommissionDashboardService::class);
+        $financials->shouldReceive('build')->never();
+        $this->app->instance(FinancialCommissionDashboardService::class, $financials);
+
+        $auditResponse = $this->actingAsReportUser($auditor)
+            ->get('/informes/comisiones-comerciales?month=2026-07&audit_scope=financials')
+            ->assertOk()
+            ->assertViewHas('auditProjection', fn (array $projection): bool => data_get($projection, 'scope.rows.0.final_total') === 903.31);
+        $adminResponse = $this->actingAsReportUser($admin)
+            ->get('/informes/comisiones-comerciales?month=2026-07&tab=financials')
+            ->assertOk()
+            ->assertViewHas('financialDashboard', fn (array $dashboard): bool => data_get($dashboard, 'summary_rows.0.final_commission') === 903.31)
+            ->assertViewHas('formulaSettings', fn (array $settings): bool => ($settings['synthetic_source'] ?? null) === 'candidate-v3')
+            ->assertViewHas('commissionClosure', fn (array $closure): bool => $closure['status'] === CommercialCommissionClosure::STATUS_PENDING_APPROVAL
+                && $closure['snapshot_version'] === 3);
+
+        $this->assertSame(
+            data_get($auditResponse->viewData('auditProjection'), 'scope.rows.0.final_total'),
+            data_get($adminResponse->viewData('financialDashboard'), 'summary_rows.0.final_commission'),
+        );
+    }
+
+    public function test_las_seis_pestanas_normales_utilizan_el_candidato_pendiente_de_su_scope(): void
+    {
+        CarbonImmutable::setTestNow('2026-08-05 10:00:00');
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $month = '2026-07';
+        $commercials = app(CommercialCommissionDashboardService::class)->build($month, false, false, false);
+        $delegations = app(CommercialCommissionDashboardService::class)->build($month, false, false, false);
+        $areaManager = app(AreaManagerCommissionDashboardService::class)->build($month);
+        $financials = app(FinancialCommissionDashboardService::class)->build($month);
+        $callCenter = app(CallCenterCommissionDashboardService::class)->build($month, includeDetails: false);
+        $contactCenter = app(ContactCenterCommissionDashboardService::class)->build($month, includeDetails: false);
+
+        foreach ([
+            CommercialCommissionClosure::SCOPE_COMMERCIALS => ['commercials' => $commercials + ['snapshot_marker' => 'commercials']],
+            CommercialCommissionClosure::SCOPE_DELEGATIONS => ['delegations' => $delegations + ['snapshot_marker' => 'delegations']],
+            CommercialCommissionClosure::SCOPE_AREA_MANAGER => [
+                'area_manager' => $areaManager + ['snapshot_marker' => 'area_manager'],
+                'area_manager_by_zone' => [],
+            ],
+            CommercialCommissionClosure::SCOPE_FINANCIALS => ['financials' => $financials + ['snapshot_marker' => 'financials']],
+            CommercialCommissionClosure::SCOPE_CALL_CENTER => ['call_center' => $callCenter + ['snapshot_marker' => 'call_center']],
+            CommercialCommissionClosure::SCOPE_CONTACT_CENTER => ['contact_center' => $contactCenter + ['snapshot_marker' => 'contact_center']],
+        ] as $scope => $snapshot) {
+            $this->closureWithSnapshot(
+                $month,
+                $scope,
+                CommercialCommissionClosure::STATUS_PENDING_APPROVAL,
+                $snapshot + ['formula_settings' => ['synthetic_scope' => $scope]],
+            );
+        }
+
+        foreach ([
+            AreaManagerCommissionDashboardService::class,
+            FinancialCommissionDashboardService::class,
+            CallCenterCommissionDashboardService::class,
+            ContactCenterCommissionDashboardService::class,
+        ] as $serviceClass) {
+            $mock = Mockery::mock($serviceClass);
+            $mock->shouldReceive('build')->never();
+            $this->app->instance($serviceClass, $mock);
+        }
+
+        foreach ([
+            ['summary', 'dashboard', 'commercials'],
+            ['delegations', 'dashboard', 'delegations'],
+            ['area-manager', 'areaManagerDashboard', 'area_manager'],
+            ['financials', 'financialDashboard', 'financials'],
+            ['call-center', 'callCenterDashboard', 'call_center'],
+            ['contact-center', 'contactCenterDashboard', 'contact_center'],
+        ] as [$tab, $viewKey, $scope]) {
+            $query = $tab === 'call-center'
+                ? '&call_center_contract_from=2026-07-10&call_center_contract_to=2026-07-20'
+                : '';
+            $response = $this->actingAsReportUser($admin)
+                ->get('/informes/comisiones-comerciales?month='.$month.'&tab='.$tab.$query)
+                ->assertOk()
+                ->assertViewHas($viewKey, fn (array $dashboard): bool => ($dashboard['snapshot_marker'] ?? null) === $scope)
+                ->assertViewHas('formulaSettings', fn (array $settings): bool => ($settings['synthetic_scope'] ?? null) === $scope);
+
+            if (in_array($scope, [CommercialCommissionClosure::SCOPE_COMMERCIALS, CommercialCommissionClosure::SCOPE_DELEGATIONS], true)) {
+                $response->assertViewHas($viewKey, fn (array $dashboard): bool => $dashboard['economic_status'] === CommercialCommissionClosure::STATUS_PENDING_APPROVAL);
+            }
+        }
+    }
+
+    public function test_estados_sin_candidato_visible_utilizan_live_y_definitivo_conserva_snapshot(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-15 10:00:00');
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $auditor = $this->user(ReportUser::ROLE_COMMISSION_AUDITOR);
+        $this->closureWithSnapshot(
+            '2026-09',
+            CommercialCommissionClosure::SCOPE_FINANCIALS,
+            CommercialCommissionClosure::STATUS_REOPENED,
+            ['financials' => $this->financialDashboard('2026-09', 100.00, 'historical')],
+        );
+        $this->closureWithSnapshot(
+            '2026-08',
+            CommercialCommissionClosure::SCOPE_FINANCIALS,
+            CommercialCommissionClosure::STATUS_DEFINITIVE,
+            ['financials' => $this->financialDashboard('2026-08', 600.00, 'definitive')],
+        );
+        $this->closureWithSnapshot(
+            '2026-07',
+            CommercialCommissionClosure::SCOPE_FINANCIALS,
+            CommercialCommissionClosure::STATUS_PENDING_APPROVAL,
+            null,
+        );
+
+        $financials = Mockery::mock(FinancialCommissionDashboardService::class);
+        $financials->shouldReceive('build')->times(4)->andReturnUsing(fn (string $month): array => $this->financialDashboard(
+            $month,
+            match ($month) {
+                '2026-10' => 810.10,
+                '2026-09' => 802.94,
+                '2026-07' => 700.70,
+            },
+            'live',
+        ));
+        $this->app->instance(FinancialCommissionDashboardService::class, $financials);
+
+        $provisionalResponse = $this->actingAsReportUser($admin)->get('/informes/comisiones-comerciales?month=2026-10&tab=financials')
+            ->assertOk()
+            ->assertViewHas('commissionClosure', fn (array $closure): bool => $closure['status'] === CommercialCommissionClosure::STATUS_PROVISIONAL);
+        $this->assertSame(810.10, data_get($provisionalResponse->viewData('financialDashboard'), 'summary_rows.0.final_commission'));
+
+        $reopenedResponse = $this->actingAsReportUser($admin)->get('/informes/comisiones-comerciales?month=2026-09&tab=financials')
+            ->assertOk()
+            ->assertViewHas('commissionClosure', fn (array $closure): bool => $closure['status'] === CommercialCommissionClosure::STATUS_REOPENED);
+        $this->assertSame(802.94, data_get($reopenedResponse->viewData('financialDashboard'), 'summary_rows.0.final_commission'));
+
+        $definitiveResponse = $this->actingAsReportUser($admin)->get('/informes/comisiones-comerciales?month=2026-08&tab=financials')
+            ->assertOk()
+            ->assertViewHas('commissionClosure', fn (array $closure): bool => $closure['status'] === CommercialCommissionClosure::STATUS_DEFINITIVE);
+        $this->assertSame(600.00, (float) data_get($definitiveResponse->viewData('financialDashboard'), 'summary_rows.0.final_commission'));
+
+        $missingCandidateResponse = $this->actingAsReportUser($admin)
+            ->get('/informes/comisiones-comerciales?month=2026-07&tab=financials')
+            ->assertOk();
+        $this->assertSame(700.70, data_get($missingCandidateResponse->viewData('financialDashboard'), 'summary_rows.0.final_commission'));
+
+        $missingCandidateAuditResponse = $this->actingAsReportUser($auditor)
+            ->get('/informes/comisiones-comerciales?month=2026-07&audit_scope=financials')
+            ->assertOk();
+        $this->assertSame(700.70, data_get($missingCandidateAuditResponse->viewData('auditProjection'), 'scope.rows.0.final_total'));
+
+        $this->assertDatabaseHas('commercial_commission_snapshots', [
+            'month' => '2026-09',
+            'version' => 1,
+        ]);
     }
 
     public function test_legacy_closure_and_audits_survive_while_scoped_closures_are_unique(): void
@@ -448,6 +628,56 @@ class CommissionMonthClosureTest extends TestCase
         return [
             'month' => $month,
             'closure_scope' => CommercialCommissionClosure::SCOPE_COMMERCIALS,
+        ];
+    }
+
+    /** @param array<string, mixed>|null $payload */
+    private function closureWithSnapshot(string $month, string $scope, string $status, ?array $payload, int $version = 1): CommercialCommissionClosure
+    {
+        $closure = CommercialCommissionClosure::query()->create([
+            'month' => $month,
+            'closure_scope' => $scope,
+            'status' => $status,
+            'snapshot_version' => $version,
+            'formula_version' => 'synthetic-test',
+            'data_cutoff_at' => now(),
+        ]);
+
+        if ($payload !== null) {
+            CommercialCommissionSnapshot::query()->create([
+                'closure_id' => $closure->id,
+                'month' => $month,
+                'version' => $version,
+                'formula_version' => 'synthetic-test',
+                'data_cutoff_at' => now(),
+                'payload' => $payload,
+                'source_state' => ['synthetic' => true],
+                'created_at' => now(),
+            ]);
+        }
+
+        return $closure;
+    }
+
+    /** @return array<string, mixed> */
+    private function financialDashboard(string $month, float $amount, string $source): array
+    {
+        return [
+            'month' => $month,
+            'month_label' => $month,
+            'ready' => true,
+            'issues' => [],
+            'warnings' => [],
+            'diagnostics' => [],
+            'summary_rows' => [[
+                'responsible_name' => 'Responsable sintético',
+                'summary_label' => 'Responsable sintético',
+                'commission_mode' => 'synthetic',
+                'final_commission' => $amount,
+            ]],
+            'delegation_rows' => [],
+            'detail_rows' => [],
+            'snapshot_marker' => $source,
         ];
     }
 

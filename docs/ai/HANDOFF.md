@@ -49,6 +49,54 @@
   certificación. SQL directo ajeno al invalidator Laravel exige revocación y
   revalidación de cualquier proyección afectada.
 
+## 2026-11-11 — consistencia del candidato de Comisiones durante aprobación
+
+- Corregida la divergencia económica entre la vista normal y Auditoría: el
+  controlador normal resuelve ahora el snapshot visible mediante
+  `candidateOrDefinitiveSnapshot()` para Comerciales, Delegaciones, Área
+  Manager, Financieros, Call Center y Contact Center. `pending_approval`
+  consume el candidato de `snapshot_version`, `definitive` conserva el
+  definitivo y `provisional`/`reopened` usan cálculo live. Comerciales y
+  Delegaciones conservan el estado real en `economic_status`; los
+  `formula_settings` se toman del snapshot cuando existen.
+- Archivos modificados:
+  `app/Http/Controllers/Reports/CommercialCommissions/CommercialCommissionDashboardController.php`,
+  `tests/Feature/CommissionMonthClosureTest.php`,
+  `docs/informe-comisiones.md` y este handoff. El agente
+  `report_docs_maintainer` contrastó implementación, pruebas, documento
+  funcional y matriz. `docs/matriz-trazabilidad-kpi.md`,
+  `docs/informe-comisiones-financieras.md`, `docs/ai/PROJECT_CONTEXT.md` y
+  `docs/ai/DECISIONS.md` no cambian: no varían KPI, arquitectura, fuentes,
+  campos, universos, filtros, fórmulas, redondeos, nulos ni trazabilidad.
+- Base de datos y configuración: sin migraciones, tablas, columnas,
+  dependencias o variables de entorno nuevas. No se regeneraron, aprobaron,
+  reabrieron ni modificaron snapshots reales; no se ejecutaron sincronizaciones
+  ni accesos Salesforce. La API mantiene su contrato.
+- Seguridad: no cambian autenticación, autorización, roles, permisos,
+  aprobadores ni datos expuestos a Auditoría. Las pruebas usan usuarios,
+  importes y payloads sintéticos. Si falta el snapshot de la versión indicada,
+  normal y Auditoría conservan el fallback live existente sin inventar cero ni
+  persistir un candidato.
+- Rendimiento: cuando existe candidato o definitivo, las pestañas de Área
+  Manager, Financieros, Call Center y Contact Center reutilizan el payload
+  persistido y evitan construir su dashboard económico live. Se mantiene la
+  construcción base existente para resolver mes y permisos, sin refactor
+  transversal, consultas por fila, N+1 ni carga de otros meses.
+- Pruebas y verificaciones: `CommissionMonthClosureTest` 21/21 (177
+  aserciones); `CommercialCommissionAuditProjectionServiceTest` 7/7 (56
+  aserciones); suite completa 1.695 pruebas, 1.694 correctas, 1 omitida y
+  15.174 aserciones; Pint correcto; `composer validate
+  --no-check-publish --strict` correcto; `composer audit --locked --no-dev`
+  sin advisories; `npm ci --ignore-scripts` sin vulnerabilidades; `npm run
+  build` correcto; `git diff --check` correcto. El build regeneró assets
+  versionados, que se restauraron al `HEAD` porque no hay cambios frontend.
+- Validación documental local pendiente: no hay `python`, `python3` ni `py`
+  utilizable en el entorno, por lo que no se pudieron ejecutar
+  `python -m unittest discover -s tests/documentation -p "test_*.py"` ni
+  `scripts/check_documentation_integrity.py`. Deben confirmarse en el check
+  `docs-integrity` de la PR. Acción manual restante: revisar los checks de
+  GitHub. No hay despliegue ni merge autorizado.
+
 ## 2026-11-10 — staging local de consolidación mensual de Interests (Draft)
 
 - Se añade `InterestMonthlyConsolidationService` y la CLI administrativa
