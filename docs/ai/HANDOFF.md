@@ -38,9 +38,13 @@
   por segunda vez; F2M/F5 y proyección sólo siguen si procede. No hay bucle de
   reintentos dentro de una invocación ni consultas por registro añadidas.
   Latencia y carga remota reales siguen sin medirse.
-- Verificación: `git diff --check` local correcto al preparar la documentación;
-  PHP/Composer y Python no disponibles localmente. PHPUnit, MariaDB 11, Pint y
-  Documentation integrity deben comprobarse sobre el SHA final de la PR.
+- Verificación: `git diff --check` local correcto. PHP/Composer y Python no
+  disponibles localmente; se usó GitHub Actions. Sobre el commit de código
+  `dd2bf705a68032f4da0f99a30c45e5563153aabe`, CI aprobó PHPUnit completo
+  (1.698 pruebas, 15.232 aserciones, una omitida), cinco suites MariaDB 11,
+  Pint de nueve PHP modificados, build y whitespace. Documentation integrity
+  aprobó también ese SHA y la descripción final de la PR. El cambio posterior
+  de este handoff requiere comprobar de nuevo los workflows del HEAD remoto.
 - Acción manual tras aprobación y despliegue: comprobar la revisión de
   noviembre con `php artisan salesforce:interest-generation monthly-status
   --period-id=2`; verificar cutoff y ausencia de ejecución activa; bajo
