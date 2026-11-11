@@ -46,7 +46,7 @@ function createClassList() {
 
 function createDashboardContext(fetch, {
     initialLeadPeriod = null,
-    periodOptions = ['last_30_days', 'current_month', 'previous_month', 'october_2026', 'custom'],
+    periodOptions = ['last_30_days', 'current_month', 'previous_month', 'october_2026', 'november_2026', 'custom'],
 } = {}) {
     const elements = new Map();
     const navigations = [];
@@ -367,7 +367,7 @@ test('official and provisional KPI cards preserve their own descriptions and una
 });
 
 test('the initial period is applied before the first dashboard request', async (t) => {
-    const periods = ['current_month', 'previous_month', 'custom', 'last_30_days', 'october_2026', null];
+    const periods = ['current_month', 'previous_month', 'custom', 'last_30_days', 'october_2026', 'november_2026', null];
 
     for (const initialLeadPeriod of periods) {
         await t.test(initialLeadPeriod || 'default', async () => {
@@ -466,4 +466,14 @@ test('leaving October provisional and resetting filters reloads every official d
         '/informes/leads?period=last_30_days',
     ]);
     assert.equal(calls.length, 0);
+});
+
+test('selecting November navigates to its authorized monthly dashboard', async () => {
+    const { context, element, navigations } = createDashboardContext(async () => ({ ok: true, json: async () => ({}) }));
+    vm.runInContext('bindFilters();', context);
+    const period = element('period');
+    period.value = 'november_2026';
+    await period.listener('change')({ currentTarget: period });
+
+    assert.deepEqual(navigations, ['/informes/leads?period=november_2026']);
 });

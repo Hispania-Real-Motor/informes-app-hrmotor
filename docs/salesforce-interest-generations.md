@@ -352,6 +352,55 @@ pertenecer a la misma F2; la reconciliación no los escribe, no repara ausencias
 ni eleva una verificación a certificación. Un hard delete sigue sin probarse por
 la ausencia de `queryAll`.
 
+### Lector administrativo mensual validado
+
+La validación administrativa mensual aislada se materializa por recuperación y
+revisión, sin crear una generación global. Para la exposición actualmente
+configurada de noviembre de 2026, el operador ejecuta localmente:
+
+```text
+php artisan reports:validate-monthly-interest-provisional --recovery-id=<id> --confirm
+```
+
+La recuperación debe corresponder al mes civil de Madrid y tener F2, F2M y F5
+`completed` y verificadas. Se contrastan los manifiestos F2M
+`Id|content_hash|is_deleted` y F5 `Id:is_deleted`, además de la evidencia local,
+antes de persistir una proyección categórica sin IDs ni `raw_payload`, ligada a
+`monthly_recovery_<id>`, una clave y una revisión. Sólo incluye F2M activo cuyo
+contenido coincide con F2; F5 sirve de consistencia, no de certificación
+histórica de actividad.
+
+La proyección mensual reutiliza `observed_owners_v1`: conserva una clave HMAC
+por Salesforce User ID observado, cifra el nombre en un diccionario aparte y
+consulta por lote los intervalos de `commercial_delegation_snapshots` que
+cubren el fin funcional del mes. Sin un intervalo único, mantiene la fila con
+asignación comercial no acreditada; distingue owner ausente y técnico. Los
+filtros comerciales son cruces de las mismas filas F2M elegibles, sin inferir
+identidad histórica, elegibilidad ni actividad F5. Una observación autorizada
+que afecte al intervalo del propietario de una validación mensual revoca su
+revisión en la transacción de la escritura; un rollback conserva la evidencia.
+
+`MonthlyInterestProvisionalReader` y HTTP leen sólo esa proyección. Si cambia
+la revisión, falta evidencia o no coincide la clave, fallan cerrados; no hay
+SOQL ni escaneo de journals en HTTP. El lector del mes no retrocede a una
+revisión anterior: si la más reciente `completed` no tiene evidencia validada,
+queda indisponible. Las rutas Laravel autorizadas invalidan la revisión dentro
+de su transacción. SQL directo no está cubierto y exige revocar primero con:
+
+```text
+php artisan reports:invalidate-monthly-interest-provisional --recovery-id=<id> --confirm
+```
+
+y validar de nuevo. No publica, no modifica `InterestGenerationReader`, no
+habilita consumidores oficiales y no convierte cutoff de `CreatedDate` ni
+contenido actual en fotografía histórica `as-of`. La ruta de noviembre exige
+administrador y flag apagado por defecto; la generación publicada conserva
+precedencia.
+Los meses expuestos se enumeran explícitamente con su flag administrativo;
+`latestForMonth(year, month)` permite reutilizar el lector sin abrir otros meses.
+La vista muestra el corte efectivo registrado en hora de Madrid cuando existe,
+sin convertirlo en cierre o certificación histórica.
+
 ### Lector administrativo provisional de octubre de 2026
 
 `/informes/leads?period=october_2026` selecciona una vista separada de todos

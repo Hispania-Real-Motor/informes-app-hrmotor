@@ -436,6 +436,7 @@ class IntegrityTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("image: mariadb:11", workflow)
         self.assertIn("php artisan test --filter=InterestMonthlyRecoveryTest", workflow)
+        self.assertIn("php artisan test --filter=MonthlyInterestProvisionalReaderTest", workflow)
 
     def test_unexpected_git_status_fails_closed(self) -> None:
         errors = self.check([checker.Change("U", checker.DOCS["calls"])], updated())

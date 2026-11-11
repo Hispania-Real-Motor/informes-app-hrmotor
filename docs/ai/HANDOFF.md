@@ -1,5 +1,61 @@
 # Handoff para agentes
 
+## 2026-11-10 — corrección del lector mensual provisional (#138)
+
+- Archivos funcionales: lector y dataset provisional de Interests, controladores
+  de Leads, servicio de snapshots de delegación comercial, vista original y
+  prueba `MonthlyInterestProvisionalReaderTest`; clases nuevas
+  `ObservedInterestOwnerProjection` y `MonthlyInterestProvisionalPeriod`.
+  Documentos revisados: reglas de Interests, generaciones Salesforce, informe
+  Reservas/Ventas, matriz KPI, contexto, decisiones y este handoff.
+- La proyección de noviembre comparte la regla observada de octubre: owner por
+  HMAC de Salesforce User ID, nombre cifrado y asignación comercial sólo con
+  intervalo único que cubra el fin funcional del mes. Conserva técnicos,
+  ausentes y asignaciones no acreditadas, además de filtros comerciales sobre
+  filas elegibles. Una observación autorizada que afecte el owner de la
+  proyección revoca la revisión mensual en la transacción de la escritura;
+  rollback la conserva. No hay inferencia de owner histórico ni KPI oficial.
+- La selección mensual queda en una lista explícita con flag propio. Noviembre
+  se titula «Noviembre de 2026» y el sello «Actualizado hasta» procede sólo del
+  corte efectivo persistido. HTTP sigue leyendo la proyección, no journals.
+- Base de datos: sin migración nueva; se reutilizan columnas, tabla cifrada de
+  propietarios y revisiones existentes. Seguridad: administrador, flag,
+  `no-store, private`, HMAC/cifrado y fallo cerrado conservados. Rendimiento:
+  consultas de snapshots por lote de 500, sin consulta por Interest ni SOQL en
+  HTTP. Acciones manuales: validar una recuperación mensual completa antes de
+  habilitar la vista; mantener el flag apagado hasta autorización. SQL directo
+  requiere revocación y revalidación explícita.
+- Verificación documental: `git diff --check` y revisión de documentación;
+  PHPUnit, MariaDB, Pint, JS, build y CI pendientes de ejecución por el agente
+  principal. Riesgo: los intervalos observados no certifican historia y el
+  desempeño productivo sólo podrá medirse tras despliegue autorizado.
+
+## 2026-11-10 — lector mensual administrativo provisional de noviembre
+
+- La ruta `period=november_2026` sólo se expone a administrador con
+  `SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED` activo (por defecto apagado).
+  Valida explícitamente una recuperación mensual concreta con F2/F2M/F5
+  terminadas y verificadas, y persiste proyección local por alcance/revisión;
+  HTTP no escanea journals. Si la revisión más reciente no tiene evidencia, no
+  retrocede a otra y falla cerrado (404/403/503 según causa), con `no-store`.
+- Las mutaciones Laravel autorizadas invalidan de forma transaccional. SQL
+  directo requiere `reports:invalidate-monthly-interest-provisional --recovery-id=<id> --confirm`
+  y posterior `reports:validate-monthly-interest-provisional --recovery-id=<id> --confirm`.
+  No publica generaciones, no certifica historia/F5 ni habilita KPI, auditoría
+  o CSV oficiales; los otros cinco informes no la consumen.
+- Documentación modificada: `docs/reglas-negocio-leads.md`,
+  `docs/salesforce-interest-generations.md`, los seis documentos funcionales,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/ai/PROJECT_CONTEXT.md`,
+  `docs/ai/DECISIONS.md` y este handoff. Pasan `php -l` en los PHP nuevos y
+  modificados, Pint, 61 pruebas JavaScript y `git diff --check`. No se
+  ejecutaron migraciones, base de datos, Salesforce, benchmark ni producción.
+  PHPUnit, build, MariaDB 11 y validador documental quedan para CI sobre el
+  HEAD comprometido; el runtime PHP local es 8.3 y Composer requiere 8.4.
+- Contrato sugerido: `Docs-Impact: updated`; `Docs-Matrix-Impact: updated`.
+  `Docs-Outside-Paths: [app/Console/Commands/InvalidateMonthlyInterestProvisionalCommand.php, app/Console/Commands/ValidateMonthlyInterestProvisionalCommand.php]`;
+  `Docs-Outside-Reason: comandos administrativos aislados sin lector/KPI oficial`;
+  `Docs-Outside-Evidence: app/Console/Commands/ValidateMonthlyInterestProvisionalCommand.php`.
+
 ## 2026-11-10 — reutilización F2M entre revisiones mensuales
 
 - Una revisión F2M nueva puede reutilizar únicamente filas sin cambio de la

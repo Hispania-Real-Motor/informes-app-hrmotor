@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports\Leads;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -34,7 +35,10 @@ final class October2026ProvisionalInterestDashboardDatasetService
         'commercial_delegation' => 'commercial_delegation',
     ];
 
-    public function __construct(private readonly October2026ProvisionalInterestReader $reader) {}
+    public function __construct(
+        private readonly October2026ProvisionalInterestReader $reader,
+        private readonly MonthlyInterestProvisionalReader $monthlyReader,
+    ) {}
 
     /** @return array<string, mixed> */
     public function summary(Request $request): array
@@ -44,6 +48,10 @@ final class October2026ProvisionalInterestDashboardDatasetService
         $bucket = $this->bucket($rows, $this->hasOwners($snapshot));
         $overview = $snapshot['overview'];
         $filters = $this->filterOptions($snapshot);
+        $period = $overview['period'];
+        $start = CarbonImmutable::parse($period['start_utc'], 'UTC')->setTimezone('Europe/Madrid');
+        $end = CarbonImmutable::parse($period['end_utc'], 'UTC')->setTimezone('Europe/Madrid')->subDay();
+        $label = $period['label'];
 
         $this->assertCurrent($snapshot);
 
@@ -52,22 +60,23 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'provisional' => true,
             'generation_id' => $snapshot['projection_key'],
             'dataset_cutoff_at' => null,
-            'dataset_generated_at' => null,
+            'dataset_generated_at' => $overview['validated_at'] ?? null,
             'dataset_timezone' => 'Europe/Madrid',
-            'periodo_actual' => ['inicio' => '2026-10-01', 'fin' => '2026-10-31', 'etiqueta' => 'Octubre de 2026'],
+            'periodo_actual' => ['inicio' => $start->toDateString(), 'fin' => $end->toDateString(), 'etiqueta' => $label],
             'periodo_comparado' => null,
             'empty' => $bucket['leads_totales'] === 0,
-            'message' => $bucket['leads_totales'] === 0 ? 'No hay Intereses que coincidan con los filtros de octubre.' : null,
+            'message' => $bucket['leads_totales'] === 0 ? 'No hay Intereses que coincidan con los filtros del mes.' : null,
             'kpis' => $bucket,
             'comparativa' => [],
             'insights' => [
-                'Datos de octubre: '.$overview['coverage']['eligible_active_matching'].' Intereses activos disponibles.',
+                $label.': '.$overview['coverage']['eligible_active_matching'].' Intereses activos disponibles.',
+                ...(isset($period['effective_cutoff']) ? ['Altas incluidas hasta '.CarbonImmutable::parse($period['effective_cutoff'], 'UTC')->setTimezone('Europe/Madrid')->format('d/m/Y H:i').'; contenido observado en la validación.'] : []),
                 'Las comparativas y los indicadores de actividad requieren más datos.',
             ],
             'filters' => $filters,
             'availability' => [
-                'commercials' => $this->hasOwners($snapshot) ? 'Propietarios observados en F2M; la asignación histórica no está certificada.' : 'Sin datos suficientes de propietarios para octubre.',
-                'activity' => 'Sin datos suficientes de actividad y gestión para octubre.',
+                'commercials' => $this->hasOwners($snapshot) ? 'Propietarios observados en F2M; la asignación histórica no está certificada.' : 'Sin datos suficientes de propietarios para este mes.',
+                'activity' => 'Sin datos suficientes de actividad y gestión para este mes.',
                 'comparison' => 'Sin datos suficientes para comparar con otro período.',
             ],
             'coverage' => $overview['coverage'],
@@ -101,7 +110,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
         if (! $this->hasOwners($snapshot)) {
             $this->assertCurrent($snapshot);
 
-            return ['ok' => true, 'zones' => [], 'delegations' => [], 'commercials' => [], 'items' => [], 'message' => 'Sin datos suficientes de propietarios para octubre.'];
+            return ['ok' => true, 'zones' => [], 'delegations' => [], 'commercials' => [], 'items' => [], 'message' => 'Sin datos suficientes de propietarios para este mes.'];
         }
         $rows = $this->filteredRows($snapshot, $request);
         $commercials = (clone $rows)->select(['owner_key', 'commercial_delegation', 'commercial_zone'])
@@ -144,14 +153,17 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'delegations' => $delegations,
             'commercials' => $items,
             'items' => $items,
-            'message' => 'Propietario F2M observado; delegación según intervalo disponible al corte de octubre.',
+            'message' => 'Propietario F2M observado; delegación según el intervalo disponible al corte funcional del mes.',
         ];
     }
 
     /** @return array{overview:array<string,mixed>,projection_key:string,integrity_revision:int} */
     private function snapshot(Request $request): array
     {
-        $snapshot = $this->reader->dashboardProjection();
+        $month = MonthlyInterestProvisionalPeriod::forKey($request->query('period'));
+        $snapshot = $month !== null
+            ? $this->monthlyReader->latestForMonth($month['year'], $month['month'])
+            : $this->reader->dashboardProjection();
         $requested = $request->header('X-Interest-Generation');
         if ($requested !== null && ! hash_equals($snapshot['projection_key'], (string) $requested)) {
             throw new ProvisionalInterestSourceUnavailable;
@@ -164,7 +176,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     private function filteredRows(array $snapshot, Request $request): Builder
     {
         $rows = DB::table('salesforce_interest_october_provisional_projection_rows')
-            ->where('scope', self::SCOPE)
+            ->where('scope', $snapshot['scope'] ?? self::SCOPE)
             ->where('integrity_revision', $snapshot['integrity_revision'])
             ->where('projection_key', $snapshot['projection_key']);
 
@@ -288,6 +300,12 @@ final class October2026ProvisionalInterestDashboardDatasetService
     /** @param array{overview:array<string,mixed>,projection_key:string,integrity_revision:int} $snapshot */
     private function assertCurrent(array $snapshot): void
     {
+        if (isset($snapshot['scope']) && $snapshot['scope'] !== self::SCOPE) {
+            $this->monthlyReader->assertCurrent($snapshot['recovery_id'],
+                $snapshot['integrity_revision'], $snapshot['projection_key']);
+
+            return;
+        }
         $this->reader->assertDashboardProjectionCurrent($snapshot['integrity_revision'], $snapshot['projection_key']);
     }
 
@@ -337,7 +355,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     private function projectionLabels(array $snapshot, string $column): array
     {
         return DB::table('salesforce_interest_october_provisional_projection_rows')
-            ->where('scope', self::SCOPE)
+            ->where('scope', $snapshot['scope'] ?? self::SCOPE)
             ->where('integrity_revision', $snapshot['integrity_revision'])
             ->where('projection_key', $snapshot['projection_key'])
             ->distinct()->orderBy($column)->pluck($column)->all();

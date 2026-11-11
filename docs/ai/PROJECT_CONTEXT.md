@@ -820,6 +820,22 @@ del contenido. Por ello `month_closed_at_cutoff` no habilita certificación
 puede seguir a otra `completed` y con cutoff posterior; las anteriores se
 conservan. El lector administrativo fijo de octubre permanece separado.
 
+### Proyección administrativa mensual validada
+
+`MonthlyInterestProvisionalReader` materializa una proyección administrativa por
+recuperación mensual y revisión, con alcance `monthly_recovery_<id>`. Una
+validación CLI explícita exige F2, F2M y F5 terminadas/verificadas y sus
+manifiestos correspondientes; HTTP sólo lee la proyección con clave y revisión
+vigentes, sin escanear journals. Las mutaciones autorizadas invalidan la revisión
+en su transacción y el SQL directo requiere revocación y revalidación manual.
+La primera exposición configurada es noviembre de 2026, sujeta a flag apagado
+por defecto y administrador; no publica ni sustituye `InterestGenerationReader`.
+La proyección mensual reutiliza el componente de propietarios observados de
+octubre (HMAC de User ID, nombre cifrado e intervalo de delegación al fin
+funcional), con períodos visibles enumerados y sujetos a su flag. La captura
+autorizada de un cambio relevante de delegación invalida transaccionalmente la
+evidencia mensual afectada.
+
 ### Proyección administrativa aislada de octubre de 2026
 
 `October2026ProvisionalInterestReader` valida journals mensuales aislados y

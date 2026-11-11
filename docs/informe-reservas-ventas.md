@@ -12,6 +12,12 @@ ni habilita KPIs o publicación.
 El lector administrativo provisional de octubre consume esos journals sólo para
 un resumen de Interests con límites de cobertura; no se integra con
 Reservas/Ventas, Rendimiento comercial, auditorías, cierres, filtros o CSV.
+
+El lector administrativo mensual de noviembre usa asimismo una proyección local
+validada de Interests y no modifica atribución Opportunity/Interest, Rendimiento
+comercial, resultados, filtros, auditorías, cierres o CSV de Reservas/Ventas.
+Su evidencia no acredita cobertura de Opportunity ni reemplaza la generación
+Interest publicada exigida para portal.
 La validación/snapshot local que condiciona esa pantalla no cambia la generación
 publicada de atribución ni requiere revalidar este informe.
 La proyección versionada de octubre y sus filtros multidimensionales pertenecen
@@ -27,6 +33,10 @@ las exportaciones de Reservas/Ventas. Un cambio observado después del corte que
 no altera aquel intervalo no revoca la proyección de octubre. Una escritura SQL
 directa sigue fuera del contrato de revocación y requiere el procedimiento
 operativo de revalidación de la vista provisional.
+La misma captura revoca también la revisión mensual provisional cuando un
+owner incluido tiene una observación anterior al fin funcional del mes; el
+rollback revierte esa revocación. El control sólo protege la lectura aislada de
+Interests y no cambia resultados ni fuentes de Reservas/Ventas.
 
 ## Selector fijo de octubre de 2026
 

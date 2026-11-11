@@ -205,8 +205,8 @@ function bindFilters() {
     ].forEach((id) => {
         document.getElementById(id)?.addEventListener('change', async (event) => {
             if (id === 'period') {
-                if (event.currentTarget.value === 'october_2026') {
-                    window.location.assign('/informes/leads?period=october_2026');
+                if (['october_2026', 'november_2026'].includes(event.currentTarget.value)) {
+                    window.location.assign(`/informes/leads?period=${event.currentTarget.value}`);
 
                     return;
                 }
