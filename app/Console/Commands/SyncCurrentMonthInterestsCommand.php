@@ -10,7 +10,6 @@ use App\Services\Salesforce\MonthlyInterestActivityRecoveryService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 use Throwable;
 
 /** Isolated monthly F2/F2M/F5 refresh; never touches a published generation. */
@@ -52,16 +51,21 @@ final class SyncCurrentMonthInterestsCommand extends Command
                 ->where('functional_start_at', $start)->where('functional_end_at', $end)
                 ->orderByDesc('revision')->first();
             if ($latest !== null && $latest->status === 'completed') {
-                $this->assertVerified($f2->status((int) $latest->id));
-                $this->completeDependents((int) $latest->id, $f2m, $f5);
-                $projectionCreated = $this->ensureProjection((int) $latest->id, $reader);
-                if ($latest->effective_cutoff_at !== null
-                    && CarbonImmutable::parse($latest->effective_cutoff_at, 'UTC')->gte($cutoff)) {
-                    $this->line($projectionCreated
-                        ? json_encode(['monthly_recovery_id' => (int) $latest->id, 'status' => 'completed', 'published' => false], JSON_THROW_ON_ERROR)
-                        : 'SKIPPED: monthly Interest revision is already current for this cutoff.');
+                $latestStatus = $f2->status((int) $latest->id);
+                if ($this->isVerified($latestStatus)) {
+                    $this->completeDependents((int) $latest->id, $f2m, $f5);
+                    $projectionCreated = $this->ensureProjection((int) $latest->id, $reader);
+                    if ($latest->effective_cutoff_at !== null
+                        && CarbonImmutable::parse($latest->effective_cutoff_at, 'UTC')->gte($cutoff)) {
+                        $this->line($projectionCreated
+                            ? json_encode(['monthly_recovery_id' => (int) $latest->id, 'status' => 'completed', 'published' => false], JSON_THROW_ON_ERROR)
+                            : 'SKIPPED: monthly Interest revision is already current for this cutoff.');
 
-                    return self::SUCCESS;
+                        return self::SUCCESS;
+                    }
+                } elseif ($latest->effective_cutoff_at === null
+                    || CarbonImmutable::parse($latest->effective_cutoff_at, 'UTC')->gte($cutoff)) {
+                    throw new MonthlyInterestEvidenceUnverified;
                 }
             }
 
@@ -78,6 +82,10 @@ final class SyncCurrentMonthInterestsCommand extends Command
             $this->line(json_encode(['monthly_recovery_id' => $id, 'status' => 'completed', 'published' => false], JSON_THROW_ON_ERROR));
 
             return self::SUCCESS;
+        } catch (MonthlyInterestEvidenceUnverified) {
+            $this->error('Monthly Interest integrity verification failed. A later safe cutoff is required for a new revision.');
+
+            return self::FAILURE;
         } catch (Throwable) {
             // The journals retain their checkpoints and safe diagnostics. Avoid leaking Salesforce payloads.
             $this->error('Monthly Interest refresh stopped. Inspect isolated journal status before resuming.');
@@ -131,8 +139,15 @@ final class SyncCurrentMonthInterestsCommand extends Command
     /** @param array<string, mixed> $status */
     private function assertVerified(array $status): void
     {
-        if ($status['status'] !== 'completed' || ! data_get($status, 'evidence.verification.verified', false)) {
-            throw new RuntimeException('Monthly Interest evidence is incomplete.');
+        if (! $this->isVerified($status)) {
+            throw new MonthlyInterestEvidenceUnverified;
         }
+    }
+
+    /** @param array<string, mixed> $status */
+    private function isVerified(array $status): bool
+    {
+        return $status['status'] === 'completed'
+            && data_get($status, 'evidence.verification.verified') === true;
     }
 }

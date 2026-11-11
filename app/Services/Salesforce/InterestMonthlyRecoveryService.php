@@ -54,6 +54,9 @@ final class InterestMonthlyRecoveryService
             if ($newRevision && ($existing === null || $existing->status !== 'completed')) {
                 throw new RuntimeException('A new monthly revision requires a completed previous revision.');
             }
+            if ($newRevision && $existing->effective_cutoff_at === null) {
+                throw new RuntimeException('A new monthly revision requires a recorded previous cutoff.');
+            }
             if ($existing !== null && $existing->effective_cutoff_at !== null) {
                 $previousCutoff = CarbonImmutable::parse($existing->effective_cutoff_at, 'UTC');
                 if ($cutoff->equalTo($previousCutoff)) {

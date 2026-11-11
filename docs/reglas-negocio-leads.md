@@ -155,6 +155,15 @@ revisión completada y con cutoff aún actual se omite únicamente si su
 proyección sigue válida; si falta o está revocada, se revalida antes de informar
 finalización. No se construye la proyección durante HTTP.
 
+Una F2 mensual `completed` con `verification.verified=false` no alimenta F2M,
+F5 ni esta vista. El refresco conserva esa revisión como evidencia de
+discrepancia y, sólo con un cutoff seguro estrictamente posterior, prepara una
+nueva revisión aislada; ésta se muestra únicamente después de verificar F2,
+F2M y F5 y validar la proyección. El hash mensual excluye tiempos técnicos,
+pero el cutoff de creación no impide cambios concurrentes de campos
+funcionales. La discrepancia no acredita por sí misma cuál fue su causa y no
+modifica KPIs, lectores ni generación oficial.
+
 HTTP sólo lee la proyección y comprueba alcance, clave y revisión antes y
 después de responder; nunca escanea F2/F2M/F5 ni hace SOQL. Una mutación por
 rutas Laravel autorizadas invalida transaccionalmente la revisión de esa

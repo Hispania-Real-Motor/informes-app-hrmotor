@@ -1586,6 +1586,48 @@ cutoff limita `CreatedDate`, pero el contenido observado sigue siendo actual.
 Por tanto no usar la tarea para declarar deltas históricos ni sustituir el
 pipeline incremental publicado.
 
+#### Recuperación supervisada de F2 completada sin verificación (noviembre)
+
+Después de desplegar un correctivo aprobado, con ventana operativa y lectura
+Salesforce expresamente autorizadas, comprobar primero la revisión existente:
+
+```text
+php artisan salesforce:interest-generation monthly-status --period-id=2
+```
+
+Confirmar mes, revisión, cutoff registrado, `status=completed`,
+`phase=completed`, `verification.verified=false` y contadores, sin copiar IDs
+ni payloads a incidencias. No cancelar, borrar, editar ni marcar como verificada
+esa revisión. Comprobar que el reloj permite un cutoff seguro posterior al
+anterior (el comando usa UTC actual menos dos minutos, truncado al minuto) y
+que no hay otra ejecución activa. Bajo autorización operativa, ejecutar una
+sola vez:
+
+```text
+php artisan salesforce:sync-interest-monthly-current --allow-salesforce-read
+```
+
+El comando prepara una revisión nueva con cutoff posterior, reextrae F2 y la
+verifica; sólo con `verification.verified=true` continúa F2M, F5 y proyección.
+Si la lectura remota falla, consultar el ID nuevo mediante `monthly-status` y
+reanudar con el mismo comando tras resolver la causa y expirar/liberar de forma
+segura el lease. Si la nueva revisión termina también no verificada, no repetir
+con el mismo cutoff: inspeccionar contadores y autorizar explícitamente otra
+ventana/cutoff posterior. El comando no encadena revisiones dentro de una sola
+ejecución. Revisar el ID/revisión/cutoff de salida y los estados/verificaciones
+F2, F2M y F5 antes de validar la visibilidad provisional. Nunca usar esta
+operación como certificación histórica o publicación global.
+
+El cambio de hash puede deberse a modificación concurrente en Salesforce,
+pero el journal agregado no permite demostrar el campo ni la causa exacta. El
+hash excluye tiempo técnico de sincronización; una repetición consume una
+nueva lectura de todo el mes F2, segunda verificación, F2M y F5 selectiva, con
+lotes acotados. Medir tiempos, filas, páginas y límites remotos durante la
+ventana, y abortar si el coste supera la capacidad aprobada. No hay migración
+nueva ni cambio de configuración requerido por este correctivo; el flag y el
+scheduler siguen apagados. SQL directo ajeno a invalidadores Laravel requiere
+revocación y revalidación de la proyección afectada.
+
 La tarea de catálogo `salesforce-sync-interest-monthly-current` permanece
 deshabilitada, incluso para ejecución manual desde Operaciones, salvo que
 `SALESFORCE_INTEREST_MONTHLY_CURRENT_SYNC_ENABLED=true`. Su cron propuesto es

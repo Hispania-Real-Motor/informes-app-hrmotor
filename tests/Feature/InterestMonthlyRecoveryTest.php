@@ -62,7 +62,17 @@ class InterestMonthlyRecoveryTest extends TestCase
         $monthly = app(InterestMonthlyRecoveryService::class);
         $hash = new \ReflectionMethod($monthly, 'contentHash');
         $hash->setAccessible(true);
-        $mapped = app(SalesforceInterestSyncService::class)->mapRecord($this->record('a01000000000000001', '2026-10-10T10:00:00Z'), false);
+        $record = $this->record('a01000000000000001', '2026-10-10T10:00:00Z');
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-10T10:00:00Z'));
+        try {
+            $mapped = app(SalesforceInterestSyncService::class)->mapRecord($record, false);
+            Carbon::setTestNow(CarbonImmutable::parse('2026-11-10T11:00:00Z'));
+            $mappedAgain = app(SalesforceInterestSyncService::class)->mapRecord($record, false);
+            $this->assertNotEquals($mapped['synced_at'], $mappedAgain['synced_at']);
+            $this->assertSame($hash->invoke($monthly, $mapped), $hash->invoke($monthly, $mappedAgain));
+        } finally {
+            Carbon::setTestNow();
+        }
         $first = $hash->invoke($monthly, $mapped);
         $mapped['synced_at'] = now('UTC')->addHour();
         $this->assertSame($first, $hash->invoke($monthly, $mapped));
