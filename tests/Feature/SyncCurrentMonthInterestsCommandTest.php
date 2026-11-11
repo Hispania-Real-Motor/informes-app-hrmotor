@@ -332,7 +332,7 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
 
                 public function queryPages(string $soql, bool $includeDeleted = false): \Generator
                 {
-                    if (str_contains($soql, "FROM Interes__c") && ! str_contains($soql, "Id > '")) {
+                    if (str_contains($soql, 'FROM Interes__c') && ! str_contains($soql, "Id > '")) {
                         $this->reads++;
                         yield [['Id' => 'a01000000000000001', 'CreatedDate' => '2026-11-05T10:00:00Z',
                             'LastModifiedDate' => '2026-11-05T10:00:00Z', 'SystemModstamp' => '2026-11-05T10:00:00Z',
