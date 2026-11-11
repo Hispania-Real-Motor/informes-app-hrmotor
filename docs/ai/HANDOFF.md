@@ -1,5 +1,56 @@
 # Handoff para agentes
 
+## 2026-11-10 — staging local de consolidación mensual de Interests (Draft)
+
+- Se añade `InterestMonthlyConsolidationService` y la CLI administrativa
+  `salesforce:stage-interest-months`. Preparan una selección explícita de
+  materializaciones F2M mensuales y sus F5 verificadas, luego guardan
+  referencias de pertenencia por lotes de 500. Cada lote, checkpoint y
+  contador se confirman juntos; lease y recuperación protegen reintentos.
+  Verifica hashes/manifiestos, revisión de integridad, última revisión del mes,
+  pertenencia funcional e identidad Salesforce/origen de migración. Colisiones
+  y evidencias cambiadas bloquean; no se elige una fuente ganadora.
+- Código y pruebas: `.github/workflows/ci.yml`,
+  `app/Console/Commands/StageInterestMonthlyConsolidationCommand.php`,
+  `app/Services/Salesforce/InterestMonthlyConsolidationService.php`,
+  `database/migrations/2026_11_10_120000_create_interest_monthly_consolidation_staging.php`,
+  `tests/Feature/InterestMonthlyConsolidationTest.php` y
+  `tests/documentation/test_check_documentation_integrity.py` (esta última
+  actualizada por el agente principal). Documentación: guía de generaciones,
+  operaciones, reglas de Interests, Reservas/Ventas, Llamadas, Campañas, matriz,
+  guía documental, DECISIONS, PROJECT_CONTEXT y este handoff.
+- Base de datos: tres tablas aditivas de cabecera, orígenes y pertenencias.
+  Se guardan IDs Salesforce técnicos y hashes en almacenamiento restringido;
+  no se copian payloads personales. El rollback rechaza eliminar evidencia
+  existente. No hay modificación de journals F2/F2M/F5 originales, generación
+  global, publication pointer, lectores oficiales ni scheduler.
+- Seguridad: la CLI no accede a Salesforce; errores de consola usan mensaje
+  genérico, y el estado expone IDs de journals/manifiestos técnicos, sin
+  payloads ni excepciones. Operación manual autorizada únicamente; no hay ruta
+  HTTP nueva. Rendimiento: referencias por lotes y checkpoint keyset, sin
+  cargar el universo completo en memoria ni consultar SQL por Interest. Los
+  manifiestos de origen se vuelven a recorrer en CLI; la carga y el impacto
+  real en MariaDB requieren medición representativa.
+- Pruebas: el agente principal añadió regresiones de 501 filas, reanudación,
+  contenido alterado sin cambio de cardinalidad, lease activo, revisión
+  obsoleta, colisión entre meses y ausencia de publicación. Se incluyó el
+  filtro en el job MariaDB 11. La prueba de estado usa ahora el ID de staging
+  realmente generado y consultado en el journal, en lugar de suponer un autoincremental fijo
+  entre pruebas de MariaDB; no cambia el servicio productivo. En
+  `8aaf7c74c2c6b36f4498d60de2a5b752032fd327`, #140 pasó PHPUnit completo
+  (1.691 pruebas, 15.123 aserciones, una omitida), MariaDB 11 incluido staging
+  (6 pruebas, 26 aserciones), Pint, build, whitespace y documentación.
+  `git diff --check` debe ejecutarse sobre el SHA final.
+- Límite: el staging no acredita cobertura de todos los meses ni hard deletes,
+  no reconcilia cambios funcionales entre meses y no alinea F2/F5 a un cutoff
+  global. Su manifiesto declara `global_coverage_verified=false`; no se puede
+  certificar ni publicar. Escrituras SQL directas ajenas a invalidadores
+  Laravel requieren revocación/revalidación manual. Acciones futuras:
+  revisar fuentes e intervalos, medir rendimiento, ejecutar CI, validar
+  migración aislada y diseñar después la construcción/validación global con
+  evidencia independiente. No se ejecutaron sincronizaciones ni migraciones
+  productivas ni se consultó Salesforce.
+
 ## 2026-11-10 — transición segura entre revisiones mensuales (#139)
 
 - Archivos funcionales revisados: `SyncCurrentMonthInterestsCommand.php`,
@@ -26,9 +77,11 @@
   validación administrativa puede ser costosa y requiere supervisión.
 - Prueba añadida: transición de revisión 1 visible a revisión 2 con F2,
   F2M y F5 completas pero aún sin proyección, seguida de promoción e
-  idempotencia, sin generación publicada. `git diff --check` y validador
-  documental deben comprobarse en la PR final. PHPUnit, MariaDB 11, Pint,
-  JavaScript y build del SHA #139 quedan pendientes de GitHub Actions.
+  idempotencia, sin generación publicada. En #139,
+  `b5e00bbc8ff700ffd0e38ace3eee2e6800f4328a` pasó CI y Documentation
+  integrity: PHPUnit 1.685 pruebas, 15.097 aserciones, una omitida; MariaDB
+  11, Pint, build y whitespace correctos. Esta evidencia pertenece a #139,
+  no valida automáticamente el staging añadido en #140.
 - Acción manual: mantener apagado el flag/scheduler, revisar el cutoff y las
   tres verificaciones antes de autorizar una lectura real; SQL directo exige
   revocación y revalidación. Riesgo: la revisión mensual es evidencia de estado
@@ -55,8 +108,8 @@
 - No escribe generación/puntero publicado ni convierte F2/F2M/F5 en
   certificación histórica, fuente oficial o KPI. Los seis informes preservan
   fuentes, universos, filtros, fórmulas, auditorías, CSV y presentación. La CI
-  MariaDB 11 incluye el test de comando junto al test mensual; #139 debe
-  revalidarlo sobre su propio SHA.
+  MariaDB 11 incluye el test de comando junto al test mensual; #139 lo validó
+  en `b5e00bbc8ff700ffd0e38ace3eee2e6800f4328a`.
 - Documentación modificada: `docs/operaciones-produccion.md`,
   `docs/salesforce-interest-generations.md`, `docs/reglas-negocio-leads.md`,
   `docs/informe-{reservas-ventas,llamadas,campanas,comisiones,stock}.md`,
@@ -66,7 +119,9 @@
   contrato de datos nuevo.
 - Según la entrega de código: `php -l`, Pint y `git diff --check` pasan. El
   runtime PHP 8.3 local no puede ejecutar la suite completa requerida por
-  Composer; CI queda pendiente. No se ejecutaron migraciones, base de datos,
+  Composer; la CI posterior de #139 pasó (1.685 pruebas, 15.097 aserciones,
+  una omitida; MariaDB 11, Pint, build, whitespace y documentación verdes).
+  No se ejecutaron migraciones, base de datos,
   Salesforce, scheduler, benchmark ni producción en esta revisión documental.
 - El contrato `Docs-Outside` de la PR completa contra `main` debe enumerar
   exactamente los servicios sin mapa documental de las entregas previas y
@@ -123,12 +178,12 @@
   `docs/ai/DECISIONS.md` y este handoff. Pasan `php -l` en los PHP nuevos y
   modificados, Pint, 61 pruebas JavaScript y `git diff --check`. No se
   ejecutaron migraciones, base de datos, Salesforce, benchmark ni producción.
-  PHPUnit, build, MariaDB 11 y validador documental quedan para CI sobre el
-  HEAD comprometido; el runtime PHP local es 8.3 y Composer requiere 8.4.
-- Contrato sugerido: `Docs-Impact: updated`; `Docs-Matrix-Impact: updated`.
-  `Docs-Outside-Paths: [app/Console/Commands/InvalidateMonthlyInterestProvisionalCommand.php, app/Console/Commands/ValidateMonthlyInterestProvisionalCommand.php]`;
-  `Docs-Outside-Reason: comandos administrativos aislados sin lector/KPI oficial`;
-  `Docs-Outside-Evidence: app/Console/Commands/ValidateMonthlyInterestProvisionalCommand.php`.
+  La CI posterior de #138 pasó PHPUnit, build, MariaDB 11 y validación
+  documental en `a1531c5965e874ecc9aa38a26fa1e3f4facd23ac`; el runtime
+  PHP local era 8.3 y Composer requería 8.4.
+- El contrato documental de cada PR se calcula frente a su `main` actual. En
+  #140, `Docs-Outside-Paths` enumera sólo el catálogo operacional, su salida y
+  el servicio local de consolidación; los comandos de Interest ya tienen mapa.
 
 ## 2026-11-10 — reutilización F2M entre revisiones mensuales
 

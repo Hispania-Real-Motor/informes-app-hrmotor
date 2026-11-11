@@ -153,6 +153,59 @@ no implementa un delta por `SystemModstamp` ni sustituye el incremental
 publicado. El flag queda preparado y apagado hasta revisión y autorización
 operacional separadas.
 
+### Etapa local de consolidación progresiva por referencias
+
+`salesforce:stage-interest-months` prepara un candidato de **staging**, distinto
+de `salesforce_interest_generations`, a partir de una lista explícita de IDs de
+materialización mensual. Exige motivo de auditoría y revisiones F2, F2M y F5
+`completed` con `verification.verified=true`, manifiestos F2M/F5 vigentes y la
+última revisión de cada mes funcional. No consulta Salesforce. Los meses
+seleccionados pueden dejar huecos; la operación no interpreta su suma como
+cobertura de todo `Interes__c`.
+
+La migración `2026_11_10_120000_create_interest_monthly_consolidation_staging.php`
+añade tres tablas: cabecera con estado, lease, progreso y manifiesto;
+orígenes con período, cutoff, IDs de journals, revisión de integridad y
+checkpoint; y pertenencias con **referencia** a la fila F2M original, ID
+Salesforce, hash y estado de borrado observable. No copia payloads ni filas
+funcionales a `salesforce_interest_versions`. Cada lote de 500 referencias y
+su checkpoint se confirma en una misma transacción. El lease impide que dos
+workers escriban a la vez; la reanudación conserva los lotes confirmados.
+Se rechazan contenido F2M no coincidente con inventario, fechas fuera del mes,
+IDs Salesforce repetidos y orígenes de migración duplicados entre meses. Una
+colisión detiene el candidato para conciliación independiente, sin escoger
+automáticamente la revisión ganadora.
+
+La revisión de integridad del origen se comprueba por lote y antes de cerrar;
+los manifiestos F2M/F5 se recalculan en la operación administrativa antes de
+preparar y al finalizar. Una modificación de contenido durante esa operación,
+aun con el mismo número de filas, provoca fallo de staging. Las escrituras
+Laravel que invalidan la revisión se detectan; una escritura SQL directa
+fuera de ese contrato exige revocación/revalidación operativa antes de confiar
+en cualquier evidencia.
+El manifiesto del candidato incluye procedencia por mes, hashes de fuentes y
+una huella global de las referencias, pero declara explícitamente
+`global_coverage_verified=false` y `historical_certification=false`. La
+existencia de este staging **no** permite llamar a `finishF2`, `finishF5`,
+`certify` ni `publish` de `InterestGenerationStore`: faltan cobertura completa,
+hard deletes acreditados y alineación global F2/F5 a un mismo corte. Lectores
+oficiales, publicación y proyecciones mensuales existentes siguen intactos.
+
+Uso local supervisado, tras verificar las fuentes mensuales y sin lectura
+remota:
+
+```bash
+php artisan salesforce:stage-interest-months --materialization=<f2m_octubre> --materialization=<f2m_noviembre> --reason="motivo operativo revisado"
+php artisan salesforce:stage-interest-months --run=<id> --status
+php artisan salesforce:stage-interest-months --run=<id> --resume --reason="mismo motivo operativo revisado"
+```
+
+El rollback de la migración rechaza eliminar tablas con candidatos; para
+desactivar esta vía basta no invocar el comando. Se deben revisar los
+manifiestos, los períodos ausentes, las colisiones y el alcance temporal F2/F5
+antes de diseñar una candidata global real. Ni octubre ni noviembre quedan
+automáticamente convertidos en generación publicada.
+
 Cuando no existe una generación publicada, una generación histórica en estado
 `validating` puede utilizarse únicamente como semilla técnica, nunca como
 evidencia de certificación. El operador autorizado puede ejecutar

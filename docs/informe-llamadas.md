@@ -30,6 +30,11 @@ cobertura, KPI, exportación ni auditoría de Llamadas.
 El refresco opcional F2/F2M/F5 del mes abierto no altera esa frontera: permanece
 deshabilitado por defecto y no toca `salesforce_calls`, clasificación, KPI, CSV
 ni auditoría de Llamadas.
+La nueva etapa local de consolidación conserva únicamente referencias y
+manifiestos de F2M/F5 mensuales verificados. Sus checkpoints y controles de
+colisión no producen una generación Interest certificada ni prueban la
+relación histórica de Task/Event; no modifican `relatedInterestMatches()`,
+clasificación, reproceso, fuentes, KPI, auditoría o CSV de Llamadas.
 
 La tarjeta «Llamadas» de octubre dentro de Interests no es un KPI de este
 informe: cuenta únicamente el valor materializado `channel = 'Llamada'` de la

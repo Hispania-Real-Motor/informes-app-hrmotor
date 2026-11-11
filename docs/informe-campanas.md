@@ -27,6 +27,11 @@ actualiza generación, readiness o snapshots publicados de Campañas.
 El refresco opcional F2/F2M/F5 del mes abierto sólo mantiene esos journals
 aislados tras autorización de lectura; deshabilitado por defecto, no altera
 atribución, readiness, cobertura, KPI, auditoría ni CSV de Campañas.
+La etapa administrativa de consolidación por meses sólo referencia F2M/F5
+verificados y falla ante colisiones de identidad o manifiestos cambiados.
+No construye ni publica la generación global, no acredita hard deletes ni
+cobertura histórica, y no alimenta atribución, readiness, snapshots, KPI,
+rankings, auditoría o CSV de Campañas.
 La proyección categórica versionada de octubre sólo sirve el dashboard de
 Interests; sus filtros no alimentan atribución, KPI, readiness, ranking, CSV ni
 certificación de Campañas, que mantienen sus fuentes y contratos publicados.

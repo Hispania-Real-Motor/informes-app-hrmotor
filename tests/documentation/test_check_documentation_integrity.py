@@ -304,6 +304,12 @@ class IntegrityTests(unittest.TestCase):
         self.assertEqual({"interests", "reservations", "calls", "campaigns"}, checker.domains_for(command))
         self.assertTrue(checker.unknown_functional(catalog))
 
+    def test_monthly_interest_consolidation_command_and_service_have_distinct_documentation_contracts(self) -> None:
+        command = "app/Console/Commands/StageInterestMonthlyConsolidationCommand.php"
+        service = "app/Services/Salesforce/InterestMonthlyConsolidationService.php"
+        self.assertEqual({"interests", "reservations", "calls", "campaigns"}, checker.domains_for(command))
+        self.assertTrue(checker.unknown_functional(service))
+
     def test_financial_service_requires_specialized_document(self) -> None:
         source = "app/Services/Reports/FinancialCommissions/FinancialCommissionDashboardService.php"
         changes = [checker.Change("M", source), checker.Change("M", checker.DOCS["commissions"])]
@@ -442,6 +448,7 @@ class IntegrityTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("image: mariadb:11", workflow)
         self.assertIn("php artisan test --filter=InterestMonthlyRecoveryTest", workflow)
+        self.assertIn("php artisan test --filter=InterestMonthlyConsolidationTest", workflow)
         self.assertIn("php artisan test --filter=MonthlyInterestProvisionalReaderTest", workflow)
 
     def test_unexpected_git_status_fails_closed(self) -> None:
