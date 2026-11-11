@@ -232,8 +232,10 @@ entrega; la revisión humana de la PR comprueba su presencia y exactitud.
 
 ### Servicios mensuales de Interests
 
-Los prefijos `app/Services/Salesforce/InterestMonthly` y
-`app/Services/Salesforce/MonthlyInterestActivity` están mapeados a `interests`.
+`InterestMonthlyRecoveryService.php`,
+`InterestMonthlyMaterializationService.php` y
+`MonthlyInterestActivityRecoveryService.php` están mapeados explícitamente a
+`interests`.
 Sus cambios en verificación, preparación, revisiones o F5 mensual obligan a
 revisar `docs/reglas-negocio-leads.md` y la trazabilidad correspondiente de la
 matriz; no deben quedar como rutas funcionales sin mapa. Un cambio en el

@@ -24,9 +24,10 @@
   `docs/operaciones-produccion.md`, `docs/reglas-negocio-leads.md`,
   `docs/informe-reservas-ventas.md`, `docs/informe-llamadas.md`,
   `docs/informe-campanas.md`, matriz KPI, guía de mantenimiento documental y
-  este handoff. El mapa del validador y su prueba se ajustan para reconocer
-  los servicios mensuales de Interests. No hay migración, nueva variable de
-  entorno ni cambio de publicación, scheduler, lector oficial o interfaz. Las
+  este handoff. El mapa del validador y su prueba reconocen tres servicios
+  mensuales de Interests sin alterar el contrato del staging. No hay migración,
+  nueva variable de entorno ni cambio de publicación, scheduler, lector oficial
+  o interfaz. Las
   revisiones previas y los journals de octubre se conservan. La proyección
   mensual validada sólo cambia tras completar F2/F2M/F5 verificadas.
 - Seguridad: ninguna discrepancia se resuelve editando hashes, marcando

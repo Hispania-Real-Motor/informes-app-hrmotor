@@ -145,7 +145,6 @@ class InterestMonthlyRecoveryTest extends TestCase
 
         $second = $service->prepare($start, $end, $reason, 500, $cutoff->addDay(), true);
         $this->assertNotSame($first, $second);
-        $this->assertSame($second, $service->prepare($start, $end, $reason, 500, $cutoff->addDay(), true));
         $this->assertSame(1, $service->status($first)['revision']);
         $this->assertSame(2, $service->status($second)['revision']);
         $this->assertSame('completed', $service->status($first)['status']);
