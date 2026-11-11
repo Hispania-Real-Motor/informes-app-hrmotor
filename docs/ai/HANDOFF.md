@@ -18,13 +18,17 @@
   `MonthlyInterestActivityRecoveryService` bloquean fuentes F2 no verificadas.
   `MonthlyInterestEvidenceUnverified.php` es una excepción interna de salida
   segura. Pruebas en `SyncCurrentMonthInterestsCommandTest.php` simulan cambio
-  funcional, revisión nueva, fallo/reanudación y dos revisiones inválidas.
+  funcional, revisión nueva, fallo/reanudación y dos revisiones inválidas;
+  `InterestMonthlyRecoveryTest.php` amplía la caracterización de hash.
 - Documentos: `docs/salesforce-interest-generations.md`,
-  `docs/operaciones-produccion.md`, `docs/reglas-negocio-leads.md`, matriz KPI y
-  este handoff. No hay migración, nueva variable de entorno ni cambio de
-  publicación, scheduler, lector oficial o interfaz. Las revisiones previas y
-  los journals de octubre se conservan. La proyección mensual validada sólo
-  cambia tras completar F2/F2M/F5 verificadas.
+  `docs/operaciones-produccion.md`, `docs/reglas-negocio-leads.md`,
+  `docs/informe-reservas-ventas.md`, `docs/informe-llamadas.md`,
+  `docs/informe-campanas.md`, matriz KPI, guía de mantenimiento documental y
+  este handoff. El mapa del validador y su prueba se ajustan para reconocer
+  los servicios mensuales de Interests. No hay migración, nueva variable de
+  entorno ni cambio de publicación, scheduler, lector oficial o interfaz. Las
+  revisiones previas y los journals de octubre se conservan. La proyección
+  mensual validada sólo cambia tras completar F2/F2M/F5 verificadas.
 - Seguridad: ninguna discrepancia se resuelve editando hashes, marcando
   `verified=true` ni borrando la revisión anterior. La salida no incluye IDs,
   payloads, SQL, SOQL ni excepción remota. La consulta real requiere
@@ -34,7 +38,7 @@
   reintentos dentro de una invocación ni consultas por registro añadidas.
   Latencia y carga remota reales siguen sin medirse.
 - Verificación: `git diff --check` local correcto al preparar la documentación;
-  PHP/Composer no disponibles localmente. PHPUnit, MariaDB 11, Pint y
+  PHP/Composer y Python no disponibles localmente. PHPUnit, MariaDB 11, Pint y
   Documentation integrity deben comprobarse sobre el SHA final de la PR.
 - Acción manual tras aprobación y despliegue: comprobar la revisión de
   noviembre con `php artisan salesforce:interest-generation monthly-status

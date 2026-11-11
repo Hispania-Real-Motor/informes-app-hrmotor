@@ -23,6 +23,13 @@ publicada de atribución ni requiere revalidar este informe.
 El refresco opcional F2/F2M/F5 del mes abierto sólo mantiene journals aislados
 tras autorización de lectura; deshabilitado por defecto, no cambia atribución,
 cobertura Opportunity, universos, filtros, cálculos, auditorías ni CSV.
+
+Si una revisión F2 mensual termina sin verificación, el refresco conserva su
+evidencia y sólo puede abrir otra revisión con cutoff posterior. F2M y F5
+rechazan preparar esa F2 no verificada. Este control no añade atribución
+Opportunity/Interest ni cambia la generación publicada, la disponibilidad o
+los KPI de Reservas/Ventas y Rendimiento comercial.
+
 La etapa local de consolidación de meses verificados sólo referencia filas F2M
 y el manifiesto F5 de cada origen; no crea generación Interest publicada ni
 acredita cobertura completa, hard deletes o relaciones históricas. Por ello no

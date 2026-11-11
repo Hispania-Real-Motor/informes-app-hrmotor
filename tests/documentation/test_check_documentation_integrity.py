@@ -68,6 +68,12 @@ class IntegrityTests(unittest.TestCase):
                 checker.domains_for(f"app/Services/Salesforce/InterestGeneration{service}.php"),
             )
 
+    def test_isolated_monthly_interest_services_map_to_interests(self) -> None:
+        for service in ("InterestMonthlyRecoveryService", "InterestMonthlyMaterializationService",
+                        "MonthlyInterestActivityRecoveryService"):
+            self.assertEqual({"interests"}, checker.domains_for(
+                f"app/Services/Salesforce/{service}.php"))
+
     def test_salesforce_opportunities_command_maps_to_its_report_consumers(self) -> None:
         self.assertEqual(
             {"reservations", "campaigns", "commissions", "stock"},
