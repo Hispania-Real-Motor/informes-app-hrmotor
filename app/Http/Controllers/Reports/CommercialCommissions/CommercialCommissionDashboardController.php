@@ -93,27 +93,27 @@ class CommercialCommissionDashboardController extends Controller
         $canonicalCallCenterClosureSummary = $hasCustomCallCenterFilters
             ? $closureService->approvalSummary($payload['month'], 'call_center')
             : null;
-        $frozenSnapshot = $closureScope ? $closureService->definitiveSnapshot($payload['month'], $closureScope) : null;
-        if ($frozenSnapshot !== null && $closureScope === 'commercials') {
-            $payload = $frozenSnapshot['commercials'];
-            $payload['economic_status'] = 'definitive';
+        $closureSnapshot = $closureScope ? $closureService->candidateOrDefinitiveSnapshot($payload['month'], $closureScope) : null;
+        if ($closureSnapshot !== null && $closureScope === 'commercials') {
+            $payload = $closureSnapshot['commercials'];
+            $payload['economic_status'] = $commissionClosure['status'];
             $payload['dataset_cutoff_at'] = $commissionClosure['data_cutoff_at'];
             $payload['formula_version'] = $commissionClosure['formula_version'];
         }
-        if ($frozenSnapshot !== null && $closureScope === 'delegations') {
-            $payload = $frozenSnapshot['delegations'];
-            $payload['economic_status'] = 'definitive';
+        if ($closureSnapshot !== null && $closureScope === 'delegations') {
+            $payload = $closureSnapshot['delegations'];
+            $payload['economic_status'] = $commissionClosure['status'];
             $payload['dataset_cutoff_at'] = $commissionClosure['data_cutoff_at'];
             $payload['formula_version'] = $commissionClosure['formula_version'];
         }
-        if ($frozenSnapshot !== null && $closureScope === 'financials') {
-            $financialSnapshot = $frozenSnapshot['financials'] ?? null;
+        if ($closureSnapshot !== null && $closureScope === 'financials') {
+            $financialSnapshot = $closureSnapshot['financials'] ?? null;
         }
-        if ($frozenSnapshot !== null && $closureScope === 'call_center') {
-            $callCenterSnapshot = $frozenSnapshot['call_center'] ?? null;
+        if ($closureSnapshot !== null && $closureScope === 'call_center') {
+            $callCenterSnapshot = $closureSnapshot['call_center'] ?? null;
         }
-        if ($frozenSnapshot !== null && $closureScope === 'contact_center') {
-            $contactCenterSnapshot = $frozenSnapshot['contact_center'] ?? null;
+        if ($closureSnapshot !== null && $closureScope === 'contact_center') {
+            $contactCenterSnapshot = $closureSnapshot['contact_center'] ?? null;
         }
 
         if ($isAreaRestricted) {
@@ -155,8 +155,8 @@ class CommercialCommissionDashboardController extends Controller
             : $this->emptyContactCenterDashboard($payload['month'], $payload['month_label']);
         $areaManagerPayload = $activeCommissionTab === 'area-manager'
             ? (($isAreaRestricted
-                ? data_get($frozenSnapshot, 'area_manager_by_zone.'.ReportUserAccess::areaZoneKey($request))
-                : ($frozenSnapshot['area_manager'] ?? null))
+                ? data_get($closureSnapshot, 'area_manager_by_zone.'.ReportUserAccess::areaZoneKey($request))
+                : ($closureSnapshot['area_manager'] ?? null))
                 ?? $areaManagerDashboard->build($payload['month'], $isAreaRestricted ? $areaZoneLabel : null))
             : $this->emptyAreaManagerDashboard($payload['month'], $payload['month_label']);
         $financialPayload = $activeCommissionTab === 'financials'
@@ -202,7 +202,7 @@ class CommercialCommissionDashboardController extends Controller
             'contactCenterDashboard' => $contactCenterPayload,
             'areaManagerDashboard' => $areaManagerPayload,
             'financialDashboard' => $financialPayload,
-            'formulaSettings' => $frozenSnapshot['formula_settings'] ?? $formulaConfig->forMonth($payload['month']),
+            'formulaSettings' => $closureSnapshot['formula_settings'] ?? $formulaConfig->forMonth($payload['month']),
             'commissionClosure' => $commissionClosure,
             'closureScope' => $closureScope,
             'canManageEconomicClosures' => ReportUserAccess::canManageEconomicClosures($request),
