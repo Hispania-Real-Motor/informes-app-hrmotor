@@ -13,6 +13,7 @@ trait AssertsOperationalSchedule
         $baseline['salesforce-sync-commercial-reviews'] = ['salesforce:sync-commercial-reviews', ['--months' => '2'], '20 2 * * *', 120];
         $baseline['operations-health'] = ['operations:check-health', [], '*/5 * * * *', 5];
         $baseline['campaigns-sync-current-status'] = ['campaigns:sync-current-status', [], '37 */6 * * *', 240];
+        $baseline['salesforce-sync-interest-monthly-current'] = ['salesforce:sync-interest-monthly-current', ['--allow-salesforce-read' => true], '10 3 * * *', 240];
         $tasks = app(OperationalTaskCatalog::class)->all();
         $events = collect(app(Schedule::class)->events())->keyBy('description');
         $this->assertCount(count($baseline), $tasks);

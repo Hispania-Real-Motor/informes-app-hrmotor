@@ -166,3 +166,6 @@ jobs:
 
       - name: Monthly provisional reader MariaDB tests
         run: php artisan test --filter=MonthlyInterestProvisionalReaderTest
+
+      - name: Current-month Interest operations MariaDB tests
+        run: php artisan test --filter=SyncCurrentMonthInterestsCommandTest

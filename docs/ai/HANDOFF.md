@@ -1,5 +1,79 @@
 # Handoff para agentes
 
+## 2026-11-10 — transición segura entre revisiones mensuales (#139)
+
+- Archivos funcionales revisados: `SyncCurrentMonthInterestsCommand.php`,
+  `MonthlyInterestProvisionalReader.php` y
+  `SyncCurrentMonthInterestsCommandTest.php`. Se conserva el merge de #138,
+  incluido el lector con propietarios observados. Documentos modificados:
+  reglas de Interests, generaciones Salesforce, operaciones, matriz KPI,
+  DECISIONS y este handoff.
+- El comando completa y verifica F2, F2M y F5 con estados devueltos por cada
+  servicio, construye o revalida la proyección administrativa y sólo entonces
+  informa finalización. Si el cutoff ya está cubierto y la proyección sigue
+  válida, informa `SKIPPED:`. Una proyección reparada informa finalización sin
+  releer Salesforce. Un fallo conserva journals y no comunica éxito falso.
+- El lector HTTP escoge la revisión `completed` más reciente con proyección
+  validada. Una nueva F2 sin proyección no desplaza la anterior; ésta mantiene
+  su corte real y sólo es legible si su revisión de integridad sigue vigente.
+  La nueva validación publica clave/revisión atómicamente; HTTP no reconstruye
+  manifiestos ni consulta Salesforce. Evidencia revocada falla 503.
+- Base de datos: sin migración nueva; se usan validaciones, proyecciones e
+  índices existentes. Seguridad: autorización y flag administrativos,
+  `no-store, private`, claves de revisión y fallo cerrado; ninguna generación
+  oficial o puntero se publica. Rendimiento: una consulta acotada a revisiones
+  validadas en HTTP; los manifiestos y filas se procesan fuera de HTTP. La
+  validación administrativa puede ser costosa y requiere supervisión.
+- Prueba añadida: transición de revisión 1 visible a revisión 2 con F2,
+  F2M y F5 completas pero aún sin proyección, seguida de promoción e
+  idempotencia, sin generación publicada. `git diff --check` y validador
+  documental deben comprobarse en la PR final. PHPUnit, MariaDB 11, Pint,
+  JavaScript y build del SHA #139 quedan pendientes de GitHub Actions.
+- Acción manual: mantener apagado el flag/scheduler, revisar el cutoff y las
+  tres verificaciones antes de autorizar una lectura real; SQL directo exige
+  revocación y revalidación. Riesgo: la revisión mensual es evidencia de estado
+  observado, no fotografía histórica ni certificación F5.
+
+## 2026-11-10 — refresco operativo mensual aislado de Interests
+
+- `salesforce:sync-interest-monthly-current` orquesta sólo F2, F2M y F5 del
+  mes civil abierto de Madrid. Exige `--allow-salesforce-read`, usa cutoff UTC
+  con margen de dos minutos, reanuda el journal no completado y sólo informa
+  éxito cuando las tres fases están verificadas. Antes del primer cutoff seguro
+  no crea revisión; una revisión completada que ya cubre el cutoff no relee.
+  Un fallo conserva checkpoints y emite un mensaje saneado, sin payloads, SOQL
+  ni detalles remotos. Cada revisión relee el inventario F2 actual acotado al
+  mes y su F5 selectiva; no es un delta por `SystemModstamp` ni sustituye el
+  incremental publicado. Las dos omisiones sin lectura se emiten como
+  `SKIPPED:` y no actualizan falsamente `last-success`.
+- El task `salesforce-sync-interest-monthly-current` está deshabilitado por
+  defecto, incluido el arranque manual operacional. Habilitarlo requeriría el
+  flag `SALESFORCE_INTEREST_MONTHLY_CURRENT_SYNC_ENABLED=true` y que la
+  allowlist del scheduler admita su clave cuando esté configurada; esta entrega
+  no activa scheduler ni realiza lectura Salesforce. Sus parámetros propuestos son 03:10
+  Europe/Madrid, ventana 240 min, gracia 90 y exclusión persistente.
+- No escribe generación/puntero publicado ni convierte F2/F2M/F5 en
+  certificación histórica, fuente oficial o KPI. Los seis informes preservan
+  fuentes, universos, filtros, fórmulas, auditorías, CSV y presentación. La CI
+  MariaDB 11 incluye el test de comando junto al test mensual; #139 debe
+  revalidarlo sobre su propio SHA.
+- Documentación modificada: `docs/operaciones-produccion.md`,
+  `docs/salesforce-interest-generations.md`, `docs/reglas-negocio-leads.md`,
+  `docs/informe-{reservas-ventas,llamadas,campanas,comisiones,stock}.md`,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/guia-mantenimiento-documental.md`
+  y este handoff. No se modifica `PROJECT_CONTEXT.md` ni `DECISIONS.md`: es un
+  comando/tarea reversible sobre el journal mensual existente, sin módulo ni
+  contrato de datos nuevo.
+- Según la entrega de código: `php -l`, Pint y `git diff --check` pasan. El
+  runtime PHP 8.3 local no puede ejecutar la suite completa requerida por
+  Composer; CI queda pendiente. No se ejecutaron migraciones, base de datos,
+  Salesforce, scheduler, benchmark ni producción en esta revisión documental.
+- El contrato `Docs-Outside` de la PR completa contra `main` debe enumerar
+  exactamente los servicios sin mapa documental de las entregas previas y
+  `app/Services/Operations/OperationalTaskCatalog.php` y
+  `app/Services/Operations/OperationalTaskOutput.php`; este último sólo
+  interpreta la omisión controlada del task, sin afectar lectores/KPI.
+
 ## 2026-11-10 — corrección del lector mensual provisional (#138)
 
 - Archivos funcionales: lector y dataset provisional de Interests, controladores
@@ -25,9 +99,9 @@
   HTTP. Acciones manuales: validar una recuperación mensual completa antes de
   habilitar la vista; mantener el flag apagado hasta autorización. SQL directo
   requiere revocación y revalidación explícita.
-- Verificación documental: `git diff --check` y revisión de documentación;
-  PHPUnit, MariaDB, Pint, JS, build y CI pendientes de ejecución por el agente
-  principal. Riesgo: los intervalos observados no certifican historia y el
+- Verificación de #138: PHPUnit, MariaDB 11, Pint, build, whitespace y
+  documentación verdes en `a1531c5965e874ecc9aa38a26fa1e3f4facd23ac`.
+  Riesgo: los intervalos observados no certifican historia y el
   desempeño productivo sólo podrá medirse tras despliegue autorizado.
 
 ## 2026-11-10 — lector mensual administrativo provisional de noviembre

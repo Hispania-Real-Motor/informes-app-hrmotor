@@ -160,7 +160,7 @@ final class MonthlyInterestProvisionalReader
         }
     }
 
-    /** A newer completed revision without validated evidence blocks older snapshots. */
+    /** A prepared revision never displaces the last complete validated projection. */
     public function latestForMonth(int $year, int $month): array
     {
         if ($year < 2000 || $year > 2100 || $month < 1 || $month > 12) {
@@ -168,10 +168,13 @@ final class MonthlyInterestProvisionalReader
         }
         $start = CarbonImmutable::create($year, $month, 1, 0, 0, 0, 'Europe/Madrid');
         try {
-            $run = DB::table('salesforce_interest_monthly_recoveries')
+            $run = DB::table('salesforce_interest_monthly_recoveries as recovery')
+                ->join('salesforce_interest_october_provisional_validations as validation', 'validation.monthly_recovery_id', '=', 'recovery.id')
                 ->where('functional_start_at', $start->utc())
                 ->where('functional_end_at', $start->addMonth()->utc())
-                ->where('status', 'completed')->orderByDesc('revision')->first(['id']);
+                ->where('recovery.status', 'completed')
+                ->where('recovery.phase', 'completed')
+                ->orderByDesc('recovery.revision')->first(['recovery.id']);
         } catch (Throwable) {
             throw new ProvisionalInterestSourceUnavailable;
         }

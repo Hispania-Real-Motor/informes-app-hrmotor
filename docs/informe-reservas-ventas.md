@@ -20,6 +20,9 @@ Su evidencia no acredita cobertura de Opportunity ni reemplaza la generación
 Interest publicada exigida para portal.
 La validación/snapshot local que condiciona esa pantalla no cambia la generación
 publicada de atribución ni requiere revalidar este informe.
+El refresco opcional F2/F2M/F5 del mes abierto sólo mantiene journals aislados
+tras autorización de lectura; deshabilitado por defecto, no cambia atribución,
+cobertura Opportunity, universos, filtros, cálculos, auditorías ni CSV.
 La proyección versionada de octubre y sus filtros multidimensionales pertenecen
 sólo al dashboard de Interests: no habilitan ni certifican atribución, KPI,
 auditoría, cierre, CSV o Rendimiento comercial de Reservas/Ventas.

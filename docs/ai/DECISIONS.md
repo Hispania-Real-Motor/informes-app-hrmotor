@@ -1,5 +1,22 @@
 # Decisiones técnicas
 
+## 2026-11-10 — la proyección validada, no la F2 más reciente, determina la revisión visible
+
+- El lector mensual elige la revisión `completed` más reciente que ya tenga
+  validación administrativa publicada para su `recovery_id`. La llegada de una
+  F2 nueva no sustituye el dashboard mientras F2M, F5 y proyección sigan en
+  preparación. El corte mostrado procede de la revisión realmente visible.
+- El comando operativo sólo informa finalización tras verificar F2/F2M/F5 y
+  construir o revalidar la proyección. Publicar la validación con su clave y
+  revisión cambia el origen visible; una validación anterior permanece
+  disponible únicamente mientras sus propios controles de integridad sigan
+  vigentes. Una proyección anterior revocada falla cerrada, sin buscar otra más
+  antigua ni interpretar F2 `completed` como fuente HTTP.
+- Se reutilizan las tablas de validaciones y proyecciones por recuperación. No
+  se añade un puntero oficial ni se toca `InterestGenerationReader`; la
+  promoción sólo afecta a la lectura administrativa provisional. No se
+  certifica estado histórico ni se activa scheduler.
+
 ## 2026-10-27 — Reconciliación de Campañas mediante reservas operacionales existentes
 
 - La recuperación horaria se incorpora a `OperationalTaskCatalog` y ejecuta

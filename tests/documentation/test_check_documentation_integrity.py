@@ -298,6 +298,12 @@ class IntegrityTests(unittest.TestCase):
                                       'Docs-Outside-Paths: ["app/Other.php"]')
         self.assertIn("Docs-Outside-Paths", " ".join(self.check(changes, malformed)))
 
+    def test_monthly_interest_operational_command_and_catalog_have_distinct_documentation_contracts(self) -> None:
+        command = "app/Console/Commands/SyncCurrentMonthInterestsCommand.php"
+        catalog = "app/Services/Operations/OperationalTaskCatalog.php"
+        self.assertEqual({"interests", "reservations", "calls", "campaigns"}, checker.domains_for(command))
+        self.assertTrue(checker.unknown_functional(catalog))
+
     def test_financial_service_requires_specialized_document(self) -> None:
         source = "app/Services/Reports/FinancialCommissions/FinancialCommissionDashboardService.php"
         changes = [checker.Change("M", source), checker.Change("M", checker.DOCS["commissions"])]

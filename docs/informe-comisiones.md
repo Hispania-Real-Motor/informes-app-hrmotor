@@ -14,6 +14,9 @@ El lector mensual administrativo de noviembre conserva esa separación: su
 proyección validada, flag y revisión locales no habilitan ni certifican datos de
 Comisiones, ni cambian universos, fórmulas, cierres, auditorías, filtros, API o
 exportaciones.
+El refresco opcional F2/F2M/F5 del mes abierto también queda aislado y apagado
+por defecto: no afecta fuentes, fórmulas, cierres, KPI, auditorías ni
+exportaciones de Comisiones.
 
 ## Mes compartido
 

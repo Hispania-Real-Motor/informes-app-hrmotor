@@ -22,6 +22,10 @@ final class OperationalTaskOutput extends Output
 
     protected function doWrite(string $message, bool $newline): void
     {
+        if ($this->taskKey === 'salesforce-sync-interest-monthly-current'
+            && str_starts_with(trim($message), 'SKIPPED:')) {
+            $this->skipped = true;
+        }
         if (in_array($this->taskKey, ['seo-sync-search-console', 'seo-sync-ga4-organic', 'seo-sync-technical-health'], true)
             && str_starts_with(trim($message), 'SKIPPED:')) {
             $this->skipped = true;

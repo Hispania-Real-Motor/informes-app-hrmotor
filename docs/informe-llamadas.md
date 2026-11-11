@@ -27,6 +27,9 @@ Llamadas: aun validado localmente, sólo proyecta agregados F2M y no sustituye
 `salesforce_calls`, `Task`, `CallObject`, `relatedInterestMatches()` ni la
 generación Interest publicada requerida donde corresponda. No acredita
 cobertura, KPI, exportación ni auditoría de Llamadas.
+El refresco opcional F2/F2M/F5 del mes abierto no altera esa frontera: permanece
+deshabilitado por defecto y no toca `salesforce_calls`, clasificación, KPI, CSV
+ni auditoría de Llamadas.
 
 La tarjeta «Llamadas» de octubre dentro de Interests no es un KPI de este
 informe: cuenta únicamente el valor materializado `channel = 'Llamada'` de la
