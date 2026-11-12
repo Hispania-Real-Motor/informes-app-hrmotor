@@ -143,6 +143,14 @@ snapshots anteriores y no inventa una comisión cero. La aprobación cambia el
 estado del cierre y certifica exactamente el candidato persistido: no vuelve a
 consultar fuentes vivas ni recalcula el mes.
 
+Una preparación `pending_approval` también se puede reabrir antes de aprobarla,
+con la misma autorización excepcional de Administrador/IT o Dirección y un
+motivo de al menos diez caracteres. La transición queda registrada como evento
+`reopened`, con actor, motivo, scope, versión y estados de origen/destino. No
+borra ni reescribe el candidato: conserva su `snapshot_version`, pasa a cálculo
+live y la siguiente preparación crea la versión `N+1`. `provisional` y
+`reopened` no admiten otra reapertura.
+
 Desde julio de 2026, los seis scopes (Comerciales, Delegaciones, Área Manager,
 Financieros, Call Center y Contact Center) disponen de cierre independiente. Cada
 cierre tiene estado, aprobación, reapertura, eventos y versión de snapshot propios
@@ -283,12 +291,18 @@ cierre de Comerciales, Delegaciones o Área Manager.
 - Financiero: pestaña Financieros y datos permitidos.
 - Comercial: únicamente su Salesforce User ID.
 - Auditor de comisiones: proyección de solo lectura con entidad, comisión final,
-  estado, aprobador, fecha y alertas permitidas de jefe de tienda.
+  estado, aprobador, fecha y alertas permitidas de jefe de tienda. Si además es
+  el aprobador activo asignado a `financials`, al seleccionar exclusivamente
+  ese scope recibe el mismo detalle financiero de solo lectura que sustenta la
+  aprobación: KPIs, responsables, delegaciones y trazabilidad por Opportunity.
 
 El Auditor de comisiones no recibe administración de usuarios, configuración de
 fórmulas ni cierres. Márgenes, penalizaciones y comisiones globales se filtran en
 servidor; ocultar una pestaña en Blade no sustituye la autorización de endpoint,
-exportación, fila y columna.
+exportación, fila y columna. El detalle financiero asignado no incluye la
+conciliación/diagnóstico interno, no habilita exportaciones ni se propaga a
+otros scopes. Una asignación inactiva, eliminada, incoherente o perteneciente a
+otro usuario falla cerrada.
 
 ## Penalizaciones financieras
 
@@ -518,7 +532,9 @@ La migración aditiva 2026_10_19_120000_create_commercial_commission_approvers c
 
 Cada cambio se guarda en una transacción con scope, IDs anterior/nuevo, actor y fecha. Los IDs de auditoría también se conservan en contexto JSON sin PII aunque posteriormente se elimine un usuario. La asignación actual usa FK con nullOnDelete. Las actualizaciones y aprobaciones bloquean la fila del scope; la aprobación verifica al actor activo dentro de la transacción.
 
-La autorización central ReportUserAccess::canApproveCommissionClosure valida el scope en backend; la configuración se carga una vez por request. El resumen de aprobación consulta únicamente snapshots de scopes autorizados y no construye dashboards adicionales. El rol Financiero mantiene exclusivamente la pestaña Financieros. La asignación no concede acceso al informe, detalles, preparación, reapertura, ajustes, fórmulas, penalizaciones ni administración: esos accesos conservan sus reglas anteriores. El auditor puede aprobar mediante el resumen solo los scopes que tenga asignados.
+La autorización central ReportUserAccess::canApproveCommissionClosure valida el scope en backend; la configuración se carga una vez por request. El resumen de aprobación consulta únicamente snapshots de scopes autorizados y no construye dashboards adicionales. El rol Financiero mantiene exclusivamente la pestaña Financieros. La asignación no concede acceso general al informe, preparación, reapertura, ajustes, fórmulas, penalizaciones ni administración: esos accesos conservan sus reglas anteriores. El auditor puede aprobar mediante el resumen solo los scopes que tenga asignados. Como excepción acotada para revisar lo que va a aprobar, un `commission_auditor` asignado activamente a `financials` recibe el detalle financiero completo únicamente cuando el scope seleccionado es `financials`; la autorización se revalida en servidor y no se deriva de la query.
+
+Ese detalle reutiliza el dashboard ya resuelto por la proyección de auditoría: candidato en `pending_approval`, definitivo en `definitive` y cálculo live en `provisional`/`reopened`. Por tanto no construye una segunda fotografía ni mezcla el snapshot histórico con datos vivos. La vista financiera compartida fuerza `canSeeSyncDiagnostics=false`; siguen denegados conciliación interna, acciones administrativas, reapertura y exportaciones.
 
 La aprobación sigue exigiendo pending_approval, mes natural terminado, scope disponible para ese mes y snapshot candidato existente. Conserva snapshot_version, approved_by real y evento approved; no recalcula importes. No se modifican fórmulas, universos ni cierres históricos.
 
@@ -526,7 +542,7 @@ Operación tras despliegue autorizado: ejecutar php artisan migrate en el entorn
 
 ### Hardening de aprobadores (2026-10-19)
 
-Administración utiliza el mismo resumen de aprobación del snapshot preparado que los demás aprobadores. Solo aparece una acción de aprobación por scope pendiente autorizado. La tabla de preparación conserva preparación y reapertura, sin duplicar la acción de aprobación. Un administrador no puede aprobar scopes asignados a otro usuario; conserva su política original de reapertura, también para esos scopes.
+Administración utiliza el mismo resumen de aprobación del snapshot preparado que los demás aprobadores. Solo aparece una acción de aprobación por scope pendiente autorizado. La tabla de preparación conserva preparación y reapertura, sin duplicar la acción de aprobación. La reapertura excepcional aparece tanto para un candidato pendiente como para un definitivo. Un administrador no puede aprobar scopes asignados a otro usuario; conserva su política original de reapertura, también para esos scopes. Dirección dispone de la misma reapertura en su superficie consolidada; un aprobador asignado sin esos roles no la recibe.
 
 El formulario marca expresamente los scopes bloqueados por aprobador inactivo/eliminado o configuración inválida, muestra el error junto a su selector e identifica la pestaña que requiere intervención. Es necesario seleccionar un usuario activo para sustituir la asignación; no hay sustituciones automáticas. Guardar una asignación vigente sin cambios conserva su fecha y no crea auditoría adicional. Los seis scopes se validan y guardan como una unidad: cualquier error revierte todos los cambios y sus eventos de asignación.
 

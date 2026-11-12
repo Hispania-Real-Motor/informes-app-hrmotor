@@ -924,7 +924,9 @@ funcional.
 ### 7.4 Cierres, snapshots y ajustes
 
 - Estados: provisional, pendiente de aprobación, definitivo y reabierto.
-- Solo Dirección y Administrador/IT preparan, aprueban o reabren.
+- Administrador/IT prepara; la aprobación corresponde al actor autorizado para
+  el scope (política legacy de Administración/Dirección o aprobador activo
+  asignado). Solo Administrador/IT y Dirección reabren.
 - El definitivo exige mes natural terminado, los componentes del scope
   confirmados y ausencia de incidencias relevantes. Para Contact Center, julio
   y agosto usan `leads` + `sales`; desde septiembre usa `appointments` +
@@ -932,9 +934,9 @@ funcional.
 - Los cierres se separan por scope. Cada snapshot conserva únicamente el
   universo y detalle de su bloque. Desde septiembre el de Contact Center incluye
   `contact_center` y los `formula_settings` que se usaron para el cálculo; su
-  total no convierte importes `null` no certificables en cero. La reapertura
-  conserva la versión definitiva previa y crea una nueva versión al volver a
-  preparar/aprobar.
+  total no convierte importes `null` no certificables en cero. La reapertura se
+  admite desde candidato pendiente o definitivo, conserva la versión previa y
+  crea `N+1` al volver a preparar; registra actor, motivo y transición.
 - Salesforce no sobrescribe un definitivo. Una corrección se registra como
   ajuste del siguiente mes abierto o exige reapertura manual con motivo.
 - El XLSX de Contact Center de septiembre o posterior consume solo ese snapshot
@@ -965,8 +967,12 @@ funcional.
 - reseñas: `/informes/comisiones-comerciales/export/reviews-audit.csv`.
 
 El Auditor de comisiones puede cargar Penalizaciones financieras, pero no
-gestiona usuarios, fórmulas ni cierres. Los ámbitos se aplican en servidor por
-Salesforce User ID, delegación o zona según el rol.
+gestiona usuarios, fórmulas ni cierres. Si es el aprobador activo asignado al
+scope Financieros, puede revisar en ese scope el detalle financiero completo de
+solo lectura que sustenta la aprobación; no recibe diagnóstico interno,
+exportaciones, acciones administrativas ni detalle de otros scopes. Los ámbitos
+se aplican en servidor por Salesforce User ID, delegación, zona o asignación de
+aprobador según el rol.
 
 ```bash
 php artisan salesforce:sync-opportunities --from=2026-08-01 --to=2026-09-01

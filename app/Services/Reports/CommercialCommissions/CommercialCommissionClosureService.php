@@ -206,8 +206,11 @@ class CommercialCommissionClosureService
             $this->assertScopeAvailableForMonth($scope, $selected);
             $monthKey = $selected->format('Y-m');
             $closure = CommercialCommissionClosure::query()->where(['month' => $monthKey, 'closure_scope' => $scope])->lockForUpdate()->first();
-            if (! $closure || $closure->status !== CommercialCommissionClosure::STATUS_DEFINITIVE) {
-                throw ValidationException::withMessages(['month' => 'Solo se puede reabrir un bloque definitivo.']);
+            if (! $closure || ! in_array($closure->status, [
+                CommercialCommissionClosure::STATUS_PENDING_APPROVAL,
+                CommercialCommissionClosure::STATUS_DEFINITIVE,
+            ], true)) {
+                throw ValidationException::withMessages(['month' => 'Solo se puede reabrir un bloque pendiente de aprobación o definitivo.']);
             }
             $from = $closure->status;
             $closure->update(['status' => CommercialCommissionClosure::STATUS_REOPENED, 'reopened_by' => $user->id, 'reopened_at' => now(), 'reopen_reason' => $reason]);

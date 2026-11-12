@@ -39,12 +39,12 @@ class CommissionScopeApproverTest extends TestCase
         CommercialCommissionApprover::where('closure_scope', $scope)->firstOrFail()->update(['report_user_id' => $user->id, 'configured_at' => now()]);
     }
 
-    private function candidate(string $scope): CommercialCommissionClosure
+    private function candidate(string $scope, ?array $dashboard = null): CommercialCommissionClosure
     {
         $closure = CommercialCommissionClosure::create(['month' => '2026-07', 'closure_scope' => $scope, 'status' => 'pending_approval', 'component_statuses' => array_fill_keys(CommercialCommissionClosureService::REQUIRED_COMPONENTS_BY_SCOPE[$scope], true), 'snapshot_version' => 1]);
-        $dashboard = $scope === 'commercials'
-            ? app(CommercialCommissionDashboardService::class)->build('2026-07', false, false, false)
-            : ['month' => '2026-07', 'month_label' => 'julio 2026', 'ready' => true, 'issues' => [], 'warnings' => [], 'diagnostics' => [], 'summary_rows' => [], 'delegation_rows' => [], 'detail_rows' => []];
+        $dashboard ??= $scope === 'commercials'
+                ? app(CommercialCommissionDashboardService::class)->build('2026-07', false, false, false)
+                : ['month' => '2026-07', 'month_label' => 'julio 2026', 'ready' => true, 'issues' => [], 'warnings' => [], 'diagnostics' => [], 'summary_rows' => [], 'delegation_rows' => [], 'detail_rows' => []];
         CommercialCommissionSnapshot::create(['closure_id' => $closure->id, 'month' => '2026-07', 'version' => 1, 'formula_version' => 'test', 'data_cutoff_at' => now(), 'payload' => [$scope => $dashboard], 'created_at' => now()]);
 
         return $closure;
@@ -200,6 +200,119 @@ class CommissionScopeApproverTest extends TestCase
         $this->login($user)->put('/informes/configuracion-comisiones', [])->assertForbidden();
     }
 
+    public function test_assigned_commission_auditor_sees_selected_financial_snapshot_detail_without_diagnostics(): void
+    {
+        $auditor = $this->user(ReportUser::ROLE_COMMISSION_AUDITOR);
+        $this->assign('financials', $auditor);
+        $closure = $this->candidate('financials', $this->financialApprovalDashboard('SNAPSHOT-OPP', 903.31));
+        $financials = \Mockery::mock(FinancialCommissionDashboardService::class);
+        $financials->shouldNotReceive('build');
+        $this->app->instance(FinancialCommissionDashboardService::class, $financials);
+
+        $response = $this->login($auditor)->get('/informes/comisiones-comerciales?month=2026-07&audit_scope=financials');
+
+        $response->assertOk()
+            ->assertViewHas('financialApprovalDashboard', fn (?array $dashboard): bool => data_get($dashboard, 'detail_rows.0.opportunity_id') === 'SNAPSHOT-OPP')
+            ->assertViewHas('canSeeSyncDiagnostics', false)
+            ->assertSee('Carlos y Cristina')
+            ->assertSee('Trazabilidad por Opportunity')
+            ->assertSee('SNAPSHOT-OPP')
+            ->assertSee('903,31')
+            ->assertDontSee('Conciliacion financiera')
+            ->assertDontSee('Confirmar reapertura')
+            ->assertDontSee('Preparación de comisiones');
+
+        $closure->update(['status' => CommercialCommissionClosure::STATUS_DEFINITIVE]);
+        $this->login($auditor)->get('/informes/comisiones-comerciales?month=2026-07&audit_scope=financials')
+            ->assertOk()
+            ->assertViewHas('financialApprovalDashboard', fn (?array $dashboard): bool => data_get($dashboard, 'detail_rows.0.opportunity_id') === 'SNAPSHOT-OPP')
+            ->assertSee('SNAPSHOT-OPP');
+
+        $this->login($auditor)->get('/informes/comisiones-comerciales?month=2026-07&audit_scope=commercials')
+            ->assertOk()
+            ->assertViewHas('financialApprovalDashboard', null)
+            ->assertDontSee('SNAPSHOT-OPP');
+    }
+
+    public function test_assigned_financial_auditor_uses_live_detail_after_reopening_instead_of_historical_snapshot(): void
+    {
+        $auditor = $this->user(ReportUser::ROLE_COMMISSION_AUDITOR);
+        $this->assign('financials', $auditor);
+        $closure = $this->candidate('financials', $this->financialApprovalDashboard('HISTORICAL-OPP', 500.0));
+        $closure->update(['status' => CommercialCommissionClosure::STATUS_REOPENED]);
+        $financials = \Mockery::mock(FinancialCommissionDashboardService::class);
+        $financials->shouldReceive('build')->once()->with('2026-07')->andReturn($this->financialApprovalDashboard('LIVE-OPP', 610.0));
+        $this->app->instance(FinancialCommissionDashboardService::class, $financials);
+
+        $this->login($auditor)->get('/informes/comisiones-comerciales?month=2026-07&audit_scope=financials')
+            ->assertOk()
+            ->assertViewHas('financialApprovalDashboard', fn (?array $dashboard): bool => data_get($dashboard, 'detail_rows.0.opportunity_id') === 'LIVE-OPP')
+            ->assertSee('LIVE-OPP')
+            ->assertDontSee('HISTORICAL-OPP')
+            ->assertDontSee('Conciliacion financiera');
+    }
+
+    public function test_financial_detail_fails_closed_for_auditor_assigned_to_another_scope(): void
+    {
+        $financialApprover = $this->user(ReportUser::ROLE_COMMISSION_AUDITOR);
+        $otherAuditor = $this->user(ReportUser::ROLE_COMMISSION_AUDITOR);
+        $this->assign('financials', $financialApprover);
+        $this->assign('commercials', $otherAuditor);
+        $this->candidate('financials', $this->financialApprovalDashboard('PRIVATE-FINANCIAL-OPP', 777.77));
+
+        $this->login($otherAuditor)->get('/informes/comisiones-comerciales?month=2026-07&audit_scope=financials')
+            ->assertOk()
+            ->assertViewHas('financialApprovalDashboard', null)
+            ->assertDontSee('PRIVATE-FINANCIAL-OPP')
+            ->assertDontSee('Trazabilidad por Opportunity')
+            ->assertDontSee('Conciliacion financiera');
+    }
+
+    /** @return array<string, mixed> */
+    private function financialApprovalDashboard(string $opportunityId, float $commission): array
+    {
+        return [
+            'month' => '2026-07',
+            'month_label' => 'julio 2026',
+            'ready' => true,
+            'issues' => [],
+            'warnings' => [],
+            'diagnostics' => [
+                'eligible_operations_count' => 1,
+                'financial_commission_included' => 1800.0,
+            ],
+            'summary_rows' => [[
+                'summary_label' => 'Responsable snapshot',
+                'commission_mode' => 'standard_blocks',
+                'final_commission' => $commission,
+                'operations_count' => 1,
+                'amount_total' => 20000.0,
+                'amount_financed' => 15000.0,
+                'financed_percentage' => 75.0,
+                'financial_commission_total' => 1800.0,
+                'financial_discount_total' => 100.0,
+                'net_commission' => 1700.0,
+                'block_1_commission' => 300.0,
+                'profitability_percentage' => 8.0,
+                'block_2_commission' => 300.0,
+                'premium_guarantee_total' => 1.0,
+                'block_3_commission' => 303.31,
+            ]],
+            'delegation_rows' => [],
+            'detail_rows' => [[
+                'summary_label' => 'Responsable snapshot',
+                'delegation_name' => 'Delegación snapshot',
+                'opportunity_id' => $opportunityId,
+                'opportunity_name' => 'Operación congelada',
+                'interest_rate' => '8.0',
+                'profitability_reason' => 'Elegible',
+                'amount_financed' => 15000.0,
+                'financial_commission' => 1800.0,
+                'financial_discount' => 100.0,
+            ]],
+        ];
+    }
+
     public function test_only_pending_finished_available_scopes_can_be_approved(): void
     {
         $user = $this->user();
@@ -261,6 +374,8 @@ class CommissionScopeApproverTest extends TestCase
         $this->assign('delegations', $other);
         $response = $this->login($admin)->get('/informes/comisiones-comerciales?month=2026-07');
         $response->assertOk()->assertViewHas('directorApprovalOverview', fn (array $rows): bool => array_column($rows, 'scope') === ['commercials', 'area_manager', 'financials', 'call_center', 'contact_center']);
+        $this->assertSame(3, substr_count($response->getContent(), 'action="'.route('reports.commercial-commissions.closure.reopen').'"'));
+        $response->assertSee('Reabrir preparación');
         $dom = new \DOMDocument;
         @$dom->loadHTML($response->getContent());
         $xpath = new \DOMXPath($dom);
@@ -277,7 +392,7 @@ class CommissionScopeApproverTest extends TestCase
         $this->assertSame(2, DB::table('commercial_commission_closure_events')->where('action', 'approved')->count());
         $response = $this->login($admin)->get('/informes/comisiones-comerciales?month=2026-07');
         $response->assertOk()->assertSee('Motivo de reapertura')->assertSee('Preparación de comisiones');
-        $this->assertSame(2, substr_count($response->getContent(), 'action="'.route('reports.commercial-commissions.closure.reopen').'"'));
+        $this->assertSame(3, substr_count($response->getContent(), 'action="'.route('reports.commercial-commissions.closure.reopen').'"'));
     }
 
     public function test_blocked_form_requires_explicit_active_replacement_and_rolls_back_all_scopes(): void
