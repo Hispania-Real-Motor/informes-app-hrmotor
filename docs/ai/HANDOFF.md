@@ -1,5 +1,43 @@
 # Handoff para agentes
 
+## 2026-11-12 — PR #146: precedencia de versiones operativas mensuales
+
+- Tarea: impedir que un run antiguo reanudado sustituya una versión mensual
+  operativa más reciente. El cambio en `OperationalInterestMonthlySync.php`
+  ordena candidatas por `(effective_cutoff_at UTC, run_id)`, comprueba la
+  precedencia en preparación y reclamación y la revalida con bloqueo en la
+  transacción de activación. Una candidata superada conserva filas, incidencias,
+  contadores, fase y checkpoint; queda `failed/superseded` sin nueva lectura
+  Salesforce. La versión activa y la generación oficial permanecen intactas.
+- Archivos funcionales modificados: servicio y
+  `tests/Feature/OperationalInterestMonthlySyncTest.php`. Documentos: este
+  handoff, `docs/operaciones-produccion.md`,
+  `docs/salesforce-interest-generations.md`, `docs/reglas-negocio-leads.md`,
+  `docs/matriz-trazabilidad-kpi.md` y `docs/ai/DECISIONS.md`.
+- Base de datos/configuración: no se añade migración, tabla, índice, variable
+  de entorno ni scheduler. La regla usa el puntero y runs existentes. No se
+  modifica F2, F2M, F5, journals históricos ni publicaciones oficiales.
+- Seguridad: comparación definitiva bajo `lockForUpdate` del mes y lease
+  fenced; error de estado seguro sin IDs ni mensajes remotos. Las huellas HMAC
+  diagnósticas actuales admiten correlación entre IDs con valores idénticos;
+  se evalúa aislamiento por registro como trabajo versionado posterior, sin
+  romper la semántica ni la reanudación de huellas persistidas.
+- Rendimiento: una lectura acotada del run activo por prepare/claim/activate,
+  ninguna consulta SQL por Interest ni SOQL adicional. `MAX_REMOTE_PAGES_PER_BATCH=10`
+  permite nueve páginas completas y rechaza la décima sin persistir ese lote;
+  las pruebas cubren ambos extremos.
+- Pruebas añadidas: A falla tras checkpoint, B activa con cutoff posterior,
+  A reintenta sin SOQL; empate de cutoff por ID; control final de activación;
+  nueve páginas admitidas. Conservar tests existentes de lease/concurrencia y
+  paginación. Resultados definitivos de PHPUnit, MariaDB 11, Pint, build,
+  documentación y CI corresponden al SHA final que comprobará el agente
+  principal; esta nota no los anticipa.
+- Acciones manuales/riesgos: revisar la PR y sus checks antes de integrar;
+  desplegar y ejecutar cualquier lectura productiva solo bajo autorización
+  independiente. Un cutoff posterior acredita una observación operativa más
+  reciente, no una fotografía histórica. El aislamiento HMAC por registro
+  requiere estrategia compatible de formato/rotación para runs preexistentes.
+
 ## 2026-11-12 — sincronización operativa mensual de Interests (en revisión)
 
 - Objetivo y solución: nueva fuente provisional por mes para consultar

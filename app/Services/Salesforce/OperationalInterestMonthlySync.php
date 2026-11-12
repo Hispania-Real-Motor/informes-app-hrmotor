@@ -26,6 +26,8 @@ final class OperationalInterestMonthlySync
 
     private const LEASE_SECONDS = 300;
 
+    private const SUPERSEDED = 1001;
+
     public function __construct(
         private readonly SalesforceClient $client,
         private readonly SalesforceInterestSyncService $interests,
@@ -55,6 +57,9 @@ final class OperationalInterestMonthlySync
             $owner = DB::table('salesforce_interest_operational_months')->where('month_key', $month)->lockForUpdate()->first();
             if ($this->live($owner)) {
                 throw new RuntimeException('Operational month already has a running worker.');
+            }
+            if ($this->superseded($cutoff, PHP_INT_MAX, $owner)) {
+                throw new RuntimeException('Operational cutoff is older than the active version.');
             }
             $recent = DB::table('salesforce_interest_operational_runs')->where('month_key', $month)
                 ->whereIn('status', ['prepared', 'running'])->orderByDesc('id')->first();
@@ -102,13 +107,15 @@ final class OperationalInterestMonthlySync
                 }
                 throw new RuntimeException('Operational run phase is invalid.');
             }
-        } catch (Throwable) {
-            DB::transaction(function () use ($runId, $lease, $stage): void {
+        } catch (Throwable $error) {
+            $errorStage = $error instanceof RuntimeException && $error->getCode() === self::SUPERSEDED
+                ? 'superseded' : $stage;
+            DB::transaction(function () use ($runId, $lease, $errorStage): void {
                 $month = DB::table('salesforce_interest_operational_runs')->where('id', $runId)->value('month_key');
                 $owner = DB::table('salesforce_interest_operational_months')->where('month_key', $month)->lockForUpdate()->first();
                 if ($owner !== null && $owner->lease_token === $lease) {
                     DB::table('salesforce_interest_operational_runs')->where('id', $runId)
-                        ->where('status', 'running')->update(['status' => 'failed', 'error_stage' => $stage, 'updated_at' => now()]);
+                        ->where('status', 'running')->update(['status' => 'failed', 'error_stage' => $errorStage, 'updated_at' => now()]);
                     DB::table('salesforce_interest_operational_months')->where('month_key', $month)
                         ->where('lease_token', $lease)->update(['lease_token' => null, 'heartbeat_at' => null, 'updated_at' => now()]);
                 }
@@ -138,7 +145,7 @@ final class OperationalInterestMonthlySync
 
     private function claim(int $runId): string
     {
-        return DB::transaction(function () use ($runId): string {
+        $lease = DB::transaction(function () use ($runId): ?string {
             $run = DB::table('salesforce_interest_operational_runs')->where('id', $runId)->first();
             if ($run === null || ! in_array($run->status, ['prepared', 'failed', 'running'], true)) {
                 throw new RuntimeException('Operational run cannot be claimed.');
@@ -146,6 +153,12 @@ final class OperationalInterestMonthlySync
             $month = DB::table('salesforce_interest_operational_months')->where('month_key', $run->month_key)->lockForUpdate()->first();
             if ($month === null || $this->live($month)) {
                 throw new RuntimeException('Operational month already has a running worker.');
+            }
+            if ($this->superseded($run->effective_cutoff_at, (int) $run->id, $month)) {
+                DB::table('salesforce_interest_operational_runs')->where('id', $runId)
+                    ->update(['status' => 'failed', 'error_stage' => 'superseded', 'updated_at' => now()]);
+
+                return null;
             }
             $lease = (string) Str::uuid();
             DB::table('salesforce_interest_operational_months')->where('month_key', $run->month_key)
@@ -155,6 +168,33 @@ final class OperationalInterestMonthlySync
 
             return $lease;
         });
+        if ($lease === null) {
+            throw new RuntimeException('Operational run is superseded.', self::SUPERSEDED);
+        }
+
+        return $lease;
+    }
+
+    /** Called while the month row is locked; equal cutoffs are ordered by run ID. */
+    private function superseded(CarbonImmutable|string $cutoff, int $runId, object $month): bool
+    {
+        if ($month->active_run_id === null) {
+            if ($month->active_projection_key !== null) {
+                throw new RuntimeException('Operational active pointer is inconsistent.');
+            }
+
+            return false;
+        }
+        $active = DB::table('salesforce_interest_operational_runs')->where('id', $month->active_run_id)->first();
+        if ($active === null || $active->month_key !== $month->month_key || $active->status !== 'completed'
+            || $active->phase !== 'completed' || $active->projection_key !== $month->active_projection_key) {
+            throw new RuntimeException('Operational active pointer is inconsistent.');
+        }
+        $candidateCutoff = $cutoff instanceof CarbonImmutable ? $cutoff : CarbonImmutable::parse($cutoff, 'UTC');
+        $activeCutoff = CarbonImmutable::parse($active->effective_cutoff_at, 'UTC');
+
+        return $candidateCutoff->lt($activeCutoff)
+            || ($candidateCutoff->equalTo($activeCutoff) && $runId <= (int) $active->id);
     }
 
     private function live(object $month): bool
@@ -469,6 +509,9 @@ final class OperationalInterestMonthlySync
                 throw new MonthlyInterestRecoveryLeaseLost;
             }
             $this->owned((int) $run->id, $lease, true);
+            if ($this->superseded($run->effective_cutoff_at, (int) $run->id, $month)) {
+                throw new RuntimeException('Operational run is superseded.', self::SUPERSEDED);
+            }
             DB::table('salesforce_interest_operational_runs')->where('id', $run->id)->update([
                 'status' => 'completed', 'phase' => 'completed', 'overview' => json_encode($overview, JSON_THROW_ON_ERROR),
                 'completed_at' => now('UTC'), 'updated_at' => now(),

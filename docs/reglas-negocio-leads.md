@@ -9,6 +9,12 @@ falla cerrada, sin retroceder a otra revisión. La fuente oficial publicada sigu
 teniendo prioridad sin selección explícita. Flag, rol, `no-store, private` y
 restricción de auditoría/exportación permanecen.
 
+Una revisión operativa antigua, aunque conserve su checkpoint, no puede
+sustituir un run activo con cutoff posterior; si comparten cutoff, manda el ID
+mayor. El lector conserva la última proyección activada cuando un run posterior
+falla o cuando se rechaza una reanudación superada. Esto no modifica el
+denominador ni las fórmulas del dashboard.
+
 El banner identifica «Noviembre de 2026 · inventario operativo provisional»,
 muestra la fecha de **preparación** del run visible separada del cutoff de
 pertenencia y advierte que no certifica valores históricos ni sustituye el

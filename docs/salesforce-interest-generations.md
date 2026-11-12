@@ -21,7 +21,9 @@ página incompleta, error remoto/SQL o pérdida de lease impide activar el run.
 No usa `getDeleted` ni demuestra hard deletes o valores históricos al cutoff.
 Hay un límite de 250 lotes keyset confirmados de extracción y segunda lectura
 por run. Cada lote admite hasta nueve páginas remotas completas; se aborta al
-recibir la décima. En una ejecución sin reintentos podrían recibirse hasta
+recibir la décima, antes de persistir el lote. El valor interno
+`MAX_REMOTE_PAGES_PER_BATCH=10` expresa ese umbral de rechazo, no diez páginas
+completas admitidas. En una ejecución sin reintentos podrían recibirse hasta
 2.500 páginas; con los 300 intentos máximos el techo teórico es 3.000
 páginas y hasta 6.000 peticiones si cada una requiere un reintento HTTP 401.
 Cada consulta aumenta además `query_attempts` en una transacción fenced antes
@@ -30,6 +32,15 @@ reanudados en el mismo cursor. Al agotarse cualquiera de los límites se
 conserva checkpoint y versión anterior; preparar otra versión exige revisión
 supervisada. No existe
 una certificación de consumo real de API hasta medirla en Salesforce.
+
+El puntero activo es monótono respecto de `(effective_cutoff_at UTC, run_id)`:
+un cutoff posterior gana; con igual cutoff gana el run de ID mayor. `prepare`
+rechaza cutoffs anteriores; `claim` rechaza una reanudación superada antes de
+SOQL y registra `failed/superseded` sin borrar filas, incidentes ni checkpoints.
+`activate` vuelve a comprobar la versión bajo el bloqueo de la fila mensual,
+en la misma transacción que mueve el puntero. Una carrera, un fallo posterior
+o una reanudación antigua dejan accesible la última versión activa. Esta
+precedencia no atribuye mayor fidelidad histórica al run más nuevo.
 
 Un cambio de contenido entre lecturas se registra por ID **solo en tablas
 restringidas**, con máscara de categorías y huellas HMAC, sin valores de campos,
@@ -43,6 +54,13 @@ activo. Una actualización posterior puede reincorporarlo sin reescribir el run
 anterior. Campos categóricos ausentes permanecen «Sin clasificar»; no se
 infieren valores. `verified_at` en esta fuente significa **presencia en la
 segunda lectura**, no igualdad de hash ni certificación histórica.
+
+Las huellas HMAC diagnósticas actuales usan `APP_KEY` y el valor del grupo;
+valores idénticos en dos IDs producen la misma huella, aunque el journal sea
+restringido. Aislarlas por ID reduciría correlación transversal, pero cambiaría
+el formato/versionado de huellas persistidas. Se deja pendiente un formato
+versionado compatible para runs ya iniciados; no se altera aquí la comparación
+de hashes funcionales ni se interpreta una huella anterior como error nuevo.
 
 La proyección categórica se construye fuera de HTTP en lotes y usa los
 normalizadores vigentes de tipo y procedencia. El puntero mensual cambia en

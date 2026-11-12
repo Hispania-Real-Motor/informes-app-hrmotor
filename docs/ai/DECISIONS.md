@@ -1496,3 +1496,20 @@ automáticas consecutivas no verificadas como límite operativo. F2M conserva
 su contraste remoto independiente. Ningún resultado acredita un estado
 histórico `as-of` ni resuelve hard deletes. La migración es aditiva para los
 journals existentes y el rollback de esquema no elimina evidencia.
+
+## 2026-11-12 — precedencia monótona de versiones operativas mensuales
+
+El puntero operativo mensual solo puede avanzar por la tupla
+`(effective_cutoff_at UTC, run_id)`: cutoff posterior primero y, para un
+empate, ID mayor. El ID desempata determinísticamente sin sugerir que dos
+lecturas con igual cutoff retratan el mismo instante. Preparar rechaza cutoffs
+anteriores; reclamar conserva como `failed/superseded` una ejecución ya
+superada y evita SOQL; activar vuelve a comparar bajo bloqueo del mes dentro
+de la transacción que cambia el puntero. El orden protege la continuidad de
+la última versión visible sin modificar contenido, incidentes o checkpoints
+históricos. No cambia certificación F2 ni generación oficial.
+
+Las huellas HMAC diagnósticas actuales pueden coincidir entre registros con
+los mismos valores de categoría. Aislarlas por ID reduciría correlación, pero
+obliga a versionar formato y lectura de runs iniciados; no se cambia aquí la
+huella funcional ni la detección de cambios dentro de un mismo registro.

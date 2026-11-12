@@ -42,9 +42,22 @@ php artisan salesforce:sync-interests-operational run --run-id=<id> --allow-sale
 php artisan salesforce:sync-interests-operational status --run-id=<id>
 ```
 
-`prepare` no llama a Salesforce. `run` reanuda la fase y los cursores del mismo
-ID si falló, requiere el flag de autorización explícito y deja la última
-versión activa si falla. Verificar `completed`, `extracted = checked`, el
+`prepare` no llama a Salesforce. El puntero activo solo puede avanzar según
+`(effective_cutoff_at UTC, run_id)`: gana el cutoff posterior y, a igualdad de
+cutoff, el ID mayor. `prepare` rechaza un cutoff inferior al activo; `run`
+rechaza una ejecución ya superada **antes** de consultar Salesforce, conserva
+sus filas y checkpoints y registra `status=failed, error_stage=superseded`.
+La activación repite la comparación dentro de la transacción que bloquea el
+mes y cambia el puntero; una carrera tampoco puede volver a una versión
+anterior. Un run fallido solo se reanuda si aún no está superado. No se debe
+forzar el puntero manualmente ni borrar incidentes para reintentarlo.
+
+`run` reanuda la fase y los cursores del mismo ID si falló y sigue vigente,
+requiere el flag de autorización explícito y deja la última versión activa si
+falla o es rechazado. El límite `MAX_REMOTE_PAGES_PER_BATCH=10` permite
+**nueve páginas completas** por SOQL y rechaza la décima antes de persistir
+ese lote; no significa diez páginas completas. Verificar `completed`,
+`extracted = checked`, el
 recuento `observed = admitted + quarantined`, las categorías de cambio y la
 proyección activa antes de solicitar habilitar
 `SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED`. Revisar incidencias individuales

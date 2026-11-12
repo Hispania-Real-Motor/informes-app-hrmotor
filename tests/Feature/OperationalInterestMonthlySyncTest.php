@@ -129,6 +129,114 @@ class OperationalInterestMonthlySyncTest extends TestCase
         $this->assertSame(502, DB::table('salesforce_interest_operational_rows')->where('run_id', $runId)->count());
     }
 
+    public function test_failed_older_run_cannot_resume_after_a_newer_cutoff_was_activated(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $fake = new OperationalInterestFakeClient($this->records(502));
+        $fake->failOnQuery = 2;
+        $this->app->instance(SalesforceClient::class, $fake);
+        $sync = app(OperationalInterestMonthlySync::class);
+        $older = $sync->prepare('2026-11');
+        try {
+            $sync->run($older);
+            $this->fail('The first run should stop after a confirmed page.');
+        } catch (\RuntimeException) {
+            $this->assertSame(500, $sync->status($older)['extracted']);
+        }
+
+        Carbon::setTestNow('2026-11-12 12:02:00 UTC');
+        $fake->failOnQuery = null;
+        $newer = $sync->prepare('2026-11');
+        $this->assertSame('completed', $sync->run($newer)['status']);
+        $queriesBeforeResume = $fake->queryCount();
+        $activeProjection = DB::table('salesforce_interest_operational_months')
+            ->where('month_key', '2026-11')->value('active_projection_key');
+
+        try {
+            $sync->run($older);
+            $this->fail('The older run must be rejected before reading Salesforce.');
+        } catch (\RuntimeException) {
+            $this->assertSame('superseded', $sync->status($older)['error_stage']);
+        }
+        $this->assertSame($queriesBeforeResume, $fake->queryCount());
+        $this->assertSame(500, $sync->status($older)['extracted']);
+        $this->assertSame('extract', $sync->status($older)['phase']);
+        $this->assertSame($newer, DB::table('salesforce_interest_operational_months')
+            ->where('month_key', '2026-11')->value('active_run_id'));
+        $this->assertSame($activeProjection, DB::table('salesforce_interest_operational_months')
+            ->where('month_key', '2026-11')->value('active_projection_key'));
+        $this->assertSame(500, DB::table('salesforce_interest_operational_rows')->where('run_id', $older)->count());
+
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $this->expectException(\RuntimeException::class);
+        $sync->prepare('2026-11');
+    }
+
+    public function test_equal_cutoff_uses_run_id_to_prevent_an_older_run_from_replacing_the_active_one(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $fake = new OperationalInterestFakeClient($this->records(1));
+        $fake->failOnQuery = 1;
+        $this->app->instance(SalesforceClient::class, $fake);
+        $sync = app(OperationalInterestMonthlySync::class);
+        $older = $sync->prepare('2026-11');
+        try {
+            $sync->run($older);
+            $this->fail('Synthetic failure was expected.');
+        } catch (\RuntimeException) {
+            $this->assertSame('failed', $sync->status($older)['status']);
+        }
+        $fake->failOnQuery = null;
+        $newer = $sync->prepare('2026-11');
+        $this->assertSame(DB::table('salesforce_interest_operational_runs')->where('id', $older)->value('effective_cutoff_at'),
+            DB::table('salesforce_interest_operational_runs')->where('id', $newer)->value('effective_cutoff_at'));
+        $sync->run($newer);
+        $queries = $fake->queryCount();
+        $this->expectException(\RuntimeException::class);
+        try {
+            $sync->run($older);
+        } finally {
+            $this->assertSame($queries, $fake->queryCount());
+            $this->assertSame('superseded', $sync->status($older)['error_stage']);
+            $this->assertSame($newer, DB::table('salesforce_interest_operational_months')
+                ->where('month_key', '2026-11')->value('active_run_id'));
+        }
+    }
+
+    public function test_activation_rechecks_the_active_version_under_the_month_lock(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $fake = new OperationalInterestFakeClient($this->records(1));
+        $fake->failOnQuery = 1;
+        $this->app->instance(SalesforceClient::class, $fake);
+        $sync = app(OperationalInterestMonthlySync::class);
+        $older = $sync->prepare('2026-11');
+        try {
+            $sync->run($older);
+        } catch (\RuntimeException) {
+            // Keep the failed candidate for the activation race simulation.
+        }
+        $fake->failOnQuery = null;
+        $newer = $sync->prepare('2026-11');
+        $sync->run($newer);
+
+        $lease = 'synthetic-fenced-lease';
+        DB::table('salesforce_interest_operational_runs')->where('id', $older)
+            ->update(['status' => 'running', 'phase' => 'activate', 'projection_key' => 'synthetic-older-projection']);
+        DB::table('salesforce_interest_operational_months')->where('month_key', '2026-11')
+            ->update(['lease_token' => $lease, 'heartbeat_at' => now('UTC')]);
+        $candidate = DB::table('salesforce_interest_operational_runs')->find($older);
+        $this->expectException(\RuntimeException::class);
+        try {
+            (new \ReflectionMethod(OperationalInterestMonthlySync::class, 'activate'))->invoke($sync, $candidate, $lease);
+        } finally {
+            $this->assertSame($newer, DB::table('salesforce_interest_operational_months')
+                ->where('month_key', '2026-11')->value('active_run_id'));
+            $this->assertSame('completed', DB::table('salesforce_interest_operational_runs')
+                ->where('id', $newer)->value('status'));
+        }
+    }
+
     public function test_live_lease_prevents_second_worker_and_revoked_lease_prevents_publication(): void
     {
         Carbon::setTestNow('2026-11-12 12:00:00 UTC');
@@ -301,6 +409,18 @@ class OperationalInterestMonthlySyncTest extends TestCase
             $this->assertSame(0, $sync->status($run)['extracted']);
             $this->assertDatabaseCount('salesforce_interest_operational_rows', 0);
         }
+    }
+
+    public function test_nine_complete_salesforce_continuation_pages_are_accepted(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $fake = new OperationalInterestFakeClient($this->records(9));
+        $fake->fragmentSize = 1;
+        $this->app->instance(SalesforceClient::class, $fake);
+        $sync = app(OperationalInterestMonthlySync::class);
+        $run = $sync->prepare('2026-11');
+        $this->assertSame('completed', $sync->run($run)['status']);
+        $this->assertSame(9, DB::table('salesforce_interest_operational_rows')->where('run_id', $run)->count());
     }
 
     public function test_query_budget_survives_failure_and_resume(): void
