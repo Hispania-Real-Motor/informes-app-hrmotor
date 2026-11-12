@@ -46,7 +46,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     {
         $snapshot = $this->snapshot($request);
         $rows = $this->filteredRows($snapshot, $request);
-        $bucket = $this->bucket($rows, $this->hasOwners($snapshot));
+        $bucket = $this->bucket($rows, $this->hasOwners($snapshot), $this->hasActivity($snapshot));
         $overview = $snapshot['overview'];
         $filters = $this->filterOptions($snapshot);
         $period = $overview['period'];
@@ -73,12 +73,22 @@ final class October2026ProvisionalInterestDashboardDatasetService
                 $label.': '.$overview['coverage']['eligible_active_matching'].' Intereses activos disponibles.',
                 ...(isset($overview['coverage']['observed']) ? ['Cobertura operativa: '.$overview['coverage']['observed'].' observados, '.$overview['coverage']['admitted'].' admitidos y '.$overview['coverage']['quarantined'].' en cuarentena. '.$overview['coverage']['changed_between_reads'].' cambios entre lecturas.'] : []),
                 ...(isset($period['effective_cutoff']) ? ['Altas incluidas hasta '.CarbonImmutable::parse($period['effective_cutoff'], 'UTC')->setTimezone('Europe/Madrid')->format('d/m/Y H:i').'; contenido observado en la validación.'] : []),
+                ...(isset($overview['coverage']['delegation_quality']) ? [sprintf(
+                    'Procedencia: %d vacías, %d con valor general, %d con valor desconocido y %d reconocidas; los valores no reconocidos no se asignan por inferencia.',
+                    $overview['coverage']['delegation_quality']['blank'],
+                    $overview['coverage']['delegation_quality']['general'],
+                    $overview['coverage']['delegation_quality']['unknown_other'],
+                    $overview['coverage']['delegation_quality']['recognized'],
+                )] : []),
+                ...($this->hasActivity($snapshot) ? ['Actividad Task/Event observada: '.$bucket['activities'].' actividades activas sobre '.$bucket['interests_with_activity'].' Intereses filtrados. No equivale a llamadas atendidas ni acredita quién gestionó cada Interés.'] : []),
                 'Las comparativas y los indicadores de actividad requieren más datos.',
             ],
             'filters' => $filters,
             'availability' => [
                 'commercials' => $this->hasOwners($snapshot) ? (isset($snapshot['operational_month']) ? 'Propietarios observados en la sincronización operativa; asignación histórica no certificada.' : 'Propietarios observados en F2M; la asignación histórica no está certificada.') : 'Sin datos suficientes de propietarios para este mes.',
-                'activity' => 'Sin datos suficientes de actividad y gestión para este mes.',
+                'activity' => $this->hasActivity($snapshot)
+                    ? 'Actividades Task/Event vinculadas por WhatId; gestión, contacto y comercial ejecutor no acreditados.'
+                    : 'Sin inventario Task/Event operativo completo para esta versión de Intereses.',
                 'comparison' => 'Sin datos suficientes para comparar con otro período.',
             ],
             'coverage' => $overview['coverage'],
@@ -89,7 +99,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     public function delegationRows(Request $request): array
     {
         $snapshot = $this->snapshot($request);
-        $items = $this->groupedBuckets($this->filteredRows($snapshot, $request), 'origin_delegation', 'delegacion', $this->hasOwners($snapshot));
+        $items = $this->groupedBuckets($this->filteredRows($snapshot, $request), 'origin_delegation', 'delegacion', $this->hasOwners($snapshot), $this->hasActivity($snapshot));
         $this->assertCurrent($snapshot);
 
         return ['items' => $items];
@@ -99,7 +109,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     public function sourceRows(Request $request): array
     {
         $snapshot = $this->snapshot($request);
-        $items = $this->groupedBuckets($this->filteredRows($snapshot, $request), 'source', 'portal', $this->hasOwners($snapshot));
+        $items = $this->groupedBuckets($this->filteredRows($snapshot, $request), 'source', 'portal', $this->hasOwners($snapshot), $this->hasActivity($snapshot));
         $this->assertCurrent($snapshot);
 
         return ['items' => $items];
@@ -191,6 +201,12 @@ final class October2026ProvisionalInterestDashboardDatasetService
             ->where('scope', $snapshot['scope'] ?? self::SCOPE)
             ->where('integrity_revision', $snapshot['integrity_revision'])
             ->where('projection_key', $snapshot['projection_key']);
+        if ($this->hasActivity($snapshot)) {
+            $rows->leftJoin('salesforce_interest_operational_activity_summaries as activity_summary', function ($join) use ($snapshot): void {
+                $join->on('activity_summary.interest_key', '=', 'salesforce_interest_october_provisional_projection_rows.interest_key')
+                    ->where('activity_summary.run_id', '=', $snapshot['activity_run_id']);
+            });
+        }
 
         foreach (self::FILTER_COLUMNS as $parameter => $column) {
             $value = trim($request->string($parameter)->toString());
@@ -227,17 +243,21 @@ final class October2026ProvisionalInterestDashboardDatasetService
         ];
     }
 
-    private function bucket(Builder $rows, bool $hasOwners): array
+    private function bucket(Builder $rows, bool $hasOwners, bool $hasActivity): array
     {
-        $result = (clone $rows)->selectRaw('COUNT(*) as leads_totales')
+        $query = (clone $rows)->selectRaw('COUNT(*) as leads_totales')
             ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' THEN 1 ELSE 0 END) as potenciales")
             ->selectRaw("SUM(CASE WHEN channel = 'Llamada' THEN 1 ELSE 0 END) as llamadas")
             ->selectRaw("SUM(CASE WHEN channel = 'Formulario' THEN 1 ELSE 0 END) as formularios")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' AND owner_is_technical = 1 THEN 1 ELSE 0 END) as leads_unassigned")
-            ->selectRaw("SUM(CASE WHEN origin_delegation = 'Sin clasificar' THEN 1 ELSE 0 END) as unclassified")
-            ->first();
+            ->selectRaw("SUM(CASE WHEN origin_delegation = 'Sin clasificar' THEN 1 ELSE 0 END) as unclassified");
+        if ($hasActivity) {
+            $query->selectRaw('SUM(COALESCE(activity_summary.activities, 0)) as activities')
+                ->selectRaw('SUM(CASE WHEN activity_summary.activities > 0 THEN 1 ELSE 0 END) as interests_with_activity');
+        }
+        $result = $query->first();
         $total = (int) ($result->leads_totales ?? 0);
         $converted = (int) ($result->convertidos ?? 0);
         $discarded = (int) ($result->descartados ?? 0);
@@ -255,6 +275,8 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'leads_unassigned' => $hasOwners ? (int) ($result->leads_unassigned ?? 0) : null,
             'gestionados' => null,
             'gestionados_pct' => null,
+            'activities' => $hasActivity ? (int) ($result->activities ?? 0) : null,
+            'interests_with_activity' => $hasActivity ? (int) ($result->interests_with_activity ?? 0) : null,
             'llamadas' => $calls,
             'llamadas_pct' => $this->percentage($calls, $total),
             'formularios' => $forms,
@@ -266,21 +288,26 @@ final class October2026ProvisionalInterestDashboardDatasetService
     }
 
     /** @return list<array<string,int|float|string>> */
-    private function groupedBuckets(Builder $rows, string $column, string $output, bool $hasOwners): array
+    private function groupedBuckets(Builder $rows, string $column, string $output, bool $hasOwners, bool $hasActivity): array
     {
-        return (clone $rows)->select($column)
+        $query = (clone $rows)->select($column)
             ->selectRaw('COUNT(*) as leads_totales')
             ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' THEN 1 ELSE 0 END) as potenciales")
             ->selectRaw("SUM(CASE WHEN channel = 'Llamada' THEN 1 ELSE 0 END) as llamadas")
             ->selectRaw("SUM(CASE WHEN channel = 'Formulario' THEN 1 ELSE 0 END) as formularios")
-            ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' AND owner_is_technical = 1 THEN 1 ELSE 0 END) as leads_unassigned")
-            ->groupBy($column)
+            ->selectRaw("SUM(CASE WHEN interest_status = 'Potencial' AND owner_is_technical = 1 THEN 1 ELSE 0 END) as leads_unassigned");
+        if ($hasActivity) {
+            $query->selectRaw('SUM(COALESCE(activity_summary.activities, 0)) as activities')
+                ->selectRaw('SUM(CASE WHEN activity_summary.activities > 0 THEN 1 ELSE 0 END) as interests_with_activity');
+        }
+
+        return $query->groupBy($column)
             ->orderByDesc('leads_totales')
             ->orderBy($column)
             ->get()
-            ->map(function (object $row) use ($column, $output, $hasOwners): array {
+            ->map(function (object $row) use ($column, $output, $hasOwners, $hasActivity): array {
                 $total = (int) $row->leads_totales;
                 $converted = (int) $row->convertidos;
                 $discarded = (int) $row->descartados;
@@ -298,6 +325,8 @@ final class October2026ProvisionalInterestDashboardDatasetService
                     'potenciales_sin_trabajar' => null,
                     'gestionados' => null,
                     'gestionados_pct' => null,
+                    'activities' => $hasActivity ? (int) ($row->activities ?? 0) : null,
+                    'interests_with_activity' => $hasActivity ? (int) ($row->interests_with_activity ?? 0) : null,
                     'llamadas' => $calls,
                     'llamadas_pct' => $this->percentage($calls, $total),
                     'formularios' => $forms,
@@ -316,6 +345,8 @@ final class October2026ProvisionalInterestDashboardDatasetService
             if (isset($snapshot['operational_month'])) {
                 $this->operationalReader->assertCurrent($snapshot['operational_month'],
                     $snapshot['integrity_revision'], $snapshot['projection_key']);
+                $this->operationalReader->assertActivityPointer($snapshot['operational_month'],
+                    $snapshot['activity_pointer_id'] ?? null);
 
                 return;
             }
@@ -325,6 +356,11 @@ final class October2026ProvisionalInterestDashboardDatasetService
             return;
         }
         $this->reader->assertDashboardProjectionCurrent($snapshot['integrity_revision'], $snapshot['projection_key']);
+    }
+
+    private function hasActivity(array $snapshot): bool
+    {
+        return isset($snapshot['operational_month'], $snapshot['activity_run_id']);
     }
 
     private function percentage(int $value, int $total): float

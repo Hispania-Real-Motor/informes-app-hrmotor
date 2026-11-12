@@ -364,6 +364,13 @@ test('official and provisional KPI cards preserve their own descriptions and una
     assert.match(element('summaryKpis').innerHTML, /Muestra del período validado/);
     assert.match(element('summaryKpis').innerHTML, /Sin datos suficientes/);
     assert.doesNotMatch(element('summaryKpis').innerHTML, /provisional|no certificado|snapshot histórico|F5/i);
+
+    kpis.activities = 3;
+    kpis.interests_with_activity = 2;
+    vm.runInContext(`renderKpis(${JSON.stringify(kpis)}, true)`, context);
+    assert.match(element('summaryKpis').innerHTML, /Intereses con actividad[\s\S]*?<div class="kpi-value">2<\/div>/);
+    assert.match(element('summaryKpis').innerHTML, /Actividades registradas[\s\S]*?<div class="kpi-value">3<\/div>/);
+    assert.match(element('summaryKpis').innerHTML, /no equivale a llamadas atendidas/);
 });
 
 test('the initial period is applied before the first dashboard request', async (t) => {

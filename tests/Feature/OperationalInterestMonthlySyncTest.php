@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ReportUser;
 use App\Services\Reports\Leads\OperationalInterestMonthlyReader;
+use App\Services\Reports\Leads\OperationalInterestQualitySnapshot;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use App\Services\Salesforce\OperationalInterestMonthlySync;
 use App\Services\Salesforce\SalesforceClient;
@@ -382,6 +383,57 @@ class OperationalInterestMonthlySyncTest extends TestCase
         $this->assertLessThanOrEqual(40, $fake->queryCount());
         $this->assertSame(9330, app(OperationalInterestMonthlyReader::class)
             ->latestForMonth(2026, 11)['overview']['coverage']['eligible_active_matching']);
+    }
+
+    public function test_november_quality_reconciles_observed_active_and_unclassified_without_guessing_delegations(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $records = $this->records(9678);
+        foreach ($records as $index => &$record) {
+            if ($index >= 9671) {
+                $record['IsDeleted'] = true;
+
+                continue;
+            }
+            $record['IN_Estado__c'] = $index < 1258 ? 'Convertido' : ($index < 5496 ? 'Descartado' : 'Potencial');
+            $record['IN_Delegacion_Procedencia__c'] = match (true) {
+                $index < 2000 => null,
+                $index < 3394 => 'General',
+                $index < 4431 => 'Synthetic unknown',
+                default => 'Madrid',
+            };
+        }
+        unset($record);
+        $fake = new OperationalInterestFakeClient($records);
+        $fake->verifyOverrides = [
+            5494 => ['SystemModstamp' => '2026-11-06T10:00:00Z'],
+            5495 => ['SystemModstamp' => '2026-11-06T10:00:00Z'],
+            5496 => ['SystemModstamp' => '2026-11-06T10:00:00Z'],
+        ];
+        $this->app->instance(SalesforceClient::class, $fake);
+        $sync = app(OperationalInterestMonthlySync::class);
+        $run = $sync->prepare('2026-11');
+        $this->assertSame('completed', $sync->run($run)['status']);
+        $quality = app(OperationalInterestQualitySnapshot::class)->rebuildActive('2026-11');
+
+        $this->assertSame(['total' => 9671, 'blank' => 2000, 'recognized' => 5240,
+            'general' => 1394, 'unknown_other' => 1037,
+            'recognizable_without_alias' => null, 'relationships_insufficient' => null], $quality);
+        $overview = app(OperationalInterestMonthlyReader::class)->latestForMonth(2026, 11)['overview'];
+        $this->assertSame(9678, $overview['coverage']['observed']);
+        $this->assertSame(9678, $overview['coverage']['admitted']);
+        $this->assertSame(9671, $overview['coverage']['eligible_active_matching']);
+        $this->assertSame(7, $overview['coverage']['soft_deleted_observed']);
+        $this->assertSame(3, $overview['coverage']['changed_between_reads']);
+        $this->assertSame($quality, $overview['coverage']['delegation_quality']);
+        $this->assertSame(9671, array_sum(array_column($overview['functional_kpis']['statuses'], 'interests')));
+        $this->assertSame(['Convertido' => 1258, 'Descartado' => 4238, 'Potencial' => 4175],
+            collect($overview['functional_kpis']['statuses'])->pluck('interests', 'status')->all());
+        $stored = (string) DB::table('salesforce_interest_operational_quality')->where('run_id', $run)
+            ->value('delegation_quality');
+        $this->assertStringNotContainsString('Synthetic unknown', $stored);
+        $this->assertStringNotContainsString('a01', $stored);
+        (require database_path('migrations/2026_11_17_120000_add_operational_interest_quality_snapshots.php'))->up();
     }
 
     public function test_operator_command_prepares_without_salesforce_and_requires_explicit_read_permission(): void

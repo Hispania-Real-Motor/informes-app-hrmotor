@@ -35,10 +35,37 @@ delegación comercial solo procede del intervalo observado disponible; no es
 asignación histórica acreditada.
 
 El corte de `CreatedDate` fija pertenencia, no los valores al cierre: la
-extracción y la segunda lectura consultan estado actual. Ningún recuento de
-actividad F5, gestión comercial, comparativa o KPI de otros informes se
-habilita por esta ruta. Los valores desconocidos se presentan como «Sin
-clasificar» o no disponibles según el indicador, nunca como una actividad cero.
+extracción y la segunda lectura consultan estado actual. El comando local
+`salesforce:sync-interests-operational audit-quality --month=2026-11` puede
+agrupar la versión activa por procedencia original sin consultar Salesforce.
+El snapshot versionado separa vacíos, `General`, otros valores no reconocidos
+y reconocidos por `LeadDelegationNormalizer`; no conserva los valores originales
+en el diagnóstico. Las categorías «reconocible sin alias» y «relación
+insuficiente» siguen sin evidencia y se muestran como desconocidas, nunca
+se infieren de la delegación comercial. La prueba con 9.678 registros y 4.431
+sin clasificación es sintética: sus subcategorías no acreditan la distribución
+real de producción. La diferencia entre 9.678 observados y 9.671 activos se
+contrasta en el run: no se atribuye automáticamente a soft deletes sin leer
+su contador de cobertura.
+
+Una ejecución Task/Event operativa **separada y explícita** puede fijar el run
+de Intereses activo y consultar por bloques de hasta 250 `WhatId`, con páginas
+de 500, para extraer y verificar actividades observables, incluidos soft
+deletes. Conserva checkpoints por bloque, tipo e `Id` y solo activa sus
+agregados tras cobertura completa. `activities` cuenta Task/Event no borrados
+con relación directa comprobada; `interests_with_activity` cuenta Intereses
+del universo filtrado con al menos uno. Las fechas Task (`ActivityDate`, día
+Madrid) y Event (`StartDateTime`) no filtran por mes de creación del Interest.
+El resumen y las tablas usan la misma versión de Intereses y la misma versión
+de actividad; el HTTP no hace SOQL ni recorre el journal. Si no hay versión
+de actividad compatible, ambos KPI son nulos, no cero. La actividad no acredita
+quién gestionó el Interest, llamada efectivamente atendida, primer contacto,
+`gestionados` o `potenciales_sin_trabajar`: estos últimos siguen no disponibles.
+Tampoco habilita comparativas o KPI de otros informes.
+
+Los valores desconocidos se presentan como «Sin clasificar» o no disponibles
+según el indicador. Un cero de actividad solo es demostrable después de activar
+una verificación completa para la misma versión de Intereses.
 El diagnóstico individual queda fuera de HTTP; el resumen solo muestra
 contadores y categorías agregados sin IDs ni valores sensibles. Esta fuente
 no modifica F2/F2M/F5 estrictas ni `verification.verified`.

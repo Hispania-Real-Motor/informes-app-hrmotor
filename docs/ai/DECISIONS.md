@@ -1497,6 +1497,28 @@ su contraste remoto independiente. Ningún resultado acredita un estado
 histórico `as-of` ni resuelve hard deletes. La migración es aditiva para los
 journals existentes y el rollback de esquema no elimina evidencia.
 
+## 2026-11-12 — actividad observada como fuente dependiente y versionada
+
+La actividad Task/Event operativa se vincula a una versión completa de
+Intereses mediante `source_run_id`, `WhatId` comprobado y clave HMAC local.
+Se eligió un run separado con checkpoints de bloque/Id/tipo y puntero de
+activación en lugar de incorporar F5 en el sincronizador de Intereses:
+una falla remota de actividades no puede retirar el inventario ya visible.
+Una segunda lectura exige cobertura y relaciones completas; los cambios
+legítimos de contenido quedan como observación más reciente y contador de
+incidencias, sin `verified=true` histórico. La vista solo suma actividades
+no borradas de un run completo que corresponda a la misma versión de
+Intereses. No se interpreta el campo Canal como llamada real ni una actividad
+sin actor acreditado como «gestionado». Comparativas, comerciales ejecutores
+y otros informes esperan sus propios contratos de evidencia. El presupuesto
+remoto y el lease son persistentes; no hay scheduler implícito.
+
+La calidad de procedencia se agrega fuera de HTTP por run/clave, sin guardar
+valores originales desconocidos. `General` permanece no reconocido. La
+versión anterior a esta extensión carece de claves de enlace: se exige una
+nueva versión operativa antes de actividad y no se reescribe un run histórico.
+`APP_KEY` fija la identidad HMAC y su rotación requiere migración diseñada.
+
 ## 2026-11-12 — precedencia monótona de versiones operativas mensuales
 
 El puntero operativo mensual solo puede avanzar por la tupla

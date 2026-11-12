@@ -100,6 +100,9 @@ jobs:
       - name: Build frontend assets
         run: npm run build
 
+      - name: JavaScript tests
+        run: node --test tests/js/*.test.mjs
+
       - name: Whitespace validation
         run: git diff --check
 
@@ -172,6 +175,9 @@ jobs:
 
       - name: Operational Interest month MariaDB tests
         run: php artisan test --filter=OperationalInterestMonthlySyncTest
+
+      - name: Operational Interest activity MariaDB tests
+        run: php artisan test --filter=OperationalInterestActivitySyncTest
 
       - name: Monthly Interest consolidation MariaDB tests
         run: php artisan test --filter=InterestMonthlyConsolidationTest

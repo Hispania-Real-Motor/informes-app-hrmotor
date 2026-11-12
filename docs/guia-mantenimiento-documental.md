@@ -204,6 +204,10 @@ mantiene el job de octubre y comprueba la recuperación mensual, su comando
 operativo aislado y el staging local de referencias F2M/F5. La garantía se verifica
 en `tests/documentation/test_check_documentation_integrity.py`; cualquier cambio
 posterior de esos filtros requiere revisar esta garantía junto con la CI principal.
+El mismo job ejecuta `OperationalInterestActivitySyncTest` con MariaDB 11 para
+comprobar el esquema aditivo y la asociación Task/Event por versión. Añadir o
+retirar ese filtro exige actualizar la prueba de infraestructura documental;
+no sustituye PHPUnit completo ni una verificación productiva autorizada.
 
 `StageInterestMonthlyConsolidationCommand.php` y su migración contienen
 `interest` en el nombre y se mapean a Intereses, Reservas/Ventas, Llamadas y
@@ -251,6 +255,11 @@ entrega; la revisión humana de la PR comprueba su presencia y exactitud.
 `InterestMonthlyMaterializationService.php` y
 `MonthlyInterestActivityRecoveryService.php` están mapeados explícitamente a
 `interests`.
+La fuente operativa de actividad `OperationalInterestActivitySync.php`, su
+CLI, las migraciones de calidad/actividad y las clases de identidad/calidad
+pertenecen también a `interests`. Su recuento provisional no modifica por sí
+solo la fuente telefónica de Llamadas ni los lectores económicos o de
+Campañas; no documentarlo como KPI oficial o llamada atendida.
 Sus cambios en verificación, preparación, revisiones o F5 mensual obligan a
 revisar `docs/reglas-negocio-leads.md` y la trazabilidad correspondiente de la
 matriz; no deben quedar como rutas funcionales sin mapa. Un cambio en el

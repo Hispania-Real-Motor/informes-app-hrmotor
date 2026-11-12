@@ -4,6 +4,18 @@ Actualizado: 2026-11-12.
 
 ## Fuente operativa mensual provisional de Interests (2026-11-12, en revisión)
 
+- La extensión de actividad operativa fija un `source_run_id` activo y guarda
+  observaciones Task/Event en runs, filas y resúmenes independientes. La
+  relación se comprueba mediante `WhatId` y se agrupa con una clave HMAC por
+  `(run_id, Interest.Id)` sin exponer el ID en el dataset HTTP. El puntero
+  mensual `active_activity_run_id` solo referencia una ejecución completa;
+  el lector exige coincidencia con el run de Intereses actual y vuelve a
+  comprobar el puntero. Una versión nueva de Intereses no reutiliza la
+  actividad previa. El snapshot local de calidad de delegación se liga a run
+  y clave de proyección. Ambos son fuentes provisionales, no `F5` certificado
+  ni publicación global. Las CLI de calidad y actividad son administrativas,
+  sin scheduler.
+
 - `OperationalInterestMonthlySync` reutiliza la consulta y el mapeo de
   `SalesforceInterestSyncService`, con meses civiles Madrid, cutoff de
   pertenencia por `CreatedDate`, `queryPages(..., true)` y dos lecturas

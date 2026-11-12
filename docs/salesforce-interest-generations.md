@@ -67,14 +67,38 @@ normalizadores vigentes de tipo y procedencia. El puntero mensual cambia en
 una transacción breve después de reconciliar contadores, presencia y número de
 filas proyectadas. Una ejecución fallida deja la versión operativa previa.
 El lector HTTP solo consulta puntero, resumen y proyección versionada y vuelve
-a comprobar el puntero al finalizar; no escanea journals ni hace SOQL. El
-selector `november_2026` conserva flag apagado por defecto, rol administrador,
+a comprobar el puntero al finalizar; no escanea journals ni hace SOQL. Un
+diagnóstico administrativo local agrupa por valor original de procedencia en
+`salesforce_interest_operational_quality`, sin guardar valores desconocidos:
+vacío, `General`, desconocido restante y reconocido por el normalizador.
+Queda ligado a run y clave de proyección, y desaparece de la lectura cuando
+cambia la versión activa. No se infiere una delegación de otro campo.
+
+La extensión operativa Task/Event fija un run de Intereses ya completado,
+utiliza bloques de 250 `WhatId`, páginas de 500 y checkpoints de bloque/Id/tipo
+con lease fenced. Una segunda lectura exige presencia y relación completas;
+una variación de contenido observable se cuenta y actualiza como observación
+operativa, no como igualdad histórica. Filas eliminadas lógicamente permanecen
+en evidencia y no en el agregado activo. El vínculo local de agregados usa una
+clave HMAC por `(run_id, Interest.Id)`; no publica IDs a HTTP. Una nueva versión
+de Intereses deja de exponer la actividad anterior hasta una ejecución
+compatible. La activación bloquea el puntero mensual y exige cobertura completa;
+un fallo conserva la última versión de Intereses y no activa evidencia parcial.
+Se cuentan actividades Task/Event e Intereses con actividad, sin inferir llamada
+atendida, comercial ejecutor, gestión ni primer contacto. Los runs anteriores
+no reciben claves retroactivamente; requieren una nueva sincronización
+operativa antes de preparar actividad. `APP_KEY` debe conservarse para resolver
+las claves existentes: un cambio de clave se detecta y exige un plan de
+rotación específico, no recalcularla silenciosamente.
+
+El selector `november_2026` conserva flag apagado por defecto, rol administrador,
 `no-store, private`, 404/403/503 y prioridad de la generación oficial cuando
 no se pidió período. Si hay puntero operativo activo pero evidencia incoherente,
 falla cerrado; no retrocede silenciosamente al lector estricto. El dashboard
-expone observados, admitidos, cuarentena, cambios y denominador activo; los
-KPI de actividad, gestión y comparativas siguen no disponibles sin F5/relación
-adecuada. La fuente operativa no sustituye los lectores de otros informes.
+expone observados, admitidos, cuarentena, cambios y denominador activo. El
+recuento de Task/Event sólo se muestra con una ejecución de actividad completa
+de esa misma versión; gestión, comparativas y elegibilidad siguen no
+disponibles. La fuente operativa no sustituye los lectores de otros informes.
 
 Se reutiliza de la PR Draft #145 únicamente
 `InterestMonthlyDifferenceClassifier` y sus huellas de categorías sin valores.

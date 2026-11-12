@@ -1,5 +1,52 @@
 # Handoff para agentes
 
+## 2026-11-12 — actividad operativa y calidad de noviembre de Interests (PR Draft pendiente)
+
+- Tarea: completar el primer bloque del dashboard de noviembre sin alterar la
+  generación publicada ni convertir actividad observada en gestión acreditada.
+  Se añadió un snapshot administrativo local de calidad de procedencia y una
+  fuente Task/Event aislada, fijada al run operativo de Intereses. Los nuevos
+  KPI provisionales son recuento de actividades no borradas e Intereses
+  filtrados con actividad; gestionados, potenciales sin trabajar, llamadas
+  atendidas, elegibilidad comercial y comparativas siguen no disponibles.
+- Código y tests: `OperationalInterestMonthlySync`,
+  `OperationalInterestMonthlyReader`,
+  `October2026ProvisionalInterestDashboardDatasetService`,
+  `OperationalInterestQualitySnapshot`, `OperationalInterestIdentity`,
+  `OperationalInterestActivitySync`, ambas CLI operativas, JS del dashboard,
+  `OperationalInterestMonthlySyncTest`, `OperationalInterestActivitySyncTest`
+  y JS de estados; CI amplía la suite MariaDB 11. Documentos: reglas de
+  Interests, generaciones, operaciones, matriz, guía y los tres documentos
+  `docs/ai` pertinentes.
+- Base de datos: migraciones aditivas `2026_11_17_120000` (snapshot de calidad)
+  y `2026_11_17_130000` (clave HMAC de vínculo, runs/filas/resúmenes de
+  actividad y puntero compatible). Aplicar migraciones antes del código web
+  en un despliegue autorizado; no reescriben runs antiguos ni borran evidencia
+  al retroceder. La versión de #146 ya activa carece de clave y requiere una
+  nueva sincronización operativa antes de preparar actividad.
+- Seguridad e integridad: el diagnóstico conserva únicamente contadores,
+  nunca procedencias originales desconocidas. La actividad vincula solo
+  `WhatId` comprobado, con dos lecturas acotadas, lease fenced, checkpoints
+  transaccionales y activación bajo bloqueo del puntero. Los IDs permanecen en
+  tablas restringidas; HTTP recibe agregados. `APP_KEY` es parte de la identidad
+  HMAC, por lo que una rotación exige un plan específico. Un fallo de actividad
+  deja Intereses visibles y la actividad no se publica parcialmente.
+- Rendimiento: bloques de 250 Interests, páginas de 500, presupuesto persistido
+  de 3.000 consultas y 3.000 páginas/lotes por run; sin SOQL ni barrido del
+  journal en HTTP. Medir API, SQL, memoria y latencia con volumen real tras
+  autorización; no extrapolar el tiempo de fixtures sintéticas a producción.
+- Pruebas: JS local y `git diff --check` deben constar en el cierre del agente
+  principal; PHPUnit completo, MariaDB 11, Pint, build y Documentation
+  integrity se validarán por GitHub Actions en el SHA de la PR. No se ejecutó
+  Salesforce real, migración productiva ni sincronización productiva.
+- Manual/riesgos: mantener flag y scheduler apagados hasta autorización
+  independiente. Auditar la distribución real de 4.431 sin clasificación y el
+  contador de soft deletes antes de explicar la diferencia de siete; revisar
+  reloj UTC/PHP/MariaDB/Madrid del cutoff observado. Task/Event puede cambiar
+  después de la segunda lectura; no acredita historia al cutoff, actor,
+  contacto ni resultado telefónico. Los demás informes siguen aislados y son
+  bloques posteriores. No cerrar ni fusionar #145 de forma automática.
+
 ## 2026-11-12 — PR #146: precedencia de versiones operativas mensuales
 
 - Tarea: impedir que un run antiguo reanudado sustituya una versión mensual

@@ -75,9 +75,13 @@ SOURCE_PREFIXES = (
 )
 EXACT = {
     "app/Services/Salesforce/OperationalInterestMonthlySync.php": {"interests"},
+    "app/Services/Salesforce/OperationalInterestActivitySync.php": {"interests"},
     "app/Services/Salesforce/InterestMonthlyDifferenceClassifier.php": {"interests"},
     "app/Console/Commands/SyncOperationalInterestsCommand.php": {"interests"},
+    "app/Console/Commands/SyncOperationalInterestActivitiesCommand.php": {"interests"},
     "database/migrations/2026_11_16_120000_create_operational_interest_months.php": {"interests"},
+    "database/migrations/2026_11_17_120000_add_operational_interest_quality_snapshots.php": {"interests"},
+    "database/migrations/2026_11_17_130000_add_operational_interest_activities.php": {"interests"},
     "app/Services/Salesforce/InterestMonthlyRecoveryService.php": {"interests"},
     "app/Services/Salesforce/InterestMonthlyMaterializationService.php": {"interests"},
     "app/Services/Salesforce/MonthlyInterestActivityRecoveryService.php": {"interests"},
