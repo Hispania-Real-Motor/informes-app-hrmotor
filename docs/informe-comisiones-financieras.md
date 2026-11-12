@@ -13,6 +13,20 @@ llamadas remotas durante el render.
 El acceso sigue protegido en servidor por los permisos de Comisiones. El
 diagnostico interno solo se muestra a Administrador/IT.
 
+Un usuario con rol `commission_auditor` que sea el aprobador activo asignado al
+scope `financials` puede revisar en la superficie de Auditoria el detalle
+financiero completo y de solo lectura cuando selecciona ese scope: indicadores,
+resumen por responsable, detalle por delegacion y trazabilidad por Opportunity.
+La asignacion se comprueba en servidor y falla cerrada si pertenece a otro
+usuario, esta inactiva, eliminada o es incoherente. No concede otros scopes,
+configuracion, reapertura, acciones administrativas ni exportaciones. La vista
+compartida fuerza la ocultacion del diagnostico y conciliacion internos.
+
+La fuente visible coincide con la que se aprueba: snapshot candidato en
+`pending_approval`, snapshot definitivo en `definitive` y calculo live en
+`provisional` o `reopened`. La proyeccion reutiliza ese dashboard y no ejecuta
+una segunda formula ni mezcla importes vivos con el snapshot persistido.
+
 ## Universo mensual
 
 Una Opportunity entra en el universo si cumple:

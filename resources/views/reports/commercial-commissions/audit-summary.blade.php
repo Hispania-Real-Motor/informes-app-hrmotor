@@ -31,6 +31,12 @@
                 </tbody></table></div>
             @endif
         </section>
+        @if ($auditProjection['selected_scope'] === 'financials' && is_array($financialApprovalDashboard ?? null))
+            @include('reports.commercial-commissions.partials.financial-tab', [
+                'financialDashboard' => $financialApprovalDashboard,
+                'canSeeSyncDiagnostics' => false,
+            ])
+        @endif
         @include('reports.commercial-commissions.partials.closure-approval', ['approvalMonth' => $auditProjection['month']])
     </main>
 </x-reports.app-shell>

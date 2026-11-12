@@ -10,12 +10,13 @@ class CommercialCommissionAuditProjectionService
 {
     public function __construct(private readonly CommercialCommissionClosureService $closures) {}
 
-    public function build(?string $month, ?string $selectedScope = null): array
+    public function build(?string $month, ?string $selectedScope = null, bool $includeFinancialApprovalDetail = false): array
     {
         $requestedMonth = $this->resolveAuditMonth($month);
         $statuses = $this->closures->statuses($requestedMonth->format('Y-m'));
         $monthKey = (string) (data_get($statuses, 'commercials.month') ?? data_get(collect($statuses)->first(), 'month'));
         $scope = array_key_exists((string) $selectedScope, $statuses) ? (string) $selectedScope : (string) array_key_first($statuses);
+        $financialApprovalDashboard = null;
         $result = [
             'scope' => $scope,
             'status' => $this->restrictedStatus($statuses[$scope]),
@@ -32,6 +33,9 @@ class CommercialCommissionAuditProjectionService
                 : $this->closures->buildLiveDashboard($monthKey, $scope, false);
             $result['rows'] = $this->finalRows($dashboard, $scope);
             $result['alerts'] = collect($result['rows'])->pluck('alert')->filter()->unique()->values()->all();
+            if ($includeFinancialApprovalDetail && $scope === 'financials') {
+                $financialApprovalDashboard = $dashboard;
+            }
         } catch (Throwable $exception) {
             Log::error('Bloque de auditoria de comisiones no disponible.', [
                 'integration' => 'commission_audit_projection',
@@ -49,6 +53,7 @@ class CommercialCommissionAuditProjectionService
             'selected_scope' => $scope,
             'scope_statuses' => collect($statuses)->map(fn (array $status): array => $this->restrictedStatus($status))->all(),
             'scope' => $result,
+            'financial_approval_dashboard' => $financialApprovalDashboard,
         ];
     }
 

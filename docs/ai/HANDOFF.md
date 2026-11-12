@@ -1,5 +1,59 @@
 # Handoff para agentes
 
+## 2026-11-12 — reapertura de candidatos y detalle financiero del aprobador
+
+- Problema corregido: un candidato de Comisiones en `pending_approval` no se
+  podía retirar sin aprobarlo primero, y el `commission_auditor` asignado como
+  aprobador de Financieros solo recibía el resumen agregado, insuficiente para
+  revisar la fotografía que iba a certificar.
+- Comportamiento: Administrador/IT o Dirección pueden reabrir un candidato
+  pendiente o un definitivo con motivo mínimo de diez caracteres. El cierre
+  pasa a `reopened`, conserva snapshot y versión, registra evento con actor,
+  motivo, scope y transición, y la siguiente preparación crea `N+1`.
+  `provisional`/`reopened` se rechazan sin mutar el cierre.
+- Autorización y datos: solo un `commission_auditor` que sea el aprobador activo
+  asignado a `financials`, y solo al seleccionar ese scope, recibe el dashboard
+  financiero completo de solo lectura. Usa candidato en `pending_approval`,
+  definitivo en `definitive` y live en `provisional`/`reopened`. La vista
+  financiera compartida fuerza diagnósticos ocultos; no amplía otros scopes,
+  administración, reapertura, configuración, penalizaciones ni exportaciones.
+  Asignaciones ajenas, inactivas, eliminadas o incoherentes fallan cerradas.
+- Archivos funcionales y pruebas: se modifican
+  `CommercialCommissionDashboardController.php`,
+  `CommercialCommissionAuditProjectionService.php`,
+  `CommercialCommissionClosureService.php`, las vistas de auditoría, preparación
+  y aprobación, `CommissionMonthClosureTest.php` y
+  `CommissionScopeApproverTest.php`. Se reutiliza `financial-tab.blade.php` sin
+  alterar fórmulas financieras.
+- Documentación: actualizados `docs/informe-comisiones.md`,
+  `docs/informe-comisiones-financieras.md`, la documentación general y este
+  handoff. `docs/matriz-trazabilidad-kpi.md` no cambia porque se conservan
+  fuentes, campos, fecha pivote, universo, exclusiones, identidad, fórmulas,
+  umbrales, nulos, redondeos y exportaciones; cambia el ciclo auditable y la
+  presentación autorizada del mismo payload. `PROJECT_CONTEXT.md` y
+  `DECISIONS.md` no cambian: no hay módulo, convención arquitectónica ni decisión
+  irreversible nueva.
+- Base de datos/configuración: sin migraciones, columnas, tablas, variables de
+  entorno ni dependencias nuevas. No se ejecutan sincronizaciones, Salesforce,
+  cierres ni snapshots reales. No hay pasos manuales de datos o despliegue
+  específicos de esta corrección.
+- Rendimiento: el detalle autorizado reutiliza el dashboard ya obtenido por la
+  proyección; no añade una segunda construcción económica ni consultas por
+  fila. La resolución de asignaciones mantiene la caché por request existente.
+- Verificación disponible: Pint correcto; suites de cierre, aprobadores y
+  visibilidad de Comisiones, 62 pruebas y 551 aserciones correctas; suite Pest
+  global, 1.704 pruebas (1.703 correctas, 1 omitida) y 15.282 aserciones;
+  `composer validate --strict` y `npm run build` correctos. El validador y los
+  tests documentales no se pudieron ejecutar localmente porque el entorno no
+  dispone de Python/`py`; debe confirmarlos `docs-integrity` en la PR. El audit
+  de dependencias detectó 18 avisos preexistentes en siete paquetes, incluido
+  uno crítico de Laravel; requiere una actualización de dependencias separada y
+  prioritaria, no mezclada sin revisión con este bugfix.
+- Riesgos pendientes: el fallback live cuando falta el snapshot candidato sigue
+  siendo el contrato vigente; no persiste ni reconstruye candidatos. Antes de
+  fusionar, comprobar CI y `docs-integrity`. No hay merge ni despliegue
+  autorizado en esta tarea.
+
 ## 2026-11-11 — F2 mensual completada sin verificación (correctivo en revisión)
 
 - Problema: la F2 mensual podía terminar `completed` con

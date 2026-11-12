@@ -186,6 +186,91 @@ class CommissionMonthClosureTest extends TestCase
         $this->assertSame('pending_approval', $service->status('2026-06', CommercialCommissionClosure::SCOPE_DELEGATIONS)['status']);
     }
 
+    public function test_pending_candidate_can_be_reopened_without_losing_audit_history_and_next_prepare_increments_version(): void
+    {
+        CarbonImmutable::setTestNow('2026-08-05 10:00:00');
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $candidate = $this->financialDashboard('2026-07', 903.31, 'candidate-v1');
+        $closure = $this->closureWithSnapshot(
+            '2026-07',
+            CommercialCommissionClosure::SCOPE_FINANCIALS,
+            CommercialCommissionClosure::STATUS_PENDING_APPROVAL,
+            ['financials' => $candidate],
+        );
+        $service = app(CommercialCommissionClosureService::class);
+
+        $service->reopen('2026-07', CommercialCommissionClosure::SCOPE_FINANCIALS, 'Corrección auditada antes de aprobar', $admin);
+
+        $closure->refresh();
+        $this->assertSame(CommercialCommissionClosure::STATUS_REOPENED, $closure->status);
+        $this->assertSame(1, $closure->snapshot_version);
+        $this->assertSame($admin->id, $closure->reopened_by);
+        $this->assertSame('Corrección auditada antes de aprobar', $closure->reopen_reason);
+        $this->assertSame('candidate-v1', data_get($closure->snapshots()->where('version', 1)->firstOrFail()->payload, 'financials.snapshot_marker'));
+        $this->assertNull($service->candidateOrDefinitiveSnapshot('2026-07', CommercialCommissionClosure::SCOPE_FINANCIALS));
+        $this->assertDatabaseHas('commercial_commission_closure_events', [
+            'closure_id' => $closure->id,
+            'action' => 'reopened',
+            'from_status' => CommercialCommissionClosure::STATUS_PENDING_APPROVAL,
+            'to_status' => CommercialCommissionClosure::STATUS_REOPENED,
+            'report_user_id' => $admin->id,
+            'reason' => 'Corrección auditada antes de aprobar',
+        ]);
+        $event = CommercialCommissionClosureEvent::query()->where('closure_id', $closure->id)->where('action', 'reopened')->firstOrFail();
+        $this->assertSame(1, data_get($event->context, 'snapshot_version'));
+        $this->assertSame(CommercialCommissionClosure::SCOPE_FINANCIALS, data_get($event->context, 'closure_scope'));
+
+        $financials = Mockery::mock(FinancialCommissionDashboardService::class);
+        $financials->shouldReceive('build')->once()->with('2026-07')->andReturn($this->financialDashboard('2026-07', 910.25, 'candidate-v2'));
+        $this->app->instance(FinancialCommissionDashboardService::class, $financials);
+
+        $service = app(CommercialCommissionClosureService::class);
+        $service->prepare(
+            '2026-07',
+            CommercialCommissionClosure::SCOPE_FINANCIALS,
+            array_fill_keys(array_keys($service->requiredComponents(CommercialCommissionClosure::SCOPE_FINANCIALS)), true),
+            $admin,
+        );
+
+        $closure->refresh();
+        $this->assertSame(CommercialCommissionClosure::STATUS_PENDING_APPROVAL, $closure->status);
+        $this->assertSame(2, $closure->snapshot_version);
+        $this->assertSame([1, 2], $closure->snapshots()->orderBy('version')->pluck('version')->all());
+        $this->assertSame('candidate-v2', data_get($service->candidateOrDefinitiveSnapshot('2026-07', CommercialCommissionClosure::SCOPE_FINANCIALS), 'financials.snapshot_marker'));
+    }
+
+    public function test_reopen_rejects_invalid_states_and_short_reason_without_mutating_the_closure(): void
+    {
+        CarbonImmutable::setTestNow('2026-08-05 10:00:00');
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $closure = $this->closureWithSnapshot(
+            '2026-07',
+            CommercialCommissionClosure::SCOPE_FINANCIALS,
+            CommercialCommissionClosure::STATUS_REOPENED,
+            ['financials' => $this->financialDashboard('2026-07', 100.0, 'historical')],
+        );
+        $service = app(CommercialCommissionClosureService::class);
+
+        foreach ([CommercialCommissionClosure::STATUS_REOPENED, CommercialCommissionClosure::STATUS_PROVISIONAL] as $status) {
+            $closure->update(['status' => $status]);
+            try {
+                $service->reopen('2026-07', CommercialCommissionClosure::SCOPE_FINANCIALS, 'Motivo válido para no reabrir', $admin);
+                $this->fail('El estado '.$status.' no debe permitir una reapertura.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('month', $exception->errors());
+            }
+            $this->assertSame($status, $closure->fresh()->status);
+        }
+
+        try {
+            $service->reopen('2026-07', CommercialCommissionClosure::SCOPE_FINANCIALS, 'Corto', $admin);
+            $this->fail('Un motivo de menos de diez caracteres no debe permitir una reapertura.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('reason', $exception->errors());
+        }
+        $this->assertDatabaseCount('commercial_commission_closure_events', 0);
+    }
+
     public function test_area_manager_pendiente_y_definitivo_leen_el_snapshot_para_direccion_y_zona_restringida(): void
     {
         $director = $this->user(ReportUser::ROLE_DIRECTOR);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Reports\CommercialCommissions;
 
 use App\Http\Controllers\Controller;
+use App\Models\CommercialCommissionClosure;
 use App\Models\ReportUser;
 use App\Services\Reports\AreaManagerCommissions\AreaManagerCommissionDashboardService;
 use App\Services\Reports\CallCenterCommissions\CallCenterCommissionDashboardService;
@@ -55,15 +56,29 @@ class CommercialCommissionDashboardController extends Controller
         }
 
         if (ReportUserAccess::isCommissionAuditor($request)) {
-            return view('reports.commercial-commissions.audit-summary', [
-                'auditProjection' => $auditProjection->build(
+            $requestedAuditScope = is_string($request->query('audit_scope', $request->query('scope')))
+                ? $request->query('audit_scope', $request->query('scope'))
+                : null;
+            $approvalScopes = ReportUserAccess::commissionApprovalScopes($request);
+            $canViewFinancialApprovalDetail = $requestedAuditScope === CommercialCommissionClosure::SCOPE_FINANCIALS
+                && in_array(CommercialCommissionClosure::SCOPE_FINANCIALS, $approvalScopes, true);
+            $projection = $canViewFinancialApprovalDetail
+                ? $auditProjection->build(
                     is_string($selectedMonth) ? $selectedMonth : null,
-                    is_string($request->query('audit_scope', $request->query('scope')))
-                        ? $request->query('audit_scope', $request->query('scope'))
-                        : null,
-                ),
+                    $requestedAuditScope,
+                    true,
+                )
+                : $auditProjection->build(
+                    is_string($selectedMonth) ? $selectedMonth : null,
+                    $requestedAuditScope,
+                );
+
+            return view('reports.commercial-commissions.audit-summary', [
+                'auditProjection' => $projection,
                 'auditProjectionService' => $auditProjection,
-                'directorApprovalOverview' => $closureService->approvalOverview(is_string($selectedMonth) ? $selectedMonth : null, allowedScopes: ReportUserAccess::commissionApprovalScopes($request)),
+                'financialApprovalDashboard' => $projection['financial_approval_dashboard'] ?? null,
+                'directorApprovalOverview' => $closureService->approvalOverview(is_string($selectedMonth) ? $selectedMonth : null, allowedScopes: $approvalScopes),
+                'canSeeSyncDiagnostics' => false,
                 'canReopenEconomicClosures' => false,
             ]);
         }
