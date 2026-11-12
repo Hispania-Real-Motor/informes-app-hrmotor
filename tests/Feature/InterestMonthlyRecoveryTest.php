@@ -78,6 +78,11 @@ class InterestMonthlyRecoveryTest extends TestCase
         $this->assertSame($first, $hash->invoke($monthly, $mapped));
         $mapped['status'] = 'Changed';
         $this->assertNotSame($first, $hash->invoke($monthly, $mapped));
+        foreach (['system_modstamp_at', 'salesforce_last_modified_at', 'owner_name'] as $field) {
+            $changed = app(SalesforceInterestSyncService::class)->mapRecord($record, false);
+            $changed[$field] = $field === 'owner_name' ? 'Another synthetic owner' : CarbonImmutable::parse('2026-11-12T08:36:13Z');
+            $this->assertNotSame($first, $hash->invoke($monthly, $changed), $field);
+        }
         $this->assertNotContains('payload', Schema::getColumnListing('salesforce_interest_monthly_recovery_rows'));
     }
 
@@ -113,11 +118,239 @@ class InterestMonthlyRecoveryTest extends TestCase
         $status = $service->run($id, $reason);
 
         $this->assertSame('completed', $status['status']);
-        $this->assertFalse($status['evidence']['verification']['verified']);
-        $this->assertSame(2, $status['counters']['content_changed']);
+        $this->assertTrue($status['evidence']['verification']['verified']);
+        $this->assertSame(2, $status['counters']['initial_content_changed']);
+        $this->assertSame(2, $status['counters']['stabilized_rows']);
+        $this->assertSame(2, $status['counters']['verification_pass']);
+        $this->assertSame(0, $status['counters']['content_changed']);
         $this->assertSame(0, $status['counters']['remote_missing_local']);
         $this->assertSame(0, $status['counters']['local_missing_remote']);
         $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 2);
+        $this->assertSame(2, DB::table('salesforce_interest_monthly_recovery_rows')->whereNotNull('first_mismatch_at')->whereNotNull('hash_matched_at')->whereNotNull('initial_content_hash')->count());
+    }
+
+    public function test_persistent_content_change_is_not_reclassified_as_absent_or_verified(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-11-05T10:00:00Z');
+        $client = new class($record) extends SalesforceClient
+        {
+            public int $fullReads = 0;
+
+            public int $selectiveReads = 0;
+
+            public function __construct(private array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                $record = $this->record;
+                if (str_contains($soql, 'Id IN (')) {
+                    $this->selectiveReads++;
+                    $record['IN_Estado__c'] = 'Second';
+                } else {
+                    $this->fullReads++;
+                    $record['IN_Estado__c'] = match ($this->fullReads) {
+                        1 => 'First', 2 => 'Second', default => 'Third',
+                    };
+                }
+                yield [$record];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Keep persistent content changes unverified.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-11T10:00:00Z'));
+
+        $status = $service->run($id, $reason);
+
+        $this->assertSame('completed', $status['status']);
+        $this->assertFalse($status['evidence']['verification']['verified']);
+        $this->assertSame(1, $status['counters']['initial_content_changed']);
+        $this->assertSame(1, $status['counters']['content_changed']);
+        $this->assertSame(0, $status['counters']['local_missing_remote']);
+        $this->assertSame(3, $client->fullReads);
+        $this->assertSame(1, $client->selectiveReads);
+        $row = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $id)->first();
+        $this->assertNotNull($row->verified_at);
+        $this->assertNull($row->hash_matched_at);
+        $this->assertNotNull($row->first_mismatch_at);
+        $this->assertNotNull($row->initial_content_hash);
+    }
+
+    public function test_post_cutoff_system_modstamp_does_not_remove_a_valid_monthly_member(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-11-05T10:00:00Z');
+        $record['LastModifiedDate'] = '2026-11-12T08:36:13Z';
+        $record['SystemModstamp'] = '2026-11-12T08:36:13Z';
+        $this->app->instance(SalesforceClient::class, new class($record) extends SalesforceClient
+        {
+            public function __construct(private array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                yield [$this->record];
+            }
+        });
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Prove later system stamps preserve functional membership.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-12T08:34:00Z'));
+
+        $status = $service->run($id, $reason);
+
+        $this->assertTrue($status['evidence']['verification']['verified']);
+        $this->assertSame(1, $status['counters']['persisted']);
+        $this->assertSame('2026-11-12 08:36:13', DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $id)->value('system_modstamp_at'));
+        $soql = app(SalesforceInterestSyncService::class)->functionalPeriodSoql(
+            CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'), CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'),
+            null, true, CarbonImmutable::parse('2026-11-12T08:34:00Z'));
+        $this->assertStringContainsString('CreatedDate <=', $soql);
+        $this->assertStringNotContainsString('SystemModstamp <=', $soql);
+    }
+
+    public function test_reconciliation_rejects_changed_membership_and_resumes_without_overwriting_the_checkpoint(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-11-05T10:00:00Z');
+        $client = new class($record) extends SalesforceClient
+        {
+            public bool $badMembership = true;
+
+            private int $fullReads = 0;
+
+            public function __construct(private array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                $record = $this->record;
+                if (str_contains($soql, 'Id IN (')) {
+                    $record['IN_Estado__c'] = 'Changed';
+                    if ($this->badMembership) {
+                        $record['IN_Fecha_Creacion_Origen__c'] = '2026-10-30T10:00:00Z';
+                    }
+                } else {
+                    $this->fullReads++;
+                    $record['IN_Estado__c'] = $this->fullReads === 1 ? 'Original' : 'Changed';
+                }
+                yield [$record];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Resume after unsafe reconciliation membership change.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-11T10:00:00Z'));
+
+        try {
+            $service->run($id, $reason);
+            $this->fail('Out-of-month content must be rejected.');
+        } catch (\RuntimeException) {
+            $failed = $service->status($id);
+            $this->assertSame('failed', $failed['status']);
+            $this->assertSame('reconcile', $failed['phase']);
+            $this->assertSame('reconciliation_invalid', $failed['diagnostic']['category']);
+            $this->assertSame(1, $failed['counters']['initial_content_changed']);
+            $this->assertSame(1, $failed['counters']['reconciliation_read_attempts']);
+            $this->assertSame(1, $failed['counters']['persisted']);
+            $this->assertSame(1, DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $id)->whereNull('initial_content_hash')->count());
+            $this->assertArrayNotHasKey('message', $failed['diagnostic']['meta']);
+        }
+
+        $client->badMembership = false;
+        $resumed = $service->run($id, $reason, true);
+        $this->assertTrue($resumed['evidence']['verification']['verified']);
+        $this->assertSame(2, $resumed['counters']['reconciliation_read_attempts']);
+        $this->assertSame(1, $resumed['counters']['persisted']);
+    }
+
+    public function test_reconciliation_remote_reads_stop_after_three_failed_attempts(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-11-05T10:00:00Z');
+        $client = new class($record) extends SalesforceClient
+        {
+            public int $selectiveReads = 0;
+
+            private int $fullReads = 0;
+
+            public function __construct(private array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                if (str_contains($soql, 'Id IN (')) {
+                    $this->selectiveReads++;
+                    throw new \RuntimeException('Synthetic sensitive remote failure');
+                }
+                $this->fullReads++;
+                $record = $this->record;
+                $record['IN_Estado__c'] = $this->fullReads === 1 ? 'Original' : 'Changed';
+                yield [$record];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Limit selective reconciliation remote reads safely.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-11T10:00:00Z'));
+
+        for ($attempt = 1; $attempt <= 4; $attempt++) {
+            try {
+                $service->run($id, $reason, $attempt > 1);
+                $this->fail('A remote failure or exhausted read budget must stop reconciliation.');
+            } catch (\RuntimeException) {
+                $status = $service->status($id);
+                $this->assertSame('failed', $status['status']);
+                $this->assertSame('reconcile', $status['phase']);
+                $this->assertSame(min($attempt, 3), $status['counters']['reconciliation_read_attempts']);
+                $this->assertSame(min($attempt, 3), $client->selectiveReads);
+                $this->assertSame(1, $status['counters']['persisted']);
+                $this->assertSame(1, DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $id)->whereNull('initial_content_hash')->count());
+                $this->assertArrayNotHasKey('message', $status['diagnostic']['meta']);
+            }
+        }
+    }
+
+    public function test_full_verification_query_budget_persists_across_resumes(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-11-05T10:00:00Z');
+        $client = new class($record) extends SalesforceClient
+        {
+            public int $remoteReads = 0;
+
+            public function __construct(private array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                $this->remoteReads++;
+                if ($this->remoteReads > 1) {
+                    throw new \RuntimeException('Synthetic sensitive verification failure');
+                }
+                yield [$this->record];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Bound full verification reads across retries.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-11T10:00:00Z'));
+
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            try {
+                $service->run($id, $reason, $attempt > 1);
+                $this->fail('Verification must stop after a failure or exhausted query budget.');
+            } catch (\RuntimeException) {
+                $status = $service->status($id);
+                $this->assertSame('failed', $status['status']);
+                $this->assertSame('verify', $status['phase']);
+                $this->assertSame(min($attempt, 4), $status['counters']['verification_query_attempts']);
+                $this->assertSame(1 + min($attempt, 4), $client->remoteReads);
+                $this->assertSame(1, $status['counters']['persisted']);
+                $this->assertArrayNotHasKey('message', $status['diagnostic']['meta']);
+            }
+        }
     }
 
     public function test_completed_month_can_start_a_new_immutable_revision_without_changing_the_previous_one(): void

@@ -17,6 +17,8 @@ final class SyncCurrentMonthInterestsCommand extends Command
 {
     private const REASON = 'Scheduled isolated monthly Interest refresh';
 
+    private const MAX_CONSECUTIVE_UNVERIFIED = 3;
+
     protected $signature = 'salesforce:sync-interest-monthly-current
         {--allow-salesforce-read : Explicit authorization for bounded Salesforce reads}';
 
@@ -66,6 +68,10 @@ final class SyncCurrentMonthInterestsCommand extends Command
                 } elseif ($latest->effective_cutoff_at === null
                     || CarbonImmutable::parse($latest->effective_cutoff_at, 'UTC')->gte($cutoff)) {
                     throw new MonthlyInterestEvidenceUnverified;
+                } elseif ($this->consecutiveUnverified($start, $end) >= self::MAX_CONSECUTIVE_UNVERIFIED) {
+                    $this->error('Monthly Interest integrity retry limit reached. Review isolated journal before another revision.');
+
+                    return self::FAILURE;
                 }
             }
 
@@ -149,5 +155,23 @@ final class SyncCurrentMonthInterestsCommand extends Command
     {
         return $status['status'] === 'completed'
             && data_get($status, 'evidence.verification.verified') === true;
+    }
+
+    private function consecutiveUnverified(CarbonImmutable $start, CarbonImmutable $end): int
+    {
+        $recent = DB::table('salesforce_interest_monthly_recoveries')
+            ->where('functional_start_at', $start)->where('functional_end_at', $end)
+            ->orderByDesc('revision')->limit(self::MAX_CONSECUTIVE_UNVERIFIED)
+            ->get(['status', 'evidence']);
+        $count = 0;
+        foreach ($recent as $revision) {
+            if ($revision->status !== 'completed'
+                || data_get(json_decode((string) $revision->evidence, true), 'verification.verified') === true) {
+                break;
+            }
+            $count++;
+        }
+
+        return $count;
     }
 }

@@ -36,6 +36,11 @@ journal, pero no permite preparar F2M ni F5; otra revisión exige cutoff
 posterior. Ni la revisión nueva ni sus actividades mensuales sustituyen la
 generación Interest publicada o cambian `relatedInterestMatches()`, los datos
 de llamadas, sus KPI o sus exportaciones.
+Una F2 todavía en curso puede estabilizar de forma acotada hasta 100 hashes
+divergentes y sólo queda verificada después de otra lectura completa sin
+discrepancias. `verified_at` indica presencia, no igualdad del hash. Esta
+operación no certifica relaciones históricas `Task/Event.WhatId`, ni habilita
+la clasificación o los indicadores de Llamadas.
 
 La nueva etapa local de consolidación conserva únicamente referencias y
 manifiestos de F2M/F5 mensuales verificados. Sus checkpoints y controles de

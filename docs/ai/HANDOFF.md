@@ -7848,3 +7848,46 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - No cambia código productivo, esquema, evidencia ni documentación funcional de
   informes. Sin PHP/Composer/gh disponibles en el worktree, el CI de GitHub
   Actions es el ejecutor de PHPUnit y Pint.
+
+## 2026-11-12 — F2 mensual: verificación y estabilización acotada
+
+- Tarea: revisión de la diferencia temporal entre cutoff de pertenencia,
+  extracción, verificación y `SystemModstamp`, más reconciliación selectiva de
+  divergencias en una revisión aún no completada. Los contadores históricos no
+  acreditan la causa ni identifican los registros individuales; no se
+  atribuyen a los valores posteriores al cutoff comunicados por producción.
+- Archivos de código/migración bajo revisión: `InterestMonthlyRecoveryService`,
+  `SyncCurrentMonthInterestsCommand`, tests de ambos y migración aditiva
+  `2026_11_15_120000_add_bounded_verification_to_monthly_interest_rows`.
+  Documentos revisados: generaciones, runbook de operaciones, reglas de
+  Interests, Reservas/Ventas, Llamadas, Campañas, matriz, decisiones y este
+  handoff. `PROJECT_CONTEXT.md` no cambia: el módulo y la frontera entre
+  fuente oficial y provisional son los mismos.
+- Decisión: una primera pasada completa con 1–100 diferencias de contenido y
+  cobertura intacta permite relectura selectiva por ID; se conserva hash y
+  `SystemModstamp` iniciales y se exige una segunda pasada completa limpia.
+  `verified_at` es presencia y `hash_matched_at` es igualdad. Hasta tres
+  relecturas selectivas por fallo reanudable y tres revisiones automáticas
+  consecutivas no verificadas limitan coste. Las consultas de verificación
+  se acotan a `4 × (floor(persisted / batch_size) + 1)` intentos persistidos
+  por revisión (76 para 9.141 filas y batch 500). Una revisión `completed` no se
+  reescribe; F2M conserva su contraste remoto independiente.
+- Seguridad: identidades divergentes solo en journal restringido; estado,
+  diagnóstico y logs contienen categorías y contadores seguros. No se copian
+  payloads, mensajes, SQL ni datos personales. No se toca la publicación ni
+  se declara historia certificada; la pertenencia no se filtra por
+  `SystemModstamp`. La validación productiva, extracción Salesforce y
+  despliegue requieren autorización separada.
+- Rendimiento en el camino sin fallos: una extracción mensual, dos verificaciones paginadas y
+  hasta 100 IDs selectivos (tres intentos de esa consulta en reanudación).
+  Sin consultas SQL por registro ni transacción abierta durante SOQL. La
+  migración añade columnas e índices; no backfill ni alteración de journals
+  anteriores. Desplegar migración antes de ejecutar el nuevo código.
+- Comprobaciones de esta revisión documental: diff y `git diff --check -- docs`
+  correctos; PHP, Pint, MariaDB, CI y validador de PR deben ser
+  ejecutados/comprobados por el agente principal tras commit y descripción
+  final. No se consultaron Salesforce, producción ni datos reales.
+- Pendiente: validar semántica SOQL contra Salesforce real solo bajo operación
+  autorizada; medir duración/API/locks antes de activar el comando y observar
+  F2M/F5 y la proyección en un despliegue posterior. Una revisión histórica
+  agregada no puede recuperar retrospectivamente los IDs divergentes.

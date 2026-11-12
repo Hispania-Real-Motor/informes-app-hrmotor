@@ -797,3 +797,58 @@ hard deletes, F5 y certificación histórica permanecen.
 Hard deletes siguen sin observarse y cualquier discrepancia deja
 `verification.verified` en falso. Los lectores e informes oficiales continúan
 usando exclusivamente una generación F2/F5 publicada.
+
+### Estabilización acotada de F2 mensual aún abierta
+
+`effective_cutoff_at` limita la **pertenencia** por `CreatedDate` y período
+funcional; no es el instante de extracción ni el de verificación. SOQL entrega
+los valores actuales en cada lectura. `SystemModstamp` y `LastModifiedDate`
+pueden ser posteriores al cutoff sin invalidar esa pertenencia, y `Owner.Name`
+puede cambiar sin que cambie el propio Interest. Los tres participan en la
+huella canónica mensual; `synced_at` no participa. La evidencia agregada
+anterior no permite atribuir una divergencia concreta a uno de esos campos.
+Filtrar `SystemModstamp <= effective_cutoff_at` excluiría registros elegibles
+modificados después del corte y no recuperaría su valor histórico.
+
+La primera verificación recorre el mes completo por páginas de hasta el batch
+configurado. `verified_at` indica que el ID apareció en la lectura, incluso si
+su contenido difirió; `hash_matched_at` acredita la igualdad observada en la
+pasada. `last_seen_pass` distingue presencia en cada pasada y
+`first_mismatch_at` conserva en la fila restringida qué identidad divergió, sin
+exponerla en estado, log o respuesta. Si sólo hay entre 1 y 100 hashes
+divergentes y ninguna diferencia de pertenencia, la revisión aún no completada
+entra en `reconcile`: relee esos IDs con `queryAll`, exige identidad única,
+fecha funcional dentro del mes y `CreatedDate` dentro del cutoff, y conserva
+`initial_content_hash` e `initial_system_modstamp_at` antes de actualizar
+contenido bajo lease fenced. No se modifica una revisión `completed`.
+
+Tras esa actualización se reinician los contadores de verificación y se exige
+una **segunda pasada completa**. Solo ausencia de diferencias en esta pasada
+permite `verification.verified=true`. Un nuevo cambio, ausencia, ID inesperado
+o pertenencia alterada deja la revisión no verificada o falla de forma segura,
+con checkpoints conservados. La relectura selectiva tiene un máximo de tres
+intentos remotos persistidos para reanudaciones fallidas; no se repite otra
+estabilización en la misma revisión. El comando operativo limita a tres las
+revisiones automáticas no verificadas consecutivas de un mismo mes. El camino
+sin fallos consume una extracción mensual, dos pasadas completas y una
+consulta selectiva de hasta 100 IDs (hasta tres intentos selectivos si hay
+fallos reanudables); no hay consultas SQL por registro ni
+transacciones abiertas durante Salesforce. F2M sigue releyendo y comparando
+su propia evidencia, por lo que un cambio posterior no queda oculto.
+
+Las consultas paginadas de verificación tienen un presupuesto persistido de
+`4 × (floor(persisted / batch_size) + 1)` intentos SOQL por revisión: dos
+pasadas completas con hasta un reintento por página. Agotarlo detiene la
+reanudación con el checkpoint confirmado intacto. Para 9.141 filas y batch
+500, el máximo de esta verificación son 76 consultas paginadas, más tres
+relecturas selectivas de hasta 100 IDs y la extracción inicial. El número de
+peticiones HTTP internas del cliente depende de la paginación Salesforce y
+debe medirse operativamente; el presupuesto acota invocaciones SOQL del
+servicio, no garantiza una cifra exacta de créditos API.
+
+La migración aditiva de columnas e índices es previa a ejecutar este código;
+no reescribe filas ni manifiestos existentes. Los journals `completed`
+anteriores permanecen inmutables. Para una revisión histórica ya completada
+con sólo contadores de discrepancia no se pueden reconstruir sus IDs
+divergentes a partir del agregado; requiere nueva revisión autorizada. Ninguna
+estabilización constituye fotografía histórica certificada al cutoff.

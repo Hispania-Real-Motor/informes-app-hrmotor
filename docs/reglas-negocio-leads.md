@@ -164,6 +164,16 @@ pero el cutoff de creación no impide cambios concurrentes de campos
 funcionales. La discrepancia no acredita por sí misma cuál fue su causa y no
 modifica KPIs, lectores ni generación oficial.
 
+En una revisión F2 aún no completada, una primera verificación sin diferencias
+de pertenencia y con hasta 100 hashes divergentes permite una sola relectura
+selectiva por ID, seguida obligatoriamente de otra verificación completa. La
+presencia (`verified_at`) no equivale a coincidencia (`hash_matched_at`); la
+identidad divergente permanece solo en filas del journal restringido, sin
+aparecer en estado ni logs. Si vuelve a diferir, F2 termina no verificada y
+F2M/F5 siguen bloqueadas. El cutoff limita pertenencia por `CreatedDate`, no
+fija los valores de la extracción, reconciliación o verificación ni convierte
+esta vista mensual en histórica certificada.
+
 HTTP sólo lee la proyección y comprueba alcance, clave y revisión antes y
 después de responder; nunca escanea F2/F2M/F5 ni hace SOQL. Una mutación por
 rutas Laravel autorizadas invalida transaccionalmente la revisión de esa

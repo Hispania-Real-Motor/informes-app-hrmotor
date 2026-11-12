@@ -1448,3 +1448,21 @@ La proyección permite filtros combinados sólo sobre F2M activo/coincidente, no
 convierte los nulos de evidencia comercial/actividad en ceros ni se publica como
 generación. La generación oficial mantiene precedencia automática; la activación
 provisional requiere flag, administrador, migración y validación explícita.
+
+## 2026-11-12 — reconciliación acotada de F2 mensual no completada
+
+La F2 mensual no considera el cutoff un snapshot histórico: fija pertenencia
+por `CreatedDate`, pero cada lectura recibe valores actuales. Para diferencias
+de contenido sin diferencias de pertenencia, una revisión todavía abierta
+puede actualizar como máximo 100 filas tras relectura selectiva fenced,
+conservando hash y `SystemModstamp` iniciales, y debe superar otra verificación
+completa antes de marcarse verificada. La presencia y la igualdad de hash
+quedan separadas; un cambio persistente permanece no verificado. No se corrigen
+revisiones completadas ni se incorpora su evidencia a fuentes oficiales.
+
+La elección evita promover automáticamente valores de una única relectura y
+acota consumo de API: tres intentos selectivos reanudables y tres revisiones
+automáticas consecutivas no verificadas como límite operativo. F2M conserva
+su contraste remoto independiente. Ningún resultado acredita un estado
+histórico `as-of` ni resuelve hard deletes. La migración es aditiva para los
+journals existentes y el rollback de esquema no elimina evidencia.
