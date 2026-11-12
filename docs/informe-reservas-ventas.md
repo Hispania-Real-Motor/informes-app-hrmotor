@@ -1,5 +1,17 @@
 # Informe de Reservas / Ventas
 
+## Dependencia de la nueva fuente operativa mensual de Interests
+
+La nueva fuente operativa de noviembre conserva IDs de Interest, Account, Lead,
+vehículo y Opportunity inversa observados, con estado y fuente, sólo para su
+proyección provisional administrativa. `OpportunityInterestAttributionService`
+y Rendimiento comercial continúan exigiendo generación Interest publicada y
+snapshot directo Opportunity/Interest coherente; no consumen el puntero
+operativo ni modifican atribución, reservas, ventas, objetivos, auditoría o CSV.
+Los IDs observados no acreditan por sí solos vigencia de relación, venta ni
+estado histórico; cualquier integración posterior exige reconciliación y
+cutoffs compatibles antes de cambiar una fuente o fórmula económica.
+
 ## Nota técnica — materialización F2 mensual provisional
 
 El journal F2 mensual puede preservar para una futura integración la identidad

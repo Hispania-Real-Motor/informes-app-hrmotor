@@ -1,5 +1,35 @@
 # Decisiones técnicas
 
+## 2026-11-12 — fuente operativa mensual separada del journal F2 estricto
+
+- La consulta SOQL sobre estado actual no ofrece una fotografía histórica
+  inmutable durante un mes abierto. Mantener la verificación F2 estricta y su
+  límite de tres revisiones para su propio contrato; crear tablas y puntero
+  operativos independientes para admitir registros válidos aunque cambien
+  entre dos lecturas, sin marcar F2 `verified` ni promover una generación.
+- Dos lecturas por lotes de hasta 500 con corte de `CreatedDate` comprueban
+  pertenencia, identidad y cobertura global. La última observación válida
+  sustituye a la primera dentro del run; el cambio queda en una incidencia
+  con categorías HMAC. Un mapeo individual con pertenencia conocida va a
+  cuarentena contada. Ausencias, duplicados, fecha funcional cambiante,
+  paginación incompleta o error global bloquean activación. El límite
+  conjunto es de 250 lotes keyset confirmados por run; cada uno aborta al
+  recibir diez páginas REST. El contador fenced `query_attempts` limita a 300
+  consultas iniciadas, incluso tras reanudaciones; reintentos de 401 requieren
+  presupuesto de API supervisado aparte. No hay conciliación
+  indefinida.
+- El almacenamiento minimizado evita payloads crudos y cifra nombres de
+  propietario. Una proyección categórica se construye administrativamente y
+  el puntero por mes se cambia transaccionalmente bajo lease. Así una lectura
+  HTTP fija versión y no escanea journals; un fallo deja la previa. No se
+  deriva actividad F5 ni gestión de un campo de estado, y no se habilitan
+  consumidores económicos/operativos ajenos al dashboard de Interests.
+- Se reutiliza solo el clasificador de diferencias de la PR Draft #145. Su
+  migración y flujo de conciliación de F2 estricta son redundantes para la
+  fuente operativa y no se integran aquí. La PR #145 debe permanecer intacta
+  hasta decisión de revisión; puede cerrarse como sustituida si esta fuente
+  cumple la necesidad operativa, sin inferir certificación histórica.
+
 ## 2026-11-10 — consolidación mensual por referencias antes de una generación global
 
 - Las revisiones mensuales F2M y F5 verificadas se reúnen primero en tres

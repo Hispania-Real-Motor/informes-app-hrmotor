@@ -1,5 +1,20 @@
 # Mantenimiento documental de informes
 
+## Mapa de la fuente mensual operativa de Interests
+
+`scripts/check_documentation_integrity.py` asigna explícitamente
+`OperationalInterestMonthlySync.php`,
+`InterestMonthlyDifferenceClassifier.php`,
+`SyncOperationalInterestsCommand.php` y
+`2026_11_16_120000_create_operational_interest_months.php` al dominio
+`interests`; `OperationalInterestMonthlyReader.php` queda cubierto por el
+prefijo del lector de Leads/Interests. Su fuente administrativa no modifica
+por sí sola los contratos de Campañas, Llamadas o Reservas/Ventas. Revisar
+siempre el diff real y declarar `Docs-Impact: updated` y
+`Docs-Matrix-Impact: updated` cuando cambie universo, fuente o cobertura del
+dashboard provisional. La documentación de dependencias de otros informes
+puede describir su aislamiento sin tratarlos como consumidores de la fuente.
+
 ## Instalación y reconocimiento
 
 El agente de proyecto está en `.codex/agents/report_docs_maintainer.toml`,

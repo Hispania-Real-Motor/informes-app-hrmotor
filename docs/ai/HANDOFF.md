@@ -1,5 +1,63 @@
 # Handoff para agentes
 
+## 2026-11-12 — sincronización operativa mensual de Interests (en revisión)
+
+- Objetivo y solución: nueva fuente provisional por mes para consultar
+  `Interes__c`, mapear, comprobar dos veces cobertura/identidad, conservar
+  última observación válida con incidencias por cambio, poner mapeos
+  individuales en cuarentena y activar atómicamente una proyección de
+  dashboard. No se reutiliza una F2 no verificada como F2M/F5 ni se modifica
+  `verification.verified`; revisiones productivas 2–4 y límite de tres
+  revisiones permanecen intactos. La PR Draft #145 no se modificó: solo se
+  reutilizó `InterestMonthlyDifferenceClassifier`; su migración/flujo estricto
+  no son necesarios para esta entrega operativa y podrían cerrarse como
+  sustituidos después de revisión humana.
+- Código/CI: `OperationalInterestMonthlySync.php`,
+  `InterestMonthlyDifferenceClassifier.php`,
+  `OperationalInterestMonthlyReader.php`,
+  `SyncOperationalInterestsCommand.php`,
+  `LeadDashboardController.php`,
+  `October2026ProvisionalInterestDashboardDatasetService.php`, nueva migración
+  `2026_11_16_120000_create_operational_interest_months.php`,
+  `OperationalInterestMonthlySyncTest.php`, `resources/views/reports/leads/index.blade.php`,
+  `.github/workflows/ci.yml`,
+  validador documental y su prueba. Documentación: generaciones, operaciones,
+  reglas de Interests, Campañas, Llamadas, Reservas/Ventas, matriz, guía y
+  `docs/ai/{HANDOFF,PROJECT_CONTEXT,DECISIONS}.md`.
+- Base de datos: cuatro tablas nuevas para puntero mensual, runs, filas
+  funcionales minimizadas e incidencias por ID/categoría. No hay datos reales
+  escritos. `owner_name_ciphertext` se cifra con `APP_KEY`; huellas de categorías
+  usan HMAC. El `down()` no elimina evidencia. Migrar solo tras autorización
+  independiente y con backup/preflight; no habilitar el flag sin un run activo
+  revisado. No hay nuevas variables obligatorias; el flag de noviembre ya
+  existe y permanece apagado por defecto.
+- Seguridad: CLI exige `--allow-salesforce-read` para `run`/`sync-current`;
+  status y HTTP no exponen IDs, valores de campos, payloads, SQL ni tokens.
+  La vista conserva admin, feature flag, no-store/private y fallo cerrado.
+  SQL directo fuera del contrato Laravel exige desactivar la vista y preparar
+  una nueva versión revisada; la fuente no certifica hard deletes o historia.
+- Rendimiento: lotes keyset de 500 filas, máximo 250 lotes confirmados y 300
+  intentos remotos persistentes por run entre dos
+  lecturas, escritura agrupada y checkpoint en una misma transacción; ninguna
+  transacción SQL queda abierta durante SOQL. La proyección se construye fuera
+  de HTTP en lotes; el lector usa puntero/resumen/proyección con comprobación
+  final. Requiere medir duración, llamadas, memoria y latencia con volumen
+  productivo después de un despliegue autorizado; no se ejecutó Salesforce.
+- Verificaciones locales: catorce pruebas nuevas y 79
+  aserciones correctas, incluido volumen sintético 9.330/4 cambios
+  (38 consultas keyset simuladas; 49,35 s de pared en Windows),
+  cuarentena, reanudación, lease, cobertura y HTTP ligero. Suite completa,
+  MariaDB 11, Pint, build, documentación y CI deben confirmarse para el SHA
+  final; no declararlos verdes antes de comprobarlos. `git diff --check` pasó
+  en la revisión intermedia.
+- Acciones manuales y riesgos: revisar PR y CI, autorizar despliegue/migración
+  separadamente, presupuestar API, ejecutar `prepare/status/run/status` de
+  noviembre bajo supervisión, conciliar `observed = admitted + quarantined` y
+  habilitar el flag solo tras aprobar el run. F5/actividad, gestión comercial,
+  generación oficial y otros informes no consumen este puntero. Cutoff limita
+  pertenencia, no valores históricos; hard deletes y SQL directo no se
+  detectan automáticamente. Rollback conserva tablas, runs y evidencia.
+
 ## 2026-11-12 — reapertura de candidatos y detalle financiero del aprobador
 
 - Problema corregido: un candidato de Comisiones en `pending_approval` no se

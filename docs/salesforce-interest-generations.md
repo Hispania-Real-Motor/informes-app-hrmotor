@@ -1,5 +1,71 @@
 # Generaciones Salesforce Interests F2/F5 — PR #92
 
+## Fuente operativa mensual de Interests (nueva arquitectura en revisión)
+
+`OperationalInterestMonthlySync` crea una fuente **operativa provisional** por mes
+funcional, separada de `salesforce_interest_monthly_recoveries` (F2 estricta),
+F2M, F5 y `InterestGenerationReader`. La migración
+`2026_11_16_120000_create_operational_interest_months.php` añade un puntero por
+mes, runs, filas admitidas y categorías de incidencia. No altera las revisiones
+F2 completadas 2, 3 y 4, no restablece el límite de tres revisiones ni marca
+`verification.verified=true`. Tampoco crea o publica una generación oficial.
+
+El período se define por los días 1 de meses consecutivos a las 00:00 en
+`Europe/Madrid`, convertidos a UTC. `CreatedDate <= effective_cutoff_at` limita
+la **pertenencia**; la fecha funcional utiliza
+`IN_Fecha_Creacion_Origen__c` y, si falta, `CreatedDate`. La lectura `queryAll`
+incluye soft deletes observables, pagina por `Id` con `LIMIT 500` y conserva
+checkpoint por lote. La segunda lectura comprueba la misma cobertura e
+identidades; un ID nuevo, ausente, repetido, desordenado, fuera del mes, una
+página incompleta, error remoto/SQL o pérdida de lease impide activar el run.
+No usa `getDeleted` ni demuestra hard deletes o valores históricos al cutoff.
+Hay un límite de 250 lotes keyset confirmados de extracción y segunda lectura
+por run. Cada lote admite hasta nueve páginas remotas completas; se aborta al
+recibir la décima. En una ejecución sin reintentos podrían recibirse hasta
+2.500 páginas; con los 300 intentos máximos el techo teórico es 3.000
+páginas y hasta 6.000 peticiones si cada una requiere un reintento HTTP 401.
+Cada consulta aumenta además `query_attempts` en una transacción fenced antes
+de la llamada; el máximo persistente es 300 intentos por run, incluidos los
+reanudados en el mismo cursor. Al agotarse cualquiera de los límites se
+conserva checkpoint y versión anterior; preparar otra versión exige revisión
+supervisada. No existe
+una certificación de consumo real de API hasta medirla en Salesforce.
+
+Un cambio de contenido entre lecturas se registra por ID **solo en tablas
+restringidas**, con máscara de categorías y huellas HMAC, sin valores de campos,
+payloads ni datos personales en el estado/CLI. Se conserva la última observación
+válida para ese ID: no se elimina de todos los indicadores por un cambio de
+`SystemModstamp`, `Owner.Name` o estado. El nombre de propietario necesario para
+la vista administrativa se cifra. Si el mapeo individual falla pero identidad,
+fecha funcional y pertenencia siguen comprobables, el ID queda en cuarentena y
+cuenta en `observed` y `quarantined`, no en los KPI calculados sobre `admitted`
+activo. Una actualización posterior puede reincorporarlo sin reescribir el run
+anterior. Campos categóricos ausentes permanecen «Sin clasificar»; no se
+infieren valores. `verified_at` en esta fuente significa **presencia en la
+segunda lectura**, no igualdad de hash ni certificación histórica.
+
+La proyección categórica se construye fuera de HTTP en lotes y usa los
+normalizadores vigentes de tipo y procedencia. El puntero mensual cambia en
+una transacción breve después de reconciliar contadores, presencia y número de
+filas proyectadas. Una ejecución fallida deja la versión operativa previa.
+El lector HTTP solo consulta puntero, resumen y proyección versionada y vuelve
+a comprobar el puntero al finalizar; no escanea journals ni hace SOQL. El
+selector `november_2026` conserva flag apagado por defecto, rol administrador,
+`no-store, private`, 404/403/503 y prioridad de la generación oficial cuando
+no se pidió período. Si hay puntero operativo activo pero evidencia incoherente,
+falla cerrado; no retrocede silenciosamente al lector estricto. El dashboard
+expone observados, admitidos, cuarentena, cambios y denominador activo; los
+KPI de actividad, gestión y comparativas siguen no disponibles sin F5/relación
+adecuada. La fuente operativa no sustituye los lectores de otros informes.
+
+Se reutiliza de la PR Draft #145 únicamente
+`InterestMonthlyDifferenceClassifier` y sus huellas de categorías sin valores.
+Su migración diagnóstica y su conciliación estricta de F2 no forman parte de
+este circuito. Si esta arquitectura supera revisión y se integra, #145 no es
+necesaria para la **visibilidad operativa** de noviembre y puede cerrarse como
+sustituida tras decisión humana; no se modifica ni cierra automáticamente.
+La certificación histórica es otra decisión y no queda resuelta por esta fuente.
+
 Estado: implementación en revisión, sin autorización de despliegue. Contraste documental: base `edf2d97b6e5624936ed5cfd12fa790889fea3df2` y diff de esta iteración. Las reglas siguientes sustituyen las referencias históricas a la tabla viva y al «último run» como fuente certificada.
 
 ## Almacenamiento y publicación

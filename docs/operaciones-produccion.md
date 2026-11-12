@@ -1,5 +1,84 @@
 # Operaciones de producción
 
+## Fuente operativa mensual de Interests: preparación de noviembre (sin ejecución autorizada)
+
+Esta sección describe la **nueva** CLI aislada
+`salesforce:sync-interests-operational`; no es
+`salesforce:sync-interest-monthly-current` ni modifica sus tres revisiones F2
+completadas sin verificación. Se requiere despliegue y autorización
+operativa separados antes de ejecutar cualquier paso productivo. El desarrollo
+no consultó Salesforce ni modificó journals productivos.
+
+**Preflight de despliegue:** confirmar HEAD, PHP 8.4, MariaDB 11, `APP_KEY`
+vigente, espacio para dos lecturas y una versión adicional, permisos de
+migración y flag de noviembre apagado. Revisar backups y el estado de
+`salesforce_interest_monthly_recoveries` sin reescribir IDs 2–4. Aplicar solo
+en ventana autorizada la migración aditiva
+`2026_11_16_120000_create_operational_interest_months.php` con
+`php artisan migrate --force`; comprobar tablas e índices antes de ejecutar
+Salesforce. No se necesita activar scheduler ni modificar el puntero de
+`salesforce_interest_publication`. La migración tolera una reejecución de su
+`up()` si ya existen sus cuatro tablas, pero no repara una tabla parcialmente
+creada; inspeccionarla antes de reintentar. `down()` no borra evidencia.
+
+**Primera ejecución supervisada**, después de autorizar lectura Salesforce y
+presupuestar hasta 250 lotes keyset confirmados de 500 filas para extracción
+y segunda lectura juntas, más preparación local por lotes. Cada lote aborta en
+la décima página de continuación REST, y un 401 puede repetir una llamada. En
+una ejecución sin reintentos el límite conservador es 2.500 páginas recibidas;
+el límite acumulado del run es 300 consultas iniciadas, hasta 3.000 páginas
+recibidas y 6.000 peticiones contando un posible reintento 401 de cada una. Los intentos fallidos reanudados en el mismo
+cursor no incrementan el contador de lotes confirmados. Medir llamadas reales
+y detener manualmente ante el presupuesto operacional aprobado.
+`query_attempts` se incrementa antes de cada SOQL bajo fencing y limita a 300
+los intentos acumulados de un run, aun tras reanudación. Un run agotado no debe
+activarse ni repetirse sin revisar causa, presupuesto y una nueva versión.
+Los comandos propuestos, solo tras autorización, son:
+
+```text
+php artisan salesforce:sync-interests-operational prepare --month=2026-11
+php artisan salesforce:sync-interests-operational status --run-id=<id>
+php artisan salesforce:sync-interests-operational run --run-id=<id> --allow-salesforce-read
+php artisan salesforce:sync-interests-operational status --run-id=<id>
+```
+
+`prepare` no llama a Salesforce. `run` reanuda la fase y los cursores del mismo
+ID si falló, requiere el flag de autorización explícito y deja la última
+versión activa si falla. Verificar `completed`, `extracted = checked`, el
+recuento `observed = admitted + quarantined`, las categorías de cambio y la
+proyección activa antes de solicitar habilitar
+`SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED`. Revisar incidencias individuales
+solo en almacenamiento restringido, sin exportar IDs, huellas, nombres,
+payloads o SQL a tickets/logs. La cuarentena por mapeo conserva identidad para
+reproceso; cambios de hash admitidos reflejan última observación válida y su
+categoría agregada, no certificación `as-of`. Confirmar que el puntero oficial,
+F2M y F5 permanecen intactos. Un error de paginación, identidad, pertenencia,
+SQL, presupuesto o lease exige **detener** y analizar; no activar una versión
+incompleta ni restablecer el límite F2 estricto. Para una actualización posterior
+del mismo mes se puede preparar otro run; el anterior queda como evidencia.
+
+Tras aprobación independiente de visibilidad, habilitar solo el flag mensual
+administrativo y verificar `/informes/leads?period=november_2026`: fecha,
+observados, admitidos, cuarentena, cambios, denominador activo, filtros,
+`no-store, private`, 403 para no administradores y 503 para evidencia ausente o
+incoherente. Los KPI de actividad y gestión continúan no disponibles. La
+actualización diaria puede usar `sync-current --allow-salesforce-read` **solo
+tras autorización y activación operacional futura**; no hay entrada nueva de
+scheduler en este cambio. Un mes anterior puede prepararse con `--month=YYYY-MM`,
+pero observarlo ahora no reconstruye sus valores históricos de cierre.
+
+**Desactivación y rollback:** devolver el flag de noviembre a `false` y limpiar
+caché de configuración según procedimiento de release; detener nuevas
+invocaciones de la CLI. Conservar puntero, runs, filas, incidentes y proyecciones
+para auditoría; no ejecutar `migrate:rollback`, `DROP`, limpieza de journals ni
+repuntar manualmente. Volver al código anterior deja la vista mensual sin esta
+fuente operativa y puede devolver 503, pero mantiene la evidencia previa. SQL
+directo fuera de los escritores del circuito no está cubierto por invalidación
+automática: restringir permisos de escritura y, ante intervención, desactivar
+la vista y preparar/revalidar una versión nueva antes de volver a confiar en
+ella. El primer despliegue debe medir tiempo, API y latencia HTTP con datos
+reales antes de afirmar que noviembre funciona en producción.
+
 ## Alcance e inventario
 
 Runbook para PHP 8.4 y MariaDB. Las secciones originales describen el entorno histórico de cPanel; la evidencia Docker vigente del 19/10/2026 se detalla en OPS-1 en producción. No se necesita Node/npm para servir los assets compilados.
