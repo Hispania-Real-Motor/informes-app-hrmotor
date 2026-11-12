@@ -39,8 +39,9 @@ final class MonthlyInterestActivityRecoveryService
 
         return DB::transaction(function () use ($monthlyRecoveryId, $reason, $batch): int {
             $source = DB::table('salesforce_interest_monthly_recoveries')->where('id', $monthlyRecoveryId)->lockForUpdate()->first();
-            if ($source === null || $source->status !== 'completed' || $source->phase !== 'completed') {
-                throw new RuntimeException('Monthly F5 requires a completed monthly F2 recovery.');
+            if ($source === null || $source->status !== 'completed' || $source->phase !== 'completed'
+                || data_get(json_decode((string) $source->evidence, true, 64, JSON_THROW_ON_ERROR), 'verification.verified') !== true) {
+                throw new RuntimeException('Monthly F5 requires a verified monthly F2 recovery.');
             }
             $existing = DB::table('salesforce_interest_monthly_activity_recoveries')->where('monthly_recovery_id', $monthlyRecoveryId)->lockForUpdate()->first();
             if ($existing !== null) {

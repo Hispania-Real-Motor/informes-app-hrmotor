@@ -15,7 +15,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
 
     public function test_it_builds_an_isolated_f5_from_monthly_interests_and_keeps_f2_provisional(): void
     {
-        $monthlyRecovery = $this->completedMonthlyRecovery(false);
+        $monthlyRecovery = $this->completedMonthlyRecovery(true);
         $first = $this->interestId(1);
         $second = $this->interestId(2);
         $this->monthlyInterest($monthlyRecovery, $first);
@@ -35,7 +35,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->assertSame(0, $status['counters']['discarded_other_period']);
         $this->assertSame(1, $status['counters']['activities_soft_deleted']);
         $this->assertSame(1, $status['counters']['interests_soft_deleted']);
-        $this->assertFalse($status['source_evidence']['f2_verified']);
+        $this->assertTrue($status['source_evidence']['f2_verified']);
         $this->assertFalse($status['evidence']['combined_certified']);
         $this->assertSame('unavailable', $status['historical_certification']);
         $this->assertFalse($status['published']);
@@ -216,7 +216,7 @@ class MonthlyInterestActivityRecoveryTest extends TestCase
         $this->assertStringNotContainsString('WhatId IN', $client->soql[0]);
     }
 
-    private function completedMonthlyRecovery(bool $verified = false): int
+    private function completedMonthlyRecovery(bool $verified = true): int
     {
         return DB::table('salesforce_interest_monthly_recoveries')->insertGetId([
             'recovery_identifier' => (string) str()->uuid(), 'functional_start_at' => '2026-09-30 22:00:00', 'functional_end_at' => '2026-10-31 23:00:00', 'timezone' => 'Europe/Madrid', 'status' => 'completed', 'phase' => 'completed', 'batch_size' => 500, 'pages_completed' => 1, 'counters' => '{}', 'reason_hash' => hash('sha256', 'synthetic monthly F2 recovery'), 'evidence' => json_encode(['verification' => ['verified' => $verified]]), 'started_at' => now('UTC'), 'completed_at' => now('UTC'), 'created_at' => now(), 'updated_at' => now(),

@@ -27,6 +27,13 @@ actualiza generación, readiness o snapshots publicados de Campañas.
 El refresco opcional F2/F2M/F5 del mes abierto sólo mantiene esos journals
 aislados tras autorización de lectura; deshabilitado por defecto, no altera
 atribución, readiness, cobertura, KPI, auditoría ni CSV de Campañas.
+
+Si la segunda lectura F2 detecta contenido diferente, la revisión `completed`
+queda no verificada y conserva su evidencia; F2M/F5 no pueden prepararse sobre
+ella. Sólo un cutoff posterior permite otra revisión aislada. Esto no cambia
+la fuente Interest publicada ni habilita atribución, readiness, snapshots o
+KPI de Campañas.
+
 La etapa administrativa de consolidación por meses sólo referencia F2M/F5
 verificados y falla ante colisiones de identidad o manifiestos cambiados.
 No construye ni publica la generación global, no acredita hard deletes ni

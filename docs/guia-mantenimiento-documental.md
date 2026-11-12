@@ -230,6 +230,19 @@ entrega; la revisión humana de la PR comprueba su presencia y exactitud.
 
 `config/campaign_current_status.php` se mapea explícitamente al informe `campaigns` en el validador y su prueba de regresión; pertenece al contrato de estado operativo del detalle, aunque no modifica KPIs económicos. Las modificaciones del motor central `OperationalTaskCatalog`, `OperationalTaskService`, `OperationalTaskHealthService` y `routes/console.php` requieren declarar las rutas exactas en `Docs-Outside-Paths` cuando su diff se limita a activación/reserva/supervisión de tareas, además de documentar Campañas por las rutas funcionales mapeadas. La excepción no elimina la revisión humana ni permite omitir cambios reales de informes.
 
+### Servicios mensuales de Interests
+
+`InterestMonthlyRecoveryService.php`,
+`InterestMonthlyMaterializationService.php` y
+`MonthlyInterestActivityRecoveryService.php` están mapeados explícitamente a
+`interests`.
+Sus cambios en verificación, preparación, revisiones o F5 mensual obligan a
+revisar `docs/reglas-negocio-leads.md` y la trazabilidad correspondiente de la
+matriz; no deben quedar como rutas funcionales sin mapa. Un cambio en el
+comando compartido `SyncCurrentMonthInterestsCommand` mantiene además la
+revisión de Reservas/Ventas, Llamadas y Campañas, aunque sus lectores oficiales
+no consuman estos journals provisionales.
+
 ### Comando compartido de sincronización de Opportunities
 
 `app/Console/Commands/SalesforceSyncOpportunitiesCommand.php` se mapea

@@ -1,5 +1,63 @@
 # Handoff para agentes
 
+## 2026-11-11 — F2 mensual completada sin verificación (correctivo en revisión)
+
+- Problema: la F2 mensual podía terminar `completed` con
+  `verification.verified=false` por una diferencia de contenido entre extracción
+  y segunda lectura. `SyncCurrentMonthInterestsCommand` abortaba antes de
+  preparar una revisión nueva. El hash canónico mensual ya excluye
+  `synced_at` y otros tiempos técnicos; la causa exacta de la diferencia
+  observada no se demuestra con contadores agregados. Una actualización
+  concurrente de Salesforce es posible, sin acreditación del campo concreto.
+- Código: `SyncCurrentMonthInterestsCommand.php` distingue F2 fallida,
+  completada/verificada y completada/no verificada; clasifica la última como
+  error de integridad, conserva su evidencia y permite otra revisión sólo con
+  cutoff seguro posterior. `InterestMonthlyRecoveryService::prepare()` exige
+  cutoff anterior registrado para crear nueva revisión. Los `prepare()` de
+  `InterestMonthlyMaterializationService` y
+  `MonthlyInterestActivityRecoveryService` bloquean fuentes F2 no verificadas.
+  `MonthlyInterestEvidenceUnverified.php` es una excepción interna de salida
+  segura. Pruebas en `SyncCurrentMonthInterestsCommandTest.php` simulan cambio
+  funcional, revisión nueva, fallo/reanudación y dos revisiones inválidas;
+  `InterestMonthlyRecoveryTest.php` amplía la caracterización de hash.
+- Documentos: `docs/salesforce-interest-generations.md`,
+  `docs/operaciones-produccion.md`, `docs/reglas-negocio-leads.md`,
+  `docs/informe-reservas-ventas.md`, `docs/informe-llamadas.md`,
+  `docs/informe-campanas.md`, matriz KPI, guía de mantenimiento documental y
+  este handoff. El mapa del validador y su prueba reconocen tres servicios
+  mensuales de Interests sin alterar el contrato del staging. No hay migración,
+  nueva variable de entorno ni cambio de publicación, scheduler, lector oficial
+  o interfaz. Las
+  revisiones previas y los journals de octubre se conservan. La proyección
+  mensual validada sólo cambia tras completar F2/F2M/F5 verificadas.
+- Seguridad: ninguna discrepancia se resuelve editando hashes, marcando
+  `verified=true` ni borrando la revisión anterior. La salida no incluye IDs,
+  payloads, SQL, SOQL ni excepción remota. La consulta real requiere
+  `--allow-salesforce-read` y autorización operativa independiente.
+- Rendimiento: un nuevo intento relee F2 del mes en lotes de 500 y lo verifica
+  por segunda vez; F2M/F5 y proyección sólo siguen si procede. No hay bucle de
+  reintentos dentro de una invocación ni consultas por registro añadidas.
+  Latencia y carga remota reales siguen sin medirse.
+- Verificación: `git diff --check` local correcto. PHP/Composer y Python no
+  disponibles localmente; se usó GitHub Actions. Sobre el commit de código
+  `dd2bf705a68032f4da0f99a30c45e5563153aabe`, CI aprobó PHPUnit completo
+  (1.698 pruebas, 15.232 aserciones, una omitida), cinco suites MariaDB 11,
+  Pint de nueve PHP modificados, build y whitespace. Documentation integrity
+  aprobó también ese SHA y la descripción final de la PR. El cambio posterior
+  de este handoff requiere comprobar de nuevo los workflows del HEAD remoto.
+- Acción manual tras aprobación y despliegue: comprobar la revisión de
+  noviembre con `php artisan salesforce:interest-generation monthly-status
+  --period-id=2`; verificar cutoff y ausencia de ejecución activa; bajo
+  autorización de lectura, ejecutar una sola vez
+  `php artisan salesforce:sync-interest-monthly-current
+  --allow-salesforce-read`, revisar el ID nuevo, sus tres verificaciones y la
+  proyección. Conservar recovery 2. Un nuevo fallo requiere diagnóstico y
+  reanudación supervisada; no activar scheduler ni publicar generación.
+- Riesgo pendiente: el estado actual de Salesforce no prueba una fotografía
+  histórica al cutoff. Hard deletes y cambios concurrentes siguen fuera de
+  certificación. SQL directo ajeno al invalidator Laravel exige revocación y
+  revalidación de cualquier proyección afectada.
+
 ## 2026-11-11 — consistencia del candidato de Comisiones durante aprobación
 
 - Corregida la divergencia económica entre la vista normal y Auditoría: el

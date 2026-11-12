@@ -74,6 +74,9 @@ SOURCE_PREFIXES = (
     ("resources/views/reports/summary/", ALL),
 )
 EXACT = {
+    "app/Services/Salesforce/InterestMonthlyRecoveryService.php": {"interests"},
+    "app/Services/Salesforce/InterestMonthlyMaterializationService.php": {"interests"},
+    "app/Services/Salesforce/MonthlyInterestActivityRecoveryService.php": {"interests"},
     "app/Providers/AppServiceProvider.php": ALL,
     "app/Services/Salesforce/SalesforceClient.php": ALL,
     "app/Console/Commands/PruneTransversalDataCommand.php": ALL,

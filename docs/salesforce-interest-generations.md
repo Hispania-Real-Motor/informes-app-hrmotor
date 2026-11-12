@@ -153,6 +153,29 @@ no implementa un delta por `SystemModstamp` ni sustituye el incremental
 publicado. El flag queda preparado y apagado hasta revisión y autorización
 operacional separadas.
 
+Si F2 termina `completed` pero `evidence.verification.verified=false`, esa
+revisión conserva sus filas, contadores, hashes y evidencia como resultado no
+válido. El refresco no prepara F2M/F5 ni proyección a partir de ella; los
+servicios `prepare()` de F2M y F5 comprueban también la verificación F2. Una
+invocación posterior sólo abre una nueva revisión mediante `prepare()` cuando
+el cutoff seguro es estrictamente posterior al cutoff registrado. Con el mismo
+cutoff o sin cutoff anterior registrado, falla con una clasificación de
+integridad distinta del error genérico de lectura remota; no repite el mes en
+un bucle ni sustituye la revisión anterior. Una F2 fallida antes de completar
+la verificación conserva su fase y checkpoint y se reanuda en la misma revisión.
+Una revisión nueva verificada puede continuar F2M, F5 y proyección, sin
+publicación oficial. Si había una proyección anterior válida, sólo permanece
+visible mientras su propia revisión de integridad siga vigente.
+
+El hash mensual usa la misma representación canónica en extracción y
+verificación y excluye `synced_at` y otros tiempos técnicos. `CreatedDate <=
+effective_cutoff_at` limita pertenencia, pero no congela los valores de
+Salesforce; una actualización concurrente es una causa posible de
+`content_changed`, no la causa demostrada de ningún caso productivo. El
+diagnóstico almacenado no identifica campos ni contenido divergente. Repetir
+F2 reconsulta el mes completo con lotes acotados, no ejecuta un delta; medir
+duración, volumen y carga remota antes de autorizar una operación real.
+
 ### Etapa local de consolidación progresiva por referencias
 
 `salesforce:stage-interest-months` prepara un candidato de **staging**, distinto

@@ -40,8 +40,9 @@ final class InterestMonthlyMaterializationService
 
         return DB::transaction(function () use ($monthlyRecoveryId, $reason, $batch): int {
             $source = DB::table('salesforce_interest_monthly_recoveries')->where('id', $monthlyRecoveryId)->lockForUpdate()->first();
-            if ($source === null || $source->status !== 'completed' || $source->phase !== 'completed') {
-                throw new RuntimeException('Monthly F2 materialization requires a completed monthly inventory.');
+            if ($source === null || $source->status !== 'completed' || $source->phase !== 'completed'
+                || data_get(json_decode((string) $source->evidence, true, 64, JSON_THROW_ON_ERROR), 'verification.verified') !== true) {
+                throw new RuntimeException('Monthly F2 materialization requires a verified monthly inventory.');
             }
             $existing = DB::table('salesforce_interest_monthly_materializations')->where('monthly_recovery_id', $monthlyRecoveryId)->lockForUpdate()->first();
             if ($existing !== null) {

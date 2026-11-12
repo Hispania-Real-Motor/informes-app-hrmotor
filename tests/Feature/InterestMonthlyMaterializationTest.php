@@ -173,7 +173,7 @@ class InterestMonthlyMaterializationTest extends TestCase
         $this->assertDatabaseCount('salesforce_interest_generations', 0);
     }
 
-    private function completedRecovery(bool $verified = false, int $revision = 1): int
+    private function completedRecovery(bool $verified = true, int $revision = 1): int
     {
         return DB::table('salesforce_interest_monthly_recoveries')->insertGetId([
             'recovery_identifier' => (string) Str::uuid(),

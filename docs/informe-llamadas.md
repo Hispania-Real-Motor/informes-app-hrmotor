@@ -30,6 +30,13 @@ cobertura, KPI, exportación ni auditoría de Llamadas.
 El refresco opcional F2/F2M/F5 del mes abierto no altera esa frontera: permanece
 deshabilitado por defecto y no toca `salesforce_calls`, clasificación, KPI, CSV
 ni auditoría de Llamadas.
+
+Una F2 mensual `completed` con `verification.verified=false` conserva su
+journal, pero no permite preparar F2M ni F5; otra revisión exige cutoff
+posterior. Ni la revisión nueva ni sus actividades mensuales sustituyen la
+generación Interest publicada o cambian `relatedInterestMatches()`, los datos
+de llamadas, sus KPI o sus exportaciones.
+
 La nueva etapa local de consolidación conserva únicamente referencias y
 manifiestos de F2M/F5 mensuales verificados. Sus checkpoints y controles de
 colisión no producen una generación Interest certificada ni prueban la

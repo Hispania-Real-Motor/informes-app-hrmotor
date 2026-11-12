@@ -62,13 +62,62 @@ class InterestMonthlyRecoveryTest extends TestCase
         $monthly = app(InterestMonthlyRecoveryService::class);
         $hash = new \ReflectionMethod($monthly, 'contentHash');
         $hash->setAccessible(true);
-        $mapped = app(SalesforceInterestSyncService::class)->mapRecord($this->record('a01000000000000001', '2026-10-10T10:00:00Z'), false);
+        $record = $this->record('a01000000000000001', '2026-10-10T10:00:00Z');
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-10T10:00:00Z'));
+        try {
+            $mapped = app(SalesforceInterestSyncService::class)->mapRecord($record, false);
+            Carbon::setTestNow(CarbonImmutable::parse('2026-11-10T11:00:00Z'));
+            $mappedAgain = app(SalesforceInterestSyncService::class)->mapRecord($record, false);
+            $this->assertNotEquals($mapped['synced_at'], $mappedAgain['synced_at']);
+            $this->assertSame($hash->invoke($monthly, $mapped), $hash->invoke($monthly, $mappedAgain));
+        } finally {
+            Carbon::setTestNow();
+        }
         $first = $hash->invoke($monthly, $mapped);
         $mapped['synced_at'] = now('UTC')->addHour();
         $this->assertSame($first, $hash->invoke($monthly, $mapped));
         $mapped['status'] = 'Changed';
         $this->assertNotSame($first, $hash->invoke($monthly, $mapped));
         $this->assertNotContains('payload', Schema::getColumnListing('salesforce_interest_monthly_recovery_rows'));
+    }
+
+    public function test_multiple_functional_changes_are_counted_without_reclassifying_records_as_missing(): void
+    {
+        $records = [$this->record('a01000000000000001', '2026-10-10T10:00:00Z'),
+            $this->record('a01000000000000002', '2026-10-10T11:00:00Z')];
+        $this->app->instance(SalesforceClient::class, new class($records) extends SalesforceClient
+        {
+            private int $reads = 0;
+
+            public function __construct(private array $records) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                $this->reads++;
+                $records = $this->records;
+                if ($this->reads === 2) {
+                    foreach ($records as &$record) {
+                        $record['IN_Estado__c'] = 'Changed';
+                    }
+                    unset($record);
+                }
+                yield $records;
+            }
+        });
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Count multiple changed monthly records safely.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-10-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-05T10:00:00Z'));
+
+        $status = $service->run($id, $reason);
+
+        $this->assertSame('completed', $status['status']);
+        $this->assertFalse($status['evidence']['verification']['verified']);
+        $this->assertSame(2, $status['counters']['content_changed']);
+        $this->assertSame(0, $status['counters']['remote_missing_local']);
+        $this->assertSame(0, $status['counters']['local_missing_remote']);
+        $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 2);
     }
 
     public function test_completed_month_can_start_a_new_immutable_revision_without_changing_the_previous_one(): void

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Services\Operations\OperationalTaskCatalog;
 use App\Services\Operations\OperationalTaskOutput;
 use App\Services\Reports\Leads\MonthlyInterestProvisionalReader;
+use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use App\Services\Salesforce\InterestMonthlyMaterializationService;
 use App\Services\Salesforce\InterestMonthlyRecoveryService;
 use App\Services\Salesforce\MonthlyInterestActivityRecoveryService;
@@ -216,6 +217,202 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
             $this->assertSame($before->updated_at, $after->updated_at);
             $this->assertSame('completed', $after->status);
             $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 2);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_changed_f2_is_preserved_and_a_later_revision_completes_the_isolated_pipeline(): void
+    {
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:22:00Z'));
+        try {
+            $client = new class extends SalesforceClient
+            {
+                public int $inventoryReads = 0;
+
+                public function __construct() {}
+
+                public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+                {
+                    if (str_contains($soql, 'FROM Interes__c')) {
+                        if (str_contains($soql, 'Id IN (') || str_contains($soql, "Id > '")) {
+                            yield str_contains($soql, 'Id IN (') ? [$this->record('Changed')] : [];
+
+                            return;
+                        }
+                        $this->inventoryReads++;
+                        yield [$this->record($this->inventoryReads === 1 ? 'Original' : 'Changed')];
+
+                        return;
+                    }
+                    yield [];
+                }
+
+                private function record(string $status): array
+                {
+                    return ['Id' => 'a01000000000000001', 'CreatedDate' => '2026-11-05T10:00:00Z',
+                        'LastModifiedDate' => '2026-11-05T10:00:00Z', 'SystemModstamp' => '2026-11-05T10:00:00Z',
+                        'IsDeleted' => false, 'IN_Estado__c' => $status, 'IN_Lead__c' => null,
+                        'IN_Account__c' => null, 'IN_Lead_Origen_Migracion__c' => null,
+                        'IN_Fecha_Creacion_Origen__c' => null, 'OwnerId' => null,
+                        'Owner' => ['Name' => 'Synthetic owner']];
+                }
+            };
+            $this->app->instance(SalesforceClient::class, $client);
+            $command = 'salesforce:sync-interest-monthly-current';
+            $options = ['--allow-salesforce-read' => true];
+
+            $this->assertSame(1, Artisan::call($command, $options));
+            $first = DB::table('salesforce_interest_monthly_recoveries')->first();
+            $firstRow = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $first->id)->first();
+            $this->assertSame('completed', $first->status);
+            $this->assertSame('completed', $first->phase);
+            $this->assertFalse(data_get(json_decode($first->evidence, true), 'verification.verified'));
+            $this->assertSame(1, data_get(json_decode($first->evidence, true), 'verification.content_changed'));
+            $this->assertStringContainsString('integrity verification failed', Artisan::output());
+            $this->assertStringNotContainsString('a01000000000000001', Artisan::output());
+            $this->assertDatabaseCount('salesforce_interest_monthly_materializations', 0);
+            $this->assertDatabaseCount('salesforce_interest_monthly_activity_recoveries', 0);
+            $this->assertDatabaseCount('salesforce_interest_october_provisional_validations', 0);
+            $unavailable = false;
+            try {
+                app(MonthlyInterestProvisionalReader::class)->latestForMonth(2026, 11);
+            } catch (ProvisionalInterestSourceUnavailable) {
+                $unavailable = true;
+            }
+            $this->assertTrue($unavailable);
+
+            $this->assertSame(1, Artisan::call($command, $options));
+            $this->assertSame(2, $client->inventoryReads);
+            $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 1);
+
+            $reason = 'Reject materialization of an unverified monthly inventory.';
+            try {
+                app(InterestMonthlyMaterializationService::class)->prepare((int) $first->id, $reason);
+                $this->fail('F2M must reject an unverified F2.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('verified monthly inventory', $exception->getMessage());
+            }
+            try {
+                app(MonthlyInterestActivityRecoveryService::class)->prepare((int) $first->id, $reason);
+                $this->fail('F5 must reject an unverified F2.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('verified monthly F2', $exception->getMessage());
+            }
+
+            Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:32:00Z'));
+            $this->assertSame(0, Artisan::call($command, $options));
+            $second = DB::table('salesforce_interest_monthly_recoveries')->orderByDesc('revision')->first();
+            $this->assertSame(2, $second->revision);
+            $this->assertSame('completed', $second->status);
+            $this->assertTrue(data_get(json_decode($second->evidence, true), 'verification.verified'));
+            $this->assertSame('2026-11-11 12:30:00', $second->effective_cutoff_at);
+            $this->assertDatabaseCount('salesforce_interest_monthly_materializations', 1);
+            $this->assertDatabaseCount('salesforce_interest_monthly_activity_recoveries', 1);
+            $this->assertSame((int) $second->id, app(MonthlyInterestProvisionalReader::class)->latestForMonth(2026, 11)['recovery_id']);
+            $this->assertDatabaseCount('salesforce_interest_generations', 0);
+            $this->assertSame($first->evidence, DB::table('salesforce_interest_monthly_recoveries')->find($first->id)->evidence);
+            $this->assertSame($firstRow->content_hash, DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $first->id)->value('content_hash'));
+            $this->assertSame(0, Artisan::call($command, $options));
+            $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 2);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_two_invalid_revisions_do_not_retry_without_a_later_cutoff(): void
+    {
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:22:00Z'));
+        try {
+            $client = new class extends SalesforceClient
+            {
+                public int $reads = 0;
+
+                public function __construct() {}
+
+                public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+                {
+                    if (str_contains($soql, 'FROM Interes__c') && ! str_contains($soql, "Id > '")) {
+                        $this->reads++;
+                        yield [['Id' => 'a01000000000000001', 'CreatedDate' => '2026-11-05T10:00:00Z',
+                            'LastModifiedDate' => '2026-11-05T10:00:00Z', 'SystemModstamp' => '2026-11-05T10:00:00Z',
+                            'IsDeleted' => false, 'IN_Estado__c' => match ($this->reads) {
+                                1 => 'First', 2, 3 => 'Second', default => 'Third',
+                            }, 'IN_Lead__c' => null, 'IN_Account__c' => null,
+                            'IN_Lead_Origen_Migracion__c' => null, 'IN_Fecha_Creacion_Origen__c' => null,
+                            'OwnerId' => null, 'Owner' => ['Name' => 'Synthetic owner']]];
+
+                        return;
+                    }
+                    yield [];
+                }
+            };
+            $this->app->instance(SalesforceClient::class, $client);
+            $command = 'salesforce:sync-interest-monthly-current';
+            $options = ['--allow-salesforce-read' => true];
+            $this->assertSame(1, Artisan::call($command, $options));
+            Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:32:00Z'));
+            $this->assertSame(1, Artisan::call($command, $options));
+            $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 2);
+            $this->assertSame(4, $client->reads);
+            $this->assertSame(1, Artisan::call($command, $options));
+            $this->assertSame(4, $client->reads);
+            $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 2);
+            $this->assertDatabaseCount('salesforce_interest_monthly_materializations', 0);
+            $this->assertDatabaseCount('salesforce_interest_monthly_activity_recoveries', 0);
+            foreach (DB::table('salesforce_interest_monthly_recoveries')->get() as $revision) {
+                $this->assertFalse(data_get(json_decode($revision->evidence, true), 'verification.verified'));
+            }
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_remote_failure_in_new_revision_resumes_without_replacing_the_invalid_first_revision(): void
+    {
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:22:00Z'));
+        try {
+            $client = new class extends SalesforceClient
+            {
+                public int $reads = 0;
+
+                public function __construct() {}
+
+                public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+                {
+                    if (str_contains($soql, 'FROM Interes__c') && ! str_contains($soql, "Id > '")) {
+                        $this->reads++;
+                        if ($this->reads === 3) {
+                            throw new \RuntimeException('Synthetic sensitive Salesforce failure');
+                        }
+                        yield [['Id' => 'a01000000000000001', 'CreatedDate' => '2026-11-05T10:00:00Z',
+                            'LastModifiedDate' => '2026-11-05T10:00:00Z', 'SystemModstamp' => '2026-11-05T10:00:00Z',
+                            'IsDeleted' => false, 'IN_Estado__c' => $this->reads === 1 ? 'First' : 'Second',
+                            'IN_Lead__c' => null, 'IN_Account__c' => null,
+                            'IN_Lead_Origen_Migracion__c' => null, 'IN_Fecha_Creacion_Origen__c' => null,
+                            'OwnerId' => null, 'Owner' => ['Name' => 'Synthetic owner']]];
+
+                        return;
+                    }
+                    yield [];
+                }
+            };
+            $this->app->instance(SalesforceClient::class, $client);
+            $command = 'salesforce:sync-interest-monthly-current';
+            $options = ['--allow-salesforce-read' => true];
+            $this->assertSame(1, Artisan::call($command, $options));
+            $first = DB::table('salesforce_interest_monthly_recoveries')->first();
+            Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:32:00Z'));
+            $this->assertSame(1, Artisan::call($command, $options));
+            $second = DB::table('salesforce_interest_monthly_recoveries')->orderByDesc('revision')->first();
+            $this->assertSame('failed', $second->status);
+            $this->assertSame('f2_extract', $second->phase);
+            $this->assertSame(0, $second->pages_completed);
+            $this->assertStringNotContainsString('Synthetic sensitive', Artisan::output());
+            $this->assertSame(0, Artisan::call($command, $options));
+            $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 2);
+            $this->assertSame('completed', DB::table('salesforce_interest_monthly_recoveries')->find($second->id)->status);
+            $this->assertSame($first->evidence, DB::table('salesforce_interest_monthly_recoveries')->find($first->id)->evidence);
         } finally {
             Carbon::setTestNow();
         }
