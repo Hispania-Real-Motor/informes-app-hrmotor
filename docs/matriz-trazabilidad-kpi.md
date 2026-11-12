@@ -1,5 +1,12 @@
 # Matriz de trazabilidad de KPIs
 
+> La nueva fuente `salesforce_interest_operational_*` es independiente de la
+> revisión F2 mensual estricta descrita abajo. Solo su versión activa puede
+> alimentar el dashboard **administrativo provisional de noviembre**: el
+> universo visible son filas admitidas y no borradas, con `observed`,
+> `admitted`, `quarantined` y cambios entre lecturas expuestos por separado.
+> No certifica historia al cutoff, F5, otros informes ni generación oficial.
+
 > Inventario mensual provisional de Interests: `salesforce_interest_monthly_recoveries`
 > no es fuente de KPI ni de informes. Solo registra inventario actual por mes
 > y revisión, con soft deletes observables. Su cutoff limita `CreatedDate`, pero
@@ -397,6 +404,13 @@ KPI completa ni certifica fórmulas no auditadas.
 | Contrato | Cadena contrastada | Estado y límites |
 | --- | --- | --- |
 | Revisión mensual F2 | `SalesforceInterestSyncService::functionalPeriodSoql()` → `Interes__c` por mes funcional y `CreatedDate <= effective_cutoff_at` → `mapRecord()` → `InterestMonthlyContentHasher` compartido por extracción y verificación de `InterestMonthlyRecoveryService` → `evidence.verification`. `SyncCurrentMonthInterestsCommand` conserva la revisión `completed` no verificada y llama a `prepare(newRevision=true)` sólo con cutoff posterior. F2M y F5 exigen ahora `verification.verified=true` en sus propios `prepare()`. `MonthlyInterestProvisionalReader` sólo valida F2/F2M/F5 verificadas. | Una revisión inválida no alimenta F2M, F5, proyección ni generación oficial. La siguiente relee el mes completo por lotes; no cambia universo, fórmula, filtro, exportación ni lector oficial. El cutoff limita pertenencia, no congela el contenido actual; el contador de diferencias no acredita campo ni causa. No hay certificación histórica ni publicación automática. |
+| Dashboard administrativo operativo de noviembre: total, estados, tipos, origen y procedencia | `Interes__c` mediante `SalesforceInterestSyncService::functionalPeriodSoql()` con mes funcional Madrid y `CreatedDate <= cutoff`, `SalesforceClient::queryPages(..., true)` y `mapRecord()` → `OperationalInterestMonthlySync` → `salesforce_interest_operational_runs/rows/incidents` → `LeadRecordTypeNormalizer`, `LeadDelegationNormalizer` y `ObservedInterestOwnerProjection` → `salesforce_interest_october_provisional_projection_rows` bajo scope `operational_2026_11` y clave de versión → puntero `salesforce_interest_operational_months` → `OperationalInterestMonthlyReader` → `October2026ProvisionalInterestDashboardDatasetService` → tarjetas, tablas y filtros combinados de `/informes/leads?period=november_2026`. Los estados `Convertido`, `Descartado` y `Potencial`, y canal `Llamada`/`Formulario`, agregan solo las filas activas admitidas de la misma clave; porcentajes dividen por ese total y redondean a dos decimales. | `observed = admitted + quarantined` incluye soft deletes observados; el total visible `eligible_active_matching` excluye borrados y cuarentena. La segunda lectura exige identidades y cobertura completas; cambio de hash individual registra máscara HMAC y conserva última observación válida sin afirmar igualdad. Los filtros cruzados operan sobre la fila proyectada, nunca sobre distribuciones marginales. Ausencias categóricas son «Sin clasificar». No hay actividad Task/Event, gestión, comparativa o elegibilidad histórica; estas métricas quedan `null`/no disponibles. Flag y admin limitan acceso; sin fuente activa se conserva el lector mensual estricto, mientras un puntero operativo incoherente falla cerrado. No cambia KPI, fórmula, auditoría ni CSV oficiales; no se publica generación. |
+
+La selección de la versión operativa que alimenta ese mismo universo avanza
+solo por `(effective_cutoff_at UTC, run_id)`. Una ejecución fallida superada
+queda como `failed/superseded` con sus incidencias y checkpoints y no hace
+SOQL al reintentarse; la transacción de activación revalida la precedencia con
+el mes bloqueado. Los filtros, denominadores, fórmulas y KPI no cambian.
 
 Los normalizadores funcionales, configuración de clasificaciones, umbrales,
 redondeos, nulos de KPIs y fechas pivote no cambian en este diff. No se han

@@ -1,5 +1,19 @@
 # Informe de Campañas
 
+## Dependencia de la nueva fuente operativa mensual de Interests
+
+La fuente `salesforce_interest_operational_*` conserva en noviembre observaciones
+actuales de `Interes__c` con fuente, medio, canal y algunas referencias, pero solo
+alimenta el dashboard provisional de Interests. Los UTM participan en la huella
+de cambio de `mapRecord()` y no se almacenan como columnas operativas: una
+atribución futura requeriría una extracción y validación específica. El builder de atribución y
+`CampaignPublicationReadiness` mantienen su fuente Interest publicada y las
+comprobaciones propias de Opportunity, plataformas y cobertura. No leen el
+puntero operativo, no recalculan ni habilitan KPI, rankings, auditoría o CSV de
+Campañas. Aprovechar esta observación para atribución futura requeriría
+validar relaciones y cutoffs compatibles, y una decisión separada de fuente;
+el run operativo no constituye esa evidencia.
+
 ## Nota técnica — materialización F2 mensual provisional
 
 El journal F2 mensual conserva campos de atribución ya existentes del Interest

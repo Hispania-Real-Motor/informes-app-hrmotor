@@ -74,6 +74,16 @@ class IntegrityTests(unittest.TestCase):
             self.assertEqual({"interests"}, checker.domains_for(
                 f"app/Services/Salesforce/{service}.php"))
 
+    def test_operational_month_is_an_interest_only_provisional_source(self) -> None:
+        for path in (
+            "app/Services/Salesforce/OperationalInterestMonthlySync.php",
+            "app/Services/Salesforce/InterestMonthlyDifferenceClassifier.php",
+            "app/Services/Reports/Leads/OperationalInterestMonthlyReader.php",
+            "app/Console/Commands/SyncOperationalInterestsCommand.php",
+            "database/migrations/2026_11_16_120000_create_operational_interest_months.php",
+        ):
+            self.assertEqual({"interests"}, checker.domains_for(path))
+
     def test_salesforce_opportunities_command_maps_to_its_report_consumers(self) -> None:
         self.assertEqual(
             {"reservations", "campaigns", "commissions", "stock"},

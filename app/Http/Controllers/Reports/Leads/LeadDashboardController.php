@@ -7,6 +7,7 @@ use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Reports\Leads\MonthlyInterestProvisionalPeriod;
 use App\Services\Reports\Leads\MonthlyInterestProvisionalReader;
 use App\Services\Reports\Leads\October2026ProvisionalInterestReader;
+use App\Services\Reports\Leads\OperationalInterestMonthlyReader;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use App\Services\Salesforce\InterestGenerationReader;
 use App\Support\ReportUserAccess;
@@ -23,6 +24,7 @@ class LeadDashboardController extends Controller
         Request $request,
         October2026ProvisionalInterestReader $octoberReader,
         MonthlyInterestProvisionalReader $monthlyReader,
+        OperationalInterestMonthlyReader $operationalReader,
         InterestGenerationReader $interestGenerations,
     ) {
         $requestedPeriod = $request->query('period');
@@ -34,11 +36,11 @@ class LeadDashboardController extends Controller
             $this->assertOctoberAccess($request, $octoberReader);
         }
         if ($requestedMonthly) {
-            $this->assertMonthlyAccess($request, $monthlyReader, $requestedMonth);
+            $this->assertMonthlyAccess($request, $monthlyReader, $operationalReader, $requestedMonth);
         }
         $officialAvailable = $requestedPeriod === null && $this->officialGenerationAvailable($interestGenerations);
         $useMonthlyByDefault = $requestedPeriod === null && ! $officialAvailable
-            && $this->canUseMonthly($request, $monthlyReader, MonthlyInterestProvisionalPeriod::forKey(self::NOVEMBER_2026_PROVISIONAL_PERIOD));
+            && $this->canUseMonthly($request, $monthlyReader, $operationalReader, MonthlyInterestProvisionalPeriod::forKey(self::NOVEMBER_2026_PROVISIONAL_PERIOD));
         $useOctoberByDefault = $requestedPeriod === null
             && ! $useMonthlyByDefault
             && $this->canUseOctober($request, $octoberReader)
@@ -48,9 +50,12 @@ class LeadDashboardController extends Controller
         $usesProvisional = $usesOctober || $usesMonthly;
         $monthlyPeriodKey = $requestedMonthly ? $requestedPeriod : ($useMonthlyByDefault ? self::NOVEMBER_2026_PROVISIONAL_PERIOD : null);
         $monthlyPeriod = MonthlyInterestProvisionalPeriod::forKey($monthlyPeriodKey);
-        $monthlyCutoff = $monthlyPeriod !== null
-            ? data_get($monthlyReader->latestForMonth($monthlyPeriod['year'], $monthlyPeriod['month']), 'overview.period.effective_cutoff')
-            : null;
+        $monthlySnapshot = $monthlyPeriod !== null
+            ? $this->monthlySnapshot($monthlyReader, $operationalReader, $monthlyPeriod) : null;
+        $operationalMonth = isset($monthlySnapshot['operational_month']);
+        $monthlyTimestamp = $operationalMonth
+            ? data_get($monthlySnapshot, 'overview.validated_at')
+            : data_get($monthlySnapshot, 'overview.period.effective_cutoff');
 
         $response = view('reports.leads.index', [
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'leads'),
@@ -64,8 +69,9 @@ class LeadDashboardController extends Controller
                 : $this->officialInitialPeriod($requestedPeriod),
             'isOctoberProvisional' => $usesProvisional,
             'provisionalPeriodLabel' => $monthlyPeriod['label'] ?? 'Octubre 2026',
-            'provisionalUpdatedUntil' => is_string($monthlyCutoff) && $monthlyCutoff !== ''
-                ? CarbonImmutable::parse($monthlyCutoff, 'UTC')->setTimezone('Europe/Madrid')->format('d/m/Y H:i')
+            'isOperationalMonthly' => $operationalMonth,
+            'provisionalUpdatedUntil' => is_string($monthlyTimestamp) && $monthlyTimestamp !== ''
+                ? CarbonImmutable::parse($monthlyTimestamp, 'UTC')->setTimezone('Europe/Madrid')->format('d/m/Y H:i')
                 : null,
         ]);
 
@@ -100,32 +106,47 @@ class LeadDashboardController extends Controller
     }
 
     /** @param array{year:int,month:int,flag:string,label:string} $period */
-    private function assertMonthlyAccess(Request $request, MonthlyInterestProvisionalReader $reader, array $period): void
+    private function assertMonthlyAccess(Request $request, MonthlyInterestProvisionalReader $reader, OperationalInterestMonthlyReader $operational, array $period): void
     {
         abort_unless(config($period['flag']) === true, 404);
         abort_unless(ReportUserAccess::isAdmin($request), 403);
 
         try {
-            $reader->latestForMonth($period['year'], $period['month']);
+            $this->monthlySnapshot($reader, $operational, $period);
         } catch (ProvisionalInterestSourceUnavailable) {
             abort(503, 'Los datos mensuales están pendientes de validación.');
         }
     }
 
     /** @param array{year:int,month:int,flag:string,label:string} $period */
-    private function canUseMonthly(Request $request, MonthlyInterestProvisionalReader $reader, array $period): bool
+    private function canUseMonthly(Request $request, MonthlyInterestProvisionalReader $reader, OperationalInterestMonthlyReader $operational, array $period): bool
     {
         if (config($period['flag']) !== true || ! ReportUserAccess::isAdmin($request)) {
             return false;
         }
 
         try {
-            $reader->latestForMonth($period['year'], $period['month']);
+            $this->monthlySnapshot($reader, $operational, $period);
 
             return true;
         } catch (ProvisionalInterestSourceUnavailable) {
+            // An activated operational pointer must never silently fall back to October.
+            if ($operational->hasActiveForMonth($period['year'], $period['month'])) {
+                abort(503, 'Los datos mensuales están pendientes de validación.');
+            }
+
             return false;
         }
+    }
+
+    /** @param array{year:int,month:int,flag:string,label:string} $period */
+    private function monthlySnapshot(MonthlyInterestProvisionalReader $reader, OperationalInterestMonthlyReader $operational, array $period): array
+    {
+        if ($operational->hasActiveForMonth($period['year'], $period['month'])) {
+            return $operational->latestForMonth($period['year'], $period['month']);
+        }
+
+        return $reader->latestForMonth($period['year'], $period['month']);
     }
 
     private function officialGenerationAvailable(InterestGenerationReader $reader): bool

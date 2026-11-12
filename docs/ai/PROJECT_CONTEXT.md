@@ -1,6 +1,27 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-11-10.
+Actualizado: 2026-11-12.
+
+## Fuente operativa mensual provisional de Interests (2026-11-12, en revisión)
+
+- `OperationalInterestMonthlySync` reutiliza la consulta y el mapeo de
+  `SalesforceInterestSyncService`, con meses civiles Madrid, cutoff de
+  pertenencia por `CreatedDate`, `queryPages(..., true)` y dos lecturas
+  paginadas por `Id`. Sus propias tablas `salesforce_interest_operational_*`
+  separan puntero mensual, runs, filas admitidas e incidencias; no utilizan F2
+  estricta, F2M, F5 ni `InterestGenerationStore`/puntero oficial.
+- Los cambios de hash por ID conservan la última observación válida con
+  categorías HMAC sin valores. Mapeos fallidos cuya pertenencia se conoce
+  quedan en cuarentena. Pérdida de cobertura, identidad, página, lease o SQL
+  impide la activación. Filas/checkpoints se confirman por lote; el puntero
+  pasa atómicamente a un run completo y preserva la versión anterior en fallo.
+- El dashboard administrativo de noviembre, tras flag y rol, prefiere la
+  versión operativa activa si existe y usa el lector mensual estricto cuando
+  aún no hay puntero operativo. Un puntero activo incoherente falla cerrado.
+  HTTP solo lee resumen y proyección categórica versionada. La fuente oficial
+  prevalece sin período explícito; otros informes no adoptan esta fuente.
+  `verified_at` operativo significa presencia, nunca coincidencia de hash o
+  certificación histórica. El scheduler permanece sin registrar.
 
 ## Staging local de revisiones mensuales de Interests
 

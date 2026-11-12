@@ -1,5 +1,48 @@
 # Informe de Interests — contrato ROT-1
 
+### Noviembre de 2026: fuente operativa provisional por mes (en revisión)
+
+Para el administrador autorizado, `november_2026` puede leer el puntero de la
+nueva sincronización operativa si está activo; de lo contrario conserva la ruta
+mensual estricta descrita más abajo. El puntero activo manda y una incoherencia
+falla cerrada, sin retroceder a otra revisión. La fuente oficial publicada sigue
+teniendo prioridad sin selección explícita. Flag, rol, `no-store, private` y
+restricción de auditoría/exportación permanecen.
+
+Una revisión operativa antigua, aunque conserve su checkpoint, no puede
+sustituir un run activo con cutoff posterior; si comparten cutoff, manda el ID
+mayor. El lector conserva la última proyección activada cuando un run posterior
+falla o cuando se rechaza una reanudación superada. Esto no modifica el
+denominador ni las fórmulas del dashboard.
+
+El banner identifica «Noviembre de 2026 · inventario operativo provisional»,
+muestra la fecha de **preparación** del run visible separada del cutoff de
+pertenencia y advierte que no certifica valores históricos ni sustituye el
+informe oficial. El resumen AJAX muestra observados, admitidos, cuarentena y
+cambios entre lecturas; la fecha de preparación no es una fotografía `as-of`.
+
+El universo de KPI disponibles es la proyección de Intereses **admitidos y no
+borrados** del run operativo activo. `observed` incluye también IDs
+individuales en cuarentena; `admitted` incluye observaciones válidas, incluso
+soft deletes; `eligible_active_matching` es el denominador de los agregados
+visibles. Cambios entre lecturas son incidencias trazadas, no exclusiones
+automáticas: se proyecta la última observación válida. La fuente, medio, canal,
+tipo, estado, delegación de procedencia, grupo y zona siguen las mismas reglas
+de normalización que la proyección provisional existente. Los filtros se
+combinan sobre filas de esa única versión, sin inferir cruces de distribuciones
+marginales. El nombre del propietario está cifrado en almacenamiento y la
+delegación comercial solo procede del intervalo observado disponible; no es
+asignación histórica acreditada.
+
+El corte de `CreatedDate` fija pertenencia, no los valores al cierre: la
+extracción y la segunda lectura consultan estado actual. Ningún recuento de
+actividad F5, gestión comercial, comparativa o KPI de otros informes se
+habilita por esta ruta. Los valores desconocidos se presentan como «Sin
+clasificar» o no disponibles según el indicador, nunca como una actividad cero.
+El diagnóstico individual queda fuera de HTTP; el resumen solo muestra
+contadores y categorías agregados sin IDs ni valores sensibles. Esta fuente
+no modifica F2/F2M/F5 estrictas ni `verification.verified`.
+
 ## Nota técnica — materialización mensual F2 provisional
 
 La materialización F2 mensual aislada preserva, para una futura consulta
@@ -128,6 +171,11 @@ El control fail-closed distingue la evidencia fuente de F2M
 journal no puede validar al otro ni alterar el informe oficial.
 
 ### Noviembre de 2026: lector mensual provisional validado
+
+El contrato de este apartado corresponde al circuito **F2/F2M/F5 estricto**
+preexistente. Se utiliza para la vista mensual solo cuando aún no hay puntero
+operativo activo; la nueva fuente operativa se describe al principio del
+documento y no marca F2/F2M/F5 como verificadas.
 
 `/informes/leads?period=november_2026` es una vista administrativa aislada, no
 una extensión del lector publicado. Exige el flag

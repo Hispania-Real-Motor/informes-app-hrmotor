@@ -1,5 +1,16 @@
 # Informe de Llamadas
 
+## Dependencia de la nueva fuente operativa mensual de Interests
+
+`salesforce_interest_operational_rows` almacena una referencia Interest y
+fuente observadas para el dashboard provisional de noviembre, pero no extrae
+`Task`/`Event`, no certifica `WhatId` ni sustituye la generación publicada.
+`SalesforceCallSyncService::relatedInterestMatches()` y el resolver de portal
+siguen con su contrato local/oficial; el puntero operativo nuevo no alimenta
+clasificación, gestión, duración, filtros, KPI, auditoría ni CSV de Llamadas.
+La eventual integración exige evidencia de relación y cobertura F5 compatible,
+sin convertir una actividad desconocida en cero.
+
 ## Nota técnica — materialización F2 mensual provisional
 
 La materialización F2 mensual guarda de forma aislada la identidad y contexto

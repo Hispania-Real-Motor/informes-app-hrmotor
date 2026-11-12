@@ -1,5 +1,103 @@
 # Handoff para agentes
 
+## 2026-11-12 — PR #146: precedencia de versiones operativas mensuales
+
+- Tarea: impedir que un run antiguo reanudado sustituya una versión mensual
+  operativa más reciente. El cambio en `OperationalInterestMonthlySync.php`
+  ordena candidatas por `(effective_cutoff_at UTC, run_id)`, comprueba la
+  precedencia en preparación y reclamación y la revalida con bloqueo en la
+  transacción de activación. Una candidata superada conserva filas, incidencias,
+  contadores, fase y checkpoint; queda `failed/superseded` sin nueva lectura
+  Salesforce. La versión activa y la generación oficial permanecen intactas.
+- Archivos funcionales modificados: servicio y
+  `tests/Feature/OperationalInterestMonthlySyncTest.php`. Documentos: este
+  handoff, `docs/operaciones-produccion.md`,
+  `docs/salesforce-interest-generations.md`, `docs/reglas-negocio-leads.md`,
+  `docs/matriz-trazabilidad-kpi.md` y `docs/ai/DECISIONS.md`.
+- Base de datos/configuración: no se añade migración, tabla, índice, variable
+  de entorno ni scheduler. La regla usa el puntero y runs existentes. No se
+  modifica F2, F2M, F5, journals históricos ni publicaciones oficiales.
+- Seguridad: comparación definitiva bajo `lockForUpdate` del mes y lease
+  fenced; error de estado seguro sin IDs ni mensajes remotos. Las huellas HMAC
+  diagnósticas actuales admiten correlación entre IDs con valores idénticos;
+  se evalúa aislamiento por registro como trabajo versionado posterior, sin
+  romper la semántica ni la reanudación de huellas persistidas.
+- Rendimiento: una lectura acotada del run activo por prepare/claim/activate,
+  ninguna consulta SQL por Interest ni SOQL adicional. `MAX_REMOTE_PAGES_PER_BATCH=10`
+  permite nueve páginas completas y rechaza la décima sin persistir ese lote;
+  las pruebas cubren ambos extremos.
+- Pruebas añadidas: A falla tras checkpoint, B activa con cutoff posterior,
+  A reintenta sin SOQL; empate de cutoff por ID; control final de activación;
+  nueve páginas admitidas. Se conservan tests de lease/concurrencia y
+  paginación. En el SHA `262c94c789f9e7e500e654d606d3556dcebf53be`,
+  GitHub Actions CI pasó: PHPUnit completo 1.726 pruebas, 1 omitida y 15.480
+  aserciones; MariaDB 11 (suite operativa 18 pruebas, 100 aserciones), Pint,
+  build y whitespace pasaron. Documentation integrity también pasó. El
+  ejecutable PHP local no estuvo disponible; `git diff --check` pasó en local.
+- Acciones manuales/riesgos: revisar la PR y sus checks antes de integrar;
+  desplegar y ejecutar cualquier lectura productiva solo bajo autorización
+  independiente. Un cutoff posterior acredita una observación operativa más
+  reciente, no una fotografía histórica. El aislamiento HMAC por registro
+  requiere estrategia compatible de formato/rotación para runs preexistentes.
+
+## 2026-11-12 — sincronización operativa mensual de Interests (en revisión)
+
+- Objetivo y solución: nueva fuente provisional por mes para consultar
+  `Interes__c`, mapear, comprobar dos veces cobertura/identidad, conservar
+  última observación válida con incidencias por cambio, poner mapeos
+  individuales en cuarentena y activar atómicamente una proyección de
+  dashboard. No se reutiliza una F2 no verificada como F2M/F5 ni se modifica
+  `verification.verified`; revisiones productivas 2–4 y límite de tres
+  revisiones permanecen intactos. La PR Draft #145 no se modificó: solo se
+  reutilizó `InterestMonthlyDifferenceClassifier`; su migración/flujo estricto
+  no son necesarios para esta entrega operativa y podrían cerrarse como
+  sustituidos después de revisión humana.
+- Código/CI: `OperationalInterestMonthlySync.php`,
+  `InterestMonthlyDifferenceClassifier.php`,
+  `OperationalInterestMonthlyReader.php`,
+  `SyncOperationalInterestsCommand.php`,
+  `LeadDashboardController.php`,
+  `October2026ProvisionalInterestDashboardDatasetService.php`, nueva migración
+  `2026_11_16_120000_create_operational_interest_months.php`,
+  `OperationalInterestMonthlySyncTest.php`, `resources/views/reports/leads/index.blade.php`,
+  `.github/workflows/ci.yml`,
+  validador documental y su prueba. Documentación: generaciones, operaciones,
+  reglas de Interests, Campañas, Llamadas, Reservas/Ventas, matriz, guía y
+  `docs/ai/{HANDOFF,PROJECT_CONTEXT,DECISIONS}.md`.
+- Base de datos: cuatro tablas nuevas para puntero mensual, runs, filas
+  funcionales minimizadas e incidencias por ID/categoría. No hay datos reales
+  escritos. `owner_name_ciphertext` se cifra con `APP_KEY`; huellas de categorías
+  usan HMAC. El `down()` no elimina evidencia. Migrar solo tras autorización
+  independiente y con backup/preflight; no habilitar el flag sin un run activo
+  revisado. No hay nuevas variables obligatorias; el flag de noviembre ya
+  existe y permanece apagado por defecto.
+- Seguridad: CLI exige `--allow-salesforce-read` para `run`/`sync-current`;
+  status y HTTP no exponen IDs, valores de campos, payloads, SQL ni tokens.
+  La vista conserva admin, feature flag, no-store/private y fallo cerrado.
+  SQL directo fuera del contrato Laravel exige desactivar la vista y preparar
+  una nueva versión revisada; la fuente no certifica hard deletes o historia.
+- Rendimiento: lotes keyset de 500 filas, máximo 250 lotes confirmados y 300
+  intentos remotos persistentes por run entre dos
+  lecturas, escritura agrupada y checkpoint en una misma transacción; ninguna
+  transacción SQL queda abierta durante SOQL. La proyección se construye fuera
+  de HTTP en lotes; el lector usa puntero/resumen/proyección con comprobación
+  final. Requiere medir duración, llamadas, memoria y latencia con volumen
+  productivo después de un despliegue autorizado; no se ejecutó Salesforce.
+- Verificaciones locales: catorce pruebas nuevas y 79
+  aserciones correctas, incluido volumen sintético 9.330/4 cambios
+  (38 consultas keyset simuladas; 49,35 s de pared en Windows),
+  cuarentena, reanudación, lease, cobertura y HTTP ligero. Suite completa,
+  MariaDB 11, Pint, build, documentación y CI deben confirmarse para el SHA
+  final; no declararlos verdes antes de comprobarlos. `git diff --check` pasó
+  en la revisión intermedia.
+- Acciones manuales y riesgos: revisar PR y CI, autorizar despliegue/migración
+  separadamente, presupuestar API, ejecutar `prepare/status/run/status` de
+  noviembre bajo supervisión, conciliar `observed = admitted + quarantined` y
+  habilitar el flag solo tras aprobar el run. F5/actividad, gestión comercial,
+  generación oficial y otros informes no consumen este puntero. Cutoff limita
+  pertenencia, no valores históricos; hard deletes y SQL directo no se
+  detectan automáticamente. Rollback conserva tablas, runs y evidencia.
+
 ## 2026-11-12 — reapertura de candidatos y detalle financiero del aprobador
 
 - Problema corregido: un candidato de Comisiones en `pending_approval` no se

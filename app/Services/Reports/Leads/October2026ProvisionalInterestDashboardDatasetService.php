@@ -38,6 +38,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     public function __construct(
         private readonly October2026ProvisionalInterestReader $reader,
         private readonly MonthlyInterestProvisionalReader $monthlyReader,
+        private readonly OperationalInterestMonthlyReader $operationalReader,
     ) {}
 
     /** @return array<string, mixed> */
@@ -70,12 +71,13 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'comparativa' => [],
             'insights' => [
                 $label.': '.$overview['coverage']['eligible_active_matching'].' Intereses activos disponibles.',
+                ...(isset($overview['coverage']['observed']) ? ['Cobertura operativa: '.$overview['coverage']['observed'].' observados, '.$overview['coverage']['admitted'].' admitidos y '.$overview['coverage']['quarantined'].' en cuarentena. '.$overview['coverage']['changed_between_reads'].' cambios entre lecturas.'] : []),
                 ...(isset($period['effective_cutoff']) ? ['Altas incluidas hasta '.CarbonImmutable::parse($period['effective_cutoff'], 'UTC')->setTimezone('Europe/Madrid')->format('d/m/Y H:i').'; contenido observado en la validación.'] : []),
                 'Las comparativas y los indicadores de actividad requieren más datos.',
             ],
             'filters' => $filters,
             'availability' => [
-                'commercials' => $this->hasOwners($snapshot) ? 'Propietarios observados en F2M; la asignación histórica no está certificada.' : 'Sin datos suficientes de propietarios para este mes.',
+                'commercials' => $this->hasOwners($snapshot) ? (isset($snapshot['operational_month']) ? 'Propietarios observados en la sincronización operativa; asignación histórica no certificada.' : 'Propietarios observados en F2M; la asignación histórica no está certificada.') : 'Sin datos suficientes de propietarios para este mes.',
                 'activity' => 'Sin datos suficientes de actividad y gestión para este mes.',
                 'comparison' => 'Sin datos suficientes para comparar con otro período.',
             ],
@@ -153,7 +155,9 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'delegations' => $delegations,
             'commercials' => $items,
             'items' => $items,
-            'message' => 'Propietario F2M observado; delegación según el intervalo disponible al corte funcional del mes.',
+            'message' => isset($snapshot['operational_month'])
+                ? 'Propietario observado durante la sincronización; delegación según el intervalo disponible en la observación.'
+                : 'Propietario F2M observado; delegación según el intervalo disponible al corte funcional del mes.',
         ];
     }
 
@@ -161,15 +165,23 @@ final class October2026ProvisionalInterestDashboardDatasetService
     private function snapshot(Request $request): array
     {
         $month = MonthlyInterestProvisionalPeriod::forKey($request->query('period'));
-        $snapshot = $month !== null
-            ? $this->monthlyReader->latestForMonth($month['year'], $month['month'])
-            : $this->reader->dashboardProjection();
+        $snapshot = $month !== null ? $this->monthlySnapshot($month) : $this->reader->dashboardProjection();
         $requested = $request->header('X-Interest-Generation');
         if ($requested !== null && ! hash_equals($snapshot['projection_key'], (string) $requested)) {
             throw new ProvisionalInterestSourceUnavailable;
         }
 
         return $snapshot;
+    }
+
+    /** @param array{year:int,month:int,flag:string,label:string} $month */
+    private function monthlySnapshot(array $month): array
+    {
+        if ($this->operationalReader->hasActiveForMonth($month['year'], $month['month'])) {
+            return $this->operationalReader->latestForMonth($month['year'], $month['month']);
+        }
+
+        return $this->monthlyReader->latestForMonth($month['year'], $month['month']);
     }
 
     /** @param array{overview:array<string,mixed>,projection_key:string,integrity_revision:int} $snapshot */
@@ -301,6 +313,12 @@ final class October2026ProvisionalInterestDashboardDatasetService
     private function assertCurrent(array $snapshot): void
     {
         if (isset($snapshot['scope']) && $snapshot['scope'] !== self::SCOPE) {
+            if (isset($snapshot['operational_month'])) {
+                $this->operationalReader->assertCurrent($snapshot['operational_month'],
+                    $snapshot['integrity_revision'], $snapshot['projection_key']);
+
+                return;
+            }
             $this->monthlyReader->assertCurrent($snapshot['recovery_id'],
                 $snapshot['integrity_revision'], $snapshot['projection_key']);
 
