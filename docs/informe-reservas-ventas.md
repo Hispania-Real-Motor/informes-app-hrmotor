@@ -29,6 +29,11 @@ evidencia y sólo puede abrir otra revisión con cutoff posterior. F2M y F5
 rechazan preparar esa F2 no verificada. Este control no añade atribución
 Opportunity/Interest ni cambia la generación publicada, la disponibilidad o
 los KPI de Reservas/Ventas y Rendimiento comercial.
+La F2 aún en curso puede reexaminar hasta 100 diferencias de contenido mediante
+una consulta selectiva y una segunda verificación completa. Sólo una
+verificación final limpia permite continuar a F2M, que vuelve a contrastar el
+estado remoto y puede detectar cambios posteriores. Esto no acredita relaciones
+Opportunity/Interest históricas ni abre ningún bloque de Reservas/Ventas.
 
 La etapa local de consolidación de meses verificados sólo referencia filas F2M
 y el manifiesto F5 de cada origen; no crea generación Interest publicada ni

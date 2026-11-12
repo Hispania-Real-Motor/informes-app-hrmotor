@@ -11,6 +11,15 @@
 > no almacena payload Salesforce ni datos personales de la respuesta remota.
 > Los fallos del journal se clasifican por etapa con metadatos seguros y
 > conservan checkpoint/reanudación; no activan KPI, lectores ni publicación.
+> Una revisión F2 mensual aún abierta con hasta 100 diferencias de hash, sin
+> diferencias de pertenencia, puede releer sólo esas identidades y debe pasar
+> una segunda verificación completa antes de `verified=true`. `verified_at`
+> prueba presencia, no igualdad; `hash_matched_at` distingue coincidencia y
+> los IDs divergentes quedan sólo en filas restringidas del journal. Las
+> huellas y `SystemModstamp` iniciales se conservan antes del ajuste. El cutoff
+> limita `CreatedDate`, mientras extracción y verificación observan estado
+> actual posiblemente posterior. Una F2 no verificada sigue bloqueando F2M/F5;
+> la F2M vuelve a detectar cambios posteriores. No cambia ninguna ficha KPI.
 > `InterestMonthlyConsolidationService` añade una etapa local de referencias a
 > revisiones F2M/F5 verificadas. Su manifiesto y sus controles de identidad
 > no prueban cobertura global, borrados físicos ni estado histórico `as-of`;

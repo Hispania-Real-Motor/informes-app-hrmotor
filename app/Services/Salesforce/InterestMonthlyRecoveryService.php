@@ -19,6 +19,12 @@ final class InterestMonthlyRecoveryService
 
     private const DEFAULT_BATCH_SIZE = 500;
 
+    private const MAX_STABILIZATION_ROWS = 100;
+
+    private const MAX_RECONCILIATION_READS = 3;
+
+    private const VERIFICATION_RETRY_FACTOR = 2;
+
     public function __construct(
         private readonly SalesforceClient $client,
         private readonly SalesforceInterestSyncService $interests,
@@ -96,7 +102,15 @@ final class InterestMonthlyRecoveryService
                     continue;
                 }
                 if ($r->phase === 'verify') {
+                    if ($this->initializeVerificationContract($r, $lease)) {
+                        continue;
+                    }
                     $this->verify($r, $lease, $stage);
+
+                    continue;
+                }
+                if ($r->phase === 'reconcile') {
+                    $this->reconcile($r, $lease, $stage);
 
                     continue;
                 }
@@ -191,9 +205,48 @@ final class InterestMonthlyRecoveryService
         });
     }
 
+    private function initializeVerificationContract(object $r, string $lease): bool
+    {
+        $stored = json_decode($r->counters, true, 64, JSON_THROW_ON_ERROR);
+        if (array_key_exists('verification_pass', $stored)) {
+            return false;
+        }
+
+        DB::transaction(function () use ($r, $lease, $stored): void {
+            $this->owned((int) $r->id, $lease, true);
+            $counters = array_replace($this->emptyCounters(), $stored);
+            $counters['remote_checked'] = 0;
+            $counters['remote_missing_local'] = 0;
+            $counters['local_missing_remote'] = 0;
+            $counters['content_changed'] = 0;
+            $counters['verify_checkpoint'] = null;
+            $counters['verification_pass'] = 1;
+            DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)
+                ->where('lease_token', $lease)->update(['counters' => json_encode($counters, JSON_THROW_ON_ERROR),
+                    'heartbeat_at' => now('UTC'), 'updated_at' => now()]);
+        });
+
+        return true;
+    }
+
     private function verify(object $r, string $lease, string &$stage): void
     {
-        $counters = $this->counters($r);
+        $stage = 'verification_database';
+        $counters = DB::transaction(function () use ($r, $lease): array {
+            $owned = $this->owned((int) $r->id, $lease, true);
+            $counters = $this->counters($owned);
+            $maxQueries = 2 * self::VERIFICATION_RETRY_FACTOR
+                * (intdiv((int) $counters['persisted'], (int) $r->batch_size) + 1);
+            if ($counters['verification_query_attempts'] >= $maxQueries) {
+                throw new RuntimeException('Monthly verification query budget exhausted.');
+            }
+            $counters['verification_query_attempts']++;
+            DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)
+                ->where('lease_token', $lease)->update(['counters' => json_encode($counters, JSON_THROW_ON_ERROR),
+                    'heartbeat_at' => now('UTC'), 'updated_at' => now()]);
+
+            return $counters;
+        });
         $cursor = $counters['verify_checkpoint'] ?? null;
         $this->renew((int) $r->id, $lease);
         $stage = 'verification_query';
@@ -217,30 +270,54 @@ final class InterestMonthlyRecoveryService
             $locals = $remote === [] ? collect() : DB::table('salesforce_interest_monthly_recovery_rows')
                 ->where('monthly_recovery_id', $r->id)->whereIn('salesforce_id', array_keys($remote))
                 ->get(['id', 'salesforce_id', 'content_hash'])->keyBy('salesforce_id');
-            $verifiedIds = [];
+            $seenIds = [];
+            $matchedIds = [];
+            $mismatchedIds = [];
             foreach ($remote as $id => $hash) {
                 $local = $locals->get($id);
                 $counters['remote_checked']++;
                 if ($local === null) {
                     $counters['remote_missing_local']++;
                 } else {
-                    if (! hash_equals($local->content_hash, $hash)) {
+                    $seenIds[] = $local->id;
+                    if (hash_equals($local->content_hash, $hash)) {
+                        $matchedIds[] = $local->id;
+                    } else {
                         $counters['content_changed']++;
+                        $mismatchedIds[] = $local->id;
                     }
-                    $verifiedIds[] = $local->id;
                 }
             }
-            if ($verifiedIds !== []) {
+            if ($seenIds !== []) {
                 DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)
-                    ->whereIn('id', $verifiedIds)->update(['verified_at' => now('UTC'), 'updated_at' => now()]);
+                    ->whereIn('id', $seenIds)->update(['last_seen_pass' => $counters['verification_pass'],
+                        'verified_at' => now('UTC'), 'hash_matched_at' => null, 'updated_at' => now()]);
+            }
+            if ($matchedIds !== []) {
+                DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)
+                    ->whereIn('id', $matchedIds)->update(['hash_matched_at' => now('UTC'), 'updated_at' => now()]);
+            }
+            if ($mismatchedIds !== []) {
+                DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)
+                    ->whereIn('id', $mismatchedIds)->whereNull('first_mismatch_at')
+                    ->update(['first_mismatch_at' => now('UTC'), 'updated_at' => now()]);
             }
             $terminal = count($records) < (int) $r->batch_size;
             if ($terminal) {
-                $localOnly = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)->whereNull('verified_at')->count();
+                $localOnly = DB::table('salesforce_interest_monthly_recovery_rows')
+                    ->where('monthly_recovery_id', $r->id)
+                    ->where('last_seen_pass', '<', $counters['verification_pass'])->count();
                 $counters['local_missing_remote'] += $localOnly;
                 $verified = $counters['remote_missing_local'] === 0 && $counters['local_missing_remote'] === 0 && $counters['content_changed'] === 0;
-                $evidence = ['source' => 'current_state_monthly_inventory', 'revision' => (int) $r->revision, 'effective_cutoff_at' => $r->effective_cutoff_at, 'month_closed_at_cutoff' => $r->effective_cutoff_at !== null && CarbonImmutable::parse($r->effective_cutoff_at, 'UTC')->gte(CarbonImmutable::parse($r->functional_end_at, 'UTC')), 'as_of_cutoff_certified' => false, 'rows' => $counters['persisted'], 'verification' => ['verified' => $verified, 'remote_checked' => $counters['remote_checked'], 'remote_missing_local' => $counters['remote_missing_local'], 'local_missing_remote' => $counters['local_missing_remote'], 'content_changed' => $counters['content_changed']], 'hard_deletes' => 'not_observable_without_independent_evidence', 'f5' => 'not_attempted_blocked', 'historical_certification' => false];
-                $phase = 'completed';
+                $reconcile = (int) $counters['verification_pass'] === 1
+                    && $counters['content_changed'] > 0
+                    && $counters['content_changed'] <= self::MAX_STABILIZATION_ROWS
+                    && $counters['remote_missing_local'] === 0 && $counters['local_missing_remote'] === 0;
+                $counters['verify_checkpoint'] = null;
+                $counters['initial_content_changed'] = (int) $counters['verification_pass'] === 1
+                    ? $counters['content_changed'] : $counters['initial_content_changed'];
+                $evidence = $reconcile ? null : ['source' => 'current_state_monthly_inventory', 'revision' => (int) $r->revision, 'effective_cutoff_at' => $r->effective_cutoff_at, 'month_closed_at_cutoff' => $r->effective_cutoff_at !== null && CarbonImmutable::parse($r->effective_cutoff_at, 'UTC')->gte(CarbonImmutable::parse($r->functional_end_at, 'UTC')), 'as_of_cutoff_certified' => false, 'rows' => $counters['persisted'], 'verification' => ['verified' => $verified, 'pass' => $counters['verification_pass'], 'remote_checked' => $counters['remote_checked'], 'remote_missing_local' => $counters['remote_missing_local'], 'local_missing_remote' => $counters['local_missing_remote'], 'content_changed' => $counters['content_changed']], 'stabilization' => ['attempts' => $counters['stabilization_attempts'], 'initial_content_changed' => $counters['initial_content_changed'], 'stabilized_rows' => $counters['stabilized_rows'], 'limit' => self::MAX_STABILIZATION_ROWS], 'hard_deletes' => 'not_observable_without_independent_evidence', 'f5' => 'not_attempted_blocked', 'historical_certification' => false];
+                $phase = $reconcile ? 'reconcile' : 'completed';
             } else {
                 $counters['verify_checkpoint'] = $last;
                 $evidence = null;
@@ -248,6 +325,100 @@ final class InterestMonthlyRecoveryService
             }
             $stage = 'verification_database';
             DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)->where('lease_token', $lease)->update(['phase' => $phase, 'counters' => json_encode($counters, JSON_THROW_ON_ERROR), 'evidence' => $evidence === null ? $r->evidence : json_encode($evidence, JSON_THROW_ON_ERROR), 'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
+        });
+    }
+
+    private function reconcile(object $r, string $lease, string &$stage): void
+    {
+        $stage = 'reconciliation_database';
+        $counters = DB::transaction(function () use ($r, $lease): array {
+            $owned = $this->owned((int) $r->id, $lease, true);
+            $counters = $this->counters($owned);
+            if ($counters['reconciliation_read_attempts'] >= self::MAX_RECONCILIATION_READS) {
+                throw new RuntimeException('Monthly reconciliation read limit reached.');
+            }
+            $counters['reconciliation_read_attempts']++;
+            DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)
+                ->where('lease_token', $lease)->update(['counters' => json_encode($counters, JSON_THROW_ON_ERROR),
+                    'heartbeat_at' => now('UTC'), 'updated_at' => now()]);
+
+            return $counters;
+        });
+        $candidates = DB::table('salesforce_interest_monthly_recovery_rows')
+            ->where('monthly_recovery_id', $r->id)->whereNotNull('first_mismatch_at')
+            ->orderBy('salesforce_id')->limit(self::MAX_STABILIZATION_ROWS + 1)
+            ->get(['id', 'salesforce_id', 'content_hash', 'system_modstamp_at', 'created_at'])->keyBy('salesforce_id');
+        if ($candidates->count() !== $counters['initial_content_changed']
+            || $candidates->count() > self::MAX_STABILIZATION_ROWS) {
+            throw new RuntimeException('Monthly reconciliation candidates changed.');
+        }
+
+        $stage = 'reconciliation_query';
+        $records = $this->read($this->interests->monthlyMaterializationSoql($candidates->keys()->all()),
+            self::MAX_STABILIZATION_ROWS, (int) $r->id, $lease);
+        $this->renew((int) $r->id, $lease);
+        $stage = 'reconciliation_validation';
+        $updates = [];
+        foreach ($records as $record) {
+            $stage = 'reconciliation_mapping';
+            $mapped = $this->interests->mapRecord($record, (bool) data_get($record, 'IsDeleted', false));
+            $id = (string) $mapped['salesforce_id'];
+            $stage = 'reconciliation_validation';
+            $source = $candidates->get($id);
+            $functional = CarbonImmutable::parse($mapped['functional_created_at'], 'UTC');
+            $created = $mapped['salesforce_created_at'];
+            if ($source === null || isset($updates[$id]) || $created === null
+                || CarbonImmutable::parse($created, 'UTC')->gt(CarbonImmutable::parse($r->effective_cutoff_at, 'UTC'))
+                || $functional->lt(CarbonImmutable::parse($r->functional_start_at, 'UTC'))
+                || $functional->gte(CarbonImmutable::parse($r->functional_end_at, 'UTC'))) {
+                throw new RuntimeException('Monthly reconciliation membership changed.');
+            }
+            $stage = 'reconciliation_hash';
+            $updates[$id] = ['monthly_recovery_id' => $r->id, 'salesforce_id' => $id,
+                'content_hash' => $this->contentHash($mapped), 'initial_content_hash' => $source->content_hash,
+                'initial_system_modstamp_at' => $source->system_modstamp_at,
+                'is_deleted' => (bool) $mapped['is_deleted'], 'functional_created_at' => $functional,
+                'system_modstamp_at' => $mapped['system_modstamp_at'],
+                'created_at' => $source->created_at, 'updated_at' => now()];
+        }
+        $stage = 'reconciliation_validation';
+        if (count($updates) !== $candidates->count()) {
+            throw new RuntimeException('Monthly reconciliation coverage changed.');
+        }
+
+        $stage = 'reconciliation_database';
+        DB::transaction(function () use ($r, $lease, $candidates, $updates, $counters): void {
+            $this->owned((int) $r->id, $lease, true);
+            $locked = DB::table('salesforce_interest_monthly_recovery_rows')
+                ->where('monthly_recovery_id', $r->id)->whereIn('salesforce_id', $candidates->keys()->all())
+                ->lockForUpdate()->get(['salesforce_id', 'content_hash'])->keyBy('salesforce_id');
+            if ($locked->count() !== $candidates->count()) {
+                throw new RuntimeException('Monthly reconciliation source changed.');
+            }
+            foreach ($candidates as $id => $candidate) {
+                $current = $locked->get($id);
+                if ($current === null || ! hash_equals((string) $candidate->content_hash, (string) $current->content_hash)) {
+                    throw new RuntimeException('Monthly reconciliation source changed.');
+                }
+            }
+            DB::table('salesforce_interest_monthly_recovery_rows')->upsert(array_values($updates),
+                ['monthly_recovery_id', 'salesforce_id'],
+                ['content_hash', 'initial_content_hash', 'initial_system_modstamp_at', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'updated_at']);
+            $this->octoberEvidence->afterContentMutation((int) $r->id);
+            $counters['soft_deleted_observed'] = DB::table('salesforce_interest_monthly_recovery_rows')
+                ->where('monthly_recovery_id', $r->id)->where('is_deleted', true)->count();
+            $counters['stabilized_rows'] = count($updates);
+            $counters['stabilization_attempts'] = 1;
+            $counters['verification_pass'] = 2;
+            $counters['remote_checked'] = 0;
+            $counters['remote_missing_local'] = 0;
+            $counters['local_missing_remote'] = 0;
+            $counters['content_changed'] = 0;
+            $counters['verify_checkpoint'] = null;
+            DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)
+                ->where('lease_token', $lease)->update(['phase' => 'verify',
+                    'counters' => json_encode($counters, JSON_THROW_ON_ERROR),
+                    'heartbeat_at' => now('UTC'), 'last_checkpoint_at' => now('UTC'), 'updated_at' => now()]);
         });
     }
 
@@ -288,7 +459,7 @@ final class InterestMonthlyRecoveryService
     /** @return array<string,int> */
     private function emptyCounters(): array
     {
-        return ['observed' => 0, 'persisted' => 0, 'soft_deleted_observed' => 0, 'remote_checked' => 0, 'remote_missing_local' => 0, 'local_missing_remote' => 0, 'content_changed' => 0, 'verify_checkpoint' => null];
+        return ['observed' => 0, 'persisted' => 0, 'soft_deleted_observed' => 0, 'remote_checked' => 0, 'remote_missing_local' => 0, 'local_missing_remote' => 0, 'content_changed' => 0, 'verify_checkpoint' => null, 'verification_pass' => 1, 'verification_query_attempts' => 0, 'initial_content_changed' => 0, 'stabilized_rows' => 0, 'stabilization_attempts' => 0, 'reconciliation_read_attempts' => 0];
     }
 
     /** @return array<string,int> */
@@ -315,7 +486,7 @@ final class InterestMonthlyRecoveryService
     private function recordFailure(int $id, string $lease, string $stage, Throwable $e): void
     {
         $category = $e instanceof MonthlyInterestRecoveryLeaseLost ? 'lease_lost' : ($e instanceof QueryException ? $this->databaseCategory($e) : match ($stage) {
-            'salesforce_query', 'verification_query' => 'salesforce_query_failed',
+            'salesforce_query', 'verification_query', 'reconciliation_query' => 'salesforce_query_failed',
             'mapping' => 'mapping_failed',
             'record_validation' => 'invalid_record',
             'content_hash' => 'hash_failed',
@@ -324,6 +495,10 @@ final class InterestMonthlyRecoveryService
             'verification_mapping' => 'verification_mapping_failed',
             'verification_hash' => 'verification_hash_failed',
             'verification_database' => 'verification_failed',
+            'reconciliation_mapping' => 'verification_mapping_failed',
+            'reconciliation_validation' => 'reconciliation_invalid',
+            'reconciliation_hash' => 'verification_hash_failed',
+            'reconciliation_database' => 'verification_failed',
             'finalization' => 'checkpoint_failed',
             default => 'unexpected_failure',
         });

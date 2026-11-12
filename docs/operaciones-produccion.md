@@ -1620,13 +1620,38 @@ operación como certificación histórica o publicación global.
 
 El cambio de hash puede deberse a modificación concurrente en Salesforce,
 pero el journal agregado no permite demostrar el campo ni la causa exacta. El
-hash excluye tiempo técnico de sincronización; una repetición consume una
-nueva lectura de todo el mes F2, segunda verificación, F2M y F5 selectiva, con
-lotes acotados. Medir tiempos, filas, páginas y límites remotos durante la
-ventana, y abortar si el coste supera la capacidad aprobada. No hay migración
-nueva ni cambio de configuración requerido por este correctivo; el flag y el
-scheduler siguen apagados. SQL directo ajeno a invalidadores Laravel requiere
-revocación y revalidación de la proyección afectada.
+hash excluye tiempo técnico de sincronización, pero incluye
+`SystemModstamp`, `LastModifiedDate`, `Owner.Name` y campos funcionales. Una
+revisión ya `completed` no se estabiliza retrospectivamente: sus contadores
+agregados no identifican los IDs divergentes. La consulta productiva de solo
+lectura comunicada demuestra que algunas filas almacenadas tienen
+`SystemModstamp` posterior al cutoff de pertenencia; no demuestra que sean las
+filas con hash distinto. Tampoco prueba cuál campo cambió entre extracción y
+verificación.
+
+**Antes de usar el correctivo nuevo:** desplegar la migración aditiva
+`2026_11_15_120000_add_bounded_verification_to_monthly_interest_rows` en
+ventana autorizada y comprobar columnas/índices sin alterar journals previos.
+La fase `reconcile` sólo actúa sobre una revisión **en curso** con 1–100
+divergencias de contenido y cobertura íntegra; reconsulta esos IDs, conserva
+huella y `SystemModstamp` iniciales en columnas restringidas y exige una
+segunda verificación mensual completa. `verified_at` significa presencia;
+comprobar `hash_matched_at` para igualdad. No copiar IDs, huellas o timestamps
+individuales a logs/tickets. Una diferencia persistente deja F2 no verificada
+y bloquea F2M/F5. Reanudar fallos con la misma revisión y motivo: como máximo
+tres intentos de relectura selectiva, sin reescribir revisiones completadas.
+El comando operativo deja de preparar revisiones nuevas tras tres revisiones
+consecutivas completadas y no verificadas; requiere investigación antes de una
+intervención manual independiente.
+
+Presupuestar una extracción mensual más dos verificaciones completas y hasta
+100 IDs selectivos por revisión (hasta tres intentos selectivos si falla y se
+reanuda). Medir duración, páginas, llamadas API y uso de CPU/DB en la ventana;
+detener la operación si excede el presupuesto aprobado. Si F2 se estabiliza,
+F2M debe continuar contrastando sus propias huellas contra Salesforce: un
+cambio posterior no se acepta por la verificación previa. No hay cambio de
+configuración; el flag y scheduler siguen apagados. SQL directo ajeno a
+invalidadores Laravel exige revocación y revalidación de la proyección.
 
 La tarea de catálogo `salesforce-sync-interest-monthly-current` permanece
 deshabilitada, incluso para ejecución manual desde Operaciones, salvo que

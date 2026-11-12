@@ -236,12 +236,14 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
                 {
                     if (str_contains($soql, 'FROM Interes__c')) {
                         if (str_contains($soql, 'Id IN (') || str_contains($soql, "Id > '")) {
-                            yield str_contains($soql, 'Id IN (') ? [$this->record('Changed')] : [];
+                            yield str_contains($soql, 'Id IN (') ? [$this->record($this->inventoryReads >= 3 ? 'Changed again' : 'Changed')] : [];
 
                             return;
                         }
                         $this->inventoryReads++;
-                        yield [$this->record($this->inventoryReads === 1 ? 'Original' : 'Changed')];
+                        yield [$this->record(match ($this->inventoryReads) {
+                            1 => 'Original', 2 => 'Changed', 3 => 'Changed again', default => 'Changed again',
+                        })];
 
                         return;
                     }
@@ -283,7 +285,7 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
             $this->assertTrue($unavailable);
 
             $this->assertSame(1, Artisan::call($command, $options));
-            $this->assertSame(2, $client->inventoryReads);
+            $this->assertSame(3, $client->inventoryReads);
             $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 1);
 
             $reason = 'Reject materialization of an unverified monthly inventory.';
@@ -333,11 +335,14 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
                 public function queryPages(string $soql, bool $includeDeleted = false): \Generator
                 {
                     if (str_contains($soql, 'FROM Interes__c') && ! str_contains($soql, "Id > '")) {
-                        $this->reads++;
+                        if (! str_contains($soql, 'Id IN (')) {
+                            $this->reads++;
+                        }
                         yield [['Id' => 'a01000000000000001', 'CreatedDate' => '2026-11-05T10:00:00Z',
                             'LastModifiedDate' => '2026-11-05T10:00:00Z', 'SystemModstamp' => '2026-11-05T10:00:00Z',
                             'IsDeleted' => false, 'IN_Estado__c' => match ($this->reads) {
-                                1 => 'First', 2, 3 => 'Second', default => 'Third',
+                                1 => 'First', 2 => 'Second', 3, 4 => 'Third', 5 => 'Fourth',
+                                6, 7 => 'Fifth', 8 => 'Sixth', default => 'Seventh',
                             }, 'IN_Lead__c' => null, 'IN_Account__c' => null,
                             'IN_Lead_Origen_Migracion__c' => null, 'IN_Fecha_Creacion_Origen__c' => null,
                             'OwnerId' => null, 'Owner' => ['Name' => 'Synthetic owner']]];
@@ -354,15 +359,23 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
             Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:32:00Z'));
             $this->assertSame(1, Artisan::call($command, $options));
             $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 2);
-            $this->assertSame(4, $client->reads);
+            $this->assertSame(6, $client->reads);
             $this->assertSame(1, Artisan::call($command, $options));
-            $this->assertSame(4, $client->reads);
+            $this->assertSame(6, $client->reads);
             $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 2);
             $this->assertDatabaseCount('salesforce_interest_monthly_materializations', 0);
             $this->assertDatabaseCount('salesforce_interest_monthly_activity_recoveries', 0);
             foreach (DB::table('salesforce_interest_monthly_recoveries')->get() as $revision) {
                 $this->assertFalse(data_get(json_decode($revision->evidence, true), 'verification.verified'));
             }
+            Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:42:00Z'));
+            $this->assertSame(1, Artisan::call($command, $options));
+            $this->assertSame(9, $client->reads);
+            Carbon::setTestNow(CarbonImmutable::parse('2026-11-11T12:52:00Z'));
+            $this->assertSame(1, Artisan::call($command, $options));
+            $this->assertSame(9, $client->reads);
+            $this->assertDatabaseCount('salesforce_interest_monthly_recoveries', 3);
+            $this->assertStringContainsString('retry limit reached', Artisan::output());
         } finally {
             Carbon::setTestNow();
         }
@@ -381,13 +394,17 @@ class SyncCurrentMonthInterestsCommandTest extends TestCase
                 public function queryPages(string $soql, bool $includeDeleted = false): \Generator
                 {
                     if (str_contains($soql, 'FROM Interes__c') && ! str_contains($soql, "Id > '")) {
-                        $this->reads++;
-                        if ($this->reads === 3) {
+                        if (! str_contains($soql, 'Id IN (')) {
+                            $this->reads++;
+                        }
+                        if ($this->reads === 4) {
                             throw new \RuntimeException('Synthetic sensitive Salesforce failure');
                         }
                         yield [['Id' => 'a01000000000000001', 'CreatedDate' => '2026-11-05T10:00:00Z',
                             'LastModifiedDate' => '2026-11-05T10:00:00Z', 'SystemModstamp' => '2026-11-05T10:00:00Z',
-                            'IsDeleted' => false, 'IN_Estado__c' => $this->reads === 1 ? 'First' : 'Second',
+                            'IsDeleted' => false, 'IN_Estado__c' => match ($this->reads) {
+                                1 => 'First', 2 => 'Second', default => 'Third',
+                            },
                             'IN_Lead__c' => null, 'IN_Account__c' => null,
                             'IN_Lead_Origen_Migracion__c' => null, 'IN_Fecha_Creacion_Origen__c' => null,
                             'OwnerId' => null, 'Owner' => ['Name' => 'Synthetic owner']]];
