@@ -7893,6 +7893,12 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   aserción: la marca de presencia y la de igualdad requieren dos UPDATE
   acotados por lote, seis para tres lotes. Se corrigió la expectativa a seis
   sin relajar el límite por lote. Revalidar CI en el SHA posterior.
+- Segunda ejecución sobre `2c958cc`: CI y Documentation integrity en verde.
+  PHPUnit general: 1703 pruebas aprobadas, 1 omitida y 15330 aserciones;
+  Pint, build y whitespace correctos. MariaDB 11.8.9 completó los cinco
+  bloques focales (25/210, 16/152, 11/35, 9/109 y 6/26 pruebas/aserciones).
+  El ajuste de expectativa no cambió la lógica. La validación definitiva
+  corresponde siempre al SHA remoto final de la PR.
 - Pendiente: validar semántica SOQL contra Salesforce real solo bajo operación
   autorizada; medir duración/API/locks antes de activar el comando y observar
   F2M/F5 y la proyección en un despliegue posterior. Una revisión histórica
