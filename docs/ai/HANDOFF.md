@@ -35,10 +35,14 @@
   de 3.000 consultas y 3.000 páginas/lotes por run; sin SOQL ni barrido del
   journal en HTTP. Medir API, SQL, memoria y latencia con volumen real tras
   autorización; no extrapolar el tiempo de fixtures sintéticas a producción.
-- Pruebas: JS local y `git diff --check` deben constar en el cierre del agente
-  principal; PHPUnit completo, MariaDB 11, Pint, build y Documentation
-  integrity se validarán por GitHub Actions en el SHA de la PR. No se ejecutó
-  Salesforce real, migración productiva ni sincronización productiva.
+- Pruebas: JS local, 61/61; `git diff --check`, correcto. Actions en
+  `d8847a0`: PHPUnit completo, 1.735 superadas, una omitida y 15.535
+  aserciones; MariaDB 11 correcto, incluida la suite nueva de actividad
+  (8 pruebas, 43 aserciones); Documentation integrity correcto. Pint detectó
+  una referencia de clase totalmente cualificada en el servicio nuevo;
+  se corrigió el estilo y el SHA final deberá ejecutar de nuevo Pint, build,
+  JavaScript y ambos workflows. No se ejecutó Salesforce real, migración
+  productiva ni sincronización productiva.
 - Manual/riesgos: mantener flag y scheduler apagados hasta autorización
   independiente. Auditar la distribución real de 4.431 sin clasificación y el
   contador de soft deletes antes de explicar la diferencia de siete; revisar

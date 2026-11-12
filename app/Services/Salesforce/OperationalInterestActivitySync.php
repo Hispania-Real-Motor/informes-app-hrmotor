@@ -6,6 +6,7 @@ use App\Services\Reports\Leads\OperationalInterestIdentity;
 use App\Services\Reports\Leads\OperationalInterestMonthlyReader;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -157,7 +158,7 @@ final class OperationalInterestActivitySync
                             'error_stage' => 'lease_expired', 'updated_at' => now()]);
                 }
             }
-            $lease = (string) \Illuminate\Support\Str::uuid();
+            $lease = (string) Str::uuid();
             DB::table('salesforce_interest_operational_activity_runs')->where('id', $runId)->update([
                 'status' => 'running', 'lease_token' => $lease, 'heartbeat_at' => now('UTC'),
                 'started_at' => $run->started_at ?? now('UTC'), 'error_stage' => null, 'updated_at' => now(),
