@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Services\Salesforce\InterestMonthlyRecoveryService;
 use App\Services\Salesforce\InterestMonthlyMaterializationService;
+use App\Services\Salesforce\InterestMonthlyRecoveryService;
 use App\Services\Salesforce\MonthlyInterestActivityRecoveryService;
 use App\Services\Salesforce\MonthlyInterestRecoveryLeaseLost;
 use App\Services\Salesforce\SalesforceClient;
@@ -328,6 +328,87 @@ class InterestMonthlyRecoveryTest extends TestCase
         $resumed = $service->run($id, $reason, true);
         $this->assertTrue($resumed['evidence']['verification']['verified']);
         $this->assertSame(2, $resumed['counters']['verification_query_attempts']);
+    }
+
+    public function test_more_than_100_changes_do_not_trigger_selective_reconciliation(): void
+    {
+        $records = [];
+        for ($number = 1; $number <= 101; $number++) {
+            $records[] = $this->record(sprintf('a01%015d', $number), '2026-11-05T10:00:00Z');
+        }
+        $client = new class($records) extends SalesforceClient
+        {
+            public int $fullReads = 0;
+
+            public int $selectiveReads = 0;
+
+            public function __construct(private array $records) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                if (str_contains($soql, 'Id IN (')) {
+                    $this->selectiveReads++;
+                    yield [];
+
+                    return;
+                }
+                $this->fullReads++;
+                $records = $this->records;
+                if ($this->fullReads === 2) {
+                    foreach ($records as &$record) {
+                        $record['IN_Estado__c'] = 'Changed';
+                    }
+                    unset($record);
+                }
+                yield $records;
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Stop selective reconciliation beyond the fixed bound.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-11T10:00:00Z'));
+
+        $status = $service->run($id, $reason);
+
+        $this->assertFalse($status['evidence']['verification']['verified']);
+        $this->assertSame(101, $status['counters']['content_changed']);
+        $this->assertSame(1, $status['counters']['verification_pass']);
+        $this->assertSame(0, $status['counters']['stabilization_attempts']);
+        $this->assertSame(0, $client->selectiveReads);
+        $this->assertSame(101, DB::table('salesforce_interest_monthly_difference_diagnostics')->where('monthly_recovery_id', $id)->count());
+    }
+
+    public function test_local_member_absent_from_later_period_query_remains_unverified_without_a_guessed_cause(): void
+    {
+        $records = [$this->record('a01000000000000001', '2026-11-05T10:00:00Z'),
+            $this->record('a01000000000000002', '2026-11-05T10:00:00Z')];
+        $this->app->instance(SalesforceClient::class, new class($records) extends SalesforceClient
+        {
+            private int $reads = 0;
+
+            public function __construct(private array $records) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                $this->reads++;
+                yield $this->reads === 1 ? $this->records : [$this->records[1]];
+            }
+        });
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Keep absent monthly members blocked without inventing a cause.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-11T10:00:00Z'));
+
+        $status = $service->run($id, $reason);
+
+        $this->assertFalse($status['evidence']['verification']['verified']);
+        $this->assertSame(1, $status['counters']['local_missing_remote']);
+        $this->assertSame(0, $status['counters']['content_changed']);
+        $this->assertSame(0, $status['counters']['stabilization_attempts']);
+        $this->assertDatabaseCount('salesforce_interest_monthly_difference_diagnostics', 0);
     }
 
     public function test_post_cutoff_system_modstamp_does_not_remove_a_valid_monthly_member(): void
