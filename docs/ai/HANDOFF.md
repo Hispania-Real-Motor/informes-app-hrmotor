@@ -45,10 +45,9 @@
   global, 1.704 pruebas (1.703 correctas, 1 omitida) y 15.282 aserciones;
   `composer validate --strict` y `npm run build` correctos. El validador y los
   tests documentales no se pudieron ejecutar localmente porque el entorno no
-  dispone de Python/`py`; debe confirmarlos `docs-integrity` en la PR. El audit
-  de dependencias detectó 18 avisos preexistentes en siete paquetes, incluido
-  uno crítico de Laravel; requiere una actualización de dependencias separada y
-  prioritaria, no mezclada sin revisión con este bugfix.
+  dispone de Python/`py`; `docs-integrity` los confirmó en la PR.
+  `composer audit --locked --no-dev` fue correcto en GitHub CI, sin advisories
+  de seguridad detectados en el `composer.lock` evaluado.
 - Riesgos pendientes: el fallback live cuando falta el snapshot candidato sigue
   siendo el contrato vigente; no persiste ni reconstruye candidatos. Antes de
   fusionar, comprobar CI y `docs-integrity`. No hay merge ni despliegue
