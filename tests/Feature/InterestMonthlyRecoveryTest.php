@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Services\Salesforce\InterestMonthlyRecoveryService;
+use App\Services\Salesforce\InterestMonthlyMaterializationService;
+use App\Services\Salesforce\MonthlyInterestActivityRecoveryService;
 use App\Services\Salesforce\MonthlyInterestRecoveryLeaseLost;
 use App\Services\Salesforce\SalesforceClient;
 use App\Services\Salesforce\SalesforceInterestSyncService;
@@ -176,6 +178,156 @@ class InterestMonthlyRecoveryTest extends TestCase
         $this->assertNull($row->hash_matched_at);
         $this->assertNotNull($row->first_mismatch_at);
         $this->assertNotNull($row->initial_content_hash);
+    }
+
+    public function test_growing_month_with_9330_rows_records_new_second_pass_differences_without_promotion(): void
+    {
+        Carbon::setTestNow(CarbonImmutable::parse('2026-11-12T11:10:00Z'));
+        try {
+            $client = new class extends SalesforceClient
+            {
+                public int $fullReads = 0;
+
+                public int $selectiveReads = 0;
+
+                public function __construct() {}
+
+                public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+                {
+                    if (str_contains($soql, 'Id IN (')) {
+                        $this->selectiveReads++;
+                        preg_match_all("/'(a01[0-9]{15})'/", $soql, $matches);
+                        yield array_map(fn (string $id): array => $this->record((int) substr($id, 3), 1), $matches[1]);
+
+                        return;
+                    }
+                    $this->fullReads++;
+                    $phase = intdiv($this->fullReads - 1, 19);
+                    $after = preg_match("/Id > '(a01[0-9]{15})'/", $soql, $matches) === 1
+                        ? (int) substr($matches[1], 3) : 0;
+                    $rows = [];
+                    for ($number = $after + 1; $number <= min($after + 500, 9330); $number++) {
+                        $rows[] = $this->record($number, $phase);
+                    }
+                    yield $rows;
+                }
+
+                private function record(int $number, int $phase): array
+                {
+                    $record = ['Id' => sprintf('a01%015d', $number),
+                        'CreatedDate' => '2026-11-05T10:00:00Z',
+                        'LastModifiedDate' => '2026-11-05T10:00:00Z',
+                        'SystemModstamp' => '2026-11-05T10:00:00Z',
+                        'IsDeleted' => false, 'Owner' => ['Name' => 'Synthetic owner']];
+                    if ($phase === 1 && $number <= 2) {
+                        $record['IN_Estado__c'] = 'First change';
+                    }
+                    if ($phase === 2) {
+                        if ($number === 1) {
+                            $record['IN_Estado__c'] = 'First change';
+                        } elseif ($number === 2) {
+                            $record['IN_Estado__c'] = 'Second change';
+                        } elseif ($number === 3) {
+                            $record['Owner']['Name'] = 'Another synthetic owner';
+                        } elseif ($number === 4) {
+                            $record['SystemModstamp'] = '2026-11-12T10:57:09Z';
+                        } elseif ($number === 5) {
+                            $record['IN_Estado__c'] = 'New change';
+                        }
+                    }
+
+                    return $record;
+                }
+            };
+            $this->app->instance(SalesforceClient::class, $client);
+            $service = app(InterestMonthlyRecoveryService::class);
+            $reason = 'Reproduce a growing month with moving Salesforce values.';
+            $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+                CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+                CarbonImmutable::parse('2026-11-12T10:54:00Z'));
+
+            $status = $service->run($id, $reason);
+
+            $this->assertSame('completed', $status['status']);
+            $this->assertFalse($status['evidence']['verification']['verified']);
+            $this->assertSame(9330, $status['counters']['persisted']);
+            $this->assertSame(9330, $status['counters']['remote_checked']);
+            $this->assertSame(2, $status['counters']['initial_content_changed']);
+            $this->assertSame(2, $status['counters']['stabilized_rows']);
+            $this->assertSame(4, $status['counters']['content_changed']);
+            $this->assertSame(0, $status['counters']['remote_missing_local']);
+            $this->assertSame(0, $status['counters']['local_missing_remote']);
+            $this->assertSame(38, $status['counters']['verification_query_attempts']);
+            $this->assertSame(1, $status['counters']['reconciliation_read_attempts']);
+            $this->assertSame(57, $client->fullReads);
+            $this->assertSame(1, $client->selectiveReads);
+            $this->assertSame(2, DB::table('salesforce_interest_monthly_difference_diagnostics')->where('monthly_recovery_id', $id)->where('verification_pass', 1)->count());
+            $this->assertSame(2, DB::table('salesforce_interest_monthly_difference_diagnostics')->where('monthly_recovery_id', $id)->where('verification_pass', 0)->count());
+            $this->assertSame(4, DB::table('salesforce_interest_monthly_difference_diagnostics')->where('monthly_recovery_id', $id)->where('verification_pass', 2)->count());
+            $this->assertSame(5, DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $id)->whereNotNull('first_mismatch_at')->count());
+            $this->assertSame(1, $status['counters']['diagnostic_categories']['owner_name']);
+            $this->assertSame(1, $status['counters']['diagnostic_categories']['system_modstamp']);
+            $this->assertSame(2, $status['counters']['diagnostic_categories']['functional_fields']);
+            $this->assertDatabaseCount('salesforce_interest_generations', 0);
+            $this->assertDatabaseCount('salesforce_interest_monthly_materializations', 0);
+            $this->assertDatabaseCount('salesforce_interest_monthly_activity_recoveries', 0);
+            foreach ([InterestMonthlyMaterializationService::class, MonthlyInterestActivityRecoveryService::class] as $dependent) {
+                try {
+                    app($dependent)->prepare($id, $reason);
+                    $this->fail('An unverified F2 must not prepare a dependent journal.');
+                } catch (\RuntimeException $exception) {
+                    $this->assertStringContainsString('verified monthly', $exception->getMessage());
+                }
+            }
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_lease_replacement_during_verification_cannot_publish_diagnostics_or_advance_checkpoint(): void
+    {
+        $record = $this->record('a01000000000000001', '2026-11-05T10:00:00Z');
+        $client = new class($record) extends SalesforceClient
+        {
+            public int $recoveryId = 0;
+
+            private int $reads = 0;
+
+            public function __construct(private array $record) {}
+
+            public function queryPages(string $soql, bool $includeDeleted = false): \Generator
+            {
+                $this->reads++;
+                if ($this->reads === 2) {
+                    DB::table('salesforce_interest_monthly_recoveries')->where('id', $this->recoveryId)
+                        ->update(['lease_token' => (string) Str::uuid(), 'heartbeat_at' => now('UTC')->subHour()]);
+                }
+                yield [$this->record];
+            }
+        };
+        $this->app->instance(SalesforceClient::class, $client);
+        $service = app(InterestMonthlyRecoveryService::class);
+        $reason = 'Reject replaced lease during monthly verification.';
+        $id = $service->prepare(CarbonImmutable::parse('2026-11-01', 'Europe/Madrid'),
+            CarbonImmutable::parse('2026-12-01', 'Europe/Madrid'), $reason, 500,
+            CarbonImmutable::parse('2026-11-11T10:00:00Z'));
+        $client->recoveryId = $id;
+
+        try {
+            $service->run($id, $reason);
+            $this->fail('The replaced lease must stop verification.');
+        } catch (MonthlyInterestRecoveryLeaseLost) {
+            $stopped = $service->status($id);
+            $this->assertSame('running', $stopped['status']);
+            $this->assertSame('verify', $stopped['phase']);
+            $this->assertSame(0, $stopped['counters']['remote_checked']);
+            $this->assertSame(1, $stopped['counters']['verification_query_attempts']);
+            $this->assertDatabaseCount('salesforce_interest_monthly_difference_diagnostics', 0);
+        }
+
+        $resumed = $service->run($id, $reason, true);
+        $this->assertTrue($resumed['evidence']['verification']['verified']);
+        $this->assertSame(2, $resumed['counters']['verification_query_attempts']);
     }
 
     public function test_post_cutoff_system_modstamp_does_not_remove_a_valid_monthly_member(): void
@@ -373,6 +525,7 @@ class InterestMonthlyRecoveryTest extends TestCase
 
         $first = $service->prepare($start, $end, $reason, 500, $cutoff);
         $service->run($first, $reason);
+        $firstRow = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $first)->first();
         $this->assertSame($first, $service->prepare($start, $end, $reason, 500, $cutoff));
         $this->assertSame($first, $service->prepare($start, $end, $reason, 500, $cutoff, true));
 
@@ -384,6 +537,10 @@ class InterestMonthlyRecoveryTest extends TestCase
         $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 1);
         $service->run($second, $reason);
         $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 2);
+        $preserved = DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $first)->first();
+        $this->assertSame($firstRow->content_hash, $preserved->content_hash);
+        $this->assertSame($firstRow->diagnostic_fingerprints, $preserved->diagnostic_fingerprints);
+        $this->assertDatabaseCount('salesforce_interest_monthly_difference_diagnostics', 0);
         $this->assertDatabaseCount('salesforce_interest_generations', 0);
     }
 
