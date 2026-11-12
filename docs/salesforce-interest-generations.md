@@ -852,3 +852,84 @@ anteriores permanecen inmutables. Para una revisión histórica ya completada
 con sólo contadores de discrepancia no se pueden reconstruir sus IDs
 divergentes a partir del agregado; requiere nueva revisión autorizada. Ninguna
 estabilización constituye fotografía histórica certificada al cutoff.
+
+### Diagnóstico de consistencia temporal del mes abierto (PR #145)
+
+**Observación confirmada, sin atribución causal:** la operación comunicó tres
+revisiones consecutivas `completed` no verificadas. En la última, después de
+la relectura selectiva surgieron divergencias nuevas durante la segunda
+pasada. Que una fila final tenga `SystemModstamp` almacenado posterior al
+cutoff no identifica el campo que cambió entre lecturas. La prueba sintética
+de 9.330 filas reproduce dos diferencias iniciales, una convergencia, una
+repetida y tres nuevas; termina con cuatro diferencias y `verified=false`.
+`first_mismatch_at`/`observed_at` son instantes de observación local, no
+horas exactas de modificación remota.
+
+La pertenencia al mes procede de `IN_Fecha_Creacion_Origen__c`, o de
+`CreatedDate` cuando aquella falta; `CreatedDate <= effective_cutoff_at`
+limita altas posteriores. La extracción recorre páginas por `Id` y observa
+valores Salesforce **actuales** en distintos instantes. La primera y segunda
+verificación repiten la consulta del mes; la reconciliación consulta por ID
+entre ambas. `SystemModstamp` y `LastModifiedDate` son valores del Interest
+observado; `Owner.Name` se lee de la relación y puede variar sin demostrar
+una actualización del Interest. `queryAll` incorpora soft deletes observables,
+pero no reconstruye versiones anteriores ni hard deletes fuera de su
+cobertura. Un cambio de fecha funcional que saque la fila del mes aparece
+como ausencia en la consulta mensual: no se diagnostica su destino desde ese
+resultado. Tampoco se obtiene un snapshot atómico de todo el mes por paginar.
+
+El contrato distingue tres estados conceptuales:
+
+| Estado | Acreditación | Uso actual |
+| --- | --- | --- |
+| A. Inventario actual observado | Filas leídas y checkpoint confirmado, con cutoff de pertenencia; valores de distintos instantes. | Journal aislado, incluso si no verifica. No alimenta F2M/F5/proyección. |
+| B. Inventario con consistencia comprobada | Cobertura y hashes iguales en la última pasada completa, tras una reconciliación acotada si procede. Es igualdad observada durante el recorrido, no simultaneidad absoluta. | Es el significado vigente de `verification.verified=true`; F2M vuelve a contrastar después. |
+| C. Fotografía histórica exacta al cutoff | Identidad, contenido, relaciones y borrados tal como eran en un instante único, con fuente histórica independiente. | No disponible mediante las consultas SOQL actuales; no se infiere de A ni de B. |
+
+La PR #145 conserva B y el límite de tres revisiones automáticas. Añade a
+**nuevas observaciones** `diagnostic_fingerprints` HMAC versionadas por grupos:
+campos funcionales, relaciones, identidad y nombre de owner por separado,
+`SystemModstamp`, `LastModifiedDate`, pertenencia funcional, borrado e
+identidad derivada. El SHA-256 funcional completo y la fórmula de F2M no
+cambian. En cada discrepancia se guarda una máscara de categorías y la pasada
+(1, reconciliación 0 o 2) en
+`salesforce_interest_monthly_difference_diagnostics`, dentro de la misma
+transacción fenced que filas, contadores y checkpoint. Las categorías pueden
+solaparse y sus sumas no equivalen al número de IDs. Los contadores agregados
+son seguros en `status`; el vínculo individual permanece en el journal
+restringido. No se conservan valores, nombres, teléfonos, payloads ni mensajes
+de excepción. Una huella ausente, incompatible o generada con otra `APP_KEY`
+queda `unclassified`; no se atribuye falsamente una categoría. Las revisiones
+`completed` anteriores no se reescriben ni ganan diagnóstico retroactivo.
+
+| Estrategia evaluada | Cobertura/integridad | Coste y riesgo |
+| --- | --- | --- |
+| Repetir extracción y dos pasadas completas | Detecta diferencias al comparar, pero no detiene las escrituras Salesforce ni prueba C. | Para 9.330 filas/batch 500: 19 + 38 consultas SOQL paginadas, más una selectiva de hasta 100 IDs; `queryPages` puede realizar peticiones HTTP adicionales. Crece linealmente con el mes y puede no converger. |
+| Acercar por lotes extracción y verificación | Reduce separación en algunas filas; mantiene comparación completa. | Puede reducir probabilidad de deriva, sin garantía de snapshot; checkpoints y lease deben seguir fenced. No se implanta como sustituto de B. |
+| Delta por `SystemModstamp`/`LastModifiedDate` | No prueba cambios de `Owner.Name` ni entradas/salidas por fecha funcional; filtrar por cutoff excluiría filas elegibles actualizadas después. | Menos SOQL potencial, pero riesgo de omisión incompatible con B. No se implanta. |
+| Reconciliación por ventana de cambios | Puede acotar IDs propios modificados si existe fuente de cambios completa y una ventana demostrable. | Requiere cobertura de relaciones y borrados, retención, solape y cierre verificables; con los datos actuales no sustituye la pasada final. |
+| Histórico/CDC retenido o snapshot externo | Es candidato para C si cubre valores propios, relaciones, cambios de pertenencia y borrados durante todo el intervalo. | Nueva fuente, permisos, retención y coste por validar; no existe evidencia de que esté disponible para este org. |
+
+En MariaDB, la opción vigente confirma por bloque de hasta 500 la extracción,
+la marca de presencia, la marca de igualdad y, sólo si difiere, el diagnóstico
+en un `upsert` de lote; no introduce consulta SQL por Interest ni mantiene
+transacción durante SOQL. Las huellas añaden nueve HMAC por fila observada:
+para el recorrido 9.330 × 3, unas 251.910 operaciones HMAC de grupo,
+**estimación de trabajo**, no tiempo medido ni créditos API. La memoria del
+servicio permanece limitada por el batch y el conjunto selectivo de 100.
+Los dos índices diagnósticos nuevos son único por fila/pasada y por
+recuperación/pasada, sin escaneo de diagnósticos en HTTP. El presupuesto de
+verificación sigue siendo `4 × (floor(N / batch) + 1)` (76 consultas SOQL
+para 9.330/batch 500) y la relectura selectiva admite tres intentos; no
+evita que el scheduler alcance el límite de tres revisiones no verificadas
+si Salesforce continúa cambiando. No se aumenta ese límite.
+
+**Decisión funcional pendiente:** para sostener un dashboard del mes abierto
+sin convergencia, Dirección/propietario de datos debe aprobar si acepta A
+como vista provisional explícitamente no verificada, con universo, caducidad,
+campos y advertencias definidos, o exige B con una fuente de cambios que
+garantice quietud/cobertura. Hasta resolverlo, el lector mensual exige B y
+F2M/F5/proyección permanecen bloqueadas. Ningún umbral de diferencias ni
+exclusión de campos sustituye esa decisión. La nueva migración diagnóstica
+es aditiva y debe preceder a código nuevo en un despliegue autorizado; no
+ejecuta consultas Salesforce ni modifica revisiones anteriores.

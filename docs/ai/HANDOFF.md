@@ -7956,3 +7956,67 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   autorizada; medir duración/API/locks antes de activar el comando y observar
   F2M/F5 y la proyección en un despliegue posterior. Una revisión histórica
   agregada no puede recuperar retrospectivamente los IDs divergentes.
+
+## 2026-11-12 — diagnóstico temporal F2 mensual sin relajar integridad (PR #145)
+
+- Tarea y causa: tres revisiones mensuales completadas no verificadas según
+  operación comunicada; la segunda pasada puede descubrir variaciones nuevas
+  después de reconciliar las anteriores. SOQL consulta valores actuales por
+  páginas, no ofrece snapshot histórico al cutoff. La coincidencia de
+  identidades en una pasada no prueba que los valores fueran simultáneos.
+  `Owner.Name` relacionado puede variar sin probar cambio del Interest; los
+  sellos `SystemModstamp`/`LastModifiedDate` no bastan para clasificar todas
+  las diferencias. Las causas individuales productivas no están demostradas.
+- Código/migración: `InterestMonthlyDifferenceClassifier`,
+  `InterestMonthlyRecoveryService`, migración
+  `2026_11_16_120000_add_monthly_interest_difference_diagnostics` y pruebas
+  `InterestMonthlyDifferenceClassifierTest`/`InterestMonthlyRecoveryTest`.
+  La migración añade `diagnostic_fingerprints` nullable y un journal
+  restringido con FK e índices cortos por fila/pasada y recuperación/pasada;
+  rollback preserva evidencia. No backfill ni cambios en revisiones
+  `completed`. Instalar la migración antes de ejecutar el nuevo código en
+  un despliegue **separadamente autorizado**.
+- Decisión: distinguir A inventario actual observado, B consistencia
+  comprobada por cobertura y hashes en la última pasada completa, C
+  fotografía histórica exacta no disponible con esta fuente. `verified=true`
+  continúa significando B, sin publicar A; F2M/F5/proyección mantienen sus
+  guards, y la decisión de admitir A en un mes abierto queda pendiente.
+  Ningún umbral ni exclusión de campos sustituye esa decisión. La revisión
+  de estrategias y coste está en `docs/salesforce-interest-generations.md`;
+  el runbook conserva el límite de tres revisiones.
+- Seguridad: nueve huellas HMAC por grupos con `APP_KEY`, sin valores,
+  nombres, teléfonos, payloads ni excepciones almacenados. La tabla une
+  máscara y fila sólo bajo permisos DB restringidos; estado expone conteos
+  agregados. Si falta huella o cambia la clave, categoría `unclassified`.
+  No cambian permisos HTTP, journals anteriores ni publicación.
+- Rendimiento: prueba sintética de 9.330 filas/batch 500 implica 19 consultas
+  SOQL de extracción, 38 de dos verificaciones y una relectura selectiva,
+  más continuaciones internas posibles; 251.910 HMAC de grupo estimados
+  para tres lecturas completas. SQL usa upsert de diagnósticos por lote
+  sólo para diferencias, sin N+1 ni transacción durante Salesforce.
+  Primer CI de PR #145: PHPUnit 1712 aprobadas, una omitida, 15431 aserciones;
+  prueba sintética 6,48 s SQLite, 10,64 s MariaDB 11, 18 pruebas/187
+  aserciones en bloque mensual MariaDB. Son tiempos de runner sintético, no
+  latencia ni créditos productivos. Pint falló por orden de imports en el
+  test y se aplicó localmente; repetir CI sobre SHA final. Build y whitespace
+  quedaron sin ejecutar en ese primer job al detenerse Pint.
+  Segundo CI en `69fe0a5`: PHPUnit completo 1714 aprobadas, una omitida y
+  15442 aserciones; Pint, build y whitespace correctos. Los cinco bloques
+  MariaDB 11 pasaron (25/210, 20/198, 11/35, 9/109 y 6/26
+  pruebas/aserciones); prueba sintética de 9.330 filas en 7,69 s SQLite y
+  9,96 s MariaDB. El SHA final con documentación requiere nueva validación.
+- Documentación revisada: generaciones, operaciones, reglas de Interests,
+  Reservas/Ventas, Llamadas, Campañas, matriz KPI, decisiones de negocio,
+  decisiones técnicas y este HANDOFF. `PROJECT_CONTEXT.md` no cambia: no hay
+  nueva fuente oficial, módulo de informe ni convención transversal. La
+  revisión documental fue delegada a `report_docs_maintainer`; el agente
+  principal revisará el diff y validador. `git diff --check` documental y
+  Documentation integrity quedan pendientes del SHA final.
+- Acciones manuales y riesgos: no ejecutar una cuarta recuperación, no
+  reiniciar el límite ni habilitar scheduler/noviembre. La lectura individual
+  de diagnósticos requiere autorización DB separada. Antes de otra política,
+  validar capacidad real de histórico/CDC, cobertura de relaciones y
+  borrados, paginación/consumo API y bloqueos MariaDB en un ensayo supervisado.
+  Una consulta real a Salesforce y toda operación productiva quedan fuera de
+  esta PR. Mensaje de commit recomendado: `Document monthly F2 temporal
+  consistency limits and diagnostic contract`.

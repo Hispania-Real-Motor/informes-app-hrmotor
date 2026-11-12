@@ -42,6 +42,14 @@ discrepancias. `verified_at` indica presencia, no igualdad del hash. Esta
 operación no certifica relaciones históricas `Task/Event.WhatId`, ni habilita
 la clasificación o los indicadores de Llamadas.
 
+La clasificación diagnóstica nueva de F2 mensual separa cambios observables
+en relaciones, owner, fechas y borrado, sin persistir valores Salesforce.
+Aunque indique una categoría, no acredita históricamente `Task/Event.WhatId`
+ni corrige una actividad fuera de la segunda lectura. Si aparecen nuevas
+diferencias, `verification.verified` sigue falso y F5 no se prepara. Por ello
+no varían la resolución de portal, `salesforce_calls`, la clasificación,
+KPI, filtros, auditoría ni exportación oficial de Llamadas.
+
 La nueva etapa local de consolidación conserva únicamente referencias y
 manifiestos de F2M/F5 mensuales verificados. Sus checkpoints y controles de
 colisión no producen una generación Interest certificada ni prueban la

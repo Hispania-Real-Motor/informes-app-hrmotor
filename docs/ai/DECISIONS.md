@@ -1466,3 +1466,24 @@ automáticas consecutivas no verificadas como límite operativo. F2M conserva
 su contraste remoto independiente. Ningún resultado acredita un estado
 histórico `as-of` ni resuelve hard deletes. La migración es aditiva para los
 journals existentes y el rollback de esquema no elimina evidencia.
+
+## 2026-11-12 — diagnóstico por categorías sin redefinir verificación F2
+
+La operación comunicada demuestra que la relectura selectiva puede converger
+en algunas filas mientras otra vuelve a cambiar y aparecen discrepancias
+nuevas en la pasada final. La decisión técnica es conservar
+`verification.verified=true` exclusivamente para cobertura y hashes iguales
+en la pasada completa final. No se relaja el límite de tres revisiones
+automáticas ni se promueve un inventario actual observado a F2M/F5 o a la
+proyección. La alternativa funcional de mostrar un mes abierto observado,
+pero no verificado, queda pendiente en
+`docs/decisiones-negocio-pendientes.md` y requiere otro contrato aprobado.
+
+Para futuras revisiones se guardan huellas HMAC versionadas de nueve grupos
+separados por semántica y una máscara de categorías por fila/pasada en un
+journal restringido. La clave efectiva es `APP_KEY`; un cambio de clave o
+huella legacy produce `unclassified`, nunca un falso campo concreto. El
+hash funcional F2/F2M, SOQL, pertenencia, checkpoints, lease, lectores
+oficiales y publicación no cambian. Esta evidencia añade diagnóstico sin
+guardar valores Salesforce; no reconstruye causas retroactivas de revisiones
+completadas ni convierte queryAll en una consulta histórica `as-of`.

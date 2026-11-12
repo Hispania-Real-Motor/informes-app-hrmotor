@@ -35,6 +35,16 @@ verificación final limpia permite continuar a F2M, que vuelve a contrastar el
 estado remoto y puede detectar cambios posteriores. Esto no acredita relaciones
 Opportunity/Interest históricas ni abre ningún bloque de Reservas/Ventas.
 
+El diagnóstico temporal posterior de F2 sólo registra máscaras de categorías
+HMAC en un journal restringido cuando difieren lecturas del mes abierto.
+Permite distinguir cambios de relaciones y oportunidad inversa observadas,
+sin conservar sus valores ni demostrar su vigencia histórica. Una diferencia
+que reaparece o surge en la segunda pasada mantiene F2 no verificada y
+bloquea F2M de esa revisión; tampoco desbloquea la atribución oficial
+Opportunity/Interest de Reservas/Ventas o Rendimiento. No cambia el lector
+publicado, KPI, fechas, filtros,
+auditorías ni CSV de este informe.
+
 La etapa local de consolidación de meses verificados sólo referencia filas F2M
 y el manifiesto F5 de cada origen; no crea generación Interest publicada ni
 acredita cobertura completa, hard deletes o relaciones históricas. Por ello no

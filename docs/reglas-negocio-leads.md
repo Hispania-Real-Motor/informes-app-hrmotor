@@ -174,6 +174,18 @@ F2M/F5 siguen bloqueadas. El cutoff limita pertenencia por `CreatedDate`, no
 fija los valores de la extracción, reconciliación o verificación ni convierte
 esta vista mensual en histórica certificada.
 
+La nueva instrumentación temporal de F2 mensual clasifica sólo **categorías
+de diferencia**, mediante huellas HMAC: campos propios, relaciones,
+`OwnerId`, `Owner.Name`, ambos sellos de modificación, fecha de pertenencia,
+borrado e identidad derivada. Un hash no atribuible queda `unclassified`; no
+se guarda el valor cambiado. La prueba de mes abierto con escrituras
+sintéticas confirma que una segunda pasada puede descubrir diferencias nuevas
+tras reconciliar otras, y conserva `verified=false`. No varían el hash
+funcional, normalizadores de delegación/tipo, universo de Interests elegibles,
+filtros, KPI, la proyección HTTP ni la exigencia de F2/F2M/F5 verificadas.
+La posible visualización de un inventario sólo observado sigue pendiente de
+definición funcional; no se habilita por este diagnóstico.
+
 HTTP sólo lee la proyección y comprueba alcance, clave y revisión antes y
 después de responder; nunca escanea F2/F2M/F5 ni hace SOQL. Una mutación por
 rutas Laravel autorizadas invalida transaccionalmente la revisión de esa

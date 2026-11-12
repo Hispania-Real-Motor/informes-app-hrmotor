@@ -29,6 +29,7 @@ final class InterestMonthlyRecoveryService
         private readonly SalesforceClient $client,
         private readonly SalesforceInterestSyncService $interests,
         private readonly InterestMonthlyContentHasher $hasher,
+        private readonly InterestMonthlyDifferenceClassifier $differences,
         private readonly October2026ProvisionalEvidenceInvalidator $octoberEvidence = new October2026ProvisionalEvidenceInvalidator,
     ) {}
 
@@ -186,13 +187,16 @@ final class InterestMonthlyRecoveryService
             }
             $last = $id;
             $stage = 'content_hash';
-            $rows[] = ['monthly_recovery_id' => $r->id, 'salesforce_id' => $id, 'content_hash' => $this->contentHash($mapped), 'is_deleted' => (bool) $mapped['is_deleted'], 'functional_created_at' => $functional, 'system_modstamp_at' => $mapped['system_modstamp_at'], 'created_at' => now(), 'updated_at' => now()];
+            $rows[] = ['monthly_recovery_id' => $r->id, 'salesforce_id' => $id, 'content_hash' => $this->contentHash($mapped),
+                'diagnostic_fingerprints' => json_encode($this->differences->fingerprints($mapped), JSON_THROW_ON_ERROR),
+                'is_deleted' => (bool) $mapped['is_deleted'], 'functional_created_at' => $functional,
+                'system_modstamp_at' => $mapped['system_modstamp_at'], 'created_at' => now(), 'updated_at' => now()];
         }
         DB::transaction(function () use ($r, $lease, $rows, $records, $last, &$stage): void {
             $this->owned((int) $r->id, $lease, true);
             if ($rows !== []) {
                 $stage = 'database_persist';
-                DB::table('salesforce_interest_monthly_recovery_rows')->upsert($rows, ['monthly_recovery_id', 'salesforce_id'], ['content_hash', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'updated_at']);
+                DB::table('salesforce_interest_monthly_recovery_rows')->upsert($rows, ['monthly_recovery_id', 'salesforce_id'], ['content_hash', 'diagnostic_fingerprints', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'updated_at']);
                 $this->octoberEvidence->afterContentMutation((int) $r->id);
             }
             $next = count($records) === (int) $r->batch_size ? 'f2_extract' : 'verify';
@@ -219,6 +223,7 @@ final class InterestMonthlyRecoveryService
             $counters['remote_missing_local'] = 0;
             $counters['local_missing_remote'] = 0;
             $counters['content_changed'] = 0;
+            $counters['diagnostic_categories'] = $this->differences->emptyCounts();
             $counters['verify_checkpoint'] = null;
             $counters['verification_pass'] = 1;
             DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)
@@ -264,29 +269,40 @@ final class InterestMonthlyRecoveryService
                 }
                 $last = $id;
                 $stage = 'verification_hash';
-                $remote[$id] = $this->contentHash($mapped);
+                $remote[$id] = ['hash' => $this->contentHash($mapped),
+                    'fingerprints' => $this->differences->fingerprints($mapped)];
             }
             $stage = 'verification_database';
             $locals = $remote === [] ? collect() : DB::table('salesforce_interest_monthly_recovery_rows')
                 ->where('monthly_recovery_id', $r->id)->whereIn('salesforce_id', array_keys($remote))
-                ->get(['id', 'salesforce_id', 'content_hash'])->keyBy('salesforce_id');
+                ->get(['id', 'salesforce_id', 'content_hash', 'diagnostic_fingerprints'])->keyBy('salesforce_id');
             $seenIds = [];
             $matchedIds = [];
             $mismatchedIds = [];
-            foreach ($remote as $id => $hash) {
+            $diagnostics = [];
+            foreach ($remote as $id => $observation) {
                 $local = $locals->get($id);
                 $counters['remote_checked']++;
                 if ($local === null) {
                     $counters['remote_missing_local']++;
                 } else {
                     $seenIds[] = $local->id;
-                    if (hash_equals($local->content_hash, $hash)) {
+                    if (hash_equals($local->content_hash, $observation['hash'])) {
                         $matchedIds[] = $local->id;
                     } else {
                         $counters['content_changed']++;
                         $mismatchedIds[] = $local->id;
+                        $mask = $this->differences->changedMask($local->diagnostic_fingerprints, $observation['fingerprints']);
+                        $counters['diagnostic_categories'] = $this->differences->countMask($counters['diagnostic_categories'], $mask);
+                        $diagnostics[] = ['monthly_recovery_id' => $r->id, 'monthly_recovery_row_id' => $local->id,
+                            'verification_pass' => $counters['verification_pass'], 'category_mask' => $mask,
+                            'observed_at' => now('UTC')];
                     }
                 }
+            }
+            if ($diagnostics !== []) {
+                DB::table('salesforce_interest_monthly_difference_diagnostics')->upsert($diagnostics,
+                    ['monthly_recovery_row_id', 'verification_pass'], ['category_mask', 'observed_at']);
             }
             if ($seenIds !== []) {
                 DB::table('salesforce_interest_monthly_recovery_rows')->where('monthly_recovery_id', $r->id)
@@ -316,6 +332,9 @@ final class InterestMonthlyRecoveryService
                 $counters['verify_checkpoint'] = null;
                 $counters['initial_content_changed'] = (int) $counters['verification_pass'] === 1
                     ? $counters['content_changed'] : $counters['initial_content_changed'];
+                if ((int) $counters['verification_pass'] === 1) {
+                    $counters['initial_diagnostic_categories'] = $counters['diagnostic_categories'];
+                }
                 $evidence = $reconcile ? null : ['source' => 'current_state_monthly_inventory', 'revision' => (int) $r->revision, 'effective_cutoff_at' => $r->effective_cutoff_at, 'month_closed_at_cutoff' => $r->effective_cutoff_at !== null && CarbonImmutable::parse($r->effective_cutoff_at, 'UTC')->gte(CarbonImmutable::parse($r->functional_end_at, 'UTC')), 'as_of_cutoff_certified' => false, 'rows' => $counters['persisted'], 'verification' => ['verified' => $verified, 'pass' => $counters['verification_pass'], 'remote_checked' => $counters['remote_checked'], 'remote_missing_local' => $counters['remote_missing_local'], 'local_missing_remote' => $counters['local_missing_remote'], 'content_changed' => $counters['content_changed']], 'stabilization' => ['attempts' => $counters['stabilization_attempts'], 'initial_content_changed' => $counters['initial_content_changed'], 'stabilized_rows' => $counters['stabilized_rows'], 'limit' => self::MAX_STABILIZATION_ROWS], 'hard_deletes' => 'not_observable_without_independent_evidence', 'f5' => 'not_attempted_blocked', 'historical_certification' => false];
                 $phase = $reconcile ? 'reconcile' : 'completed';
             } else {
@@ -347,7 +366,7 @@ final class InterestMonthlyRecoveryService
         $candidates = DB::table('salesforce_interest_monthly_recovery_rows')
             ->where('monthly_recovery_id', $r->id)->whereNotNull('first_mismatch_at')
             ->orderBy('salesforce_id')->limit(self::MAX_STABILIZATION_ROWS + 1)
-            ->get(['id', 'salesforce_id', 'content_hash', 'system_modstamp_at', 'created_at'])->keyBy('salesforce_id');
+            ->get(['id', 'salesforce_id', 'content_hash', 'system_modstamp_at', 'diagnostic_fingerprints', 'created_at'])->keyBy('salesforce_id');
         if ($candidates->count() !== $counters['initial_content_changed']
             || $candidates->count() > self::MAX_STABILIZATION_ROWS) {
             throw new RuntimeException('Monthly reconciliation candidates changed.');
@@ -359,6 +378,7 @@ final class InterestMonthlyRecoveryService
         $this->renew((int) $r->id, $lease);
         $stage = 'reconciliation_validation';
         $updates = [];
+        $diagnostics = [];
         foreach ($records as $record) {
             $stage = 'reconciliation_mapping';
             $mapped = $this->interests->mapRecord($record, (bool) data_get($record, 'IsDeleted', false));
@@ -374,9 +394,18 @@ final class InterestMonthlyRecoveryService
                 throw new RuntimeException('Monthly reconciliation membership changed.');
             }
             $stage = 'reconciliation_hash';
+            $fingerprints = $this->differences->fingerprints($mapped);
+            $hash = $this->contentHash($mapped);
+            if (! hash_equals($source->content_hash, $hash)) {
+                $diagnostics[] = ['monthly_recovery_id' => $r->id, 'monthly_recovery_row_id' => $source->id,
+                    'verification_pass' => 0,
+                    'category_mask' => $this->differences->changedMask($source->diagnostic_fingerprints, $fingerprints),
+                    'observed_at' => now('UTC')];
+            }
             $updates[$id] = ['monthly_recovery_id' => $r->id, 'salesforce_id' => $id,
-                'content_hash' => $this->contentHash($mapped), 'initial_content_hash' => $source->content_hash,
+                'content_hash' => $hash, 'initial_content_hash' => $source->content_hash,
                 'initial_system_modstamp_at' => $source->system_modstamp_at,
+                'diagnostic_fingerprints' => json_encode($fingerprints, JSON_THROW_ON_ERROR),
                 'is_deleted' => (bool) $mapped['is_deleted'], 'functional_created_at' => $functional,
                 'system_modstamp_at' => $mapped['system_modstamp_at'],
                 'created_at' => $source->created_at, 'updated_at' => now()];
@@ -387,7 +416,7 @@ final class InterestMonthlyRecoveryService
         }
 
         $stage = 'reconciliation_database';
-        DB::transaction(function () use ($r, $lease, $candidates, $updates, $counters): void {
+        DB::transaction(function () use ($r, $lease, $candidates, $updates, $diagnostics, $counters): void {
             $this->owned((int) $r->id, $lease, true);
             $locked = DB::table('salesforce_interest_monthly_recovery_rows')
                 ->where('monthly_recovery_id', $r->id)->whereIn('salesforce_id', $candidates->keys()->all())
@@ -403,7 +432,11 @@ final class InterestMonthlyRecoveryService
             }
             DB::table('salesforce_interest_monthly_recovery_rows')->upsert(array_values($updates),
                 ['monthly_recovery_id', 'salesforce_id'],
-                ['content_hash', 'initial_content_hash', 'initial_system_modstamp_at', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'updated_at']);
+                ['content_hash', 'initial_content_hash', 'initial_system_modstamp_at', 'diagnostic_fingerprints', 'is_deleted', 'functional_created_at', 'system_modstamp_at', 'updated_at']);
+            if ($diagnostics !== []) {
+                DB::table('salesforce_interest_monthly_difference_diagnostics')->upsert($diagnostics,
+                    ['monthly_recovery_row_id', 'verification_pass'], ['category_mask', 'observed_at']);
+            }
             $this->octoberEvidence->afterContentMutation((int) $r->id);
             $counters['soft_deleted_observed'] = DB::table('salesforce_interest_monthly_recovery_rows')
                 ->where('monthly_recovery_id', $r->id)->where('is_deleted', true)->count();
@@ -414,6 +447,7 @@ final class InterestMonthlyRecoveryService
             $counters['remote_missing_local'] = 0;
             $counters['local_missing_remote'] = 0;
             $counters['content_changed'] = 0;
+            $counters['diagnostic_categories'] = $this->differences->emptyCounts();
             $counters['verify_checkpoint'] = null;
             DB::table('salesforce_interest_monthly_recoveries')->where('id', $r->id)
                 ->where('lease_token', $lease)->update(['phase' => 'verify',
@@ -456,13 +490,13 @@ final class InterestMonthlyRecoveryService
         return $r->heartbeat_at !== null && CarbonImmutable::parse($r->heartbeat_at, 'UTC')->gt(now('UTC')->subSeconds(self::LEASE_SECONDS));
     }
 
-    /** @return array<string,int> */
+    /** @return array<string, mixed> */
     private function emptyCounters(): array
     {
-        return ['observed' => 0, 'persisted' => 0, 'soft_deleted_observed' => 0, 'remote_checked' => 0, 'remote_missing_local' => 0, 'local_missing_remote' => 0, 'content_changed' => 0, 'verify_checkpoint' => null, 'verification_pass' => 1, 'verification_query_attempts' => 0, 'initial_content_changed' => 0, 'stabilized_rows' => 0, 'stabilization_attempts' => 0, 'reconciliation_read_attempts' => 0];
+        return ['observed' => 0, 'persisted' => 0, 'soft_deleted_observed' => 0, 'remote_checked' => 0, 'remote_missing_local' => 0, 'local_missing_remote' => 0, 'content_changed' => 0, 'verify_checkpoint' => null, 'verification_pass' => 1, 'verification_query_attempts' => 0, 'initial_content_changed' => 0, 'stabilized_rows' => 0, 'stabilization_attempts' => 0, 'reconciliation_read_attempts' => 0, 'diagnostic_categories' => $this->differences->emptyCounts(), 'initial_diagnostic_categories' => $this->differences->emptyCounts()];
     }
 
-    /** @return array<string,int> */
+    /** @return array<string, mixed> */
     private function counters(object $r): array
     {
         return array_replace($this->emptyCounters(), json_decode($r->counters, true, 64, JSON_THROW_ON_ERROR));
