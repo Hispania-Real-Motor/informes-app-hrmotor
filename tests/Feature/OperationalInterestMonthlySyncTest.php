@@ -428,7 +428,7 @@ class OperationalInterestMonthlySyncTest extends TestCase
         $this->assertSame($quality, $overview['coverage']['delegation_quality']);
         $this->assertSame(9671, array_sum(array_column($overview['functional_kpis']['statuses'], 'interests')));
         $this->assertSame(['Convertido' => 1258, 'Descartado' => 4238, 'Potencial' => 4175],
-            collect($overview['functional_kpis']['statuses'])->pluck('interests', 'status')->all());
+            collect($overview['functional_kpis']['statuses'])->pluck('interests', 'status')->sortKeys()->all());
         $stored = (string) DB::table('salesforce_interest_operational_quality')->where('run_id', $run)
             ->value('delegation_quality');
         $this->assertStringNotContainsString('Synthetic unknown', $stored);
