@@ -7887,6 +7887,12 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   correctos; PHP, Pint, MariaDB, CI y validador de PR deben ser
   ejecutados/comprobados por el agente principal tras commit y descripción
   final. No se consultaron Salesforce, producción ni datos reales.
+- Primera ejecución de GitHub Actions en PR #144 (`c72e4be`): Documentation
+  integrity correcta; PHPUnit general 1702 aprobadas, una omitida y una
+  aserción obsoleta de coste SQL fallida. MariaDB 11 reprodujo la misma
+  aserción: la marca de presencia y la de igualdad requieren dos UPDATE
+  acotados por lote, seis para tres lotes. Se corrigió la expectativa a seis
+  sin relajar el límite por lote. Revalidar CI en el SHA posterior.
 - Pendiente: validar semántica SOQL contra Salesforce real solo bajo operación
   autorizada; medir duración/API/locks antes de activar el comando y observar
   F2M/F5 y la proyección en un despliegue posterior. Una revisión histórica

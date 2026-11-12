@@ -466,7 +466,7 @@ class InterestMonthlyRecoveryTest extends TestCase
         $this->assertSame(1001, $status['counters']['remote_checked']);
         $this->assertTrue($status['evidence']['verification']['verified']);
         $this->assertSame(3, $batchSelects);
-        $this->assertSame(3, $batchUpdates);
+        $this->assertSame(6, $batchUpdates);
         $this->assertDatabaseCount('salesforce_interest_monthly_recovery_rows', 1001);
     }
 
