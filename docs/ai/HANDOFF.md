@@ -28,10 +28,12 @@
   las pruebas cubren ambos extremos.
 - Pruebas añadidas: A falla tras checkpoint, B activa con cutoff posterior,
   A reintenta sin SOQL; empate de cutoff por ID; control final de activación;
-  nueve páginas admitidas. Conservar tests existentes de lease/concurrencia y
-  paginación. Resultados definitivos de PHPUnit, MariaDB 11, Pint, build,
-  documentación y CI corresponden al SHA final que comprobará el agente
-  principal; esta nota no los anticipa.
+  nueve páginas admitidas. Se conservan tests de lease/concurrencia y
+  paginación. En el SHA `262c94c789f9e7e500e654d606d3556dcebf53be`,
+  GitHub Actions CI pasó: PHPUnit completo 1.726 pruebas, 1 omitida y 15.480
+  aserciones; MariaDB 11 (suite operativa 18 pruebas, 100 aserciones), Pint,
+  build y whitespace pasaron. Documentation integrity también pasó. El
+  ejecutable PHP local no estuvo disponible; `git diff --check` pasó en local.
 - Acciones manuales/riesgos: revisar la PR y sus checks antes de integrar;
   desplegar y ejecutar cualquier lectura productiva solo bajo autorización
   independiente. Un cutoff posterior acredita una observación operativa más
