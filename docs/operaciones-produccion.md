@@ -1653,6 +1653,38 @@ cambio posterior no se acepta por la verificación previa. No hay cambio de
 configuración; el flag y scheduler siguen apagados. SQL directo ajeno a
 invalidadores Laravel exige revocación y revalidación de la proyección.
 
+**Con el límite de tres revisiones no verificadas agotado, no iniciar una
+cuarta ni restablecer contadores.** Mantener la tarea y el scheduler apagados;
+consultar sólo estados, cutoffs, contadores y evidencia agregada mediante el
+CLI administrativo existente. Contrastar que la migración diagnóstica
+`2026_11_16_120000_add_monthly_interest_difference_diagnostics` esté aplicada
+antes de cualquier uso futuro del código nuevo. Las categorías nuevas sólo
+se recopilan en revisiones posteriores: los journals `completed` anteriores
+no se analizan retroactivamente ni se reescriben. El acceso individual a la
+tabla diagnóstica debe quedar en el circuito DB restringido; no copiar
+Salesforce IDs, huellas ni valores a tickets, logs o respuestas HTTP.
+
+La decisión operativa posterior requiere: (1) revisar los contadores y la
+calidad de fuente sin inferir campos concretos de los hashes históricos;
+(2) medir en entorno aislado la consulta paginada y su coste/API real;
+(3) aprobar explícitamente si la vista de mes abierto debe exigir consistencia
+comprobada B o puede mostrar observación A con contrato, caducidad y aviso
+propios; y (4) revisar en una PR separada el mecanismo y su prueba antes de
+autorizar una nueva ventana Salesforce. Ninguna opción convierte el cutoff
+en fotografía histórica C. Hasta esa aprobación, el lector provisional
+continúa exigiendo F2/F2M/F5 verificadas y la recuperación automática
+permanece bloqueada. Un fallo por presupuesto parcial conserva el checkpoint;
+no reanudar indefinidamente ni abrir otra revisión para ocultar diferencias.
+
+El diagnóstico propuesto añade nueve huellas HMAC de grupo por fila leída y
+una escritura por lote de discrepancias bajo la transacción fenced existente.
+No modifica hash funcional, SOQL, índice de pertenencia, publicación ni
+fórmulas KPI. Para una simulación de 9.330 filas y batch 500, el camino de
+extracción + dos verificaciones requiere 19 + 38 invocaciones SOQL paginadas
+y una consulta selectiva de IDs, más continuaciones internas del cliente.
+Los tiempos de CI sintético no predicen latencia productiva; medir también
+`queryPages`, CPU y bloqueos MariaDB antes de cualquier operación autorizada.
+
 La tarea de catálogo `salesforce-sync-interest-monthly-current` permanece
 deshabilitada, incluso para ejecución manual desde Operaciones, salvo que
 `SALESFORCE_INTEREST_MONTHLY_CURRENT_SYNC_ENABLED=true`. Su cron propuesto es

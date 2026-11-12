@@ -36,6 +36,14 @@ pueden prepararse sobre ella. Sólo un cutoff posterior permite otra revisión
 aislada. Esto no cambia la fuente Interest publicada ni habilita atribución,
 readiness, snapshots o KPI de Campañas.
 
+La instrumentación temporal de F2 mensual agrupa por huella HMAC cambios
+observados de fuente, medio, canal, UTM, relaciones, owner, fechas y borrado;
+no guarda sus valores ni convierte el inventario en una fotografía al cutoff.
+Un cambio persistente o nuevo en la segunda pasada conserva F2 no verificada
+y bloquea F2M/F5. Ningún agregado o atribución de Campañas se habilita desde
+esa evidencia: fuente Interest publicada, reglas de atribución, readiness,
+fechas, KPI, rankings, filtros, auditoría y CSV permanecen iguales.
+
 La etapa administrativa de consolidación por meses sólo referencia F2M/F5
 verificados y falla ante colisiones de identidad o manifiestos cambiados.
 No construye ni publica la generación global, no acredita hard deletes ni

@@ -1,6 +1,6 @@
 # Decisiones de negocio pendientes
 
-Actualizado: 2026-09-08.
+Actualizado: 2026-11-12.
 
 Este documento contiene exclusivamente decisiones que el código no puede tomar
 sin una definición funcional o una validación externa. Las decisiones ya
@@ -35,6 +35,20 @@ reabren por esta auditoría:
   comercial` permanecen dentro del total y se muestran como calidad del dato;
 - los perfiles comerciales elegibles son `Compra/Venta` y
   `Comerciales Partner Community`.
+
+### Interests mensuales de mes abierto
+
+- Definir si una vista provisional operativa puede mostrar un inventario
+  **actual observado** cuando F2 no alcanza coincidencia completa entre
+  lecturas, y en su caso aprobar explícitamente universo, cutoff de
+  pertenencia, advertencia, caducidad y KPI permitidos. La alternativa
+  vigente sigue exigiendo F2/F2M/F5 verificadas antes de proyección. Ninguna
+  de las dos equivale a fotografía histórica exacta al cutoff.
+- Antes de sustituir esa exigencia por un delta, verificar con evidencia del
+  org que la fuente de cambios cubre campos propios, `Owner.Name`, cambios de
+  pertenencia funcional, soft/hard deletes y F5 durante toda la ventana. El
+  diagnóstico técnico por grupos HMAC no autoriza por sí solo nueva semántica
+  ni levantar el límite de tres revisiones automáticas no verificadas.
 
 ### Reservas / Ventas
 
