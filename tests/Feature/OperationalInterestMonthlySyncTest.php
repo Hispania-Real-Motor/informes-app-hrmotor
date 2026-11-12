@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class OperationalInterestMonthlySyncTest extends TestCase
@@ -220,9 +221,10 @@ class OperationalInterestMonthlySyncTest extends TestCase
         $newer = $sync->prepare('2026-11');
         $sync->run($newer);
 
-        $lease = 'synthetic-fenced-lease';
+        $lease = (string) Str::uuid();
+        $projectionKey = (string) Str::uuid();
         DB::table('salesforce_interest_operational_runs')->where('id', $older)
-            ->update(['status' => 'running', 'phase' => 'activate', 'projection_key' => 'synthetic-older-projection']);
+            ->update(['status' => 'running', 'phase' => 'activate', 'projection_key' => $projectionKey]);
         DB::table('salesforce_interest_operational_months')->where('month_key', '2026-11')
             ->update(['lease_token' => $lease, 'heartbeat_at' => now('UTC')]);
         $candidate = DB::table('salesforce_interest_operational_runs')->find($older);
