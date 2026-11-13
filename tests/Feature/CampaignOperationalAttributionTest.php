@@ -69,7 +69,8 @@ class CampaignOperationalAttributionTest extends TestCase
         DB::table('report_sync_runs')->insert([
             'dataset' => 'campaign_platform_daily_metrics', 'source' => 'meta', 'status' => 'completed',
             'period_start_at' => '2026-11-01 00:00:00', 'period_end_at' => '2026-12-01 00:00:00',
-            'source_cutoff_at' => '2026-11-13 00:00:00', 'completed_at' => '2026-11-13 00:00:00',
+            'source_cutoff_at' => '2026-11-13 00:00:00', 'started_at' => '2026-11-13 00:00:00',
+            'completed_at' => '2026-11-13 00:00:00',
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $this->getJson($url)->assertOk()->assertJsonPath('availability.mode', 'operational_provisional')
