@@ -127,7 +127,8 @@ class OperationalInterestActivitySyncTest extends TestCase
         $this->assertSame(2, $summary['kpis']['potenciales_sin_trabajar']);
         $this->assertSame(1, $summary['kpis']['leads_unassigned']);
         $this->assertSame(2, $summary['kpis']['without_eligible_commercial']);
-        $this->assertSame(1, $summary['kpis']['without_commercial_delegation']);
+        // The official classifier does not treat "Madrid General" as a commercial delegation.
+        $this->assertSame(4, $summary['kpis']['without_commercial_delegation']);
         $this->assertTrue($summary['kpi_evidence']['management_complete_for_filter']);
         $filtered = app(October2026ProvisionalInterestDashboardDatasetService::class)
             ->summary(Request::create('/informes/leads/data/resumen', 'GET', [

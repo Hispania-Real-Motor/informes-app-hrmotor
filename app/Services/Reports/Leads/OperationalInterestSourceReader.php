@@ -24,7 +24,8 @@ final class OperationalInterestSourceReader
             if ($run === null || ($requireUtm && (int) $run->utm_contract_version < 2)) {
                 throw new ProvisionalInterestSourceUnavailable;
             }
-            $this->assertCurrent($snapshot);
+            $this->months->assertCurrent($snapshot['operational_month'], $snapshot['integrity_revision'], $snapshot['projection_key']);
+            $this->months->assertActivityPointer($snapshot['operational_month'], $snapshot['activity_pointer_id']);
         } catch (Throwable) {
             throw new ProvisionalInterestSourceUnavailable;
         }

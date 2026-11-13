@@ -573,7 +573,8 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         // The observed-owner filter adds one dictionary read; it remains one
         // bounded query for the whole response, independent of row count.
         $this->assertSame(1, substr_count($dashboardQueries, 'salesforce_interest_october_provisional_owners'));
-        $this->assertLessThanOrEqual(16, count(DB::getQueryLog()));
+        // Selecting the October source adds one bounded active-run lookup.
+        $this->assertLessThanOrEqual(17, count(DB::getQueryLog()));
         fwrite(STDERR, sprintf(
             "October representative volume: validation_ms=%.2f overview_ms=%.2f http_ms=%.2f http_queries=%d peak_memory_mb=%.1f\n",
             $metrics['total_ns'] / 1_000_000,
