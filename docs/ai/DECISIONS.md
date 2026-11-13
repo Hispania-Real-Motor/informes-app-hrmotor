@@ -1,5 +1,36 @@
 # Decisiones técnicas
 
+## 2026-11-13 — atribución provisional de Campañas con puntero propio
+
+- Campañas no reutiliza `campaign_attributions` ni el puntero de generación
+  certificada para octubre/noviembre operativos. Una CLI administrativa crea
+  runs y filas separados. `build()` concluye en `prepared` sin mover
+  `campaign_operational_months.active_run_id`; una CLI administrativa distinta
+  activa un run revisado y vuelve a comprobar Interest UTM v2, proyección,
+  economía y relaciones bajo bloqueo y transacción. El lease de preparación y
+  el control de activación impiden publicar una mezcla de revisiones. Una
+  fuente obsoleta deja el run anterior almacenado, pero no válido para lectura
+  provisional. Fallos de preparación o activación conservan el puntero anterior.
+- Octubre exige el cierre económico vigente; su huella fija la versión y el
+  contenido del snapshot, independiente de sincronizaciones publicitarias
+  posteriores. Una edición del contenido del cierre invalida la atribución
+  aunque no cambie el recuento. Noviembre abierto usa evidencia por plataforma
+  y limita su fin al cutoff Interest. La relación Opportunity requiere el
+  snapshot directo completado después del último run Opportunity completado,
+  con huella de referencias válida y cutoff directo ≥ cutoff Opportunity ≥
+  observación Interest; además exige concordancia directa e inversa. Una
+  cobertura incompleta vuelve nulos todos los KPI Opportunity del
+  run, sin degradar las métricas publicitarias independientes ni inventar un
+  cero. No se usa fallback aproximado de Account para certificar atribución.
+- Los UTM se descifran en memoria de la preparación; se persisten HMAC de
+  Interest/Opportunity y atributos mínimos, no payload Salesforce ni UTM
+  crudos. El HTTP administrativo fija `source=operational`, requiere flag del
+  mes y usa solo tablas locales. Esta decisión preserva la fuente oficial y
+  su readiness; no acredita una fotografía histórica ni modifica cierres.
+  Los flags propios de Campañas son independientes de los flags de Interests y
+  parten desactivados. La reversión de código conserva la evidencia de la
+  migración: su `down()` es inocuo.
+
 ## 2026-11-13 — cuarentena individual y cobertura parcial de actividad operativa
 
 - La segunda lectura Task/Event no representa una transacción con Salesforce.

@@ -16,11 +16,19 @@ class CampaignDashboardController extends Controller
             return redirect()->route('reports.leads.index');
         }
 
-        return view('reports.campaigns.index', [
+        $response = response()->view('reports.campaigns.index', [
             'reportUserRole' => ReportUserAccess::role($request),
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'campaigns'),
             'reportUserCanAudit' => ReportUserAccess::canAuditReport($request, 'campaigns'),
+            'reportUserCanViewOperationalCampaigns' => ReportUserAccess::isAdmin($request)
+                && (config('campaign_operational.october_2026_enabled') === true
+                    || config('campaign_operational.november_2026_enabled') === true),
+            'campaignOperationalOctoberEnabled' => config('campaign_operational.october_2026_enabled') === true,
+            'campaignOperationalNovemberEnabled' => config('campaign_operational.november_2026_enabled') === true,
         ]);
+
+        return $request->query('source') === 'operational'
+            ? $response->header('Cache-Control', 'no-store, private') : $response;
     }
 
     public function classify(Request $request)

@@ -321,6 +321,47 @@ class CampaignAttributionBuilderService
             );
         }
 
+        return $this->lookupFromMetricRows($rows);
+    }
+
+    /** Match operational Interests with the same precedence as the published attribution builder. */
+    public function operationalMetricLookup(CarbonInterface $start, CarbonInterface $end, ?array $closedSnapshotRows = null, array $availablePlatforms = [], array $economicCampaigns = []): array
+    {
+        $lookup = $closedSnapshotRows === null ? $this->metricLookup($start, $end)
+            : $this->lookupFromMetricRows(collect(array_map(static fn (array $row): object => (object) array_merge([
+                'platform' => null, 'account_id' => null, 'campaign_id' => null, 'campaign_name' => null,
+                'adset_id' => null, 'ad_group_id' => null, 'ad_id' => null,
+            ], $row), $closedSnapshotRows)));
+
+        $allowed = [];
+        foreach ($economicCampaigns as $campaign) {
+            $allowed[implode('|', [$campaign['platform'] ?? '', $campaign['campaign_id'] ?? '',
+                $this->normalizer->key($campaign['campaign_name'] ?? '')])] = true;
+        }
+        foreach ($lookup as &$matchesByKey) {
+            foreach ($matchesByKey as &$matches) {
+                $matches = array_values(array_filter($matches, fn (array $match): bool => in_array($match['platform'], $availablePlatforms, true)
+                    && isset($allowed[implode('|', [$match['platform'] ?? '', $match['campaign_id'] ?? '',
+                        $this->normalizer->key($match['campaign_name'] ?? '')])])));
+            }
+        }
+        unset($matchesByKey, $matches);
+
+        return $lookup;
+    }
+
+    public function resolveOperationalCampaign(object $interest, array $lookup): array
+    {
+        return $this->resolveCampaign($interest, $lookup);
+    }
+
+    public function operationalOpportunityFlags(object $interest, ?object $opportunity): array
+    {
+        return $this->opportunityFlags($interest, $opportunity);
+    }
+
+    private function lookupFromMetricRows(Collection $rows): array
+    {
         $lookup = [
             'ad' => [],
             'adset' => [],

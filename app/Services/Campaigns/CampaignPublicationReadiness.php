@@ -89,6 +89,42 @@ class CampaignPublicationReadiness
         return ['ready' => true, 'reason' => null, 'retry_task' => null, 'ids' => $ids, 'cutoff' => collect($cutoffs)->sort()->first()];
     }
 
+    /** Pinned local relationship evidence for provisional attribution; independent of publication readiness. */
+    public function operationalOpportunityEvidence(string $interestObservedAt): array
+    {
+        $opportunities = $this->latest('salesforce_opportunities', 'salesforce');
+        $direct = SalesforceOpportunityInterestDirectRun::query()->useWritePdo()->orderByDesc('id')->first();
+        $referenceFingerprint = $direct?->stats['reference_fingerprint'] ?? null;
+        $available = $opportunities?->status === 'completed' && $opportunities->completed_at !== null
+            && $opportunities->source_cutoff_at !== null && $direct?->status === 'completed'
+            && $direct->completed_at !== null && $direct->source_cutoff_at !== null
+            && is_string($referenceFingerprint) && preg_match('/^[a-f0-9]{64}$/', $referenceFingerprint) === 1
+            && $direct->completed_at->greaterThanOrEqualTo($opportunities->completed_at)
+            && $direct->source_cutoff_at->greaterThanOrEqualTo($opportunities->source_cutoff_at)
+            && $opportunities->source_cutoff_at->greaterThanOrEqualTo(CarbonImmutable::parse($interestObservedAt, 'UTC'))
+            && $direct->source_cutoff_at->greaterThanOrEqualTo(CarbonImmutable::parse($interestObservedAt, 'UTC'));
+        $identity = [
+            'opportunity_run_id' => $opportunities?->id,
+            'opportunity_status' => $opportunities?->status,
+            'opportunity_cutoff_at' => $opportunities?->source_cutoff_at?->toIso8601String(),
+            'opportunity_completed_at' => $opportunities?->completed_at?->toIso8601String(),
+            'direct_run_id' => $direct?->id,
+            'direct_status' => $direct?->status,
+            'direct_cutoff_at' => $direct?->source_cutoff_at?->toIso8601String(),
+            'direct_completed_at' => $direct?->completed_at?->toIso8601String(),
+            'reference_fingerprint' => $referenceFingerprint,
+        ];
+
+        return [
+            'available' => $available,
+            'opportunity_run_id' => $opportunities?->id,
+            'opportunity_cutoff_at' => $opportunities?->source_cutoff_at?->toDateTimeString(),
+            'direct_run_id' => $direct?->id,
+            'direct_cutoff_at' => $direct?->source_cutoff_at?->toDateTimeString(),
+            'fingerprint' => hash('sha256', json_encode($identity, JSON_THROW_ON_ERROR)),
+        ];
+    }
+
     public function needsAttribution(array $ids): bool
     {
         $build = $this->latest(self::ATTRIBUTION_DATASET, self::SOURCE);

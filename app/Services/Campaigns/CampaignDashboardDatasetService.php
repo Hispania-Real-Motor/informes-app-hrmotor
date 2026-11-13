@@ -8,6 +8,7 @@ use App\Models\CampaignPlatformDailyMetric;
 use App\Models\SalesforceOpportunity;
 use App\Services\Reports\Leads\InterestDatasetUnavailable;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
+use App\Services\Reports\Leads\OperationalInterestSourceReader;
 use App\Services\Reports\ReservationsSales\OpportunityInterestAttributionService;
 use App\Services\Salesforce\InterestGenerationReader;
 use App\Support\ReportUserAccess;
@@ -17,6 +18,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Throwable;
 
 class CampaignDashboardDatasetService
 {
@@ -36,6 +39,9 @@ class CampaignDashboardDatasetService
 
     public function summary(Request $request): array
     {
+        if ($request->query('source') === 'operational') {
+            return $this->operationalPayload($request)['summary'];
+        }
         $includeDiagnostics = ReportUserAccess::isAdmin($request) && $request->boolean('include_diagnostics', true);
         try {
             $payload = $this->payload($request, $includeDiagnostics, true);
@@ -61,6 +67,11 @@ class CampaignDashboardDatasetService
 
     public function campaignRows(Request $request): array
     {
+        if ($request->query('source') === 'operational') {
+            $campaigns = $this->operationalPayload($request)['campaigns'];
+
+            return ['ok' => true, 'items' => $campaigns, 'total' => count($campaigns)];
+        }
         try {
             $payload = $this->payload($request, false, false);
         } catch (InterestDatasetUnavailable) {
@@ -84,6 +95,9 @@ class CampaignDashboardDatasetService
 
     public function rankings(Request $request): array
     {
+        if ($request->query('source') === 'operational') {
+            return ['ok' => true, 'rankings' => $this->operationalPayload($request)['rankings']];
+        }
         try {
             $rankings = $this->payload($request, false, false)['rankings'];
         } catch (InterestDatasetUnavailable) {
@@ -104,6 +118,10 @@ class CampaignDashboardDatasetService
 
     public function exportRows(Request $request): array
     {
+        if ($request->query('source') === 'operational') {
+            return $this->operationalPayload($request)['campaigns'];
+        }
+
         return array_map(function (array $row): array {
             unset($row['current_status']);
 
@@ -113,6 +131,16 @@ class CampaignDashboardDatasetService
 
     public function attributionAuditRows(Request $request): array
     {
+        if ($request->query('source') === 'operational') {
+            // Individual provisional identities and decrypted UTM never enter the audit response.
+            return array_map(static fn (array $row): array => [
+                'platform' => $row['platform'], 'campaign_id' => $row['campaign_id'],
+                'resolved_campaign_name' => $row['campaign_name'],
+                'interests_count' => $row['leads_salesforce'],
+                'opportunities_count' => $row['opportunities'],
+                'source_type' => 'operational_provisional',
+            ], $this->operationalPayload($request)['campaigns']);
+        }
         $this->assertCertifiedInterestDataset();
         $filters = $this->filters($request);
         $period = $this->period($filters);
@@ -259,6 +287,13 @@ class CampaignDashboardDatasetService
 
     public function kpiAudit(Request $request): array
     {
+        if ($request->query('source') === 'operational') {
+            $payload = $this->operationalPayload($request);
+
+            return ['ok' => false, 'items' => [], 'metric' => null,
+                'availability' => $payload['summary']['availability'],
+                'reason' => 'La auditoría individual provisional no está autorizada para publicación.'];
+        }
         $this->assertCertifiedInterestDataset();
         $filters = $this->filters($request);
         $period = $this->period($filters);
@@ -391,6 +426,283 @@ class CampaignDashboardDatasetService
             'rankings' => $this->platformOnlyRankings($campaigns),
             'investment_closure' => $this->investmentClosures->status($period['start']),
         ];
+    }
+
+    /** Economic evidence for a pinned operational month; never invokes the official Interest reader. */
+    public function operationalEconomicContext(string $month, string $endDate): array
+    {
+        $request = Request::create('/informes/campanas', 'GET', [
+            'start_date' => $month.'-01', 'end_date' => $endDate, 'campaign_status' => '',
+        ]);
+        $period = $this->period($this->filters($request));
+        $evidence = $this->economicEvidence($period);
+        $summary = $this->platformOnlySummary($request);
+        $closure = DB::table('campaign_investment_closures')->where('month', $month.'-01')
+            ->first(['id', 'status', 'snapshot_version']);
+        if ($closure?->status === 'closed') {
+            $snapshot = DB::table('campaign_investment_closure_snapshots')
+                ->where('closure_id', $closure->id)->where('version', $closure->snapshot_version)
+                ->first(['id', 'source_cutoff_at', 'rule_version']);
+            $fingerprintInput = [$month, $endDate, $closure, $snapshot, $evidence['snapshot_rows']];
+        } else {
+            $platformRuns = DB::table('report_sync_runs')->where('dataset', 'campaign_platform_daily_metrics')
+                ->whereIn('source', ['meta', 'google_ads'])->orderByDesc('id')->limit(12)
+                ->get(['id', 'source', 'status', 'source_cutoff_at', 'updated_at'])->all();
+            $economicRows = array_map(static fn (array $row): array => array_intersect_key($row, array_flip([
+                'platform', 'account_id', 'campaign_id', 'campaign_name', 'spend', 'impressions', 'clicks',
+                'platform_leads', 'platform_conversions',
+            ])), $summary['campaigns']);
+            usort($economicRows, static fn (array $a, array $b): int => strcmp(json_encode($a), json_encode($b)));
+            $fingerprintInput = [$month, $endDate, $closure, $platformRuns, $summary['availability'], $economicRows];
+        }
+        $fingerprint = hash('sha256', json_encode($fingerprintInput, JSON_THROW_ON_ERROR));
+
+        return [
+            'month' => $month,
+            'end_date' => $endDate,
+            'closure_status' => $closure?->status ?? 'open',
+            'closure_version' => $closure?->snapshot_version,
+            'snapshot_rows' => $evidence['snapshot_rows'],
+            'availability' => $summary['availability'],
+            'fingerprint' => $fingerprint,
+            'summary' => $summary,
+        ];
+    }
+
+    /** The same dashboard presentation over a pinned provisional month. */
+    private function operationalPayload(Request $request): array
+    {
+        abort_unless(ReportUserAccess::isAdmin($request), 403);
+        $filters = $this->filters($request);
+        $month = substr($filters['start_date'], 0, 7);
+        abort_unless(in_array($month, ['2026-10', '2026-11'], true)
+            && $filters['start_date'] === $month.'-01'
+            && config($month === '2026-10' ? 'campaign_operational.october_2026_enabled' : 'campaign_operational.november_2026_enabled') === true, 404);
+
+        $run = DB::table('campaign_operational_months as m')
+            ->join('campaign_operational_runs as r', 'r.id', '=', 'm.active_run_id')
+            ->where('m.month_key', $month)->where('r.month_key', $month)
+            ->where('r.status', 'completed')->first(['r.*']);
+        if ($run === null) {
+            return $this->operationalBlockedPayload($request, 'No existe una atribución operativa activa para este mes.');
+        }
+        $evidence = json_decode($run->economic_evidence, true);
+        $endDate = $evidence['end_date'] ?? null;
+        if (! is_string($endDate) || $endDate < $month.'-01' || $endDate > ($month === '2026-10' ? '2026-10-31' : '2026-11-30')
+            || ($filters['end_date'] !== '' && $filters['end_date'] < $endDate)) {
+            return $this->operationalBlockedPayload($request, 'El rango solicitado no coincide con la cobertura de la atribución operativa.');
+        }
+        try {
+            $source = app(OperationalInterestSourceReader::class)->open(2026, (int) substr($month, 5, 2), true);
+            $economic = $this->operationalEconomicContext($month, $endDate);
+            if ($source['run_id'] !== (int) $run->interest_run_id || $source['projection_key'] !== $run->projection_key
+                || $source['utm_contract_version'] !== (int) $run->utm_contract_version
+                || $economic['fingerprint'] !== $run->economic_fingerprint
+                || ! $this->operationalRelationshipCurrent($run)) {
+                return $this->operationalBlockedPayload($request, 'La atribución quedó obsoleta al cambiar una fuente; debe reconstruirse administrativamente.');
+            }
+            $renderRequest = Request::create('/informes/campanas', 'GET', array_merge($request->query(), [
+                'start_date' => $month.'-01', 'end_date' => $endDate,
+            ]));
+            $renderFilters = $this->filters($renderRequest);
+            foreach (['account_id', 'source_acquired', 'medium_acquired', 'campaign_acquired',
+                'commercial_user', 'vehicle_interest'] as $unsupported) {
+                abort_if(filled($renderFilters[$unsupported] ?? null), 422, 'Filtro no respaldado por la proyección provisional.');
+            }
+            $base = $this->platformOnlySummary($renderRequest);
+            $period = $this->period($renderFilters);
+            $availablePlatforms = $month === '2026-10'
+                ? array_values(array_unique(array_column($economic['snapshot_rows'], 'platform')))
+                : array_keys(array_filter($base['availability']['platforms'], static fn (array $state): bool => $state['status'] === 'available'));
+            $metricRows = array_values(array_filter(
+                $this->metricRows($renderFilters, $this->economicEvidence($period)),
+                static fn (array $row): bool => in_array($row['platform'] ?? null, $availablePlatforms, true)
+            ));
+            $attributions = $this->operationalAttributionRows((int) $run->id, $renderFilters);
+            $opportunityComplete = (bool) $run->opportunity_coverage_complete;
+            abort_if(! $opportunityComplete && collect(['has_opportunity', 'has_reservation', 'has_sale'])
+                ->contains(static fn (string $field): bool => filled($renderFilters[$field] ?? null)), 422,
+                'La evidencia de Opportunity no admite ese filtro.');
+            $allRows = $this->applyOperationalClassifications($this->mergeRows($metricRows, $attributions, $renderFilters));
+            if (! $opportunityComplete) {
+                $allRows = array_map(function (array $row): array {
+                    $row = $this->withoutOpportunityMetrics($row);
+                    $row['classification'] = 'Sin datos suficientes';
+
+                    return $row;
+                }, $allRows);
+            } else {
+                $benchmarks = $this->benchmarks($this->platformRows($allRows));
+                $allRows = array_map(function (array $row) use ($benchmarks): array {
+                    $row['classification'] = $this->classifier->classify($row, $benchmarks);
+
+                    return $row;
+                }, $allRows);
+            }
+            $rows = $this->mainCampaignRows($allRows, $renderFilters);
+            $campaigns = app(CampaignCurrentStatusService::class)->decorate($this->campaignEntityRows($rows));
+            $totals = $this->withRatios(array_merge($base['kpis'], [
+                'spend' => round((float) array_sum(array_column($rows, 'spend')), 2),
+                'impressions' => (int) array_sum(array_column($rows, 'impressions')),
+                'clicks' => (int) array_sum(array_column($rows, 'clicks')),
+                'platform_leads' => collect($rows)->contains(static fn (array $row): bool => $row['platform_leads'] !== null)
+                    ? array_sum(array_map(static fn (array $row): int => (int) ($row['platform_leads'] ?? 0), $rows)) : null,
+                'platform_conversions' => array_sum(array_column($rows, 'platform_conversions')),
+                'leads_salesforce' => array_sum(array_column($rows, 'leads_salesforce')),
+                'opportunities' => $opportunityComplete ? array_sum(array_column($rows, 'opportunities')) : null,
+                'reservations' => $opportunityComplete ? array_sum(array_column($rows, 'reservations')) : null,
+                'live_reservations' => $opportunityComplete ? array_sum(array_column($rows, 'live_reservations')) : null,
+                'fallen_reservations' => $opportunityComplete ? array_sum(array_column($rows, 'fallen_reservations')) : null,
+                'sales' => $opportunityComplete ? array_sum(array_column($rows, 'sales')) : null,
+                'sale_amount' => $opportunityComplete && collect($rows)->contains(static fn (array $row): bool => $row['sale_amount'] !== null)
+                    ? array_sum(array_map(static fn (array $row): float => (float) ($row['sale_amount'] ?? 0), $rows)) : null,
+                'appraisals_generated' => $opportunityComplete ? array_sum(array_column($rows, 'appraisals_generated')) : null,
+                'purchases' => $opportunityComplete ? array_sum(array_column($rows, 'purchases')) : null,
+            ]));
+            $totals['interests_salesforce'] = $totals['leads_salesforce'];
+            $totals['result_count'] = $opportunityComplete ? $this->resultCountForTotals($totals, $renderFilters['context']) : null;
+            $totals['cost_per_result'] = $opportunityComplete ? $this->divide($totals['spend'], $totals['result_count']) : null;
+            if (! $opportunityComplete) {
+                $totals = $this->withoutOpportunityMetrics($totals);
+            }
+            $base['period_mode'] = 'operational_provisional';
+            $base['periodo_actual']['fin'] = $endDate;
+            $base['availability']['mode'] = 'operational_provisional';
+            $base['availability']['interest_dependent'] = ['status' => 'available', 'source' => 'operational_provisional'];
+            $base['availability']['attribution'] = ['status' => 'available', 'run_id' => (int) $run->id];
+            $base['availability']['opportunity_dependent'] = [
+                'status' => $opportunityComplete ? 'available' : 'blocked',
+                'reason' => $opportunityComplete ? null : 'Snapshots de Opportunity y relación directa incompletos, obsoletos o contradictorios.',
+            ];
+            $base['operational_evidence'] = [
+                'month' => $month, 'economic_state' => $evidence['closure_status'],
+                'economic_version' => $evidence['closure_version'], 'interest_run_id' => (int) $run->interest_run_id,
+                'attribution_run_id' => (int) $run->id, 'interest_cutoff_at' => $run->interest_cutoff_at,
+                'interest_observed_at' => $run->interest_observed_at,
+                'coverage' => $source['coverage'], 'incidents_count' => (int) $run->incidents_count,
+            ];
+            $base['kpis'] = $totals;
+            $base['campaigns'] = $campaigns;
+            $base['rankings'] = $this->rankingsFromRows($campaigns, $renderFilters);
+            if (! $opportunityComplete) {
+                foreach (['top_opportunities', 'top_reservations', 'top_sales', 'top_purchases', 'top_sale_amount', 'best_roas', 'best_cost_per_sale', 'best_cost_per_purchase'] as $key) {
+                    $base['rankings'][$key] = [];
+                }
+            }
+            $base['attribution_built_at'] = $run->completed_at;
+            $base['salesforce_interests_synced_at'] = $run->interest_observed_at;
+            $base['dataset_cutoff_at'] = $run->interest_cutoff_at;
+            $base['dataset_freshness_reason'] = 'Intereses operativos provisionales; cierre económico y fuentes comerciales versionados por separado.';
+            $base['warnings'] = [
+                'Atribución operativa provisional de '.$month.'; no constituye certificación histórica ni sustituye el informe publicado.',
+                ...($opportunityComplete ? [] : ['Opportunity, reservas, ventas e importes no disponibles hasta acreditar snapshots compatibles.']),
+            ];
+            $base['public_warnings'] = $base['warnings'];
+            $base['filters']['lead_types'] = [
+                ['value' => 'venta', 'label' => 'Venta'],
+                ['value' => 'venta_con_cambio', 'label' => 'Venta con cambio'],
+                ['value' => 'tasacion', 'label' => 'Tasación'],
+            ];
+            $base['ok'] = $campaigns !== [];
+            app(OperationalInterestSourceReader::class)->assertCurrent($source);
+            $current = DB::table('campaign_operational_months')->where('month_key', $month)->value('active_run_id');
+            if ((int) $current !== (int) $run->id
+                || $this->operationalEconomicContext($month, $endDate)['fingerprint'] !== $run->economic_fingerprint
+                || ! $this->operationalRelationshipCurrent($run)) {
+                return $this->operationalBlockedPayload($request, 'Las fuentes cambiaron durante la lectura.');
+            }
+
+            return ['summary' => $base, 'campaigns' => $campaigns, 'rankings' => $base['rankings']];
+        } catch (Throwable $exception) {
+            if ($exception instanceof HttpExceptionInterface) {
+                throw $exception;
+            }
+
+            return $this->operationalBlockedPayload($request, 'No puede acreditarse la vigencia de la atribución operativa.');
+        }
+    }
+
+    private function operationalBlockedPayload(Request $request, string $reason): array
+    {
+        $summary = $this->platformOnlySummary($request);
+        $summary['warnings'][] = $reason;
+        $summary['public_warnings'] = $summary['warnings'];
+
+        return ['summary' => $summary, 'campaigns' => $summary['campaigns'], 'rankings' => $summary['rankings']];
+    }
+
+    private function operationalRelationshipCurrent(object $run): bool
+    {
+        $current = app(CampaignPublicationReadiness::class)->operationalOpportunityEvidence($run->interest_observed_at);
+
+        return hash_equals($run->relationship_fingerprint, $current['fingerprint']);
+    }
+
+    private function withoutOpportunityMetrics(array $row): array
+    {
+        foreach (['opportunities', 'reservations', 'live_reservations', 'fallen_reservations', 'sales', 'sale_amount',
+            'appraisals_generated', 'purchases', 'appraisal_amount', 'cost_per_opportunity', 'cost_per_reservation',
+            'cost_per_sale', 'cost_per_appraisal', 'cost_per_purchase', 'roas', 'estimated_roi',
+            'lead_to_opportunity', 'opportunity_to_reservation', 'reservation_to_sale', 'lead_to_sale',
+            'lead_to_purchase', 'opportunity_to_purchase', 'result_count', 'cost_per_result'] as $field) {
+            $row[$field] = null;
+        }
+
+        return $row;
+    }
+
+    private function operationalAttributionRows(int $runId, array $filters): array
+    {
+        $query = DB::table('campaign_operational_attributions')->where('run_id', $runId)
+            ->whereNotIn('campaign_source_type', ['excluded_campaign', 'ambiguous_attribution']);
+        foreach (['platform', 'campaign_id', 'interest_status', 'interest_origin_delegation', 'interest_origin_zone', 'interest_type'] as $field) {
+            $filter = match ($field) {
+                'interest_origin_delegation' => 'delegation', 'interest_origin_zone' => 'zone',
+                'interest_type' => 'lead_type', default => $field,
+            };
+            if (filled($filters[$filter] ?? null)) {
+                $query->where($field, $filters[$filter]);
+            }
+        }
+        if (filled($filters['campaign_name'] ?? null)) {
+            $names = (array) $filters['campaign_name'];
+            $query->whereIn('campaign_name', $names);
+        }
+        if (filled($filters['search'] ?? null)) {
+            $query->where(function ($search) use ($filters): void {
+                $value = '%'.$filters['search'].'%';
+                $search->where('campaign_name', 'like', $value)->orWhere('campaign_id', 'like', $value);
+            });
+        }
+        foreach (['has_opportunity', 'has_reservation', 'has_sale'] as $field) {
+            $value = $this->booleanFilter($filters[$field] ?? null);
+            if ($value !== null) {
+                $query->where($field, $value);
+            }
+        }
+        $this->applyCampaignContextFilter($query, $filters);
+
+        return $query->select([
+            'platform', 'campaign_id', 'campaign_name',
+            DB::raw('MIN(campaign_source_type) as campaign_source_type'),
+            DB::raw('NULL as source_acquired'), DB::raw('NULL as medium_acquired'),
+            DB::raw('NULL as campaign_acquired'), DB::raw('NULL as source_campaign_name'),
+            DB::raw('MIN(campaign_type) as campaign_type'),
+            DB::raw('NULL as acquired_id'), DB::raw('NULL as content_acquired'),
+            DB::raw('MIN(match_status) as match_status'),
+            DB::raw('COUNT(DISTINCT interest_key) as leads_salesforce'),
+            DB::raw('COUNT(DISTINCT CASE WHEN has_opportunity = 1 THEN opportunity_key END) as opportunities'),
+            DB::raw('COUNT(DISTINCT CASE WHEN has_reservation = 1 THEN opportunity_key END) as reservations'),
+            DB::raw("COUNT(DISTINCT CASE WHEN has_reservation = 1 AND (campaign_type = 'tasacion' OR has_sale = 0) THEN opportunity_key END) as live_reservations"),
+            DB::raw("COUNT(DISTINCT CASE WHEN has_reservation = 1 AND campaign_type <> 'tasacion' AND has_sale = 1 THEN opportunity_key END) as fallen_reservations"),
+            DB::raw("COUNT(DISTINCT CASE WHEN has_sale = 1 AND campaign_type <> 'tasacion' THEN opportunity_key END) as sales"),
+            DB::raw("SUM(CASE WHEN has_sale = 1 AND campaign_type <> 'tasacion' THEN COALESCE(sale_amount, 0) ELSE 0 END) as sale_amount"),
+            DB::raw("COUNT(DISTINCT CASE WHEN has_sale = 1 AND campaign_type <> 'tasacion' AND sale_amount IS NOT NULL THEN opportunity_key END) as sale_amount_rows"),
+            DB::raw("COUNT(DISTINCT CASE WHEN has_opportunity = 1 AND campaign_type = 'tasacion' THEN opportunity_key END) as appraisals_generated"),
+            DB::raw("COUNT(DISTINCT CASE WHEN has_purchase = 1 AND campaign_type = 'tasacion' THEN opportunity_key END) as purchases"),
+            DB::raw('0 as appraisal_amount'), DB::raw('0 as appraisal_amount_rows'),
+        ])->groupBy('platform', 'campaign_id', 'campaign_name')->get()
+            ->map(fn (object $row): array => $this->normalizeDashboardRow((array) $row))->all();
     }
 
     private function assertCertifiedInterestDataset(): void
@@ -1147,7 +1459,7 @@ class CampaignDashboardDatasetService
             }
 
             return ['start' => $start->toDateString(), 'end_exclusive' => $end->toDateString()];
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
@@ -1841,7 +2153,7 @@ class CampaignDashboardDatasetService
 
         try {
             return CarbonImmutable::parse($value)->toDateString();
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
@@ -4253,7 +4565,7 @@ class CampaignDashboardDatasetService
 
         try {
             return CarbonImmutable::parse($value, self::REPORT_TIMEZONE)->setTimezone(self::REPORT_TIMEZONE);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return $fallback;
         }
     }

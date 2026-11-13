@@ -181,3 +181,6 @@ jobs:
 
       - name: Monthly Interest consolidation MariaDB tests
         run: php artisan test --filter=InterestMonthlyConsolidationTest
+
+      - name: Operational campaign attribution MariaDB tests
+        run: php artisan test --filter=CampaignOperationalAttributionTest

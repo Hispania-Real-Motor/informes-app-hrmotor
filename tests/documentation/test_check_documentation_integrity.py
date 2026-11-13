@@ -476,6 +476,7 @@ class IntegrityTests(unittest.TestCase):
         self.assertIn("php artisan test --filter=InterestMonthlyConsolidationTest", workflow)
         self.assertIn("php artisan test --filter=MonthlyInterestProvisionalReaderTest", workflow)
         self.assertIn("php artisan test --filter=OperationalInterestActivitySyncTest", workflow)
+        self.assertIn("php artisan test --filter=CampaignOperationalAttributionTest", workflow)
         self.assertIn("node --test tests/js/*.test.mjs", workflow)
 
     def test_unexpected_git_status_fails_closed(self) -> None:
