@@ -1,5 +1,107 @@
 # Handoff para agentes
 
+## 2026-11-13 — PR #147: cobertura acotada de actividad Task/Event
+
+- Objetivo: evitar que una Task/Event nueva, ausente o con `WhatId` cambiado
+  bloquee toda la actividad válida, sin presentar una cobertura parcial como
+  inventario completo. `OperationalInterestActivitySync` conserva la identidad
+  afectada con `quarantined_at` y motivo seguro, cuantifica las filas admitidas
+  y en cuarentena y proyecta solo las verificadas y no borradas. Las variaciones
+  de hash admitidas se siguen contabilizando. `status.active` comprueba también
+  la compatibilidad con la versión activa de Intereses; `pointer_recorded`
+  identifica por separado un puntero histórico. El dashboard llama mínimos
+  observados a los recuentos parciales y aclara que las actividades pertenecen
+  a la cohorte de Intereses de noviembre, aunque su fecha sea otra.
+- Archivos funcionales: `OperationalInterestActivitySync.php`,
+  `OperationalInterestMonthlyReader.php`,
+  `October2026ProvisionalInterestDashboardDatasetService.php`,
+  `resources/js/reports/leads-dashboard.js`, sus pruebas PHP/JS y migración
+  `2026_11_17_140000_add_operational_activity_quarantine.php`. Documentos:
+  `docs/reglas-negocio-leads.md`, `docs/salesforce-interest-generations.md`,
+  `docs/operaciones-produccion.md`, `docs/matriz-trazabilidad-kpi.md` y estos
+  tres documentos de contexto/decisiones/traspaso.
+- Base de datos: migración aditiva para dos columnas de cuarentena e índice en
+  filas, y contador/indicador de completitud en runs. No reescribe actividades
+  históricas ni toca la publicación oficial. Aplicar antes del código nuevo
+  solo tras autorización de despliegue; una estructura parcial requiere
+  inspección manual y no debe repararse borrando evidencia.
+- Seguridad: los motivos de cuarentena son códigos cerrados; HTTP y estado
+  administrativo entregan solo recuentos, nunca IDs, payloads, mensajes remotos
+  ni relaciones individuales. Se mantienen rol, flag, lease fenced y bloqueo
+  de activación. La observación no acredita historia ni gestión comercial.
+- Rendimiento: sin SOQL por actividad ni relecturas indefinidas; bloques de 250
+  `WhatId`, páginas de 500 y presupuesto de 3.000 consultas/páginas. La
+  verificación añade consultas SQL acotadas por bloque y la lectura HTTP solo
+  consulta resumen versionado. Medición real de MariaDB/API pendiente de CI y
+  de una operación autorizada posterior; no afirmar benchmark productivo.
+- Pruebas: escenarios sintéticos de alta tardía, ausencia, cambio de relación
+  incluso entre bloques, soft delete, fecha ausente, reanudación, presupuesto y
+  puntero incompatible. En el SHA funcional `39c5eb0`, GitHub Actions pasó
+  PHPUnit completo (1.745 pruebas, una omitida, 15.586 aserciones), Pint (13
+  archivos), build, 61 pruebas JavaScript, whitespace y la suite de actividad
+  sobre MariaDB 11 (18 pruebas, 94 aserciones). Documentation integrity pasó
+  tras actualizar `Docs-Outside` en la descripción de la PR (46 tests del
+  validador y 26 rutas revisadas). Localmente pasaron 61 pruebas JavaScript,
+  `node --check` y `git diff --check`; no hay PHP/Composer/npm/Python utilizables
+  en este worktree. El commit documental final deberá comprobarse de nuevo en
+  Actions. No se ejecutó Salesforce ni se cambió producción.
+- Acción manual: revisar migración y CI, integrar/desplegar solo con aprobación
+  posterior; mantener scheduler apagado y ejecutar la CLI remota solo después
+  de autorización. Conservar los runs previos. Riesgo residual: Salesforce
+  puede cambiar después de la segunda lectura; hard deletes purgados y
+  relaciones no observables no se acreditan como historia exacta.
+
+## 2026-11-12 — actividad operativa y calidad de noviembre de Interests (PR Draft pendiente)
+
+- Tarea: completar el primer bloque del dashboard de noviembre sin alterar la
+  generación publicada ni convertir actividad observada en gestión acreditada.
+  Se añadió un snapshot administrativo local de calidad de procedencia y una
+  fuente Task/Event aislada, fijada al run operativo de Intereses. Los nuevos
+  KPI provisionales son recuento de actividades no borradas e Intereses
+  filtrados con actividad; gestionados, potenciales sin trabajar, llamadas
+  atendidas, elegibilidad comercial y comparativas siguen no disponibles.
+- Código y tests: `OperationalInterestMonthlySync`,
+  `OperationalInterestMonthlyReader`,
+  `October2026ProvisionalInterestDashboardDatasetService`,
+  `OperationalInterestQualitySnapshot`, `OperationalInterestIdentity`,
+  `OperationalInterestActivitySync`, ambas CLI operativas, JS del dashboard,
+  `OperationalInterestMonthlySyncTest`, `OperationalInterestActivitySyncTest`
+  y JS de estados; CI amplía la suite MariaDB 11. Documentos: reglas de
+  Interests, generaciones, operaciones, matriz, guía y los tres documentos
+  `docs/ai` pertinentes.
+- Base de datos: migraciones aditivas `2026_11_17_120000` (snapshot de calidad)
+  y `2026_11_17_130000` (clave HMAC de vínculo, runs/filas/resúmenes de
+  actividad y puntero compatible). Aplicar migraciones antes del código web
+  en un despliegue autorizado; no reescriben runs antiguos ni borran evidencia
+  al retroceder. La versión de #146 ya activa carece de clave y requiere una
+  nueva sincronización operativa antes de preparar actividad.
+- Seguridad e integridad: el diagnóstico conserva únicamente contadores,
+  nunca procedencias originales desconocidas. La actividad vincula solo
+  `WhatId` comprobado, con dos lecturas acotadas, lease fenced, checkpoints
+  transaccionales y activación bajo bloqueo del puntero. Los IDs permanecen en
+  tablas restringidas; HTTP recibe agregados. `APP_KEY` es parte de la identidad
+  HMAC, por lo que una rotación exige un plan específico. Un fallo de actividad
+  deja Intereses visibles y la actividad no se publica parcialmente.
+- Rendimiento: bloques de 250 Interests, páginas de 500, presupuesto persistido
+  de 3.000 consultas y 3.000 páginas/lotes por run; sin SOQL ni barrido del
+  journal en HTTP. Medir API, SQL, memoria y latencia con volumen real tras
+  autorización; no extrapolar el tiempo de fixtures sintéticas a producción.
+- Pruebas: JS local, 61/61; `git diff --check`, correcto. Actions en
+  `d8847a0`: PHPUnit completo, 1.735 superadas, una omitida y 15.535
+  aserciones; MariaDB 11 correcto, incluida la suite nueva de actividad
+  (8 pruebas, 43 aserciones); Documentation integrity correcto. Pint detectó
+  una referencia de clase totalmente cualificada en el servicio nuevo;
+  se corrigió el estilo y el SHA final deberá ejecutar de nuevo Pint, build,
+  JavaScript y ambos workflows. No se ejecutó Salesforce real, migración
+  productiva ni sincronización productiva.
+- Manual/riesgos: mantener flag y scheduler apagados hasta autorización
+  independiente. Auditar la distribución real de 4.431 sin clasificación y el
+  contador de soft deletes antes de explicar la diferencia de siete; revisar
+  reloj UTC/PHP/MariaDB/Madrid del cutoff observado. Task/Event puede cambiar
+  después de la segunda lectura; no acredita historia al cutoff, actor,
+  contacto ni resultado telefónico. Los demás informes siguen aislados y son
+  bloques posteriores. No cerrar ni fusionar #145 de forma automática.
+
 ## 2026-11-12 — PR #146: precedencia de versiones operativas mensuales
 
 - Tarea: impedir que un run antiguo reanudado sustituya una versión mensual

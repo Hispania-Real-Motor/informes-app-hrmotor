@@ -9,6 +9,8 @@ use Throwable;
 /** HTTP reads only the activated month pointer and precalculated projection. */
 final class OperationalInterestMonthlyReader
 {
+    public function __construct(private readonly OperationalInterestQualitySnapshot $quality) {}
+
     public function hasActiveForMonth(int $year, int $month): bool
     {
         try {
@@ -43,10 +45,29 @@ final class OperationalInterestMonthlyReader
                 throw new ProvisionalInterestSourceUnavailable;
             }
             $this->assertCurrent($key, (int) $run->id, (string) $run->projection_key);
+            $quality = $this->quality->forRun((int) $run->id, (string) $run->projection_key);
+            if ($quality !== null) {
+                if ((int) ($quality['total'] ?? -1) !== (int) ($overview['coverage']['eligible_active_matching'] ?? -2)) {
+                    throw new ProvisionalInterestSourceUnavailable;
+                }
+                $overview['coverage']['delegation_quality'] = $quality;
+            }
+            $activityPointer = $monthRow->active_activity_run_id;
+            $activityRun = $activityPointer === null ? null
+                : DB::table('salesforce_interest_operational_activity_runs')->where('id', $activityPointer)
+                    ->where('source_run_id', $run->id)->where('month_key', $key)
+                    ->where('status', 'completed')->where('phase', 'completed')->first();
+            $this->assertCurrent($key, (int) $run->id, (string) $run->projection_key);
+            $this->assertActivityPointer($key, $activityPointer === null ? null : (int) $activityPointer);
 
             return ['overview' => $overview, 'projection_key' => (string) $run->projection_key,
                 'integrity_revision' => (int) $run->id, 'scope' => 'operational_'.str_replace('-', '_', $key),
-                'operational_month' => $key];
+                'operational_month' => $key, 'activity_pointer_id' => $activityPointer === null ? null : (int) $activityPointer,
+                'activity_run_id' => $activityRun === null ? null : (int) $activityRun->id,
+                'activity_observed_at' => $activityRun?->completed_at,
+                'activity_coverage_complete' => $activityRun === null ? null : (bool) $activityRun->coverage_complete,
+                'activity_verified_count' => $activityRun === null ? null : (int) $activityRun->verified_count,
+                'activity_quarantined_count' => $activityRun === null ? null : (int) $activityRun->quarantined_count];
         } catch (Throwable) {
             throw new ProvisionalInterestSourceUnavailable;
         }
@@ -58,6 +79,19 @@ final class OperationalInterestMonthlyReader
             $valid = DB::table('salesforce_interest_operational_months')->where('month_key', $month)
                 ->where('active_run_id', $runId)->where('active_projection_key', $projectionKey)->exists();
             if (! $valid) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+        } catch (Throwable) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+    }
+
+    public function assertActivityPointer(string $month, ?int $runId): void
+    {
+        try {
+            $query = DB::table('salesforce_interest_operational_months')->where('month_key', $month);
+            $runId === null ? $query->whereNull('active_activity_run_id') : $query->where('active_activity_run_id', $runId);
+            if (! $query->exists()) {
                 throw new ProvisionalInterestSourceUnavailable;
             }
         } catch (Throwable) {

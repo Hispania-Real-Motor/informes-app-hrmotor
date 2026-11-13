@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Reports\Leads\OperationalInterestQualitySnapshot;
 use App\Services\Salesforce\OperationalInterestMonthlySync;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -11,14 +12,14 @@ use Throwable;
 final class SyncOperationalInterestsCommand extends Command
 {
     protected $signature = 'salesforce:sync-interests-operational
-        {action : prepare, run, status, or sync-current}
+        {action : prepare, run, status, sync-current, or audit-quality}
         {--month= : Complete YYYY-MM month in Europe/Madrid}
         {--run-id= : Prepared or failed operational run identifier}
         {--allow-salesforce-read : Explicit authorization for bounded Salesforce reads}';
 
     protected $description = 'Build a provisional operational Interest month without publishing an official generation.';
 
-    public function handle(OperationalInterestMonthlySync $sync): int
+    public function handle(OperationalInterestMonthlySync $sync, OperationalInterestQualitySnapshot $quality): int
     {
         $action = (string) $this->argument('action');
         $runId = filter_var($this->option('run-id'), FILTER_VALIDATE_INT);
@@ -30,6 +31,11 @@ final class SyncOperationalInterestsCommand extends Command
             }
             if ($action === 'prepare' && $this->option('month') !== null) {
                 $this->line(json_encode(['run_id' => $sync->prepare((string) $this->option('month'))], JSON_THROW_ON_ERROR));
+
+                return self::SUCCESS;
+            }
+            if ($action === 'audit-quality' && $this->option('month') !== null) {
+                $this->line(json_encode($quality->rebuildActive((string) $this->option('month')), JSON_THROW_ON_ERROR));
 
                 return self::SUCCESS;
             }

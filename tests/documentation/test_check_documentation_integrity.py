@@ -77,10 +77,16 @@ class IntegrityTests(unittest.TestCase):
     def test_operational_month_is_an_interest_only_provisional_source(self) -> None:
         for path in (
             "app/Services/Salesforce/OperationalInterestMonthlySync.php",
+            "app/Services/Salesforce/OperationalInterestActivitySync.php",
             "app/Services/Salesforce/InterestMonthlyDifferenceClassifier.php",
             "app/Services/Reports/Leads/OperationalInterestMonthlyReader.php",
+            "app/Services/Reports/Leads/OperationalInterestIdentity.php",
+            "app/Services/Reports/Leads/OperationalInterestQualitySnapshot.php",
             "app/Console/Commands/SyncOperationalInterestsCommand.php",
+            "app/Console/Commands/SyncOperationalInterestActivitiesCommand.php",
             "database/migrations/2026_11_16_120000_create_operational_interest_months.php",
+            "database/migrations/2026_11_17_120000_add_operational_interest_quality_snapshots.php",
+            "database/migrations/2026_11_17_130000_add_operational_interest_activities.php",
         ):
             self.assertEqual({"interests"}, checker.domains_for(path))
 
@@ -466,6 +472,8 @@ class IntegrityTests(unittest.TestCase):
         self.assertIn("php artisan test --filter=InterestMonthlyRecoveryTest", workflow)
         self.assertIn("php artisan test --filter=InterestMonthlyConsolidationTest", workflow)
         self.assertIn("php artisan test --filter=MonthlyInterestProvisionalReaderTest", workflow)
+        self.assertIn("php artisan test --filter=OperationalInterestActivitySyncTest", workflow)
+        self.assertIn("node --test tests/js/*.test.mjs", workflow)
 
     def test_unexpected_git_status_fails_closed(self) -> None:
         errors = self.check([checker.Change("U", checker.DOCS["calls"])], updated())

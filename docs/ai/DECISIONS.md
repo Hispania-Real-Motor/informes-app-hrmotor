@@ -1,5 +1,24 @@
 # Decisiones técnicas
 
+## 2026-11-13 — cuarentena individual y cobertura parcial de actividad operativa
+
+- La segunda lectura Task/Event no representa una transacción con Salesforce.
+  Si observa una identidad nueva, una ausencia o un `WhatId` cambiado, incluso
+  entre bloques de extracción, conserva
+  la identidad en el journal con motivo acotado, pero la excluye del resumen de
+  filas admitidas. El checkpoint, el motivo y los contadores se confirman bajo
+  el mismo lease y la misma transacción; un fallo conserva la fase reanudable.
+- Un run completado distingue `coverage_complete=true` de cobertura parcial.
+  El subconjunto admitido de una ejecución parcial puede mostrarse solo como
+  mínimo observado con el número en cuarentena, nunca como total ni como cero
+  concluyente. Si ya existe un run de actividad completado y compatible, una
+  ejecución parcial no desplaza su puntero. Ante un cambio de versión de
+  Intereses, el puntero histórico no se considera activo.
+- Esta política permite observar actividad válida sin esconder incidencias,
+  conserva la última versión compatible y evita un ciclo remoto de relecturas
+  por identidad. No certifica contenido histórico ni actividad posterior a
+  la segunda lectura. La fuente oficial y F2/F5 estrictas no cambian.
+
 ## 2026-11-12 — fuente operativa mensual separada del journal F2 estricto
 
 - La consulta SOQL sobre estado actual no ofrece una fotografía histórica
@@ -1496,6 +1515,28 @@ automáticas consecutivas no verificadas como límite operativo. F2M conserva
 su contraste remoto independiente. Ningún resultado acredita un estado
 histórico `as-of` ni resuelve hard deletes. La migración es aditiva para los
 journals existentes y el rollback de esquema no elimina evidencia.
+
+## 2026-11-12 — actividad observada como fuente dependiente y versionada
+
+La actividad Task/Event operativa se vincula a una versión completa de
+Intereses mediante `source_run_id`, `WhatId` comprobado y clave HMAC local.
+Se eligió un run separado con checkpoints de bloque/Id/tipo y puntero de
+activación en lugar de incorporar F5 en el sincronizador de Intereses:
+una falla remota de actividades no puede retirar el inventario ya visible.
+Una segunda lectura exige cobertura y relaciones completas; los cambios
+legítimos de contenido quedan como observación más reciente y contador de
+incidencias, sin `verified=true` histórico. La vista solo suma actividades
+no borradas de un run completo que corresponda a la misma versión de
+Intereses. No se interpreta el campo Canal como llamada real ni una actividad
+sin actor acreditado como «gestionado». Comparativas, comerciales ejecutores
+y otros informes esperan sus propios contratos de evidencia. El presupuesto
+remoto y el lease son persistentes; no hay scheduler implícito.
+
+La calidad de procedencia se agrega fuera de HTTP por run/clave, sin guardar
+valores originales desconocidos. `General` permanece no reconocido. La
+versión anterior a esta extensión carece de claves de enlace: se exige una
+nueva versión operativa antes de actividad y no se reescribe un run histórico.
+`APP_KEY` fija la identidad HMAC y su rotación requiere migración diseñada.
 
 ## 2026-11-12 — precedencia monótona de versiones operativas mensuales
 

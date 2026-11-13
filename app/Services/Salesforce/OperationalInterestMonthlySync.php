@@ -5,6 +5,7 @@ namespace App\Services\Salesforce;
 use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\Leads\LeadRecordTypeNormalizer;
 use App\Services\Reports\Leads\ObservedInterestOwnerProjection;
+use App\Services\Reports\Leads\OperationalInterestIdentity;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\Crypt;
@@ -36,6 +37,7 @@ final class OperationalInterestMonthlySync
         private readonly LeadDelegationNormalizer $delegations,
         private readonly LeadRecordTypeNormalizer $types,
         private readonly ObservedInterestOwnerProjection $owners,
+        private readonly OperationalInterestIdentity $identity,
     ) {}
 
     public function prepare(string $month): int
@@ -442,6 +444,7 @@ final class OperationalInterestMonthlySync
         foreach ($rows as $row) {
             $delegation = $this->delegations->normalize($row->origin_delegation);
             $batch[] = ['scope' => $scope, 'integrity_revision' => $run->id, 'projection_key' => $key,
+                'interest_key' => $this->identity->key((int) $run->id, (string) $row->salesforce_id),
                 'interest_status' => $this->label($row->status),
                 'interest_type' => $this->types->label($this->types->normalize($row->type)) ?? 'Sin clasificar',
                 'source' => $this->label($row->source), 'medium' => $this->label($row->medium),
@@ -496,6 +499,7 @@ final class OperationalInterestMonthlySync
                 'media' => $this->distribution($projection, 'medium', 'medium'),
                 'channels' => $this->distribution($projection, 'channel', 'channel')],
             'projection_contract' => 'observed_owners_v1',
+            'interest_identity_key_id' => $this->identity->keyId(),
             'verification' => ['operational_coverage_checked' => true, 'historical_certification' => 'unavailable',
                 'f2_verified' => false, 'f5_verified' => false],
         ];

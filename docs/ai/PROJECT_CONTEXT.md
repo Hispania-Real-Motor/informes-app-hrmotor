@@ -1,8 +1,36 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-11-12.
+Actualizado: 2026-11-13.
+
+## Cobertura de actividad operativa (2026-11-13, PR #147 en revisión)
+
+- `OperationalInterestActivitySync` guarda en la fila restringida
+  `quarantined_at` y un código de motivo para identidades nuevas en la segunda
+  lectura, ausencias y cambios de `WhatId`. El run cuantifica cuarentena y
+  `coverage_complete`; los resúmenes HMAC incluyen solo filas verificadas y
+  activas. Una ejecución parcial no desplaza una actividad completa compatible,
+  pero puede exponer un subconjunto si no existe otra versión compatible.
+- `OperationalInterestMonthlyReader` exige que la actividad completada apunte
+  al run de Intereses activo; el estado administrativo separa puntero guardado
+  (`pointer_recorded`) y fuente usable (`active`). El dashboard muestra la
+  cobertura y califica los recuentos parciales como mínimos observados sobre
+  la cohorte de Intereses, sin restringir la fecha de ejecución de actividades.
+  HTTP no escanea filas de actividad ni consulta Salesforce.
 
 ## Fuente operativa mensual provisional de Interests (2026-11-12, en revisión)
+
+- La extensión de actividad operativa fija un `source_run_id` activo y guarda
+  observaciones Task/Event en runs, filas y resúmenes independientes. La
+  relación se comprueba mediante `WhatId` y se agrupa con una clave HMAC por
+  `(run_id, Interest.Id)` sin exponer el ID en el dataset HTTP. El puntero
+  mensual `active_activity_run_id` referencia una ejecución completada y puede
+  indicar cobertura parcial explícita; el lector exige coincidencia con el run
+  de Intereses actual y vuelve a
+  comprobar el puntero. Una versión nueva de Intereses no reutiliza la
+  actividad previa. El snapshot local de calidad de delegación se liga a run
+  y clave de proyección. Ambos son fuentes provisionales, no `F5` certificado
+  ni publicación global. Las CLI de calidad y actividad son administrativas,
+  sin scheduler.
 
 - `OperationalInterestMonthlySync` reutiliza la consulta y el mapeo de
   `SalesforceInterestSyncService`, con meses civiles Madrid, cutoff de
