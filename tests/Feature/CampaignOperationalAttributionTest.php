@@ -109,6 +109,25 @@ class CampaignOperationalAttributionTest extends TestCase
         $this->assertSame('prepared', DB::table('campaign_operational_runs')->value('status'));
     }
 
+    public function test_failed_new_preparation_keeps_previous_active_run(): void
+    {
+        $this->operationalMonth('2026-10', 2);
+        $this->closedOctober();
+        $active = $this->buildAndActivate(2026, 10);
+        DB::table('campaign_investment_closure_snapshots')->update(['economic_rows' => '[]']);
+
+        try {
+            app(CampaignOperationalAttributionBuilder::class)->build(2026, 10);
+            $this->fail('Un cierre vacío no permite construir una nueva atribución.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Falta el snapshot económico cerrado de octubre.', $exception->getMessage());
+        }
+
+        $this->assertSame($active['run_id'], (int) DB::table('campaign_operational_months')->value('active_run_id'));
+        $this->assertSame('completed', DB::table('campaign_operational_runs')->value('status'));
+        $this->assertSame(1, DB::table('campaign_operational_runs')->count());
+    }
+
     public function test_utm_v1_is_rejected_and_non_admin_cannot_read_operational_attribution(): void
     {
         $this->operationalMonth('2026-10', 1);
