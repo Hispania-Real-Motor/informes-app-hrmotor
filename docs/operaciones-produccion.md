@@ -15,12 +15,16 @@ versiones; obtener autorización separada para cada mes.
    `campaign_operational_attributions` con sus índices y FKs. Si una DDL quedó
    parcialmente aplicada, inspeccionar el esquema antes del reintento; no
    borrar tablas ni registros para repararla. El `up()` comprueba existencia;
-   `down()` no elimina la evidencia.
+   `down()` es deliberadamente inocuo y conserva la evidencia incluso en
+   rollback de código. No usar rollback de migración como desactivación.
 2. Confirmar por lectura administrativa que el run Interest activo del mes
    es UTM v2 y que su proyección sigue siendo actual. Octubre exige un
    snapshot económico vigente, válido, cerrado y no vacío; noviembre requiere
    tramo abierto con cobertura por plataforma. Contrastar cutoffs de los
    últimos runs de Opportunity y relación directa con la observación Interest.
+   El snapshot directo debe terminar después del último run Opportunity,
+   tener cutoff no anterior al de éste y conservar una huella válida de
+   referencias de 64 caracteres hexadecimales.
    Si falta concordancia directa/inversa, aceptar solo atribución con KPI
    Opportunity indisponibles; no corregir relaciones manualmente.
 3. Tras autorización específica para preparar cada mes, ejecutar
@@ -29,11 +33,19 @@ versiones; obtener autorización separada para cada mes.
    La CLI es local y no consulta Salesforce; entrega run, recuentos, incidencias
    y cobertura, sin IDs individuales. Comparar `interests_processed` con el
    universo activo elegible, `attributions_count` con las filas del run y
-   revisar `opportunity_coverage_complete`, fuente económica y versión. Un
-   fallo deja la versión activa anterior; no mover el puntero a mano.
-4. Solo tras validar cobertura y permisos, habilitar el flag provisional del
-   mes correspondiente (`SALESFORCE_OCTOBER_2026_PROVISIONAL_ENABLED` o
-   `SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED`) y consultar como administrador
+   revisar `opportunity_coverage_complete`, fuente económica y versión. El
+   resultado queda `prepared`: el build no mueve el puntero. Un fallo conserva
+   la versión activa anterior; no mover el puntero a mano.
+4. Revisar el run preparado y sus incidencias. Tras autorización explícita
+   para activarlo, ejecutar
+   `php artisan campaigns:activate-operational-attribution 2026-10 <run_id> --confirm`
+   o `php artisan campaigns:activate-operational-attribution 2026-11 <run_id> --confirm`.
+   La activación vuelve a comprobar las fuentes bajo bloqueo y transacción;
+   un fallo conserva el puntero anterior.
+5. Solo tras validar cobertura y permisos, habilitar el flag propio de Campañas
+   del mes (`CAMPAIGN_OPERATIONAL_OCTOBER_2026_ENABLED` o
+   `CAMPAIGN_OPERATIONAL_NOVEMBER_2026_ENABLED`, ambos `false` por defecto)
+   y consultar como administrador
    `/informes/campanas?source=operational&start_date=2026-10-01` o
    `start_date=2026-11-01`. Verificar banner provisional, run/cutoff,
    plataformas disponibles y `no-store, private`; probar JSON, filtros y CSV
@@ -41,7 +53,7 @@ versiones; obtener autorización separada para cada mes.
    compartidas. La ausencia de evidencia debe mostrar solo datos de plataforma
    acreditados, nunca cifras comerciales cero inventadas.
 
-**Reversión de lectura:** deshabilitar el flag del mes y limpiar caché de
+**Reversión de lectura:** deshabilitar el flag de Campañas del mes y limpiar caché de
 configuración mediante el procedimiento normal, o seleccionar la fuente oficial
 en la interfaz. Conservar filas y punteros operativos para auditoría; no hacer
 `migrate:rollback` ni tocar snapshots económicos/atribuciones oficiales como
@@ -51,6 +63,10 @@ construir un run nuevo antes de presentarla. El intervalo operativo abierto no
 equivale a una fotografía histórica al cutoff. La validación CI con fixtures
 no acredita UTM, relaciones ni tiempos de producción; medir latencia y volumen
 en una prueba supervisada después de un despliegue autorizado.
+Para octubre cerrado, sincronizaciones posteriores de Meta/Google no cambian
+la huella del cierre vigente; una modificación del contenido de su snapshot
+económico sí la cambia, incluso sin alterar el número de filas. Apagar el
+flag no elimina los controles de integridad ni modifica el puntero.
 
 El workflow CI añade `CampaignOperationalAttributionTest` al job MariaDB 11.
 Esta ampliación no sustituye PHPUnit completo ni el control de documentación.

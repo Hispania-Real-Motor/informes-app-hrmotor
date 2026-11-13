@@ -26,6 +26,7 @@ final class CampaignOperationalAttributionBuilder
         private readonly LeadRecordTypeNormalizer $recordTypes,
         private readonly LeadDelegationNormalizer $delegations,
         private readonly CampaignSaleAmountResolver $amounts,
+        private readonly CampaignPublicationReadiness $readiness,
     ) {}
 
     public function build(int $year, int $month): array
@@ -60,7 +61,7 @@ final class CampaignOperationalAttributionBuilder
             ->join('campaign_operational_runs as r', 'r.id', '=', 'm.active_run_id')
             ->where('m.month_key', $monthKey)->first(['r.id', 'r.interest_run_id', 'r.projection_key', 'r.economic_fingerprint',
                 'r.opportunity_sync_run_id', 'r.opportunity_sync_cutoff_at', 'r.direct_relationship_run_id',
-                'r.direct_relationship_cutoff_at', 'r.status']);
+                'r.direct_relationship_cutoff_at', 'r.relationship_fingerprint', 'r.status']);
         if ($active !== null && $active->status === 'completed'
             && (int) $active->interest_run_id === $source['run_id']
             && $active->projection_key === $source['projection_key']
@@ -68,8 +69,17 @@ final class CampaignOperationalAttributionBuilder
             && (int) $active->opportunity_sync_run_id === (int) $opportunity['opportunity_run_id']
             && (string) $active->opportunity_sync_cutoff_at === (string) $opportunity['opportunity_cutoff_at']
             && (int) $active->direct_relationship_run_id === (int) $opportunity['direct_run_id']
-            && (string) $active->direct_relationship_cutoff_at === (string) $opportunity['direct_cutoff_at']) {
+            && (string) $active->direct_relationship_cutoff_at === (string) $opportunity['direct_cutoff_at']
+            && $active->relationship_fingerprint === $opportunity['fingerprint']) {
             return ['run_id' => (int) $active->id, 'month' => $monthKey, 'reused' => true];
+        }
+        $prepared = DB::table('campaign_operational_runs')->where('month_key', $monthKey)
+            ->where('status', 'prepared')->orderByDesc('id')->first();
+        if ($prepared !== null && (int) $prepared->interest_run_id === $source['run_id']
+            && $prepared->projection_key === $source['projection_key']
+            && $prepared->economic_fingerprint === $economic['fingerprint']
+            && $prepared->relationship_fingerprint === $opportunity['fingerprint']) {
+            return ['run_id' => (int) $prepared->id, 'month' => $monthKey, 'reused' => true, 'status' => 'prepared'];
         }
 
         $token = (string) Str::uuid();
@@ -81,8 +91,10 @@ final class CampaignOperationalAttributionBuilder
         $unresolvedRelationships = 0;
 
         try {
-            $availablePlatforms = array_keys(array_filter($economic['availability']['platforms'],
-                static fn (array $state): bool => $state['status'] === 'available'));
+            $availablePlatforms = $month === 10
+                ? array_values(array_unique(array_column($economic['snapshot_rows'], 'platform')))
+                : array_keys(array_filter($economic['availability']['platforms'],
+                    static fn (array $state): bool => $state['status'] === 'available'));
             $lookup = $this->matching->operationalMetricLookup(
                 $start, CarbonImmutable::parse($endDate, 'Europe/Madrid')->addDay()->startOfDay(),
                 $month === 10 ? $economic['snapshot_rows'] : null, $availablePlatforms,
@@ -178,13 +190,13 @@ final class CampaignOperationalAttributionBuilder
                     throw new RuntimeException('La relación Opportunity cambió antes de activar.');
                 }
                 DB::table('campaign_operational_runs')->where('id', $runId)->update([
-                    'status' => 'completed', 'interests_processed' => $processed, 'attributions_count' => $count,
+                    'status' => 'prepared', 'interests_processed' => $processed, 'attributions_count' => $count,
                     'incidents_count' => $incidents + $unresolvedRelationships,
                     'opportunity_coverage_complete' => $opportunity['available'] && $unresolvedRelationships === 0,
                     'completed_at' => now(), 'updated_at' => now(),
                 ]);
                 DB::table('campaign_operational_months')->where('month_key', $monthKey)->where('build_token', $token)
-                    ->update(['active_run_id' => $runId, 'build_token' => null, 'lease_expires_at' => null, 'updated_at' => now()]);
+                    ->update(['build_token' => null, 'lease_expires_at' => null, 'updated_at' => now()]);
             });
         } catch (Throwable $exception) {
             DB::transaction(function () use ($monthKey, $token, $runId): void {
@@ -201,12 +213,78 @@ final class CampaignOperationalAttributionBuilder
 
         return [
             'run_id' => $runId, 'month' => $monthKey, 'reused' => false,
+            'status' => 'prepared',
             'interests_processed' => $processed, 'attributions_count' => $count,
             'incidents_count' => $incidents + $unresolvedRelationships,
             'opportunity_coverage_complete' => $opportunity['available'] && $unresolvedRelationships === 0,
             'duration_seconds' => round(microtime(true) - $started, 2),
             'peak_memory_mb' => round(memory_get_peak_usage(true) / 1048576, 2),
         ];
+    }
+
+    /** Explicit administrative activation after reviewing a prepared run. */
+    public function activate(int $year, int $month, int $runId): array
+    {
+        if ($year !== 2026 || ! in_array($month, [10, 11], true) || $runId < 1) {
+            throw new RuntimeException('Período o run no habilitado.');
+        }
+        $monthKey = sprintf('%04d-%02d', $year, $month);
+        $candidate = DB::table('campaign_operational_runs')->where('id', $runId)
+            ->where('month_key', $monthKey)->first();
+        if ($candidate === null || ! in_array($candidate->status, ['prepared', 'completed'], true)) {
+            throw new RuntimeException('No existe una atribución preparada compatible.');
+        }
+        $evidence = json_decode($candidate->economic_evidence, true, 512, JSON_THROW_ON_ERROR);
+        $endDate = $evidence['end_date'] ?? null;
+        if (! is_string($endDate) || $endDate < $monthKey.'-01'
+            || $endDate > ($month === 10 ? '2026-10-31' : '2026-11-30')) {
+            throw new RuntimeException('La cobertura económica preparada no es válida.');
+        }
+        $source = $this->interests->open($year, $month, true);
+        $economic = $this->dashboard->operationalEconomicContext($monthKey, $endDate);
+        $opportunity = $this->opportunityEvidence($source);
+        if ((int) $candidate->interest_run_id !== $source['run_id']
+            || $candidate->projection_key !== $source['projection_key']
+            || (int) $candidate->utm_contract_version !== $source['utm_contract_version']
+            || $candidate->economic_fingerprint !== $economic['fingerprint']
+            || $candidate->relationship_fingerprint !== $opportunity['fingerprint']) {
+            throw new RuntimeException('Las fuentes preparadas ya no están vigentes.');
+        }
+
+        return DB::transaction(function () use ($monthKey, $runId, $source, $endDate, $candidate): array {
+            $monthRow = DB::table('campaign_operational_months')->where('month_key', $monthKey)->lockForUpdate()->first();
+            if ($monthRow === null || $monthRow->build_token !== null) {
+                throw new RuntimeException('Hay una preparación en curso o falta el período.');
+            }
+            $currentCandidate = DB::table('campaign_operational_runs')->where('id', $runId)->lockForUpdate()->first();
+            if ($currentCandidate === null || $currentCandidate->economic_fingerprint !== $candidate->economic_fingerprint
+                || $currentCandidate->relationship_fingerprint !== $candidate->relationship_fingerprint) {
+                throw new RuntimeException('La atribución preparada cambió durante la activación.');
+            }
+            if ((int) $monthRow->active_run_id === $runId && $currentCandidate->status === 'completed') {
+                return ['run_id' => $runId, 'month' => $monthKey, 'reused' => true, 'status' => 'completed'];
+            }
+            if ($currentCandidate->status !== 'prepared') {
+                throw new RuntimeException('El run no está preparado para activación.');
+            }
+            if ($monthRow->active_run_id !== null && (int) $monthRow->active_run_id > $runId) {
+                throw new RuntimeException('Existe una atribución activa posterior.');
+            }
+            $this->interests->assertCurrent($source);
+            if ($this->dashboard->operationalEconomicContext($monthKey, $endDate)['fingerprint'] !== $candidate->economic_fingerprint
+                || $this->opportunityEvidence($source)['fingerprint'] !== $candidate->relationship_fingerprint) {
+                throw new RuntimeException('Las fuentes cambiaron antes de activar.');
+            }
+            $updated = DB::table('campaign_operational_runs')->where('id', $runId)->where('status', 'prepared')
+                ->update(['status' => 'completed', 'activated_at' => now(), 'updated_at' => now()]);
+            if ($updated !== 1) {
+                throw new RuntimeException('La atribución preparada cambió durante la activación.');
+            }
+            DB::table('campaign_operational_months')->where('month_key', $monthKey)
+                ->update(['active_run_id' => $runId, 'updated_at' => now()]);
+
+            return ['run_id' => $runId, 'month' => $monthKey, 'reused' => false, 'status' => 'completed'];
+        });
     }
 
     private function claim(string $month, array $source, array $economic, array $opportunity, string $token): int
@@ -237,6 +315,7 @@ final class CampaignOperationalAttributionBuilder
                 'opportunity_sync_cutoff_at' => $opportunity['opportunity_cutoff_at'],
                 'direct_relationship_run_id' => $opportunity['direct_run_id'],
                 'direct_relationship_cutoff_at' => $opportunity['direct_cutoff_at'],
+                'relationship_fingerprint' => $opportunity['fingerprint'],
                 'opportunity_coverage_complete' => $opportunity['available'],
                 'status' => 'building', 'created_at' => now(), 'updated_at' => now(),
             ]);
@@ -258,19 +337,7 @@ final class CampaignOperationalAttributionBuilder
 
     private function opportunityEvidence(array $source): array
     {
-        $direct = DB::table('salesforce_opportunity_interest_direct_runs')->orderByDesc('id')->first(['id', 'status', 'source_cutoff_at']);
-        $opportunities = DB::table('report_sync_runs')->where('dataset', 'salesforce_opportunities')
-            ->orderByDesc('id')->first(['id', 'status', 'source_cutoff_at']);
-        $cutoff = (string) $source['observed_at'];
-
-        return [
-            'available' => $direct?->status === 'completed' && $opportunities?->status === 'completed'
-                && $direct->source_cutoff_at >= $cutoff && $opportunities->source_cutoff_at >= $cutoff,
-            'direct_run_id' => $direct?->id,
-            'direct_cutoff_at' => $direct?->source_cutoff_at,
-            'opportunity_run_id' => $opportunities?->id,
-            'opportunity_cutoff_at' => $opportunities?->source_cutoff_at,
-        ];
+        return $this->readiness->operationalOpportunityEvidence((string) $source['observed_at']);
     }
 
     /** @return array{resolved: array<string, object>, unresolved: int} Only exact bidirectional relationships are admitted. */

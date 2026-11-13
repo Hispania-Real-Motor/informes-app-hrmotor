@@ -21,10 +21,10 @@ class CampaignDashboardController extends Controller
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'campaigns'),
             'reportUserCanAudit' => ReportUserAccess::canAuditReport($request, 'campaigns'),
             'reportUserCanViewOperationalCampaigns' => ReportUserAccess::isAdmin($request)
-                && (config('salesforce.october_2026_provisional_enabled') === true
-                    || config('salesforce.november_2026_provisional_enabled') === true),
-            'campaignOperationalOctoberEnabled' => config('salesforce.october_2026_provisional_enabled') === true,
-            'campaignOperationalNovemberEnabled' => config('salesforce.november_2026_provisional_enabled') === true,
+                && (config('campaign_operational.october_2026_enabled') === true
+                    || config('campaign_operational.november_2026_enabled') === true),
+            'campaignOperationalOctoberEnabled' => config('campaign_operational.october_2026_enabled') === true,
+            'campaignOperationalNovemberEnabled' => config('campaign_operational.november_2026_enabled') === true,
         ]);
 
         return $request->query('source') === 'operational'

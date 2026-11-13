@@ -8,9 +8,9 @@ use Throwable;
 
 final class BuildCampaignOperationalAttributionCommand extends Command
 {
-    protected $signature = 'campaigns:build-operational-attribution {month : Mes YYYY-MM de 2026} {--confirm : Autoriza la preparación local y la activación provisional}';
+    protected $signature = 'campaigns:build-operational-attribution {month : Mes YYYY-MM de 2026} {--confirm : Autoriza solo la preparación local}';
 
-    protected $description = 'Prepara y activa atribución provisional versionada sin modificar la atribución oficial.';
+    protected $description = 'Prepara atribución provisional versionada sin activarla ni modificar la atribución oficial.';
 
     public function handle(CampaignOperationalAttributionBuilder $builder): int
     {
@@ -24,7 +24,7 @@ final class BuildCampaignOperationalAttributionCommand extends Command
         try {
             $result = $builder->build(2026, (int) substr($month, 5, 2));
         } catch (Throwable) {
-            $this->error('No se activó una nueva atribución. Revise las fuentes y el estado administrativo de forma segura.');
+            $this->error('No se preparó una nueva atribución. Revise las fuentes y el estado administrativo de forma segura.');
 
             return self::FAILURE;
         }

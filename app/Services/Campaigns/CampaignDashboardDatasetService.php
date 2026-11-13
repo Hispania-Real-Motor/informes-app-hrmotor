@@ -438,19 +438,24 @@ class CampaignDashboardDatasetService
         $evidence = $this->economicEvidence($period);
         $summary = $this->platformOnlySummary($request);
         $closure = DB::table('campaign_investment_closures')->where('month', $month.'-01')
-            ->first(['id', 'status', 'snapshot_version', 'updated_at']);
-        $platformRuns = DB::table('report_sync_runs')->where('dataset', 'campaign_platform_daily_metrics')
-            ->whereIn('source', ['meta', 'google_ads'])->orderByDesc('id')->limit(12)
-            ->get(['id', 'source', 'status', 'source_cutoff_at', 'updated_at'])->all();
-        $economicRows = array_map(static fn (array $row): array => array_intersect_key($row, array_flip([
-            'platform', 'account_id', 'campaign_id', 'campaign_name', 'spend', 'impressions', 'clicks',
-            'platform_leads', 'platform_conversions',
-        ])), $summary['campaigns']);
-        usort($economicRows, static fn (array $a, array $b): int => strcmp(json_encode($a), json_encode($b)));
-        $fingerprint = hash('sha256', json_encode([
-            $month, $endDate, $closure, $platformRuns, $summary['availability'],
-            $evidence['snapshot_rows'], $economicRows,
-        ], JSON_THROW_ON_ERROR));
+            ->first(['id', 'status', 'snapshot_version']);
+        if ($closure?->status === 'closed') {
+            $snapshot = DB::table('campaign_investment_closure_snapshots')
+                ->where('closure_id', $closure->id)->where('version', $closure->snapshot_version)
+                ->first(['id', 'source_cutoff_at', 'rule_version']);
+            $fingerprintInput = [$month, $endDate, $closure, $snapshot, $evidence['snapshot_rows']];
+        } else {
+            $platformRuns = DB::table('report_sync_runs')->where('dataset', 'campaign_platform_daily_metrics')
+                ->whereIn('source', ['meta', 'google_ads'])->orderByDesc('id')->limit(12)
+                ->get(['id', 'source', 'status', 'source_cutoff_at', 'updated_at'])->all();
+            $economicRows = array_map(static fn (array $row): array => array_intersect_key($row, array_flip([
+                'platform', 'account_id', 'campaign_id', 'campaign_name', 'spend', 'impressions', 'clicks',
+                'platform_leads', 'platform_conversions',
+            ])), $summary['campaigns']);
+            usort($economicRows, static fn (array $a, array $b): int => strcmp(json_encode($a), json_encode($b)));
+            $fingerprintInput = [$month, $endDate, $closure, $platformRuns, $summary['availability'], $economicRows];
+        }
+        $fingerprint = hash('sha256', json_encode($fingerprintInput, JSON_THROW_ON_ERROR));
 
         return [
             'month' => $month,
@@ -472,7 +477,7 @@ class CampaignDashboardDatasetService
         $month = substr($filters['start_date'], 0, 7);
         abort_unless(in_array($month, ['2026-10', '2026-11'], true)
             && $filters['start_date'] === $month.'-01'
-            && config($month === '2026-10' ? 'salesforce.october_2026_provisional_enabled' : 'salesforce.november_2026_provisional_enabled') === true, 404);
+            && config($month === '2026-10' ? 'campaign_operational.october_2026_enabled' : 'campaign_operational.november_2026_enabled') === true, 404);
 
         $run = DB::table('campaign_operational_months as m')
             ->join('campaign_operational_runs as r', 'r.id', '=', 'm.active_run_id')
@@ -506,9 +511,9 @@ class CampaignDashboardDatasetService
             }
             $base = $this->platformOnlySummary($renderRequest);
             $period = $this->period($renderFilters);
-            $availablePlatforms = array_keys(array_filter(
-                $base['availability']['platforms'], static fn (array $state): bool => $state['status'] === 'available'
-            ));
+            $availablePlatforms = $month === '2026-10'
+                ? array_values(array_unique(array_column($economic['snapshot_rows'], 'platform')))
+                : array_keys(array_filter($base['availability']['platforms'], static fn (array $state): bool => $state['status'] === 'available'));
             $metricRows = array_values(array_filter(
                 $this->metricRows($renderFilters, $this->economicEvidence($period)),
                 static fn (array $row): bool => in_array($row['platform'] ?? null, $availablePlatforms, true)
@@ -628,15 +633,9 @@ class CampaignDashboardDatasetService
 
     private function operationalRelationshipCurrent(object $run): bool
     {
-        $opportunity = DB::table('report_sync_runs')->where('dataset', 'salesforce_opportunities')
-            ->orderByDesc('id')->first(['id', 'status', 'source_cutoff_at']);
-        $direct = DB::table('salesforce_opportunity_interest_direct_runs')->orderByDesc('id')
-            ->first(['id', 'status', 'source_cutoff_at']);
+        $current = app(CampaignPublicationReadiness::class)->operationalOpportunityEvidence($run->interest_observed_at);
 
-        return (int) $opportunity?->id === (int) $run->opportunity_sync_run_id
-            && (string) $opportunity?->source_cutoff_at === (string) $run->opportunity_sync_cutoff_at
-            && (int) $direct?->id === (int) $run->direct_relationship_run_id
-            && (string) $direct?->source_cutoff_at === (string) $run->direct_relationship_cutoff_at;
+        return hash_equals($run->relationship_fingerprint, $current['fingerprint']);
     }
 
     private function withoutOpportunityMetrics(array $row): array

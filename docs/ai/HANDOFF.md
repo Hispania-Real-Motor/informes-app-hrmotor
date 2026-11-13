@@ -4,16 +4,20 @@
 
 - Objetivo: atribuir en una fuente administrativa aislada Interests operativos
   UTM v2 sin modificar la atribución ni la publicación oficial. Archivos
-  funcionales: `CampaignOperationalAttributionBuilder.php`, comando
-  `BuildCampaignOperationalAttributionCommand.php`, migración
+  funcionales: `CampaignOperationalAttributionBuilder.php`, comandos
+  `BuildCampaignOperationalAttributionCommand.php` y
+  `ActivateCampaignOperationalAttributionCommand.php`, migración
   `2026_11_19_120000_create_campaign_operational_attributions.php`, ampliación
   del matcher/dataset/controladores/Blade/JS de Campañas y sus pruebas. CI
   añade la suite focal al job MariaDB 11. Documentos: informe de Campañas,
   matriz KPI, operaciones, generaciones de Interests y los tres documentos AI.
 - Base de datos: tres tablas aditivas de mes, run y atribución. Lease y puntero
-  se comprueban en transacción; runs anteriores y cierres permanecen. La
-  migración requiere inspección manual ante DDL parcial; no borrar evidencia.
-- Seguridad: `source=operational` solo para administrador y flag mensual;
+  se comprueban en transacción; `build()` deja el run `prepared` sin cambiar
+  el puntero y la activación administrativa lo revalida antes de moverlo.
+  Runs anteriores y cierres permanecen. La migración requiere inspección
+  manual ante DDL parcial; su `down()` es inocuo y no borra evidencia.
+- Seguridad: `source=operational` solo para administrador y flag propio de
+  Campañas por mes, ambos desactivados por defecto e independientes de Interests;
   `no-store, private`, lectura local, UTM descifrados solo en CLI y claves HMAC
   persistidas. Auditoría y CSV de atribución solo exponen agregados por campaña;
   auditoría KPI individual y CSV individual no se abren. No hay
@@ -25,13 +29,18 @@
   Pint, build y MariaDB 11 deben confirmarse en CI del SHA final. No hay
   validación real de UTM, cierre ni relaciones productivas en esta PR.
 - Operación manual: aplicar migración solo tras aprobación; revisar UTM v2,
-  cierre de octubre, cobertura abierta de noviembre y cutoffs Opportunity;
+  cierre de octubre, cobertura abierta de noviembre y snapshot directo
+  posterior al último Opportunity con huella válida y cutoffs compatibles;
   ejecutar `campaigns:build-operational-attribution` por mes con `--confirm`,
-  contrastar recuentos, habilitar flag mensual y probar vista administrativa.
+  contrastar recuentos y activar el run revisado por separado mediante
+  `campaigns:activate-operational-attribution <mes> <run> --confirm`.
+  Después habilitar el flag propio del mes y probar vista administrativa.
   Reversión de lectura: apagar flag; conservar punteros y filas. Riesgos:
   cobertura histórica no certificada, relaciones ambiguas que anulan KPI
   Opportunity, cambio de fuentes que vuelve obsoleta la atribución y latencia
-  productiva no medida.
+  productiva no medida. Octubre cerrado mantiene huella independiente de
+  sincronizaciones publicitarias posteriores, pero una edición de contenido
+  del snapshot vigente la invalida aunque el recuento no cambie.
 
 ## 2026-11-13 — PR #147: cobertura acotada de actividad Task/Event
 

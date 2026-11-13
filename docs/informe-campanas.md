@@ -4,7 +4,10 @@
 
 El informe original admite una **selección explícita** de origen comercial
 «Operativo provisional» para administradores, limitada a octubre y noviembre
-de 2026 y condicionada al flag provisional del mes. El parámetro
+de 2026 y condicionada al flag propio de Campañas del mes
+(`CAMPAIGN_OPERATIONAL_OCTOBER_2026_ENABLED` o
+`CAMPAIGN_OPERATIONAL_NOVEMBER_2026_ENABLED`, ambos desactivados por
+defecto). Los flags de Interests no habilitan Campañas. El parámetro
 `source=operational` no cambia la fuente oficial predeterminada ni
 `CampaignPublicationReadiness`. La vista y el JSON muestran mes, cierre
 económico abierto/cerrado, versión del cierre, run de Interests, run de
@@ -34,6 +37,10 @@ cierre, no prorratea, no reconsulta datos diarios para inversión y no escribe
 atribuciones publicadas. El matching por identificador de anuncio/conjunto
 solo puede acreditarse si el snapshot cerrado conserva dichos identificadores;
 si no, se aplican los niveles de matching disponibles, sin inventarlos.
+La huella económica del mes cerrado fija versión, cutoff, reglas y contenido
+del snapshot vigente: una sincronización publicitaria posterior no invalida
+por sí sola octubre, pero un cambio de contenido del snapshot, aun sin variar
+el número de filas, sí invalida la atribución operativa.
 Noviembre abierto usa la cobertura de runs Meta y Google verificada por separado
 hasta el fin efectivo derivado del cutoff Interest, sujeto a la cobertura
 económica de cada plataforma; los datos posteriores no
@@ -41,8 +48,12 @@ amplían el cutoff del informe. Una plataforma bloqueada no acredita sus
 campañas comerciales aunque la otra sí esté disponible.
 
 La atribución se prepara en `campaign_operational_runs` y
-`campaign_operational_attributions`. `campaign_operational_months.active_run_id`
-solo cambia al completar las comprobaciones de fuente bajo lease y transacción.
+`campaign_operational_attributions` con estado `prepared`, sin mover
+`campaign_operational_months.active_run_id`. Un comando administrativo
+separado activa un run revisado y revalida fuentes bajo transacción antes de
+mover el puntero. Un fallo de preparación o activación conserva la última
+versión activa, aunque su lectura falla de forma segura si sus fuentes
+quedaron obsoletas.
 Las filas conservan claves HMAC de Interest y Opportunity, campaña resuelta,
 categorías y banderas funcionales, sin payload ni UTM crudos. Un run nuevo de
 Interests, una versión económica diferente o un snapshot Opportunity/directo
@@ -52,8 +63,11 @@ La solicitud HTTP consulta tablas locales versionadas y agregados económicos;
 no descifra UTM ni ejecuta Salesforce. Respuesta HTML/JSON/CSV provisional:
 `no-store, private`.
 
-Opportunity solo habilita KPI cuando los últimos runs completados de Opportunity
-y de relación directa tienen cutoff no anterior a la observación Interest, y
+Opportunity solo habilita KPI cuando el último run de Opportunity está
+completado y el último snapshot directo también está completado, fue
+terminado después de aquel, conserva una huella válida de referencias y
+su cutoff es al menos el de Opportunity; ambos cutoffs deben ser no anteriores
+a la observación Interest. Además,
 cada referencia relevante del mes coincide de forma unívoca con
 `Interes__c.IN_VEN_Oportunidad__c` y
 `Opportunity.HRM_Interes_Origen__c`. Una relación directa/inversa
@@ -77,8 +91,9 @@ Interests de Salesforce y no se suman entre sí. Las series temporales de
 atribución provisional y una auditoría individual siguen pendientes;
 los gráficos económicos conservan su contrato de plataforma.
 
-La activación requiere la migración aditiva y ejecución administrativa
-supervisada; véase [operación y reversión](operaciones-produccion.md). La
+La activación requiere la migración aditiva, preparación, revisión y comando
+administrativo supervisado por separado; véase
+[operación y reversión](operaciones-produccion.md). La
 cobertura productiva de octubre aún no se da por realizada mediante esta PR.
 CI sintético no acredita los UTM, cierres, relaciones ni cutoffs reales.
 

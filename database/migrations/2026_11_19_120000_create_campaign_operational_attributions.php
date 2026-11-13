@@ -33,12 +33,14 @@ return new class extends Migration
                 $table->timestamp('opportunity_sync_cutoff_at')->nullable();
                 $table->unsignedBigInteger('direct_relationship_run_id')->nullable();
                 $table->timestamp('direct_relationship_cutoff_at')->nullable();
+                $table->string('relationship_fingerprint', 64);
                 $table->boolean('opportunity_coverage_complete')->default(false);
                 $table->string('status', 20);
                 $table->unsignedInteger('interests_processed')->default(0);
                 $table->unsignedInteger('attributions_count')->default(0);
                 $table->unsignedInteger('incidents_count')->default(0);
                 $table->timestamp('completed_at')->nullable();
+                $table->timestamp('activated_at')->nullable();
                 $table->timestamps();
                 $table->foreign('interest_run_id', 'camp_op_runs_interest_fk')->references('id')->on('salesforce_interest_operational_runs');
             });
@@ -82,8 +84,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('campaign_operational_attributions');
-        Schema::dropIfExists('campaign_operational_runs');
-        Schema::dropIfExists('campaign_operational_months');
+        // Historical attribution evidence must survive application rollback.
     }
 };
