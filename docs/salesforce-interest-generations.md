@@ -76,14 +76,20 @@ cambia la versión activa. No se infiere una delegación de otro campo.
 
 La extensión operativa Task/Event fija un run de Intereses ya completado,
 utiliza bloques de 250 `WhatId`, páginas de 500 y checkpoints de bloque/Id/tipo
-con lease fenced. Una segunda lectura exige presencia y relación completas;
-una variación de contenido observable se cuenta y actualiza como observación
+con lease fenced. Una segunda lectura separa el subconjunto admitido de las
+identidades nuevas, ausentes o con `WhatId` cambiado, incluso entre bloques
+de extracción, que registra en
+cuarentena individual; una variación de contenido observable en una fila
+admitida se cuenta y actualiza como observación
 operativa, no como igualdad histórica. Filas eliminadas lógicamente permanecen
 en evidencia y no en el agregado activo. El vínculo local de agregados usa una
 clave HMAC por `(run_id, Interest.Id)`; no publica IDs a HTTP. Una nueva versión
 de Intereses deja de exponer la actividad anterior hasta una ejecución
-compatible. La activación bloquea el puntero mensual y exige cobertura completa;
-un fallo conserva la última versión de Intereses y no activa evidencia parcial.
+compatible. La activación bloquea el puntero mensual, acredita que cada fila
+quedó verificada o en cuarentena y marca `coverage_complete=false` cuando hay
+incidencias. La versión parcial puede activarse solo si no desplaza una versión
+de actividad compatible ya completada; sus recuentos son mínimos observados.
+Un fallo conserva el puntero anterior.
 Se cuentan actividades Task/Event e Intereses con actividad, sin inferir llamada
 atendida, comercial ejecutor, gestión ni primer contacto. Los runs anteriores
 no reciben claves retroactivamente; requieren una nueva sincronización
@@ -96,9 +102,11 @@ El selector `november_2026` conserva flag apagado por defecto, rol administrador
 no se pidió período. Si hay puntero operativo activo pero evidencia incoherente,
 falla cerrado; no retrocede silenciosamente al lector estricto. El dashboard
 expone observados, admitidos, cuarentena, cambios y denominador activo. El
-recuento de Task/Event sólo se muestra con una ejecución de actividad completa
-de esa misma versión; gestión, comparativas y elegibilidad siguen no
-disponibles. La fuente operativa no sustituye los lectores de otros informes.
+recuento de Task/Event sólo se muestra con una ejecución de actividad compatible
+de esa misma versión y su cobertura se informa por separado. La cohorte es la
+de Intereses de noviembre, no necesariamente la fecha de las actividades.
+Gestión, comparativas y elegibilidad siguen no disponibles. La fuente operativa
+no sustituye los lectores de otros informes.
 
 Se reutiliza de la PR Draft #145 únicamente
 `InterestMonthlyDifferenceClassifier` y sus huellas de categorías sin valores.

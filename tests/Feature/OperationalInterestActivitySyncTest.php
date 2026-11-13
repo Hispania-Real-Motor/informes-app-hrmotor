@@ -121,9 +121,11 @@ class OperationalInterestActivitySyncTest extends TestCase
         $this->assertSame(1, DB::table('salesforce_interest_operational_activity_summaries')->where('run_id', $run)->count());
     }
 
-    public function test_missing_activity_in_second_read_preserves_interest_version_without_publishing_activity(): void
+    public function test_missing_activity_is_quarantined_and_admitted_subset_remains_visible(): void
     {
-        $fake = new OperationalActivityFakeClient($this->interests(2), [$this->activity('Task', 1, 1, '2026-11-07')], []);
+        $fake = new OperationalActivityFakeClient($this->interests(2), [
+            $this->activity('Task', 1, 1, '2026-11-07'), $this->activity('Task', 2, 2, '2026-11-08'),
+        ], []);
         $fake->omitTaskOnVerify = true;
         $this->app->instance(SalesforceClient::class, $fake);
         $source = app(OperationalInterestMonthlySync::class);
@@ -131,16 +133,243 @@ class OperationalInterestActivitySyncTest extends TestCase
         $source->run($sourceRun);
         $activity = app(OperationalInterestActivitySync::class);
         $run = $activity->prepare('2026-11');
-        try {
-            $activity->run($run);
-            $this->fail('Incomplete Task coverage must not activate.');
-        } catch (\RuntimeException) {
-            $this->assertSame('failed', $activity->status($run)['status']);
-        }
-        $this->assertNull(DB::table('salesforce_interest_operational_months')->where('month_key', '2026-11')
-            ->value('active_activity_run_id'));
+        $result = $activity->run($run);
+        $this->assertSame('completed', $result['status']);
+        $this->assertFalse($result['coverage_complete']);
+        $this->assertSame(2, $result['quarantined']);
+        $this->assertSame(0, $result['verified']);
+        $this->assertSame(0, DB::table('salesforce_interest_operational_activity_summaries')->where('run_id', $run)->count());
+        $this->assertSame(2, DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run)
+            ->where('quarantine_reason', 'missing_on_verify')->count());
         $this->assertSame($sourceRun, app(OperationalInterestMonthlyReader::class)
             ->latestForMonth(2026, 11)['integrity_revision']);
+        $summary = app(October2026ProvisionalInterestDashboardDatasetService::class)
+            ->summary(Request::create('/informes/leads/data/resumen', 'GET', ['period' => 'november_2026']));
+        $this->assertFalse($summary['activity_coverage']['complete']);
+        $this->assertSame(2, $summary['activity_coverage']['quarantined']);
+    }
+
+    public function test_new_activity_is_quarantined_without_losing_verified_activity(): void
+    {
+        $first = $this->activity('Task', 1, 1, '2026-11-07');
+        $second = $this->activity('Task', 2, 2, '2026-11-08');
+        $fake = new OperationalActivityFakeClient($this->interests(2), [$first], []);
+        $fake->taskRowsForVerify = [$first, $second];
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $run = $activity->prepare('2026-11');
+
+        $result = $activity->run($run);
+
+        $this->assertSame(1, $result['extracted']);
+        $this->assertSame(1, $result['verified']);
+        $this->assertSame(1, $result['quarantined']);
+        $this->assertFalse($result['coverage_complete']);
+        $this->assertSame(1, $result['quarantine_reasons']['new_during_verify']);
+        $this->assertSame(1, DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run)
+            ->where('quarantine_reason', 'new_during_verify')->count());
+        $summary = app(October2026ProvisionalInterestDashboardDatasetService::class)
+            ->summary(Request::create('/informes/leads/data/resumen', 'GET', ['period' => 'november_2026']));
+        $this->assertSame(1, $summary['kpis']['activities']);
+        $this->assertFalse($summary['activity_coverage']['complete']);
+    }
+
+    public function test_changed_relation_is_quarantined_and_not_attributed_to_either_interest(): void
+    {
+        $first = $this->activity('Task', 1, 1, '2026-11-07');
+        $moved = $first;
+        $moved['WhatId'] = sprintf('a01%015d', 2);
+        $fake = new OperationalActivityFakeClient($this->interests(2), [$first], []);
+        $fake->taskRowsForVerify = [$moved];
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $run = $activity->prepare('2026-11');
+
+        $result = $activity->run($run);
+
+        $this->assertSame(1, $result['quarantined']);
+        $this->assertSame(0, $result['verified']);
+        $this->assertFalse($result['coverage_complete']);
+        $this->assertSame(1, $result['quarantine_reasons']['relation_changed']);
+        $this->assertSame('relation_changed', DB::table('salesforce_interest_operational_activity_rows')
+            ->where('run_id', $run)->value('quarantine_reason'));
+        $this->assertSame(0, DB::table('salesforce_interest_operational_activity_summaries')->where('run_id', $run)->count());
+    }
+
+    public function test_relation_moving_between_interest_blocks_keeps_one_quarantine_identity(): void
+    {
+        $first = $this->activity('Task', 1, 1, '2026-11-07');
+        $moved = $first;
+        $moved['WhatId'] = sprintf('a01%015d', 251);
+        $fake = new OperationalActivityFakeClient($this->interests(251), [$first], []);
+        $fake->taskRowsForVerify = [$moved];
+        $fake->taskRowsFromQuery = 5;
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $run = $activity->prepare('2026-11');
+
+        $result = $activity->run($run);
+
+        $this->assertSame(1, $result['quarantined']);
+        $this->assertSame(0, $result['verified']);
+        $this->assertSame(1, DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run)->count());
+        $this->assertSame('missing_on_verify', DB::table('salesforce_interest_operational_activity_rows')
+            ->where('run_id', $run)->value('quarantine_reason'));
+    }
+
+    public function test_relation_moving_during_extraction_is_quarantined_without_duplicate_rows(): void
+    {
+        $first = $this->activity('Task', 1, 1, '2026-11-07');
+        $moved = $first;
+        $moved['WhatId'] = sprintf('a01%015d', 251);
+        $fake = new OperationalActivityFakeClient($this->interests(251), [$first], []);
+        $fake->taskRowsForVerify = [$moved];
+        $fake->taskRowsFromQuery = 2;
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $run = $activity->prepare('2026-11');
+
+        $result = $activity->run($run);
+
+        $this->assertSame(1, $result['extracted']);
+        $this->assertSame(1, $result['quarantined']);
+        $this->assertSame(0, $result['verified']);
+        $this->assertSame(1, DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run)->count());
+    }
+
+    public function test_soft_delete_is_verified_and_excluded_from_active_summaries(): void
+    {
+        $first = $this->activity('Task', 1, 1, '2026-11-07');
+        $deleted = $first;
+        $deleted['IsDeleted'] = true;
+        $fake = new OperationalActivityFakeClient($this->interests(2), [$first], []);
+        $fake->taskRowsForVerify = [$deleted];
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $run = $activity->prepare('2026-11');
+
+        $result = $activity->run($run);
+
+        $this->assertTrue($result['coverage_complete']);
+        $this->assertSame(1, $result['changed']);
+        $this->assertSame(0, $result['quarantined']);
+        $this->assertSame(0, DB::table('salesforce_interest_operational_activity_summaries')->where('run_id', $run)->count());
+    }
+
+    public function test_undated_activity_is_counted_as_undated_without_claiming_a_functional_date(): void
+    {
+        $undated = $this->activity('Task', 1, 1, '2026-11-07');
+        $undated['ActivityDate'] = null;
+        $fake = new OperationalActivityFakeClient($this->interests(2), [$undated], []);
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $run = $activity->prepare('2026-11');
+
+        $this->assertTrue($activity->run($run)['coverage_complete']);
+        $summary = DB::table('salesforce_interest_operational_activity_summaries')->where('run_id', $run)->first();
+        $this->assertSame(1, $summary->activities);
+        $this->assertSame(1, $summary->undated);
+        $this->assertNull($summary->first_activity_at);
+    }
+
+    public function test_partial_run_does_not_replace_a_complete_active_activity_version(): void
+    {
+        $first = $this->activity('Task', 1, 1, '2026-11-07');
+        $fake = new OperationalActivityFakeClient($this->interests(2), [$first], []);
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $complete = $activity->prepare('2026-11');
+        $activity->run($complete);
+        $fake->taskRowsForVerify = [$first, $this->activity('Task', 2, 2, '2026-11-08')];
+        $fake->taskRowsFromQuery = 7;
+        $partial = $activity->prepare('2026-11');
+
+        $this->assertFalse($activity->run($partial)['active']);
+        $this->assertTrue($activity->status($complete)['active']);
+        $this->assertSame($complete, app(OperationalInterestMonthlyReader::class)
+            ->latestForMonth(2026, 11)['activity_run_id']);
+    }
+
+    public function test_historical_pointer_is_not_reported_active_after_interest_version_changes(): void
+    {
+        $fake = new OperationalActivityFakeClient($this->interests(2), [$this->activity('Task', 1, 1, '2026-11-07')], []);
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $old = $activity->prepare('2026-11');
+        $activity->run($old);
+        Carbon::setTestNow('2026-11-12 12:02:00 UTC');
+        $source->run($source->prepare('2026-11'));
+        DB::table('salesforce_interest_operational_months')->where('month_key', '2026-11')
+            ->update(['active_activity_run_id' => $old]);
+
+        $this->assertTrue($activity->status($old)['pointer_recorded']);
+        $this->assertFalse($activity->status($old)['active']);
+        $this->assertNull(app(OperationalInterestMonthlyReader::class)
+            ->latestForMonth(2026, 11)['activity_run_id']);
+    }
+
+    public function test_verification_query_failure_resumes_without_losing_incident_counts(): void
+    {
+        $first = $this->activity('Task', 1, 1, '2026-11-07');
+        $fake = new OperationalActivityFakeClient($this->interests(2), [$first], []);
+        $fake->taskRowsForVerify = [$first, $this->activity('Task', 2, 2, '2026-11-08')];
+        $fake->failActivityQuery = 3;
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $run = $activity->prepare('2026-11');
+        try {
+            $activity->run($run);
+            $this->fail('Synthetic remote failure must stop verification.');
+        } catch (\RuntimeException) {
+            $this->assertSame('task_verify', $activity->status($run)['phase']);
+            $this->assertSame(1, $activity->status($run)['extracted']);
+            $this->assertSame(0, $activity->status($run)['verified']);
+        }
+        $fake->failActivityQuery = null;
+        $result = $activity->run($run);
+        $this->assertSame(1, $result['quarantined']);
+        $this->assertSame(1, $result['verified']);
+        $this->assertSame(1, DB::table('salesforce_interest_operational_activity_rows')
+            ->where('run_id', $run)->whereNotNull('quarantined_at')->count());
+    }
+
+    public function test_query_budget_exhaustion_fails_before_remote_read_and_keeps_checkpoint(): void
+    {
+        $fake = new OperationalActivityFakeClient($this->interests(2), [], []);
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $run = $activity->prepare('2026-11');
+        DB::table('salesforce_interest_operational_activity_runs')->where('id', $run)
+            ->update(['query_attempts' => 3000]);
+
+        try {
+            $activity->run($run);
+            $this->fail('The remote query budget must remain bounded.');
+        } catch (\RuntimeException) {
+            $this->assertSame([], $fake->activitySoql);
+            $this->assertSame(3000, $activity->status($run)['query_attempts']);
+            $this->assertSame(0, $activity->status($run)['pages']);
+        }
     }
 
     public function test_newer_interest_version_rejects_prepared_activity_without_remote_reads(): void
@@ -266,6 +495,10 @@ final class OperationalActivityFakeClient extends SalesforceClient
 
     public bool $unexpectedRelation = false;
 
+    public ?array $taskRowsForVerify = null;
+
+    public int $taskRowsFromQuery = 3;
+
     public array $activitySoql = [];
 
     public ?\Closure $onActivityQuery = null;
@@ -303,7 +536,9 @@ final class OperationalActivityFakeClient extends SalesforceClient
         }
         preg_match('/WhatId IN \(([^)]+)\)/', $soql, $matches);
         $ids = array_map(static fn (string $id): string => trim($id, " '\""), explode(',', $matches[1] ?? ''));
-        $rows = $kind === 'Task' ? $this->tasks : $this->events;
+        $rows = $kind === 'Task'
+            ? ($this->activityQueries >= $this->taskRowsFromQuery && $this->taskRowsForVerify !== null ? $this->taskRowsForVerify : $this->tasks)
+            : $this->events;
         $rows = array_values(array_filter($rows, static fn (array $row): bool => in_array($row['WhatId'], $ids, true)
             && ($after === null || strcmp($row['Id'], $after) > 0)));
         if ($kind === 'Task' && $this->passes[$kind] >= 2) {

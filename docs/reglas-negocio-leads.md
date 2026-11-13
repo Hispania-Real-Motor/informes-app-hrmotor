@@ -52,20 +52,29 @@ Una ejecución Task/Event operativa **separada y explícita** puede fijar el run
 de Intereses activo y consultar por bloques de hasta 250 `WhatId`, con páginas
 de 500, para extraer y verificar actividades observables, incluidos soft
 deletes. Conserva checkpoints por bloque, tipo e `Id` y solo activa sus
-agregados tras cobertura completa. `activities` cuenta Task/Event no borrados
-con relación directa comprobada; `interests_with_activity` cuenta Intereses
-del universo filtrado con al menos uno. Las fechas Task (`ActivityDate`, día
-Madrid) y Event (`StartDateTime`) no filtran por mes de creación del Interest.
+agregados tras revisar todos los bloques; las identidades nuevas en la segunda
+lectura, ausentes o con `WhatId` cambiado entre bloques de extracción o
+verificación quedan en cuarentena individual.
+`activities` cuenta Task/Event no borrados, presentes en la segunda lectura y
+admitidos, con relación directa comprobada; `interests_with_activity` cuenta
+Intereses del universo filtrado con al menos uno. Las fechas Task
+(`ActivityDate`, día Madrid) y Event (`StartDateTime`) no filtran actividades
+por mes: el vínculo es con la cohorte de Intereses de noviembre, aunque la
+actividad sea de otra fecha.
 El resumen y las tablas usan la misma versión de Intereses y la misma versión
 de actividad; el HTTP no hace SOQL ni recorre el journal. Si no hay versión
-de actividad compatible, ambos KPI son nulos, no cero. La actividad no acredita
-quién gestionó el Interest, llamada efectivamente atendida, primer contacto,
+de actividad compatible, ambos KPI son nulos, no cero. Si la cobertura es
+parcial, ambos recuentos son mínimos observados del subconjunto admitido;
+`activity_coverage` indica verificados, cuarentena y completitud. Una versión
+parcial no sustituye un run de actividad completo aún compatible. La actividad
+no acredita quién gestionó el Interest, llamada efectivamente atendida, primer contacto,
 `gestionados` o `potenciales_sin_trabajar`: estos últimos siguen no disponibles.
 Tampoco habilita comparativas o KPI de otros informes.
 
 Los valores desconocidos se presentan como «Sin clasificar» o no disponibles
-según el indicador. Un cero de actividad solo es demostrable después de activar
-una verificación completa para la misma versión de Intereses.
+según el indicador. Un cero concluyente de actividad solo es demostrable con
+cobertura observable completa de la misma versión de Intereses; el cero de una
+versión parcial significa únicamente que el subconjunto admitido no la tiene.
 El diagnóstico individual queda fuera de HTTP; el resumen solo muestra
 contadores y categorías agregados sin IDs ni valores sensibles. Esta fuente
 no modifica F2/F2M/F5 estrictas ni `verification.verified`.

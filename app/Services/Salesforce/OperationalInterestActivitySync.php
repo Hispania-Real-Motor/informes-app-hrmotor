@@ -112,7 +112,7 @@ final class OperationalInterestActivitySync
         }
     }
 
-    /** @return array<string, int|string|bool|null> */
+    /** @return array<string, int|string|bool|array<string,int>|null> */
     public function status(int $runId): array
     {
         $run = DB::table('salesforce_interest_operational_activity_runs')->find($runId);
@@ -120,13 +120,31 @@ final class OperationalInterestActivitySync
             throw new RuntimeException('Operational activity run does not exist.');
         }
 
+        $pointer = DB::table('salesforce_interest_operational_months')->where('month_key', $run->month_key)->first();
+        $source = DB::table('salesforce_interest_operational_runs')->find($run->source_run_id);
+        $compatible = $pointer !== null && $source?->status === 'completed' && $source->phase === 'completed'
+            && (int) $pointer->active_run_id === (int) $run->source_run_id
+            && $pointer->active_projection_key === $source->projection_key;
+        $reasons = ['new_during_verify' => 0, 'missing_on_verify' => 0, 'relation_changed' => 0];
+        foreach (DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $runId)
+            ->whereNotNull('quarantined_at')->select('quarantine_reason')->selectRaw('COUNT(*) AS total')
+            ->groupBy('quarantine_reason')->get() as $item) {
+            if (array_key_exists($item->quarantine_reason, $reasons)) {
+                $reasons[$item->quarantine_reason] = (int) $item->total;
+            }
+        }
+
         return ['run_id' => (int) $run->id, 'source_run_id' => (int) $run->source_run_id,
             'month' => $run->month_key, 'status' => $run->status, 'phase' => $run->phase,
             'extracted' => (int) $run->extracted_count, 'verified' => (int) $run->verified_count,
             'changed' => (int) $run->changed_count, 'pages' => (int) $run->pages_completed,
             'query_attempts' => (int) $run->query_attempts, 'error_stage' => $run->error_stage,
-            'active' => (int) DB::table('salesforce_interest_operational_months')
-                ->where('month_key', $run->month_key)->value('active_activity_run_id') === (int) $run->id];
+            'quarantined' => (int) $run->quarantined_count,
+            'quarantine_reasons' => $reasons,
+            'coverage_complete' => $run->coverage_complete === null ? null : (bool) $run->coverage_complete,
+            'pointer_recorded' => (int) ($pointer->active_activity_run_id ?? 0) === (int) $run->id,
+            'active' => $compatible && $run->status === 'completed' && $run->phase === 'completed'
+                && (int) ($pointer->active_activity_run_id ?? 0) === (int) $run->id];
     }
 
     private function claim(int $runId): string
@@ -303,7 +321,8 @@ final class OperationalInterestActivitySync
                 'activity_salesforce_id' => $id, 'interest_salesforce_id' => $interest,
                 'is_deleted' => $content['IsDeleted'], 'functional_activity_at' => $functional,
                 'content_hash' => hash('sha256', json_encode($content, JSON_THROW_ON_ERROR)),
-                'verified_at' => null, 'created_at' => now(), 'updated_at' => now(),
+                'verified_at' => null, 'quarantined_at' => null, 'quarantine_reason' => null,
+                'created_at' => now(), 'updated_at' => now(),
             ];
         }
 
@@ -321,45 +340,109 @@ final class OperationalInterestActivitySync
             }
             $verify = str_ends_with($run->phase, '_verify');
             $changed = 0;
+            $verified = 0;
+            $newlyQuarantined = 0;
+            $extracted = 0;
             if ($verify) {
+                $kind = str_starts_with($run->phase, 'task') ? 'Task' : 'Event';
                 $ids = array_column($mapped['rows'], 'activity_salesforce_id');
                 $stored = $ids === [] ? collect() : DB::table('salesforce_interest_operational_activity_rows')
-                    ->where('run_id', $run->id)->where('activity_kind', str_starts_with($run->phase, 'task') ? 'Task' : 'Event')
+                    ->where('run_id', $run->id)->where('activity_kind', $kind)
                     ->whereIn('activity_salesforce_id', $ids)->get()->keyBy('activity_salesforce_id');
                 $updatedRows = [];
+                $newRows = [];
+                $movedIds = [];
                 foreach ($mapped['rows'] as $row) {
                     $previous = $stored->get($row['activity_salesforce_id']);
-                    if ($previous === null || $previous->interest_salesforce_id !== $row['interest_salesforce_id']) {
-                        throw new RuntimeException('Operational activity verification found an unexpected relation.');
+                    if ($previous === null) {
+                        $row['quarantined_at'] = now('UTC');
+                        $row['quarantine_reason'] = 'new_during_verify';
+                        $newRows[] = $row;
+
+                        continue;
+                    }
+                    if ($previous->interest_salesforce_id !== $row['interest_salesforce_id']) {
+                        if ($previous->quarantined_at === null) {
+                            $movedIds[] = $row['activity_salesforce_id'];
+                            if ($previous->verified_at !== null) {
+                                $verified--;
+                            }
+                        }
+
+                        continue;
+                    }
+                    if ($previous->quarantined_at !== null) {
+                        continue;
                     }
                     if (! hash_equals($previous->content_hash, $row['content_hash'])) {
                         $changed++;
                     }
                     $row['verified_at'] = now('UTC');
                     $updatedRows[] = $row;
+                    $verified++;
                 }
                 if ($updatedRows !== []) {
                     DB::table('salesforce_interest_operational_activity_rows')->upsert($updatedRows,
                         ['run_id', 'activity_kind', 'activity_salesforce_id'],
                         ['is_deleted', 'functional_activity_at', 'content_hash', 'verified_at', 'updated_at']);
                 }
+                if ($newRows !== []) {
+                    DB::table('salesforce_interest_operational_activity_rows')->insert($newRows);
+                    $newlyQuarantined += count($newRows);
+                }
+                if ($movedIds !== []) {
+                    $newlyQuarantined += DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
+                        ->where('activity_kind', $kind)->whereIn('activity_salesforce_id', $movedIds)
+                        ->whereNull('quarantined_at')
+                        ->update(['quarantined_at' => now('UTC'), 'quarantine_reason' => 'relation_changed',
+                            'verified_at' => null, 'updated_at' => now()]);
+                }
             } elseif ($mapped['rows'] !== []) {
                 $ids = array_column($mapped['rows'], 'activity_salesforce_id');
-                if (DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
+                $existing = DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
                     ->where('activity_kind', str_starts_with($run->phase, 'task') ? 'Task' : 'Event')
-                    ->whereIn('activity_salesforce_id', $ids)->exists()) {
-                    throw new RuntimeException('Operational activity appeared in multiple Interest blocks.');
+                    ->whereIn('activity_salesforce_id', $ids)->get()->keyBy('activity_salesforce_id');
+                $insertRows = [];
+                $movedIds = [];
+                foreach ($mapped['rows'] as $row) {
+                    $prior = $existing->get($row['activity_salesforce_id']);
+                    if ($prior === null) {
+                        $insertRows[] = $row;
+                    } elseif ($prior->interest_salesforce_id !== $row['interest_salesforce_id']) {
+                        $movedIds[] = $row['activity_salesforce_id'];
+                    } else {
+                        throw new RuntimeException('Operational activity identity was repeated in extraction.');
+                    }
                 }
-                DB::table('salesforce_interest_operational_activity_rows')->insert($mapped['rows']);
+                if ($insertRows !== []) {
+                    DB::table('salesforce_interest_operational_activity_rows')->insert($insertRows);
+                    $extracted = count($insertRows);
+                }
+                if ($movedIds !== []) {
+                    $newlyQuarantined += DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
+                        ->where('activity_kind', str_starts_with($run->phase, 'task') ? 'Task' : 'Event')
+                        ->whereIn('activity_salesforce_id', $movedIds)->whereNull('quarantined_at')
+                        ->update(['quarantined_at' => now('UTC'), 'quarantine_reason' => 'relation_changed',
+                            'updated_at' => now()]);
+                }
             }
             $terminal = count($mapped['rows']) < self::PAGE;
+            if ($verify && $terminal) {
+                $blockIds = $this->block((int) $run->source_run_id, $run->checkpoint_interest_id)['ids'];
+                $newlyQuarantined += DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
+                    ->where('activity_kind', $kind)->whereIn('interest_salesforce_id', $blockIds)
+                    ->whereNull('verified_at')->whereNull('quarantined_at')
+                    ->update(['quarantined_at' => now('UTC'), 'quarantine_reason' => 'missing_on_verify',
+                        'updated_at' => now()]);
+            }
             DB::table('salesforce_interest_operational_activity_runs')->where('id', $run->id)->update([
                 'checkpoint_activity_id' => $terminal ? null : $mapped['last'],
                 'checkpoint_interest_id' => $terminal ? $blockLast : $run->checkpoint_interest_id,
                 'pages_completed' => (int) $current->pages_completed + 1,
-                'extracted_count' => (int) $current->extracted_count + ($verify ? 0 : count($mapped['rows'])),
-                'verified_count' => (int) $current->verified_count + ($verify ? count($mapped['rows']) : 0),
+                'extracted_count' => (int) $current->extracted_count + $extracted,
+                'verified_count' => (int) $current->verified_count + $verified,
                 'changed_count' => (int) $current->changed_count + $changed,
+                'quarantined_count' => (int) $current->quarantined_count + $newlyQuarantined,
                 'heartbeat_at' => now('UTC'), 'updated_at' => now(),
             ]);
         });
@@ -380,9 +463,8 @@ final class OperationalInterestActivitySync
                 throw new MonthlyInterestRecoveryLeaseLost;
             }
             if ($run->phase === 'event_verify') {
-                if ((int) $current->extracted_count !== (int) $current->verified_count
-                    || DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
-                        ->whereNull('verified_at')->exists()) {
+                if (DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
+                    ->whereNull('verified_at')->whereNull('quarantined_at')->exists()) {
                     throw new RuntimeException('Operational activity verification is incomplete.');
                 }
             }
@@ -397,7 +479,7 @@ final class OperationalInterestActivitySync
     {
         $this->assertIdentityKey($run);
         $query = DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
-            ->where('is_deleted', false);
+            ->where('is_deleted', false)->whereNull('quarantined_at')->whereNotNull('verified_at');
         if ($run->project_cursor_interest_id !== null) {
             $query->where('interest_salesforce_id', '>', $run->project_cursor_interest_id);
         }
@@ -456,24 +538,41 @@ final class OperationalInterestActivitySync
                 throw new RuntimeException('Operational activity run is superseded.');
             }
             $current = $this->owned((int) $run->id, $lease, true);
-            if ($current->phase !== 'activate' || (int) $current->extracted_count !== (int) $current->verified_count
+            if ($current->phase !== 'activate'
                 || DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
-                    ->whereNull('verified_at')->exists()) {
+                    ->whereNull('verified_at')->whereNull('quarantined_at')->exists()) {
                 throw new RuntimeException('Operational activity evidence is incomplete.');
+            }
+            $quarantined = DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
+                ->whereNotNull('quarantined_at')->count();
+            $verified = DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
+                ->whereNotNull('verified_at')->whereNull('quarantined_at')->count();
+            $total = DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)->count();
+            if ($verified !== (int) $current->verified_count || $quarantined !== (int) $current->quarantined_count
+                || $verified + $quarantined !== $total) {
+                throw new RuntimeException('Operational activity coverage counters are inconsistent.');
             }
             $summaryCount = DB::table('salesforce_interest_operational_activity_summaries')
                 ->where('run_id', $run->id)->count();
             $activityInterests = DB::table('salesforce_interest_operational_activity_rows')->where('run_id', $run->id)
-                ->where('is_deleted', false)->distinct()->count('interest_salesforce_id');
+                ->where('is_deleted', false)->whereNull('quarantined_at')->whereNotNull('verified_at')
+                ->distinct()->count('interest_salesforce_id');
             if ($summaryCount !== $activityInterests) {
                 throw new RuntimeException('Operational activity projection is incomplete.');
             }
             DB::table('salesforce_interest_operational_activity_runs')->where('id', $run->id)->update([
                 'status' => 'completed', 'phase' => 'completed', 'lease_token' => null,
+                'coverage_complete' => $quarantined === 0,
                 'completed_at' => now('UTC'), 'updated_at' => now(),
             ]);
-            DB::table('salesforce_interest_operational_months')->where('month_key', $run->month_key)
-                ->update(['active_activity_run_id' => $run->id, 'updated_at' => now()]);
+            // A partial observation must not displace an earlier compatible version.
+            $prior = $pointer->active_activity_run_id === null ? null
+                : DB::table('salesforce_interest_operational_activity_runs')->find($pointer->active_activity_run_id);
+            if ($quarantined === 0 || $prior?->source_run_id !== $run->source_run_id
+                || $prior->status !== 'completed' || $prior->phase !== 'completed') {
+                DB::table('salesforce_interest_operational_months')->where('month_key', $run->month_key)
+                    ->update(['active_activity_run_id' => $run->id, 'updated_at' => now()]);
+            }
         });
     }
 

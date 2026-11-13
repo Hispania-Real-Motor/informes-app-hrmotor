@@ -68,6 +68,11 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'empty' => $bucket['leads_totales'] === 0,
             'message' => $bucket['leads_totales'] === 0 ? 'No hay Intereses que coincidan con los filtros del mes.' : null,
             'kpis' => $bucket,
+            'activity_coverage' => $this->hasActivity($snapshot) ? [
+                'complete' => $snapshot['activity_coverage_complete'],
+                'verified' => $snapshot['activity_verified_count'],
+                'quarantined' => $snapshot['activity_quarantined_count'],
+            ] : null,
             'comparativa' => [],
             'insights' => [
                 $label.': '.$overview['coverage']['eligible_active_matching'].' Intereses activos disponibles.',
@@ -80,14 +85,14 @@ final class October2026ProvisionalInterestDashboardDatasetService
                     $overview['coverage']['delegation_quality']['unknown_other'],
                     $overview['coverage']['delegation_quality']['recognized'],
                 )] : []),
-                ...($this->hasActivity($snapshot) ? ['Actividad Task/Event observada: '.$bucket['activities'].' actividades activas sobre '.$bucket['interests_with_activity'].' Intereses filtrados. No equivale a llamadas atendidas ni acredita quién gestionó cada Interés.'] : []),
+                ...($this->hasActivity($snapshot) ? ['Actividad Task/Event observada sobre la cohorte de Intereses de noviembre; las actividades pueden haberse ejecutado fuera de noviembre. '.($snapshot['activity_coverage_complete'] ? 'Cobertura observable completa.' : 'Cobertura parcial: '.($snapshot['activity_quarantined_count'] ?? 0).' actividades en cuarentena; los recuentos son mínimos observados.').' '.$bucket['activities'].' actividades activas sobre '.$bucket['interests_with_activity'].' Intereses filtrados. No equivale a llamadas atendidas ni acredita quién gestionó cada Interés.'] : []),
                 'Las comparativas y los indicadores de actividad requieren más datos.',
             ],
             'filters' => $filters,
             'availability' => [
                 'commercials' => $this->hasOwners($snapshot) ? (isset($snapshot['operational_month']) ? 'Propietarios observados en la sincronización operativa; asignación histórica no certificada.' : 'Propietarios observados en F2M; la asignación histórica no está certificada.') : 'Sin datos suficientes de propietarios para este mes.',
                 'activity' => $this->hasActivity($snapshot)
-                    ? 'Actividades Task/Event vinculadas por WhatId; gestión, contacto y comercial ejecutor no acreditados.'
+                    ? ($snapshot['activity_coverage_complete'] ? 'Cobertura observable completa. ' : 'Cobertura parcial: recuentos mínimos observados; actividades en cuarentena. ').'Task/Event vinculadas por WhatId a la cohorte de Intereses de noviembre, con fechas de actividad no restringidas al mes; gestión, contacto y comercial ejecutor no acreditados.'
                     : 'Sin inventario Task/Event operativo completo para esta versión de Intereses.',
                 'comparison' => 'Sin datos suficientes para comparar con otro período.',
             ],

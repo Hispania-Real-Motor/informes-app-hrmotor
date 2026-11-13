@@ -84,7 +84,8 @@ pero observarlo ahora no reconstruye sus valores históricos de cierre.
 **Extensión administrativa de calidad y actividad, tras aprobar su despliegue:**
 aplicar las migraciones aditivas
 `2026_11_17_120000_add_operational_interest_quality_snapshots.php` y
-`2026_11_17_130000_add_operational_interest_activities.php` antes de servir
+`2026_11_17_130000_add_operational_interest_activities.php` y
+`2026_11_17_140000_add_operational_activity_quarantine.php` antes de servir
 el código nuevo. Comprobar su estado e índices en MariaDB 11; `up()` tolera
 repetición sobre esquema completo, pero una tabla parcialmente creada requiere
 inspección manual, no reparación destructiva. Ninguna migración altera runs
@@ -121,13 +122,25 @@ php artisan salesforce:sync-interest-activities-operational status --run-id=<id>
 
 `prepare` fija exactamente el run activo de Intereses y no consulta Salesforce.
 `run` permite reanudar un fallo con checkpoint y lease, pero rechaza una fuente
-que haya sido sustituida. Revisar `extracted = verified`, `status=completed`,
-`active=true`, `changed` e índices antes de confiar en los agregados. La
-segunda lectura admite contenido actual cambiado, pero rechaza identidad,
-relación o cobertura incompletas; no representa una fotografía histórica. La
-lectura HTTP solo usa el agregado de la versión compatible. El fallo de
-actividad no modifica el puntero de Intereses y no convierte ausencia de
-actividad en cero. No hay scheduler para esta CLI y su ejecución no habilita
+que haya sido sustituida. Inspeccionar `extracted`, `verified`, `quarantined`,
+`coverage_complete`, `status`, `active`, `pointer_recorded`, `changed`, páginas
+y presupuesto antes de interpretar agregados. `active=true` exige que el puntero
+de actividad y la versión de Intereses sigan siendo compatibles; un puntero
+histórico almacenado puede dar `pointer_recorded=true` y `active=false`.
+La segunda lectura conserva cambios de contenido en filas admitidas; identidades
+nuevas, ausentes y relaciones `WhatId` cambiadas incluso entre bloques de
+extracción se registran individualmente
+en cuarentena, sin publicarlas como verificadas. Las filas verificadas y las
+incidencias se confirman con el checkpoint bajo el lease. No hay una fotografía
+histórica ni garantía sobre cambios posteriores a la segunda lectura. Si la
+cobertura es parcial, el dashboard identifica como **mínimos observados** los
+recuentos del subconjunto admitido y comunica el número en cuarentena; un cero
+no prueba ausencia total. Una ejecución parcial no sustituye la última versión
+completa compatible, pero puede dar visibilidad acotada si no existe otra
+compatible. La lectura HTTP solo usa el agregado de la versión compatible.
+El fallo de actividad no modifica el puntero de Intereses. Las actividades se
+relacionan con la cohorte de Intereses de noviembre aunque ocurran en otra
+fecha. No hay scheduler para esta CLI y su ejecución no habilita
 gestión, comercial ejecutor, llamadas atendidas ni informes dependientes.
 Medir llamadas/páginas/tiempo y carga SQL en la primera ejecución supervisada;
 no hay benchmark productivo de este nuevo flujo. Para desactivar la vista,

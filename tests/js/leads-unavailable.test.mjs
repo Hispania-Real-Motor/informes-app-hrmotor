@@ -371,6 +371,11 @@ test('official and provisional KPI cards preserve their own descriptions and una
     assert.match(element('summaryKpis').innerHTML, /Intereses con actividad[\s\S]*?<div class="kpi-value">2<\/div>/);
     assert.match(element('summaryKpis').innerHTML, /Actividades registradas[\s\S]*?<div class="kpi-value">3<\/div>/);
     assert.match(element('summaryKpis').innerHTML, /no equivale a llamadas atendidas/);
+
+    vm.runInContext(`renderKpis(${JSON.stringify(kpis)}, true, {complete: false, quarantined: 2})`, context);
+    assert.match(element('summaryKpis').innerHTML, /Mínimo observado; 2 actividades en cuarentena/);
+    vm.runInContext(`renderKpis(${JSON.stringify(kpis)}, true, {complete: true, quarantined: 0})`, context);
+    assert.match(element('summaryKpis').innerHTML, /actividad de cualquier fecha/);
 });
 
 test('the initial period is applied before the first dashboard request', async (t) => {

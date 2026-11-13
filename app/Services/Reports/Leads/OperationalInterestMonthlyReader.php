@@ -64,7 +64,10 @@ final class OperationalInterestMonthlyReader
                 'integrity_revision' => (int) $run->id, 'scope' => 'operational_'.str_replace('-', '_', $key),
                 'operational_month' => $key, 'activity_pointer_id' => $activityPointer === null ? null : (int) $activityPointer,
                 'activity_run_id' => $activityRun === null ? null : (int) $activityRun->id,
-                'activity_observed_at' => $activityRun?->completed_at];
+                'activity_observed_at' => $activityRun?->completed_at,
+                'activity_coverage_complete' => $activityRun === null ? null : (bool) $activityRun->coverage_complete,
+                'activity_verified_count' => $activityRun === null ? null : (int) $activityRun->verified_count,
+                'activity_quarantined_count' => $activityRun === null ? null : (int) $activityRun->quarantined_count];
         } catch (Throwable) {
             throw new ProvisionalInterestSourceUnavailable;
         }

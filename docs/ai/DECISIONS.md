@@ -1,5 +1,24 @@
 # Decisiones técnicas
 
+## 2026-11-13 — cuarentena individual y cobertura parcial de actividad operativa
+
+- La segunda lectura Task/Event no representa una transacción con Salesforce.
+  Si observa una identidad nueva, una ausencia o un `WhatId` cambiado, incluso
+  entre bloques de extracción, conserva
+  la identidad en el journal con motivo acotado, pero la excluye del resumen de
+  filas admitidas. El checkpoint, el motivo y los contadores se confirman bajo
+  el mismo lease y la misma transacción; un fallo conserva la fase reanudable.
+- Un run completado distingue `coverage_complete=true` de cobertura parcial.
+  El subconjunto admitido de una ejecución parcial puede mostrarse solo como
+  mínimo observado con el número en cuarentena, nunca como total ni como cero
+  concluyente. Si ya existe un run de actividad completado y compatible, una
+  ejecución parcial no desplaza su puntero. Ante un cambio de versión de
+  Intereses, el puntero histórico no se considera activo.
+- Esta política permite observar actividad válida sin esconder incidencias,
+  conserva la última versión compatible y evita un ciclo remoto de relecturas
+  por identidad. No certifica contenido histórico ni actividad posterior a
+  la segunda lectura. La fuente oficial y F2/F5 estrictas no cambian.
+
 ## 2026-11-12 — fuente operativa mensual separada del journal F2 estricto
 
 - La consulta SOQL sobre estado actual no ofrece una fotografía histórica

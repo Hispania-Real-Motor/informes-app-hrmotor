@@ -1,5 +1,50 @@
 # Handoff para agentes
 
+## 2026-11-13 — PR #147: cobertura acotada de actividad Task/Event
+
+- Objetivo: evitar que una Task/Event nueva, ausente o con `WhatId` cambiado
+  bloquee toda la actividad válida, sin presentar una cobertura parcial como
+  inventario completo. `OperationalInterestActivitySync` conserva la identidad
+  afectada con `quarantined_at` y motivo seguro, cuantifica las filas admitidas
+  y en cuarentena y proyecta solo las verificadas y no borradas. Las variaciones
+  de hash admitidas se siguen contabilizando. `status.active` comprueba también
+  la compatibilidad con la versión activa de Intereses; `pointer_recorded`
+  identifica por separado un puntero histórico. El dashboard llama mínimos
+  observados a los recuentos parciales y aclara que las actividades pertenecen
+  a la cohorte de Intereses de noviembre, aunque su fecha sea otra.
+- Archivos funcionales: `OperationalInterestActivitySync.php`,
+  `OperationalInterestMonthlyReader.php`,
+  `October2026ProvisionalInterestDashboardDatasetService.php`,
+  `resources/js/reports/leads-dashboard.js`, sus pruebas PHP/JS y migración
+  `2026_11_17_140000_add_operational_activity_quarantine.php`. Documentos:
+  `docs/reglas-negocio-leads.md`, `docs/salesforce-interest-generations.md`,
+  `docs/operaciones-produccion.md`, `docs/matriz-trazabilidad-kpi.md` y estos
+  tres documentos de contexto/decisiones/traspaso.
+- Base de datos: migración aditiva para dos columnas de cuarentena e índice en
+  filas, y contador/indicador de completitud en runs. No reescribe actividades
+  históricas ni toca la publicación oficial. Aplicar antes del código nuevo
+  solo tras autorización de despliegue; una estructura parcial requiere
+  inspección manual y no debe repararse borrando evidencia.
+- Seguridad: los motivos de cuarentena son códigos cerrados; HTTP y estado
+  administrativo entregan solo recuentos, nunca IDs, payloads, mensajes remotos
+  ni relaciones individuales. Se mantienen rol, flag, lease fenced y bloqueo
+  de activación. La observación no acredita historia ni gestión comercial.
+- Rendimiento: sin SOQL por actividad ni relecturas indefinidas; bloques de 250
+  `WhatId`, páginas de 500 y presupuesto de 3.000 consultas/páginas. La
+  verificación añade consultas SQL acotadas por bloque y la lectura HTTP solo
+  consulta resumen versionado. Medición real de MariaDB/API pendiente de CI y
+  de una operación autorizada posterior; no afirmar benchmark productivo.
+- Pruebas: escenarios sintéticos de alta tardía, ausencia, cambio de relación
+  incluso entre bloques, soft delete, fecha ausente, reanudación, presupuesto y
+  puntero incompatible. Resultado definitivo de PHPUnit/MariaDB/Pint/build,
+  JS, documentación y CI pendiente de confirmación por el agente principal.
+  No se ejecutó Salesforce ni se cambió producción.
+- Acción manual: revisar migración y CI, integrar/desplegar solo con aprobación
+  posterior; mantener scheduler apagado y ejecutar la CLI remota solo después
+  de autorización. Conservar los runs previos. Riesgo residual: Salesforce
+  puede cambiar después de la segunda lectura; hard deletes purgados y
+  relaciones no observables no se acreditan como historia exacta.
+
 ## 2026-11-12 — actividad operativa y calidad de noviembre de Interests (PR Draft pendiente)
 
 - Tarea: completar el primer bloque del dashboard de noviembre sin alterar la
