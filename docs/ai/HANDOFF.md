@@ -8205,13 +8205,21 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   y verificar KPI/filtros con cobertura, nulos y fecha de referencia. Preparar
   octubre exige primero un run operativo y actividad **reales** bajo autorización
   separada. El orden y rollback están en `docs/operaciones-produccion.md`.
-- Pruebas: el agente principal ejecutó 27 pruebas JavaScript locales correctas
-  durante la implementación. PHPUnit completo, MariaDB 11, Pint, build,
-  comprobación documental y CI del SHA definitivo quedan pendientes de sus
-  resultados; no se afirma validación productiva. Esta revisión documental
-  fue delegada al agente `report_docs_maintainer` y se contrastó con el diff
-  funcional; `git diff --check -- docs` y validador se registrarán tras cerrar
-  la descripción PR. Riesgos: catálogo local de usuarios desactualizado,
+- Pruebas/resultados de PR #148 en `e7f8b08c465564adcd1a8e9e8cef4ee0ed417680`:
+  CI y Documentation integrity en verde para ese SHA. PHPUnit completo:
+  1.752 aprobadas, 1 omitida y 15.645 aserciones; suite MariaDB 11 completa
+  aprobada; Pint correcto en 14 PHP modificados; build frontend, 62 pruebas
+  JavaScript y whitespace correctos. `git diff --check -- docs` pasó en esta
+  revisión documental. Prueba volumétrica representativa en MariaDB:
+  `validation_ms=3229.32`, `overview_ms=1.44`, `http_ms=99.25`,
+  `http_queries=17`, `peak_memory_mb=114.5`. Son mediciones sintéticas de CI,
+  no latencia ni cobertura productiva. El correctivo final del lector fija
+  las claves del snapshot antes de validar punteros; Blade conserva la etiqueta
+  temporal legacy; el test comercial comprueba el rechazo oficial de
+  `Madrid General` y el presupuesto HTTP admite la consulta acotada de
+  selección de octubre. No cambia el contrato funcional documentado. Esta
+  revisión documental fue delegada al agente `report_docs_maintainer` y se
+  contrastó con el diff funcional. Riesgos: catálogo local de usuarios desactualizado,
   cobertura parcial de Task/Event, UTM desconocidos en run v1, latencia/DDL
   productivas no medidas, relaciones Opportunity y readiness de consumidores
   aún sin integrar. No se consultó Salesforce ni producción.
