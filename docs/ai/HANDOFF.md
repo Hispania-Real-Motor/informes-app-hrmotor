@@ -36,9 +36,15 @@
   de una operación autorizada posterior; no afirmar benchmark productivo.
 - Pruebas: escenarios sintéticos de alta tardía, ausencia, cambio de relación
   incluso entre bloques, soft delete, fecha ausente, reanudación, presupuesto y
-  puntero incompatible. Resultado definitivo de PHPUnit/MariaDB/Pint/build,
-  JS, documentación y CI pendiente de confirmación por el agente principal.
-  No se ejecutó Salesforce ni se cambió producción.
+  puntero incompatible. En el SHA funcional `39c5eb0`, GitHub Actions pasó
+  PHPUnit completo (1.745 pruebas, una omitida, 15.586 aserciones), Pint (13
+  archivos), build, 61 pruebas JavaScript, whitespace y la suite de actividad
+  sobre MariaDB 11 (18 pruebas, 94 aserciones). Documentation integrity pasó
+  tras actualizar `Docs-Outside` en la descripción de la PR (46 tests del
+  validador y 26 rutas revisadas). Localmente pasaron 61 pruebas JavaScript,
+  `node --check` y `git diff --check`; no hay PHP/Composer/npm/Python utilizables
+  en este worktree. El commit documental final deberá comprobarse de nuevo en
+  Actions. No se ejecutó Salesforce ni se cambió producción.
 - Acción manual: revisar migración y CI, integrar/desplegar solo con aprobación
   posterior; mantener scheduler apagado y ejecutar la CLI remota solo después
   de autorización. Conservar los runs previos. Riesgo residual: Salesforce
