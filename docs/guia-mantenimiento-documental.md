@@ -215,6 +215,13 @@ El mismo job ejecuta `OperationalInterestActivitySyncTest` con MariaDB 11 para
 comprobar el esquema aditivo y la asociación Task/Event por versión. Añadir o
 retirar ese filtro exige actualizar la prueba de infraestructura documental;
 no sustituye PHPUnit completo ni una verificación productiva autorizada.
+La ampliación para `CampaignOperationalAttributionTest` comprueba en MariaDB 11
+el staging provisional de Campañas, sus índices y relaciones locales. Al tocar
+`.github/workflows/ci.yml` hay que revisar el filtro en
+`tests/documentation/test_check_documentation_integrity.py`, además de
+mantener PHPUnit completo, Pint, build y la validación documental. Ni esta
+suite ni SQLite acreditan la cobertura real de UTM, cierres económicos o
+relaciones Opportunity en producción.
 
 `StageInterestMonthlyConsolidationCommand.php` y su migración contienen
 `interest` en el nombre y se mapean a Intereses, Reservas/Ventas, Llamadas y

@@ -87,6 +87,35 @@ test('October deep link selects native campaign period before fetching and clear
     assert.equal(urls.at(-1), '/informes/campanas');
 });
 
+test('November operational deep link pins the provisional source and returns to official after changing period', () => {
+    const select = { value: 'last_30_days', options: [{ value: 'month_2026_11', dataset: { start: '2026-11-01', end: '2026-11-12' } }] };
+    const sourceSelect = { value: 'official' };
+    const sourceGroup = { hidden: true };
+    const elements = { periodPreset: select, startDate: { value: '' }, endDate: { value: '' },
+        campaignDataSource: sourceSelect, campaignDataSourceGroup: sourceGroup };
+    const isolated = createDashboardSandbox({ addEventListener() {},
+        getElementById: (id) => elements[id] || null,
+        querySelectorAll: (selector) => selector === '#periodPreset option' ? select.options : [],
+    });
+    isolated.URL = URL;
+    isolated.window.reportUserCanViewOperationalCampaigns = true;
+    isolated.window.campaignOperationalNovemberEnabled = true;
+    isolated.window.location = { href: 'https://example.test/informes/campanas?period=november_2026&source=operational',
+        search: '?period=november_2026&source=operational' };
+    const urls = [];
+    isolated.window.history = { replaceState: (_state, _title, url) => urls.push(url) };
+
+    vm.runInContext('applyInitialCampaignPeriod()', isolated);
+    assert.equal(select.value, 'month_2026_11');
+    assert.equal(sourceSelect.value, 'operational');
+    assert.equal(sourceGroup.hidden, false);
+    assert.match(vm.runInContext('currentFilters()', isolated), /source=operational&start_date=2026-11-01&end_date=2026-11-12/);
+    select.value = 'custom';
+    vm.runInContext('syncCampaignPeriodUrl()', isolated);
+    assert.equal(sourceSelect.value, 'official');
+    assert.equal(urls.at(-1), '/informes/campanas');
+});
+
 test('recovery mode remains technical state without a permanent public alert, while unavailable platforms stay visible', () => {
     const warnings = {innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; }};
     sandbox.document.getElementById = (id) => id === 'warnings' ? warnings : null;

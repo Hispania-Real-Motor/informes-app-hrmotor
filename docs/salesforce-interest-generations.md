@@ -136,7 +136,14 @@ incidencias agregadas. Revalida ambos punteros antes y después de cada lote;
 un consumidor futuro debe preparar resultados en staging y publicarlos sólo
 tras la comprobación final. Esta API no hace SOQL ni se conecta por sí sola
 a Campañas o Reservas/Ventas; sus lectores oficiales siguen usando
-`InterestGenerationReader` y sus contratos económicos.
+`InterestGenerationReader` y sus contratos económicos. Campañas dispone ahora
+de un consumidor **administrativo provisional y optativo** separado:
+`CampaignOperationalAttributionBuilder` exige UTM v2, fija la versión
+operativa y la evidencia económica del mes, prepara una atribución local y
+activa su propio puntero solo tras comprobar de nuevo las fuentes. Octubre
+requiere snapshot económico cerrado; noviembre usa los runs del tramo abierto
+disponibles por plataforma. Esta integración no cambia el contrato de
+publicación ni proporciona historia Salesforce certificada.
 
 La segunda migración aditiva crea una cabecera por pareja de run Interest y
 run de actividad y filas de KPI por `interest_key` HMAC. La CLI administrativa

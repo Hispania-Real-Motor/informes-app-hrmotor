@@ -2,10 +2,13 @@
 
 > La nueva fuente `salesforce_interest_operational_*` es independiente de la
 > revisión F2 mensual estricta descrita abajo. Solo su versión activa puede
-> alimentar el dashboard **administrativo provisional de noviembre**: el
+> alimentar el dashboard **administrativo provisional de octubre o noviembre**: el
 > universo visible son filas admitidas y no borradas, con `observed`,
 > `admitted`, `quarantined` y cambios entre lecturas expuestos por separado.
-> No certifica historia al cutoff, F5, otros informes ni generación oficial.
+> No certifica historia al cutoff, F5 ni generación oficial. Campañas puede
+> consumir únicamente una **atribución provisional derivada**, con puntero,
+> fuente económica y controles de disponibilidad propios; sus KPI oficiales
+> conservan la generación publicada.
 
 > Inventario mensual provisional de Interests: `salesforce_interest_monthly_recoveries`
 > no es fuente de KPI ni de informes. Solo registra inventario actual por mes
@@ -39,8 +42,43 @@
 | Sección / evidencia | Condición de disponibilidad | Limitación |
 |---|---|---|
 | Campañas: summary, detalle y rankings nativos | `CampaignDashboardDatasetService::{economicEvidence,platformAvailability,metricRows}` divide el intervalo civil `Europe/Madrid` en meses cerrados completos y tramos abiertos. Un cierre exige el snapshot vigente no vacío y válido; acredita solo las plataformas que contiene. Un tramo abierto exige por plataforma el run de mayor ID con cobertura completa, `completed` y finalizado; `stats.range_start/range_end_exclusive` presentes son autoritativos y, si uno es inválido/incompleto, bloquean sin fallback a timestamps. En legado sin rango explícito, una única interpretación completa (DATETIME civil Madrid o UTC convertido) debe formar ambos límites de inicio de día; no se elige la más amplia. El fin es exclusivo y la conversión cubre DST, incluidos octubre/noviembre. `availability.platforms.*.evidence` expone `closure_snapshot`, `sync_run` o `mixed`. | El fin de cobertura es exclusivo. Un snapshot ausente/vacío/inválido, un día parcial de mes cerrado, run fallido/incompleto, límites nulos/inválidos o hueco bloquean sin usar filas diarias como sustituto del cierre. `period_end_at=1970-01-01` es una incidencia histórica independiente: no se reinterpreta y solo puede diagnosticarse en lectura antes de una corrección aislada autorizada. Meta y Google se validan por separado; la evidencia económica no certifica Salesforce, atribución ni estado histórico. Leads/conversiones nativos no equivalen a Interests ni conversiones atribuidas. |
-| Campañas: Interests, Opportunities, resultados comerciales, auditoría y exportaciones dependientes | Requieren generación certificada de Interests; las auditorías la comprueban explícitamente y la exportación de campañas conserva el camino ordinario. | En recuperación se bloquean los valores dependientes, no se convierten en cero. |
+| Campañas oficiales: Interests, Opportunities, resultados comerciales, auditoría y exportaciones dependientes | Requieren generación certificada de Interests; las auditorías la comprueban explícitamente y la exportación ordinaria conserva su contrato. | La nueva atribución operativa es una fuente administrativa separada. No modifica publicación, readiness ni auditoría oficial. |
 | Interests: informe y auditoría | `InterestGenerationReader` requiere publicación certificada. | El modo parcial de Campañas no publica ni certifica Interests. |
+
+### Campañas: atribución operativa provisional de octubre y noviembre de 2026
+
+Esta ficha corresponde exclusivamente a `source=operational`, rol administrativo y
+flag mensual habilitado. La fuente externa es `Interes__c` con
+`IN_utm_campaign__c`, `IN_utm_id__c`, `IN_utm_source__c`,
+`IN_utm_medium__c`, `IN_utm_content__c`, `IN_utm_term__c` y origen original,
+ya consultados por `OperationalInterestMonthlySync` y cifrados en
+`salesforce_interest_operational_rows` de contrato UTM v2. El
+`OperationalInterestSourceReader` fija run, mes, proyección, cutoff,
+observación y cobertura; rechaza v1 y entrega únicamente Interests activos
+admitidos en lotes de 500. `CampaignOperationalAttributionBuilder::build()`
+descifra UTM solo durante la preparación CLI, reutiliza el matching de
+`CampaignAttributionBuilderService` y persiste una fila por Interest con
+adquisición válida en `campaign_operational_attributions`. `interest_key` y
+`opportunity_key` son HMAC; no se guardan UTM crudos ni payloads.
+
+| Indicador / contrato | Fuente, cálculo y evidencia local | Disponibilidad, filtros y límites |
+|---|---|---|
+| Intereses atribuidos y convertidos | `Interes__c` activo del mes funcional (`functional_created_at`), origen/UTM y estado; `CampaignOperationalAttributionBuilder::{asMatchingInterest,hasAcquisitionEvidence}` y matching compartido; una fila por identidad HMAC en `campaign_operational_attributions`. El lector `CampaignDashboardDatasetService` agrupa la versión activa. | Una atribución requiere evidencia de adquisición; ausencia de UTM no significa cero del universo mensual. Tipo Venta/Tasación usa `LeadRecordTypeNormalizer` y el normalizador de campaña vigente; estado desconocido no se convierte por suposición. Desduplicación por run e Interest. Conteos enteros, sin redondeo. Solo mes, plataforma/campaña, contexto, tipo, estado, procedencia y búsqueda respaldados por columnas persistidas. |
+| Campaña y método de atribución | `utm_id`, `utm_campaign`, `utm_content`, fuente/medio/canal y catálogo económico Meta/Google → `CampaignAttributionBuilderService::{operationalMetricLookup,resolveOperationalCampaign}` → `platform`, `campaign_id`, `campaign_name`, `campaign_source_type`, `attribution_method`, `match_status`. | Matching exacto/flexible, ambigüedad, exclusión y solo Salesforce conservan las reglas compartidas. No se atribuye por aproximación no acreditada. Octubre exige snapshot de cierre válido y no vacío; noviembre emplea solo runs/plataformas disponibles del tramo abierto. La evidencia económica no certifica el estado histórico de Salesforce. |
+| Opportunity, reservas, ventas, compras e importe | `salesforce_opportunity_interest_direct_runs` y `salesforce_opportunity_sync_runs` completados con cutoff no anterior a la observación Interest; relación directa e inversa concordante y Opportunity no borrada observable → `CampaignOperationalAttributionBuilder::{opportunityEvidence,opportunitiesForBatch}` y `CampaignAttributionBuilderService::operationalOpportunityFlags` → booleanos y `sale_amount` locales. | Si falta cobertura temporal o existe una relación ambigua/contradictoria, `opportunity_coverage_complete=false` y los KPI Opportunity del run se muestran nulos. No se infiere por Account ni se confunde propietario actual con atribución histórica. Tasación no suma ventas; Venta no suma compras. Importes usan decimal local a dos posiciones; no se crea una fórmula económica nueva. |
+| Inversión, plataformas y ratios publicitarios | `campaign_investment_closure_snapshots` para octubre cerrado; runs y métricas locales Meta/Google para noviembre abierto; `CampaignDashboardDatasetService::{operationalEconomicContext,operationalSummary}` conserva fórmulas nativas de gasto y ratios. | La disponibilidad se determina por plataforma y cobertura efectiva. No se trata un proveedor ausente como cero. La atribución provisional no cambia cierres ni sustituye resultados nativos por conversiones Salesforce. Filtros adquiridos fuente/medio, cuenta, comercial y vehículo no están soportados y se rechazan, no se ignoran. |
+
+El puntero `campaign_operational_months.active_run_id` solo cambia después de
+revalidar Interest, proyección, evidencia económica y relaciones dentro de una
+activación fenced. Una fuente cambiada deja el run anterior visible o bloquea
+la lectura dependiente; el HTTP consulta proyecciones locales, nunca Salesforce.
+El CSV de campañas sigue el run fijado; la auditoría de atribución y su CSV
+provisional muestran solo agregados por campaña, sin identidad individual.
+La auditoría KPI individual/CSV permanece indisponible para esta fuente.
+`CampaignOperationalAttributionTest` cubre las reglas sintéticas y el job
+MariaDB 11 de CI añade la compatibilidad del esquema. La cobertura y las
+cifras reales de octubre/noviembre requieren validación administrativa
+autorizada; estas fichas no se promueven a auditoría histórica integral.
 
 El cambio introduce un contrato de disponibilidad, no audita las fichas KPI.
 La comparación de inversión, impresiones, clics, leads de plataforma, CTR y CPC

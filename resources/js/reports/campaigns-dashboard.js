@@ -265,6 +265,9 @@ function bindResetFilters() {
 
         document.getElementById('periodPreset').value = 'last_30_days';
         document.getElementById('campaignStatus').value = 'active';
+        if (document.getElementById('campaignDataSource')) {
+            document.getElementById('campaignDataSource').value = 'official';
+        }
         const saleSubcategory = document.getElementById('saleSubcategory');
         if (saleSubcategory) {
             saleSubcategory.value = 'venta';
@@ -302,6 +305,13 @@ function bindFilters() {
 
     document.getElementById('periodPreset')?.addEventListener('change', async (event) => {
         applyPeriodPreset(event.target.value);
+        syncCampaignPeriodUrl();
+        await reloadAllData();
+    });
+    document.getElementById('campaignDataSource')?.addEventListener('change', async () => {
+        if (document.getElementById('campaignDataSource')?.value === 'operational') {
+            document.getElementById('campaignStatus').value = '';
+        }
         syncCampaignPeriodUrl();
         await reloadAllData();
     });
@@ -700,6 +710,14 @@ async function reloadAllData() {
 
         setUpdatedBadge(summary?.datos_actualizados, false, summary);
         renderSummary(summary || {});
+        const operationalNotice = document.getElementById('campaignOperationalNotice');
+        if (operationalNotice) {
+            const evidence = summary?.operational_evidence;
+            operationalNotice.hidden = !evidence;
+            operationalNotice.textContent = evidence
+                ? `Campañas ${evidence.month}: atribución operativa provisional, no certificada. Economía ${evidence.economic_state}; versión económica ${evidence.economic_version ?? 'no disponible'}; Interest run ${evidence.interest_run_id}; atribución run ${evidence.attribution_run_id}; corte ${evidence.interest_cutoff_at}; universo activo ${evidence.coverage?.eligible_active_matching ?? 'no disponible'}; incidencias ${evidence.incidents_count}.`
+                : '';
+        }
         renderFilterOptions(summary.filters || {}, campaignItems);
         campaignRows = campaignItems;
         renderCampaignTables(campaignRows);
@@ -2133,6 +2151,11 @@ function persistCampaignNameSelections() {
 function currentFilters() {
     const params = new URLSearchParams();
 
+    if (window.reportUserCanViewOperationalCampaigns && document.getElementById('campaignDataSource')?.value === 'operational'
+        && ['month_2026_10', 'month_2026_11'].includes(document.getElementById('periodPreset')?.value)) {
+        params.set('source', 'operational');
+    }
+
     setParam(params, 'start_date', document.getElementById('startDate')?.value);
     setParam(params, 'end_date', document.getElementById('endDate')?.value);
     setParam(params, 'platform', document.getElementById('platform')?.value);
@@ -2161,7 +2184,7 @@ function buildCampaignKpiAuditUrl(metric) {
 }
 
 function campaignKpiAuditLinkHtml(metric, label) {
-    if (!window.reportUserCanAudit || !metric) {
+    if (!window.reportUserCanAudit || !metric || new URLSearchParams(currentFilters()).get('source') === 'operational') {
         return '';
     }
 
@@ -2571,27 +2594,56 @@ function populatePeriodPreset() {
 }
 
 function applyInitialCampaignPeriod() {
-    if (new URLSearchParams(window.location.search).get('period') !== 'october_2026') {
+    const query = new URLSearchParams(window.location.search);
+    const period = query.get('period');
+    const month = period === 'october_2026' ? 'month_2026_10'
+        : (period === 'november_2026' ? 'month_2026_11' : null);
+    if (!month) {
         return;
     }
 
     const select = document.getElementById('periodPreset');
-    if (!select || ![...select.options].some((option) => option.value === 'month_2026_10')) {
+    if (!select || ![...select.options].some((option) => option.value === month)) {
         return;
     }
 
-    select.value = 'month_2026_10';
+    select.value = month;
     applyPeriodPreset(select.value);
+    const source = document.getElementById('campaignDataSource');
+    if (source) {
+        source.value = query.get('source') === 'operational' ? 'operational' : 'official';
+        if (source.value === 'operational' && document.getElementById('campaignStatus')) {
+            document.getElementById('campaignStatus').value = '';
+        }
+    }
+    syncCampaignOperationalSelector();
 }
 
 function syncCampaignPeriodUrl() {
     const url = new URL(window.location.href);
-    if (document.getElementById('periodPreset')?.value === 'month_2026_10') {
-        url.searchParams.set('period', 'october_2026');
+    const selected = document.getElementById('periodPreset')?.value;
+    if (selected === 'month_2026_10' || selected === 'month_2026_11') {
+        url.searchParams.set('period', selected === 'month_2026_10' ? 'october_2026' : 'november_2026');
     } else {
         url.searchParams.delete('period');
     }
+    syncCampaignOperationalSelector();
+    if (document.getElementById('campaignDataSource')?.value === 'operational') {
+        url.searchParams.set('source', 'operational');
+    } else {
+        url.searchParams.delete('source');
+    }
     window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+}
+
+function syncCampaignOperationalSelector() {
+    const group = document.getElementById('campaignDataSourceGroup');
+    const source = document.getElementById('campaignDataSource');
+    const selected = document.getElementById('periodPreset')?.value;
+    const visible = (selected === 'month_2026_10' && window.campaignOperationalOctoberEnabled)
+        || (selected === 'month_2026_11' && window.campaignOperationalNovemberEnabled);
+    if (group) group.hidden = !visible;
+    if (source && !visible) source.value = 'official';
 }
 
 function monthPresetOptions() {

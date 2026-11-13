@@ -96,12 +96,13 @@ class CampaignDashboardDataController extends Controller
             'Ultima fecha con inversion',
         ];
 
-        return response()->streamDownload(function () use ($rows, $headers): void {
+        $operational = $request->query('source') === 'operational';
+        $response = response()->streamDownload(function () use ($rows, $headers, $operational): void {
             $output = fopen('php://output', 'w');
             fputcsv($output, $headers);
 
             foreach ($rows as $row) {
-                fputcsv($output, [
+                $values = [
                     $row['platform'],
                     $row['account_id'],
                     $row['source_acquired'],
@@ -136,18 +137,25 @@ class CampaignDashboardDataController extends Controller
                     $row['campaign_start_date'] ?? null,
                     $row['campaign_end_date'] ?? null,
                     $row['last_spend_date'] ?? null,
-                ]);
+                ];
+                fputcsv($output, $operational ? array_map(static function ($value) {
+                    return is_string($value) && preg_match('/\A\s*[=+@\-]/u', $value) === 1 ? "'".$value : $value;
+                }, $values) : $values);
             }
 
             fclose($output);
         }, 'campanas.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+
+        return $request->query('source') === 'operational'
+            ? $response->header('Cache-Control', 'no-store, private') : $response;
     }
 
     public function exportKpiAuditCsv(Request $request): StreamedResponse
     {
         abort_unless(ReportUserAccess::canAuditReport($request, 'campaigns'), 403);
+        abort_if($request->query('source') === 'operational', 404);
 
         $payload = $this->dataset->kpiAudit($request);
         $rows = $payload['items'] ?? [];
@@ -263,6 +271,25 @@ class CampaignDashboardDataController extends Controller
     public function exportAttributionsCsv(Request $request): StreamedResponse
     {
         abort_unless(ReportUserAccess::canAuditReport($request, 'campaigns'), 403);
+        if ($request->query('source') === 'operational') {
+            $rows = $this->dataset->attributionAuditRows($request);
+
+            return response()->streamDownload(static function () use ($rows): void {
+                $output = fopen('php://output', 'w');
+                fputcsv($output, ['Fuente', 'Plataforma', 'Campaign ID', 'Campaña', 'Intereses', 'Opportunities']);
+                foreach ($rows as $row) {
+                    $values = [
+                        $row['source_type'], $row['platform'], $row['campaign_id'],
+                        $row['resolved_campaign_name'], $row['interests_count'], $row['opportunities_count'],
+                    ];
+                    fputcsv($output, array_map(static fn ($value) => is_string($value)
+                        && preg_match('/\A\s*[=+@\-]/u', $value) === 1 ? "'".$value : $value, $values));
+                }
+                fclose($output);
+            }, 'campanas-atribucion-operativa-agregada.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'no-store, private',
+            ]);
+        }
 
         $rows = $this->dataset->attributionAuditRows($request);
         $headers = [
@@ -375,7 +402,10 @@ class CampaignDashboardDataController extends Controller
 
     private function jsonResponse(array $payload): JsonResponse
     {
-        return response()->json($payload, 200, [], self::JSON_RESPONSE_FLAGS);
+        $response = response()->json($payload, 200, [], self::JSON_RESPONSE_FLAGS);
+
+        return request()->query('source') === 'operational'
+            ? $response->header('Cache-Control', 'no-store, private') : $response;
     }
 
     private function implodeAuditValues(array $values): ?string

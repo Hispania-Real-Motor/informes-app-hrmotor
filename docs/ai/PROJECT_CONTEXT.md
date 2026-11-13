@@ -2,6 +2,18 @@
 
 Actualizado: 2026-11-13.
 
+## Atribución operativa de Campañas (2026-11-13, PR Draft pendiente)
+
+`CampaignOperationalAttributionBuilder` consume lotes de la versión mensual
+Interest UTM v2, reutiliza el matching existente y activa un puntero separado
+por mes después de comparar fuentes. `campaign_operational_*` no reemplaza la
+atribución oficial. El dashboard conserva la UI y añade `source=operational`
+para administración y flags de octubre/noviembre. El dato publicitario procede
+del cierre válido en octubre o de runs por plataforma en noviembre; los KPI
+Opportunity requieren relaciones directas/inversas y cutoffs compatibles.
+El HTTP no descifra UTM ni consulta Salesforce. La validación de producción,
+la latencia real y la activación quedan pendientes de autorización.
+
 ## Fuente operativa compartida y proyección KPI (2026-11-13, PR Draft pendiente)
 
 - `OperationalInterestSourceReader` fija un run mensual activo de octubre o

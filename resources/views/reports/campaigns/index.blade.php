@@ -8,10 +8,25 @@
         window.reportUserRole = @json($reportUserRole ?? 'viewer');
         window.reportUserCanExport = @json($reportUserCanExport ?? false);
         window.reportUserCanAudit = @json($reportUserCanAudit ?? false);
+        window.reportUserCanViewOperationalCampaigns = @json($reportUserCanViewOperationalCampaigns ?? false);
+        window.campaignOperationalOctoberEnabled = @json($campaignOperationalOctoberEnabled ?? false);
+        window.campaignOperationalNovemberEnabled = @json($campaignOperationalNovemberEnabled ?? false);
     </script>
     </x-slot:head>
 <div class="wrap">
+    @if ($reportUserCanViewOperationalCampaigns ?? false)
+        <div class="card panel" id="campaignOperationalNotice" role="status" hidden></div>
+    @endif
     <section class="filters card campaigns-filter-bar">
+        @if ($reportUserCanViewOperationalCampaigns ?? false)
+            <div class="filter-group" id="campaignDataSourceGroup" hidden>
+                <label for="campaignDataSource">Origen comercial</label>
+                <select id="campaignDataSource">
+                    <option value="official">Oficial publicado</option>
+                    <option value="operational">Operativo provisional</option>
+                </select>
+            </div>
+        @endif
         <div class="filter-group">
             <label for="periodPreset">Periodo</label>
             <select id="periodPreset"></select>

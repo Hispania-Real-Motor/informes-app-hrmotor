@@ -1,5 +1,63 @@
 # Operaciones de producción
 
+## Campañas: atribución operativa provisional de octubre/noviembre de 2026
+
+Este procedimiento **no está autorizado para ejecución por el despliegue de
+código**. Preparar el cambio en revisión; no ejecutar Salesforce desde HTTP ni
+modificar cierres o atribuciones oficiales. Antes de cualquier activación,
+confirmar HEAD, backups, migraciones y que las tablas de origen conservan sus
+versiones; obtener autorización separada para cada mes.
+
+1. En una ventana aprobada, aplicar con `php artisan migrate --force` la
+   migración aditiva
+   `2026_11_19_120000_create_campaign_operational_attributions.php` y comprobar
+   `campaign_operational_months`, `campaign_operational_runs` y
+   `campaign_operational_attributions` con sus índices y FKs. Si una DDL quedó
+   parcialmente aplicada, inspeccionar el esquema antes del reintento; no
+   borrar tablas ni registros para repararla. El `up()` comprueba existencia;
+   `down()` no elimina la evidencia.
+2. Confirmar por lectura administrativa que el run Interest activo del mes
+   es UTM v2 y que su proyección sigue siendo actual. Octubre exige un
+   snapshot económico vigente, válido, cerrado y no vacío; noviembre requiere
+   tramo abierto con cobertura por plataforma. Contrastar cutoffs de los
+   últimos runs de Opportunity y relación directa con la observación Interest.
+   Si falta concordancia directa/inversa, aceptar solo atribución con KPI
+   Opportunity indisponibles; no corregir relaciones manualmente.
+3. Tras autorización específica para preparar cada mes, ejecutar
+   `php artisan campaigns:build-operational-attribution 2026-10 --confirm` y,
+   por separado, `php artisan campaigns:build-operational-attribution 2026-11 --confirm`.
+   La CLI es local y no consulta Salesforce; entrega run, recuentos, incidencias
+   y cobertura, sin IDs individuales. Comparar `interests_processed` con el
+   universo activo elegible, `attributions_count` con las filas del run y
+   revisar `opportunity_coverage_complete`, fuente económica y versión. Un
+   fallo deja la versión activa anterior; no mover el puntero a mano.
+4. Solo tras validar cobertura y permisos, habilitar el flag provisional del
+   mes correspondiente (`SALESFORCE_OCTOBER_2026_PROVISIONAL_ENABLED` o
+   `SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED`) y consultar como administrador
+   `/informes/campanas?source=operational&start_date=2026-10-01` o
+   `start_date=2026-11-01`. Verificar banner provisional, run/cutoff,
+   plataformas disponibles y `no-store, private`; probar JSON, filtros y CSV
+   de campañas. No probar una ruta pública con credenciales administrativas
+   compartidas. La ausencia de evidencia debe mostrar solo datos de plataforma
+   acreditados, nunca cifras comerciales cero inventadas.
+
+**Reversión de lectura:** deshabilitar el flag del mes y limpiar caché de
+configuración mediante el procedimiento normal, o seleccionar la fuente oficial
+en la interfaz. Conservar filas y punteros operativos para auditoría; no hacer
+`migrate:rollback` ni tocar snapshots económicos/atribuciones oficiales como
+medida de reversión. Una actualización de Interest, cierre, run Opportunity o
+relación directa puede volver obsoleta la atribución anterior: revalidar y
+construir un run nuevo antes de presentarla. El intervalo operativo abierto no
+equivale a una fotografía histórica al cutoff. La validación CI con fixtures
+no acredita UTM, relaciones ni tiempos de producción; medir latencia y volumen
+en una prueba supervisada después de un despliegue autorizado.
+
+El workflow CI añade `CampaignOperationalAttributionTest` al job MariaDB 11.
+Esta ampliación no sustituye PHPUnit completo ni el control de documentación.
+Como `.github/workflows/ci.yml` es un control crítico, la PR debe declarar
+`Docs-Impact: updated`; la descripción debe enumerar las rutas funcionales
+sin mapa documental exacto en `Docs-Outside-Paths`, con razón y evidencia.
+
 ## Fuente operativa mensual de Interests: preparación de noviembre (sin ejecución autorizada)
 
 Esta sección describe la **nueva** CLI aislada
