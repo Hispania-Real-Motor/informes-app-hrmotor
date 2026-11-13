@@ -315,14 +315,14 @@ function renderSummary(data) {
     empty.classList.toggle('is-hidden', !hasNoData);
     empty.textContent = data.message || 'No hay Interests que coincidan con el periodo y los filtros seleccionados.';
 
-    renderKpis(data.kpis || {}, data.provisional === true, data.activity_coverage);
+    renderKpis(data.kpis || {}, data.provisional === true, data.activity_coverage, data.kpi_evidence);
     renderComparison(data.comparativa || []);
     renderInsights(data.insights || []);
 }
 
-function renderKpis(kpis, provisional = false, activityCoverage = null) {
+function renderKpis(kpis, provisional = false, activityCoverage = null, kpiEvidence = null) {
     const root = document.getElementById('summaryKpis');
-    const cards = provisional ? provisionalKpiCards(kpis, activityCoverage) : officialKpiCards(kpis);
+    const cards = provisional ? provisionalKpiCards(kpis, activityCoverage, kpiEvidence) : officialKpiCards(kpis);
 
     root.innerHTML = '';
 
@@ -357,21 +357,27 @@ function officialKpiCards(kpis) {
     ];
 }
 
-function provisionalKpiCards(kpis, activityCoverage = null) {
+function provisionalKpiCards(kpis, activityCoverage = null, kpiEvidence = null) {
     const activityHint = activityCoverage && !activityCoverage.complete
         ? `Mínimo observado; ${activityCoverage.quarantined} actividades en cuarentena`
         : 'Cohorte de Intereses del mes; actividad de cualquier fecha';
+    const managementHint = kpiEvidence?.activity_complete === false
+        ? 'Cobertura Task/Event parcial: ausencia de gestión no acreditada'
+        : 'Clasificación observada con la regla oficial; no certifica el histórico';
+    const commercialHint = kpiEvidence?.commercial_users_observed_at
+        ? 'Elegibilidad observada en el registro local de usuarios; no certifica asignación histórica'
+        : 'Sin proyección comercial compatible';
     return [
         { label: 'Intereses totales', value: formatKpiValue(kpis.leads_totales), hint: 'Muestra del período validado', metric: null },
         { label: 'Convertidos', value: formatKpiValue(kpis.convertidos), hint: `${formatPercent(kpis.conversion_pct)} sobre total`, metric: null },
         { label: 'Descartados', value: formatKpiValue(kpis.descartados), hint: `${formatPercent(kpis.descarte_pct)} sobre total`, metric: null },
         { label: 'Potenciales', value: formatKpiValue(kpis.potenciales), hint: 'Estado Potencial acreditado', metric: null },
-        { label: 'Sin comercial elegible', value: formatKpiValue(kpis.without_eligible_commercial), hint: 'Sin datos suficientes de comerciales', metric: null },
-        { label: 'Sin delegación comercial', value: formatKpiValue(kpis.without_commercial_delegation), hint: 'Sin datos suficientes de delegaciones comerciales', metric: null },
+        { label: 'Sin comercial elegible', value: formatKpiValue(kpis.without_eligible_commercial), hint: commercialHint, metric: null },
+        { label: 'Sin delegación comercial', value: formatKpiValue(kpis.without_commercial_delegation), hint: commercialHint, metric: null },
         { label: 'Sin clasificar', value: formatKpiValue(kpis.unclassified), hint: 'Interest válido sin delegación clasificada', metric: null },
         { label: 'Intereses sin asignar', value: formatKpiValue(kpis.leads_unassigned), hint: kpis.leads_unassigned === null ? 'Sin datos suficientes de asignación' : 'Potenciales con propietario técnico observado', metric: null },
-        { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: 'Sin datos suficientes de actividad', metric: null },
-        { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: 'Sin datos suficientes de actividad', metric: null },
+        { label: 'Potenciales sin trabajar', value: formatKpiValue(kpis.potenciales_sin_trabajar), hint: kpiEvidence ? managementHint : 'Sin proyección de gestión compatible', metric: null },
+        { label: 'Gestionados', value: formatKpiValue(kpis.gestionados), hint: kpiEvidence ? managementHint : 'Sin proyección de gestión compatible', metric: null },
         { label: 'Intereses con actividad', value: formatKpiValue(kpis.interests_with_activity), hint: activityHint, metric: null },
         { label: 'Actividades registradas', value: formatKpiValue(kpis.activities), hint: `${activityHint}; Task/Event no equivale a llamadas atendidas`, metric: null },
         { label: 'Llamadas', value: formatKpiValue(kpis.llamadas), hint: 'Canal Llamada · ' + formatPercent(kpis.llamadas_pct) + ' del total', metric: null },

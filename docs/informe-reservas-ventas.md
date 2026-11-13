@@ -932,3 +932,23 @@ atribución, filtros, universo ni resultados oficiales de Reservas/Ventas. Sus
 diferencias y vista provisional son aisladas; mientras la fuente no esté
 certificada y publicada, no puede alimentar este informe ni reemplazar la
 generación Interest publicada.
+
+### Contrato operativo Interest preparado, aún no adoptado por Reservas/Ventas
+
+`OperationalInterestSourceReader` puede fijar un run activo de octubre o
+noviembre y entregar localmente por lotes `salesforce_id`, fecha funcional,
+fuente, relación inversa `IN_VEN_Oportunidad__c`, Lead/Account y vehículos,
+además del cutoff y la cobertura del run. No cambia el contrato vigente:
+`OpportunityInterestAttributionService` sigue leyendo
+`InterestGenerationReader::eloquent()` y la relación directa de Opportunity
+(`HRM_Interes_Origen__c`) mediante su snapshot propio. La fuente operativa
+no entra todavía en portal, Rendimiento comercial, auditoría, CSV, reservas,
+ventas ni cierres.
+
+Una PR consumidora deberá comprobar coincidencia y unicidad de las relaciones
+directa e inversa, estado de borrado, cobertura y cutoff de Opportunity frente
+al run Interest, precedencia del portal y versiones durante toda la
+construcción. Una relación ambigua sigue sin atribución: ni UTM ni owner
+actual sustituyen el comercial del evento económico o la generación
+certificada. El procedimiento de staging deberá fallar cerrado si cualquiera
+de esas evidencias cambia antes de activar un dataset dependiente.

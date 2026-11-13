@@ -67,9 +67,10 @@ de actividad compatible, ambos KPI son nulos, no cero. Si la cobertura es
 parcial, ambos recuentos son mínimos observados del subconjunto admitido;
 `activity_coverage` indica verificados, cuarentena y completitud. Una versión
 parcial no sustituye un run de actividad completo aún compatible. La actividad
-no acredita quién gestionó el Interest, llamada efectivamente atendida, primer contacto,
-`gestionados` o `potenciales_sin_trabajar`: estos últimos siguen no disponibles.
-Tampoco habilita comparativas o KPI de otros informes.
+no acredita por sí misma quién gestionó el Interest, llamada efectivamente
+atendida ni primer contacto. Los KPI de gestión sólo pueden mostrarse tras la
+proyección administrativa compatible descrita a continuación. Tampoco habilita
+comparativas o KPI de otros informes.
 
 Los valores desconocidos se presentan como «Sin clasificar» o no disponibles
 según el indicador. Un cero concluyente de actividad solo es demostrable con
@@ -78,6 +79,57 @@ versión parcial significa únicamente que el subconjunto admitido no la tiene.
 El diagnóstico individual queda fuera de HTTP; el resumen solo muestra
 contadores y categorías agregados sin IDs ni valores sensibles. Esta fuente
 no modifica F2/F2M/F5 estrictas ni `verification.verified`.
+
+### Octubre y noviembre: KPI operativos derivados, sin certificación histórica
+
+`reports:project-operational-interest-kpis <YYYY-MM> --confirm` prepara fuera
+de HTTP una clasificación local para **un run activo de Interests y su run de
+Task/Event compatible**. Se permite sólo octubre o noviembre de 2026; exige
+ambas fuentes `completed`, conserva sus filas y fija la fecha de referencia:
+fin funcional del mes menos un segundo si el mes ya terminó, o terminación del
+run de actividad si sigue abierto. La misma regla de
+`SalesforceInterestDashboardDatasetService::decorateLead()` clasifica
+`gestionados`: `Convertido` o `Descartado`, o `Potencial` con última actividad
+funcional entre la referencia menos tres días y la referencia inclusive.
+`potenciales_sin_trabajar` exige `Potencial`, propietario no técnico y ausencia
+de actividad reciente; una Task sin fecha funcional no demuestra recencia.
+`leads_unassigned` sigue siendo `Potencial` con propietario técnico según
+`InterestTechnicalOwnerClassifier`. La delegación de **procedencia** mantiene
+`LeadDelegationNormalizer` y nunca se infiere del comercial.
+
+Con cobertura Task/Event parcial, un potencial con actividad reciente
+verificada puede clasificarse como gestionado. Cuando **todas** las
+cuarentenas son `new_during_verify` y conservan `WhatId` comprobable, solo
+esos Intereses afectados mantienen indeterminada la ausencia de actividad;
+los demás pueden aplicar la regla sobre su cobertura individual. Si existe
+otro motivo de cuarentena, el ámbito afectado no puede acotarse con seguridad
+y todos los potenciales sin actividad reciente verificada quedan
+indeterminados. Para cada fila incierta, `managed` y, salvo propietario
+técnico, `potential_unworked` son nulos. Si cualquier fila filtrada es
+indeterminada, el
+agregado y su porcentaje son `null` («No disponible»), no cero. Convertidos y
+descartados conservan clasificación de gestión por estado, incluso con
+actividad parcial. El denominador, los filtros combinados y el redondeo a dos
+decimales son los mismos de las demás tarjetas; las tablas de fuente,
+procedencia y comercial usan la misma proyección versionada.
+
+La elegibilidad comercial usa el registro **local observado** de
+`salesforce_users`: usuario activo con perfil `Compra/Venta` o
+`Comerciales Partner Community`. `without_eligible_commercial` cuenta owner
+sin usuario elegible; `without_commercial_delegation` cuenta usuario elegible
+sin delegación clasificada, incluida la delegación general que la regla
+oficial rechaza. El momento de consulta local de usuarios se conserva en la
+proyección; **no acredita** elegibilidad ni asignación histórica en Salesforce
+al cutoff. Los nombres de propietario permanecen cifrados; la proyección KPI
+guarda solo claves HMAC y booleanos/indeterminados, sin payload ni IDs HTTP.
+
+Octubre usa el mismo contrato **solo si** existe un run operativo real activo;
+hasta entonces conserva su proyección histórica administrativa anterior y no
+hereda esos KPI nuevos. Noviembre conserva su puntero y sus datos actuales
+hasta una proyección compatible. El selector y el banner indican el mes y la
+fuente; el flag por mes, rol administrador, `no-store, private` y rechazo por
+versión incoherente siguen vigentes. No hay nueva auditoría o exportación
+provisional, comparativa entre meses ni publicación de generación oficial.
 
 ## Nota técnica — materialización mensual F2 provisional
 

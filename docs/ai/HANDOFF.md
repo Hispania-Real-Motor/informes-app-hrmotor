@@ -8156,3 +8156,70 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   autorizada; medir duración/API/locks antes de activar el comando y observar
   F2M/F5 y la proyección en un despliegue posterior. Una revisión histórica
   agregada no puede recuperar retrospectivamente los IDs divergentes.
+
+## 2026-11-13 — KPI operativos de Interests y fuente UTM compartida para octubre/noviembre
+
+- Tarea: se preparó una PR Draft aislada desde `main` observado
+  `19100ea300a2e8e4eae2f570d9770ac3112b3579`. El cambio añade una
+  proyección administrativa de KPI para una pareja activa de run Interest y
+  Task/Event, extiende solo runs **futuros** con `original_source` y seis UTM
+  cifrados, ofrece un lector local versionado para consumidores posteriores y
+  permite a octubre usar el mismo dashboard operativo únicamente si existe
+  un run suyo completado/activado. Octubre legacy conserva su lector previo.
+- Archivos funcionales: `OperationalInterestMonthlySync`,
+  `OperationalInterestMonthlyReader`, `OperationalInterestSourceReader`,
+  `OperationalInterestKpiProjector`, comando
+  `ProjectOperationalInterestKpisCommand`, `MonthlyInterestProvisionalPeriod`,
+  `October2026ProvisionalInterestDashboardDatasetService`,
+  `LeadDashboardController`, dashboard JS/Blade y pruebas operativas/JS.
+  Documentos: reglas de Interests, generaciones, matriz KPI, operaciones,
+  Campañas, Reservas/Ventas, `PROJECT_CONTEXT`, `DECISIONS` y este handoff.
+- Base de datos: dos migraciones aditivas
+  `2026_11_18_120000_add_operational_interest_utm_evidence` y
+  `2026_11_18_130000_add_operational_interest_kpi_projection`. Run v1 mantiene
+  UTM desconocido; los `prepared`/`failed` v1 se reanudan sin empezar a
+  materializar UTM; solo un nuevo `prepare` crea v2 y cifra esos siete valores
+  en `MEDIUMTEXT` nullable. La
+  proyección KPI no altera filas ni hashes de runs anteriores y guarda solo
+  claves HMAC/booleanos/nulos. Ambos `down()` preservan evidencia.
+- Decisión: reutilizar `decorateLead()` para estado, propietario técnico,
+  actividad de tres días, elegibilidad de perfiles comerciales y delegación.
+  Referencia: fin del mes cerrado o terminación del run Task/Event abierto.
+  Cobertura parcial no convierte ausencia de actividad en cero:
+  `new_during_verify` aísla el Interest afectado por `WhatId`, otras
+  cuarentenas dejan globalmente indeterminados los potenciales sin actividad
+  reciente. Un agregado con potencial indeterminado queda `null`. Los
+  usuarios comerciales son una
+  observación **local actual al build**, no estado histórico certificado.
+  Campañas y Reservas/Ventas siguen en sus lectores oficiales y fuentes
+  económicas; Llamadas, scheduler y publicación no cambian.
+- Seguridad/rendimiento: comando `reports:project-operational-interest-kpis
+  2026-11 --confirm` exige pareja activa compatible, procesa 500 filas por
+  lote, limita un constructor mediante lease y vuelve a comprobar punteros y
+  huella local antes de completar. HTTP agrega proyecciones indexadas y no
+  escanea journals ni hace SOQL. El lector compartido entrega 500 filas
+  activas como máximo por llamada, descifra UTM solo en memoria y revalida
+  versiones antes/después. No hay PII/IDs en diagnósticos HTTP nuevos.
+- Acciones manuales futuras: tras revisión y despliegue autorizados, aplicar
+  migraciones, comprobar punteros/actividad, ejecutar CLI local para noviembre
+  y verificar KPI/filtros con cobertura, nulos y fecha de referencia. Preparar
+  octubre exige primero un run operativo y actividad **reales** bajo autorización
+  separada. El orden y rollback están en `docs/operaciones-produccion.md`.
+- Pruebas/resultados de PR #148 en `e7f8b08c465564adcd1a8e9e8cef4ee0ed417680`:
+  CI y Documentation integrity en verde para ese SHA. PHPUnit completo:
+  1.752 aprobadas, 1 omitida y 15.645 aserciones; suite MariaDB 11 completa
+  aprobada; Pint correcto en 14 PHP modificados; build frontend, 62 pruebas
+  JavaScript y whitespace correctos. `git diff --check -- docs` pasó en esta
+  revisión documental. Prueba volumétrica representativa en MariaDB:
+  `validation_ms=3229.32`, `overview_ms=1.44`, `http_ms=99.25`,
+  `http_queries=17`, `peak_memory_mb=114.5`. Son mediciones sintéticas de CI,
+  no latencia ni cobertura productiva. El correctivo final del lector fija
+  las claves del snapshot antes de validar punteros; Blade conserva la etiqueta
+  temporal legacy; el test comercial comprueba el rechazo oficial de
+  `Madrid General` y el presupuesto HTTP admite la consulta acotada de
+  selección de octubre. No cambia el contrato funcional documentado. Esta
+  revisión documental fue delegada al agente `report_docs_maintainer` y se
+  contrastó con el diff funcional. Riesgos: catálogo local de usuarios desactualizado,
+  cobertura parcial de Task/Event, UTM desconocidos en run v1, latencia/DDL
+  productivas no medidas, relaciones Opportunity y readiness de consumidores
+  aún sin integrar. No se consultó Salesforce ni producción.

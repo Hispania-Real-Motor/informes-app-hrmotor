@@ -71,6 +71,7 @@ final class OperationalInterestMonthlySync
 
             return DB::table('salesforce_interest_operational_runs')->insertGetId([
                 'run_identifier' => (string) Str::uuid(), 'month_key' => $month,
+                'utm_contract_version' => 2,
                 'functional_start_at' => $start->utc(), 'functional_end_at' => $start->addMonth()->utc(),
                 'effective_cutoff_at' => $cutoff, 'status' => 'prepared', 'phase' => 'extract',
                 'created_at' => now(), 'updated_at' => now(),
@@ -356,7 +357,7 @@ final class OperationalInterestMonthlySync
                 }
                 $recoveredIds[] = $id;
                 $rowsToWrite[] = ['run_id' => $run->id, 'salesforce_id' => $id,
-                    ...$this->storedRow($value, $hash, $fingerprints, $run->phase === 'verify')];
+                    ...$this->storedRow($value, $hash, $fingerprints, $run->phase === 'verify', (int) $run->utm_contract_version)];
             }
             if ($invalidIds !== []) {
                 DB::table('salesforce_interest_operational_rows')->where('run_id', $run->id)
@@ -404,11 +405,12 @@ final class OperationalInterestMonthlySync
         });
     }
 
-    private function storedRow(array $value, string $hash, array $fingerprints, bool $verified): array
+    private function storedRow(array $value, string $hash, array $fingerprints, bool $verified, int $utmContractVersion): array
     {
         $fields = ['status', 'type', 'source', 'medium', 'channel', 'origin_delegation', 'owner_salesforce_id',
             'lead_salesforce_id', 'account_salesforce_id', 'sale_vehicle_salesforce_id',
             'appraisal_vehicle_salesforce_id', 'inverse_opportunity_salesforce_id'];
+        $protectedFields = ['original_source', 'utm_campaign', 'utm_content', 'utm_id', 'utm_medium', 'utm_source', 'utm_term'];
         $row = ['content_hash' => $hash, 'field_fingerprints' => json_encode($fingerprints, JSON_THROW_ON_ERROR),
             'functional_created_at' => $value['functional_created_at'],
             'observed_at' => now('UTC'), 'verified_at' => $verified ? now('UTC') : null,
@@ -416,6 +418,11 @@ final class OperationalInterestMonthlySync
             'created_at' => now(), 'updated_at' => now()];
         foreach ($fields as $field) {
             $row[$field] = $value[$field] ?? null;
+        }
+        if ($utmContractVersion >= 2) {
+            foreach ($protectedFields as $field) {
+                $row[$field.'_ciphertext'] = ($value[$field] ?? null) === null ? null : Crypt::encryptString((string) $value[$field]);
+            }
         }
 
         return $row;

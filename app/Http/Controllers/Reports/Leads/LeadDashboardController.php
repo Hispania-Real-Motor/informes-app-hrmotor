@@ -31,7 +31,7 @@ class LeadDashboardController extends Controller
         $requestedPeriod = is_string($requestedPeriod) ? $requestedPeriod : null;
         $requestedOctober = $requestedPeriod === self::OCTOBER_2026_PROVISIONAL_PERIOD;
         $requestedMonth = MonthlyInterestProvisionalPeriod::forKey($requestedPeriod);
-        $requestedMonthly = $requestedMonth !== null;
+        $requestedMonthly = $requestedMonth !== null && ! $requestedOctober;
         if ($requestedOctober) {
             $this->assertOctoberAccess($request, $octoberReader);
         }
@@ -48,7 +48,10 @@ class LeadDashboardController extends Controller
         $usesOctober = $requestedOctober || $useOctoberByDefault;
         $usesMonthly = $requestedMonthly || $useMonthlyByDefault;
         $usesProvisional = $usesOctober || $usesMonthly;
-        $monthlyPeriodKey = $requestedMonthly ? $requestedPeriod : ($useMonthlyByDefault ? self::NOVEMBER_2026_PROVISIONAL_PERIOD : null);
+        $operationalOctober = $usesOctober && $operationalReader->hasActiveForMonth(2026, 10);
+        $monthlyPeriodKey = $requestedMonthly ? $requestedPeriod
+            : ($useMonthlyByDefault ? self::NOVEMBER_2026_PROVISIONAL_PERIOD
+                : ($operationalOctober ? self::OCTOBER_2026_PROVISIONAL_PERIOD : null));
         $monthlyPeriod = MonthlyInterestProvisionalPeriod::forKey($monthlyPeriodKey);
         $monthlySnapshot = $monthlyPeriod !== null
             ? $this->monthlySnapshot($monthlyReader, $operationalReader, $monthlyPeriod) : null;
@@ -84,7 +87,9 @@ class LeadDashboardController extends Controller
         abort_unless(ReportUserAccess::isAdmin($request), 403);
 
         try {
-            $reader->dashboardProjection();
+            $operational = app(OperationalInterestMonthlyReader::class);
+            $operational->hasActiveForMonth(2026, 10)
+                ? $operational->latestForMonth(2026, 10) : $reader->dashboardProjection();
         } catch (ProvisionalInterestSourceUnavailable) {
             abort(503, 'Los datos de octubre están pendientes de actualización.');
         }
@@ -97,7 +102,9 @@ class LeadDashboardController extends Controller
         }
 
         try {
-            $reader->dashboardProjection();
+            $operational = app(OperationalInterestMonthlyReader::class);
+            $operational->hasActiveForMonth(2026, 10)
+                ? $operational->latestForMonth(2026, 10) : $reader->dashboardProjection();
 
             return true;
         } catch (ProvisionalInterestSourceUnavailable) {

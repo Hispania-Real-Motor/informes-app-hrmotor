@@ -5,11 +5,13 @@ namespace Tests\Feature;
 use App\Models\ReportUser;
 use App\Services\Reports\Leads\OperationalInterestMonthlyReader;
 use App\Services\Reports\Leads\OperationalInterestQualitySnapshot;
+use App\Services\Reports\Leads\OperationalInterestSourceReader;
 use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use App\Services\Salesforce\OperationalInterestMonthlySync;
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -57,6 +59,14 @@ class OperationalInterestMonthlySyncTest extends TestCase
         $snapshot = app(OperationalInterestMonthlyReader::class)->latestForMonth(2026, 11);
         $this->assertSame(1002, $snapshot['overview']['coverage']['eligible_active_matching']);
         $this->assertFalse($snapshot['overview']['verification']['f2_verified']);
+        $batchSizes = [];
+        app(OperationalInterestSourceReader::class)->eachBatch(
+            app(OperationalInterestSourceReader::class)->open(2026, 11, true),
+            static function (array $batch) use (&$batchSizes): void {
+                $batchSizes[] = count($batch);
+            },
+        );
+        $this->assertSame([500, 500, 2], $batchSizes);
 
         config()->set('services.informes_auth.enabled', true);
         config()->set('salesforce.november_2026_provisional_enabled', false);
@@ -85,6 +95,81 @@ class OperationalInterestMonthlySyncTest extends TestCase
             || str_contains($sql, 'salesforce_interest_monthly_recovery_rows')));
         $viewer = $this->user(ReportUser::ROLE_VIEWER);
         $this->asReportUser($viewer)->getJson('/informes/leads/data/resumen?period=november_2026')->assertForbidden();
+    }
+
+    public function test_future_runs_store_protected_utm_and_the_pinned_reader_detects_new_versions(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $first = $this->records(1);
+        $first[0] = array_merge($first[0], [
+            'IN_RP_Fuente_Original__c' => 'Original',
+            'IN_utm_campaign__c' => 'campaña', 'IN_utm_content__c' => 'contenido',
+            'IN_utm_id__c' => '123', 'IN_utm_medium__c' => 'medio',
+            'IN_utm_source__c' => 'fuente', 'IN_utm_term__c' => 'término',
+            'IN_Lead__c' => '00Q000000000000001', 'IN_Account__c' => '001000000000000001',
+            'IN_VEN_Oportunidad__c' => '006000000000000001',
+        ]);
+        $this->app->instance(SalesforceClient::class, new OperationalInterestFakeClient($first));
+        $sync = app(OperationalInterestMonthlySync::class);
+        $oldRun = $sync->prepare('2026-11');
+        $sync->run($oldRun);
+        $row = DB::table('salesforce_interest_operational_rows')->where('run_id', $oldRun)->first();
+        $this->assertNotSame('campaña', $row->utm_campaign_ciphertext);
+        $this->assertSame('campaña', Crypt::decryptString($row->utm_campaign_ciphertext));
+        $this->assertSame(2, (int) DB::table('salesforce_interest_operational_runs')->where('id', $oldRun)->value('utm_contract_version'));
+        $reader = app(OperationalInterestSourceReader::class);
+        $version = $reader->open(2026, 11, true);
+        $batches = [];
+        $reader->eachBatch($version, static function (array $batch) use (&$batches): void {
+            $batches[] = $batch;
+        });
+        $this->assertSame('Original', $batches[0][0]['original_source']);
+        $this->assertSame('006000000000000001', $batches[0][0]['inverse_opportunity_salesforce_id']);
+        $this->assertSame('001000000000000001', $batches[0][0]['account_salesforce_id']);
+        foreach (['utm_campaign', 'utm_content', 'utm_id', 'utm_medium', 'utm_source', 'utm_term'] as $field) {
+            $this->assertNotNull($batches[0][0][$field]);
+        }
+
+        Carbon::setTestNow('2026-11-12 12:02:00 UTC');
+        $second = $first;
+        $second[0]['IN_utm_campaign__c'] = 'nueva campaña';
+        $this->app->instance(SalesforceClient::class, new OperationalInterestFakeClient($second));
+        $newRun = app(OperationalInterestMonthlySync::class)->prepare('2026-11');
+        app(OperationalInterestMonthlySync::class)->run($newRun);
+        $this->assertNotSame($row->content_hash, DB::table('salesforce_interest_operational_rows')
+            ->where('run_id', $newRun)->value('content_hash'));
+        $this->assertSame('campaña', Crypt::decryptString(DB::table('salesforce_interest_operational_rows')
+            ->where('run_id', $oldRun)->value('utm_campaign_ciphertext')));
+        $this->expectException(ProvisionalInterestSourceUnavailable::class);
+        $reader->eachBatch($version, static function (): void {});
+    }
+
+    public function test_october_requires_a_real_active_operational_run_and_keeps_its_own_version(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $november = $this->records(1);
+        $this->app->instance(SalesforceClient::class, new OperationalInterestFakeClient($november));
+        $novemberRun = app(OperationalInterestMonthlySync::class)->prepare('2026-11');
+        app(OperationalInterestMonthlySync::class)->run($novemberRun);
+
+        $october = $this->records(1);
+        $october[0]['CreatedDate'] = '2026-10-05T10:00:00Z';
+        $this->app->instance(SalesforceClient::class, new OperationalInterestFakeClient($october));
+        $octoberRun = app(OperationalInterestMonthlySync::class)->prepare('2026-10');
+        app(OperationalInterestMonthlySync::class)->run($octoberRun);
+        $this->assertNotSame($octoberRun, $novemberRun);
+        $this->assertSame($octoberRun, app(OperationalInterestMonthlyReader::class)
+            ->latestForMonth(2026, 10)['integrity_revision']);
+        $this->assertSame($novemberRun, app(OperationalInterestMonthlyReader::class)
+            ->latestForMonth(2026, 11)['integrity_revision']);
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.october_2026_provisional_enabled', true);
+        $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $this->asReportUser($admin)->get('/informes/leads?period=october_2026')
+            ->assertOk()->assertSee('inventario operativo provisional');
+        $this->asReportUser($admin)->getJson('/informes/leads/data/resumen?period=october_2026')
+            ->assertOk()->assertJsonPath('kpis.leads_totales', 1);
+        $this->assertSame(0, DB::table('salesforce_interest_generations')->count());
     }
 
     public function test_incomplete_second_read_keeps_previous_active_version_and_preserves_checkpoint(): void
@@ -512,6 +597,43 @@ class OperationalInterestMonthlySyncTest extends TestCase
         $this->assertSame('2026-09-30 22:00:00', $period->functional_start_at);
         $this->assertSame('2026-10-31 23:00:00', $period->functional_end_at);
         $this->assertTrue(Schema::hasTable('salesforce_interest_operational_incidents'));
+    }
+
+    public function test_additive_utm_and_kpi_migrations_are_repeatable_without_rewriting_runs(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $this->app->instance(SalesforceClient::class, new OperationalInterestFakeClient($this->records(1)));
+        $run = app(OperationalInterestMonthlySync::class)->prepare('2026-11');
+        app(OperationalInterestMonthlySync::class)->run($run);
+        $before = DB::table('salesforce_interest_operational_runs')->where('id', $run)->first();
+        $rowHash = DB::table('salesforce_interest_operational_rows')->where('run_id', $run)->value('content_hash');
+
+        (require database_path('migrations/2026_11_18_120000_add_operational_interest_utm_evidence.php'))->up();
+        (require database_path('migrations/2026_11_18_130000_add_operational_interest_kpi_projection.php'))->up();
+
+        $after = DB::table('salesforce_interest_operational_runs')->where('id', $run)->first();
+        $this->assertSame($before->projection_key, $after->projection_key);
+        $this->assertSame('completed', $after->status);
+        $this->assertSame($rowHash, DB::table('salesforce_interest_operational_rows')->where('run_id', $run)->value('content_hash'));
+        $this->assertTrue(Schema::hasColumn('salesforce_interest_operational_rows', 'utm_term_ciphertext'));
+        $this->assertTrue(Schema::hasTable('salesforce_interest_operational_kpi_rows'));
+    }
+
+    public function test_reader_does_not_claim_utm_coverage_for_a_legacy_run(): void
+    {
+        Carbon::setTestNow('2026-11-12 12:00:00 UTC');
+        $records = $this->records(1);
+        $records[0]['IN_utm_campaign__c'] = 'legacy value';
+        $this->app->instance(SalesforceClient::class, new OperationalInterestFakeClient($records));
+        $run = app(OperationalInterestMonthlySync::class)->prepare('2026-11');
+        DB::table('salesforce_interest_operational_runs')->where('id', $run)
+            ->update(['utm_contract_version' => 1]); // Simulates a prepared run from before the additive migration.
+        app(OperationalInterestMonthlySync::class)->run($run);
+        $this->assertNull(DB::table('salesforce_interest_operational_rows')->where('run_id', $run)
+            ->value('utm_campaign_ciphertext'));
+        $this->assertSame(1, app(OperationalInterestSourceReader::class)->open(2026, 11)['utm_contract_version']);
+        $this->expectException(ProvisionalInterestSourceUnavailable::class);
+        app(OperationalInterestSourceReader::class)->open(2026, 11, true);
     }
 
     /** @return list<array<string,mixed>> */

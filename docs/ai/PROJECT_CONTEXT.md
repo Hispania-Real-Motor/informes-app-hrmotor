@@ -2,6 +2,29 @@
 
 Actualizado: 2026-11-13.
 
+## Fuente operativa compartida y proyección KPI (2026-11-13, PR Draft pendiente)
+
+- `OperationalInterestSourceReader` fija un run mensual activo de octubre o
+  noviembre, su clave y puntero Task/Event; entrega solo almacenamiento local
+  por lotes de 500 con revalidación de versión. Los siete valores originales
+  de adquisición/UTM se descifran en memoria; `requireUtm` rechaza runs v1
+  que nunca los materializaron. No constituye generación oficial ni conexión
+  automática con Campañas o Reservas/Ventas.
+- `OperationalInterestKpiProjector` es una preparación CLI separada para la
+  pareja Interest/actividad. Reutiliza `decorateLead`, observa usuarios
+  comerciales locales, materializa booleanos/nulos por clave HMAC y completa
+  la cabecera solo tras controles de recuento, huella de usuarios, punteros y
+  lease. HTTP une esa proyección al scope categórico activo; cobertura parcial
+  de Task/Event mantiene indeterminada la ausencia de gestión para los
+  potenciales afectados; `new_during_verify` puede aislarse por `WhatId`,
+  otros motivos hacen indeterminada la ausencia globalmente.
+- Octubre solo emplea esta fuente si existe run operativo activo propio; de
+  otro modo permanece en la proyección administrativa previa. Flags/admin,
+  `no-store, private`, prioridad de generación publicada y aislamiento de
+  lectores económicos continúan vigentes. Los runs completados anteriores a
+  las migraciones conservan contrato UTM v1 y no se reescriben. Los v1
+  preparados/fallidos también mantienen v1 al reanudarse.
+
 ## Cobertura de actividad operativa (2026-11-13, PR #147 en revisión)
 
 - `OperationalInterestActivitySync` guarda en la fila restringida

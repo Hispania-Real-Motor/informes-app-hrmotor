@@ -29,6 +29,24 @@ test('the October unassigned card labels observed technical owners without claim
     assert.match(unavailable.hint, /Sin datos suficientes/);
 });
 
+test('versioned provisional KPI cards distinguish calculated values from partial activity', () => {
+    const { context } = createDashboardContext(async () => ({ ok: true, json: async () => ({}) }));
+    const complete = vm.runInContext(`provisionalKpiCards({
+        gestionados: 3, potenciales_sin_trabajar: 2,
+        without_eligible_commercial: 1, without_commercial_delegation: 0,
+    }, { complete: true, quarantined: 0 }, {
+        activity_complete: true, commercial_users_observed_at: '2026-11-13T10:00:00Z',
+    })`, context);
+    assert.equal(complete.find((card) => card.label === 'Gestionados').value, '3');
+    assert.match(complete.find((card) => card.label === 'Sin comercial elegible').hint, /registro local/);
+
+    const partial = vm.runInContext(`provisionalKpiCards({
+        gestionados: null, potenciales_sin_trabajar: null,
+    }, { complete: false, quarantined: 1 }, { activity_complete: false })`, context);
+    assert.match(partial.find((card) => card.label === 'Gestionados').hint, /parcial/);
+    assert.equal(partial.find((card) => card.label === 'Gestionados').value, 'No disponible');
+});
+
 function createClassList() {
     const classes = new Set();
 

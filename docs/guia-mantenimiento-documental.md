@@ -7,8 +7,15 @@
 `InterestMonthlyDifferenceClassifier.php`,
 `SyncOperationalInterestsCommand.php` y
 `2026_11_16_120000_create_operational_interest_months.php` al dominio
-`interests`; `OperationalInterestMonthlyReader.php` queda cubierto por el
-prefijo del lector de Leads/Interests. Su fuente administrativa no modifica
+`interests`. También asigna exactamente
+`ProjectOperationalInterestKpisCommand.php`,
+`2026_11_18_120000_add_operational_interest_utm_evidence.php` y
+`2026_11_18_130000_add_operational_interest_kpi_projection.php`: preparan
+evidencia de KPI/UTM para el informe de Interests y todavía no cambian
+los lectores de Campañas o Reservas/Ventas. El mapa de estos consumidores
+se ampliará cuando una PR funcional adopte el contrato compartido.
+`OperationalInterestMonthlyReader.php` queda cubierto por el prefijo del
+lector de Leads/Interests. La fuente administrativa no modifica
 por sí sola los contratos de Campañas, Llamadas o Reservas/Ventas. Revisar
 siempre el diff real y declarar `Docs-Impact: updated` y
 `Docs-Matrix-Impact: updated` cuando cambie universo, fuente o cobertura del

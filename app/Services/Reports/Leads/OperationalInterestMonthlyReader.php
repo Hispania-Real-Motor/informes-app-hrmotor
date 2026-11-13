@@ -57,6 +57,16 @@ final class OperationalInterestMonthlyReader
                 : DB::table('salesforce_interest_operational_activity_runs')->where('id', $activityPointer)
                     ->where('source_run_id', $run->id)->where('month_key', $key)
                     ->where('status', 'completed')->where('phase', 'completed')->first();
+            $kpiProjection = $activityRun === null ? null
+                : DB::table('salesforce_interest_operational_kpi_projections')
+                    ->where('source_run_id', $run->id)->where('activity_run_id', $activityRun->id)
+                    ->where('source_projection_key', $run->projection_key)
+                    ->where('status', 'completed')->first();
+            if ($kpiProjection !== null
+                && ((int) $kpiProjection->rows_count !== (int) $overview['coverage']['eligible_active_matching']
+                    || (bool) $kpiProjection->activity_coverage_complete !== (bool) $activityRun->coverage_complete)) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
             $this->assertCurrent($key, (int) $run->id, (string) $run->projection_key);
             $this->assertActivityPointer($key, $activityPointer === null ? null : (int) $activityPointer);
 
@@ -67,7 +77,10 @@ final class OperationalInterestMonthlyReader
                 'activity_observed_at' => $activityRun?->completed_at,
                 'activity_coverage_complete' => $activityRun === null ? null : (bool) $activityRun->coverage_complete,
                 'activity_verified_count' => $activityRun === null ? null : (int) $activityRun->verified_count,
-                'activity_quarantined_count' => $activityRun === null ? null : (int) $activityRun->quarantined_count];
+                'activity_quarantined_count' => $activityRun === null ? null : (int) $activityRun->quarantined_count,
+                'kpi_projection_id' => $kpiProjection === null ? null : (int) $kpiProjection->id,
+                'kpi_reference_at' => $kpiProjection?->reference_at,
+                'commercial_users_observed_at' => $kpiProjection?->commercial_users_observed_at];
         } catch (Throwable) {
             throw new ProvisionalInterestSourceUnavailable;
         }

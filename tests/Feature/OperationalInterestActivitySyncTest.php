@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Services\Reports\Leads\October2026ProvisionalInterestDashboardDatasetService;
+use App\Services\Reports\Leads\OperationalInterestKpiProjector;
 use App\Services\Reports\Leads\OperationalInterestMonthlyReader;
 use App\Services\Salesforce\OperationalInterestActivitySync;
 use App\Services\Salesforce\OperationalInterestMonthlySync;
@@ -69,6 +70,138 @@ class OperationalInterestActivitySyncTest extends TestCase
                 'period' => 'november_2026', 'lead_delegation' => 'Madrid General',
             ]))['kpis']['activities']);
         $this->assertSame(0, DB::table('salesforce_interest_generations')->count());
+        $this->assertSame(501, app(OperationalInterestKpiProjector::class)->build(2026, 11)['rows']);
+        $projectedSummary = app(October2026ProvisionalInterestDashboardDatasetService::class)
+            ->summary(Request::create('/informes/leads/data/resumen', 'GET', ['period' => 'november_2026']));
+        $this->assertSame(1, $projectedSummary['kpis']['gestionados']);
+        $this->assertSame(500, $projectedSummary['kpis']['potenciales_sin_trabajar']);
+    }
+
+    public function test_administrative_projection_reuses_official_management_and_commercial_rules(): void
+    {
+        $interests = $this->interests(6);
+        $eligible = '005000000000000001';
+        $general = '005000000000000002';
+        $inactive = '005000000000000003';
+        DB::table('salesforce_users')->insert([
+            ['salesforce_id' => $eligible, 'name' => 'Synthetic A', 'profile_name' => 'Compra/Venta',
+                'user_delegation' => 'Madrid', 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['salesforce_id' => $general, 'name' => 'Synthetic B', 'profile_name' => 'Compra/Venta',
+                'user_delegation' => 'General', 'is_active' => true, 'created_at' => now(), 'updated_at' => now()],
+            ['salesforce_id' => $inactive, 'name' => 'Synthetic C', 'profile_name' => 'Compra/Venta',
+                'user_delegation' => 'Madrid', 'is_active' => false, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        foreach ($interests as $index => &$interest) {
+            $interest['OwnerId'] = match ($index) {
+                0, 1, 3 => $eligible,
+                2 => '0052X00000AP4U5QAL',
+                4 => $inactive,
+                default => $general,
+            };
+            $interest['Owner'] = ['Name' => $index === 2 ? 'API User' : 'Synthetic owner'];
+            $interest['IN_Estado__c'] = match ($index) {
+                0 => 'Convertido',
+                4 => 'Descartado',
+                default => 'Potencial',
+            };
+        }
+        unset($interest);
+        $fake = new OperationalActivityFakeClient($interests, [
+            $this->activity('Task', 1, 2, '2026-11-12'),
+            $this->activity('Task', 2, 4, '2026-11-02'),
+        ], []);
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $sourceRun = $source->prepare('2026-11');
+        $source->run($sourceRun);
+        $activity = app(OperationalInterestActivitySync::class);
+        $activity->run($activity->prepare('2026-11'));
+        $remoteQueries = count($fake->activitySoql);
+        $projected = app(OperationalInterestKpiProjector::class)->build(2026, 11);
+        $this->assertSame($remoteQueries, count($fake->activitySoql));
+        $this->assertSame('completed', $projected['status']);
+        $this->assertSame(6, $projected['rows']);
+        $summary = app(October2026ProvisionalInterestDashboardDatasetService::class)
+            ->summary(Request::create('/informes/leads/data/resumen', 'GET', ['period' => 'november_2026']));
+        $this->assertSame(3, $summary['kpis']['gestionados']);
+        $this->assertSame(2, $summary['kpis']['potenciales_sin_trabajar']);
+        $this->assertSame(1, $summary['kpis']['leads_unassigned']);
+        $this->assertSame(2, $summary['kpis']['without_eligible_commercial']);
+        // The official classifier does not treat "Madrid General" as a commercial delegation.
+        $this->assertSame(4, $summary['kpis']['without_commercial_delegation']);
+        $this->assertTrue($summary['kpi_evidence']['management_complete_for_filter']);
+        $filtered = app(October2026ProvisionalInterestDashboardDatasetService::class)
+            ->summary(Request::create('/informes/leads/data/resumen', 'GET', [
+                'period' => 'november_2026', 'status' => 'Potencial', 'channel' => 'Formulario',
+            ]));
+        $this->assertSame(4, $filtered['kpis']['leads_totales']);
+        $this->assertSame(1, $filtered['kpis']['gestionados']);
+        $this->assertSame(2, $filtered['kpis']['potenciales_sin_trabajar']);
+        $this->assertSame(0, DB::table('salesforce_interest_generations')->count());
+    }
+
+    public function test_partial_activity_keeps_unproved_absence_unknown_and_status_only_management_visible(): void
+    {
+        $interests = $this->interests(3);
+        $interests[0]['IN_Estado__c'] = 'Convertido';
+        $interests[2]['IN_Delegacion_Procedencia__c'] = 'Barcelona';
+        $first = $this->activity('Task', 1, 2, '2026-11-12');
+        $fake = new OperationalActivityFakeClient($interests, [$first], []);
+        $fake->taskRowsForVerify = [$first, $this->activity('Task', 2, 3, '2026-11-12')];
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $source->run($source->prepare('2026-11'));
+        $activity = app(OperationalInterestActivitySync::class);
+        $activity->run($activity->prepare('2026-11'));
+        app(OperationalInterestKpiProjector::class)->build(2026, 11);
+        $dataset = app(October2026ProvisionalInterestDashboardDatasetService::class);
+        $summary = $dataset->summary(Request::create('/informes/leads/data/resumen', 'GET', ['period' => 'november_2026']));
+        $this->assertFalse($summary['activity_coverage']['complete']);
+        $this->assertNull($summary['kpis']['gestionados']);
+        $this->assertNull($summary['kpis']['potenciales_sin_trabajar']);
+        $converted = $dataset->summary(Request::create('/informes/leads/data/resumen', 'GET', [
+            'period' => 'november_2026', 'status' => 'Convertido',
+        ]));
+        $this->assertSame(1, $converted['kpis']['gestionados']);
+        $this->assertSame(0, $converted['kpis']['potenciales_sin_trabajar']);
+        $unaffected = $dataset->summary(Request::create('/informes/leads/data/resumen', 'GET', [
+            'period' => 'november_2026', 'status' => 'Potencial', 'lead_delegation' => 'Madrid General',
+        ]));
+        $this->assertSame(1, $unaffected['kpis']['gestionados']);
+        $this->assertSame(0, $unaffected['kpis']['potenciales_sin_trabajar']);
+    }
+
+    public function test_kpi_projection_fences_a_concurrent_worker_and_restarts_an_expired_lease(): void
+    {
+        $fake = new OperationalActivityFakeClient($this->interests(2), [], []);
+        $this->app->instance(SalesforceClient::class, $fake);
+        $source = app(OperationalInterestMonthlySync::class);
+        $sourceRun = $source->prepare('2026-11');
+        $source->run($sourceRun);
+        $activity = app(OperationalInterestActivitySync::class);
+        $activityRun = $activity->prepare('2026-11');
+        $activity->run($activityRun);
+        $key = DB::table('salesforce_interest_operational_runs')->where('id', $sourceRun)->value('projection_key');
+        $projection = DB::table('salesforce_interest_operational_kpi_projections')->insertGetId([
+            'source_run_id' => $sourceRun, 'activity_run_id' => $activityRun,
+            'source_projection_key' => $key, 'status' => 'running',
+            'lease_token' => '00000000-0000-4000-8000-000000000001',
+            'heartbeat_at' => now('UTC'), 'activity_coverage_complete' => true,
+            'reference_at' => now('UTC'), 'commercial_users_observed_at' => now('UTC'),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        try {
+            app(OperationalInterestKpiProjector::class)->build(2026, 11);
+            $this->fail('A second worker must not claim a live projection.');
+        } catch (\RuntimeException) {
+            $this->assertSame(0, DB::table('salesforce_interest_operational_kpi_rows')->count());
+        }
+        DB::table('salesforce_interest_operational_kpi_projections')->where('id', $projection)
+            ->update(['heartbeat_at' => now('UTC')->subMinutes(6)]);
+        $result = app(OperationalInterestKpiProjector::class)->build(2026, 11);
+        $this->assertSame($projection, $result['projection_id']);
+        $this->assertSame('completed', $result['status']);
+        $this->assertSame(2, DB::table('salesforce_interest_operational_kpi_rows')->count());
     }
 
     public function test_failed_query_resumes_without_advancing_the_checkpoint(): void

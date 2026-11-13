@@ -84,9 +84,12 @@ class IntegrityTests(unittest.TestCase):
             "app/Services/Reports/Leads/OperationalInterestQualitySnapshot.php",
             "app/Console/Commands/SyncOperationalInterestsCommand.php",
             "app/Console/Commands/SyncOperationalInterestActivitiesCommand.php",
+            "app/Console/Commands/ProjectOperationalInterestKpisCommand.php",
             "database/migrations/2026_11_16_120000_create_operational_interest_months.php",
             "database/migrations/2026_11_17_120000_add_operational_interest_quality_snapshots.php",
             "database/migrations/2026_11_17_130000_add_operational_interest_activities.php",
+            "database/migrations/2026_11_18_120000_add_operational_interest_utm_evidence.php",
+            "database/migrations/2026_11_18_130000_add_operational_interest_kpi_projection.php",
         ):
             self.assertEqual({"interests"}, checker.domains_for(path))
 
