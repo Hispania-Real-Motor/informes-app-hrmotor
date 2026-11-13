@@ -329,9 +329,9 @@ class CampaignAttributionBuilderService
     {
         $lookup = $closedSnapshotRows === null ? $this->metricLookup($start, $end)
             : $this->lookupFromMetricRows(collect(array_map(static fn (array $row): object => (object) array_merge([
-            'platform' => null, 'account_id' => null, 'campaign_id' => null, 'campaign_name' => null,
-            'adset_id' => null, 'ad_group_id' => null, 'ad_id' => null,
-        ], $row), $closedSnapshotRows)));
+                'platform' => null, 'account_id' => null, 'campaign_id' => null, 'campaign_name' => null,
+                'adset_id' => null, 'ad_group_id' => null, 'ad_id' => null,
+            ], $row), $closedSnapshotRows)));
 
         $allowed = [];
         foreach ($economicCampaigns as $campaign) {

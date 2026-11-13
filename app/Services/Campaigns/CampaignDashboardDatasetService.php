@@ -18,6 +18,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Throwable;
 
 class CampaignDashboardDatasetService
 {
@@ -605,8 +607,8 @@ class CampaignDashboardDatasetService
             }
 
             return ['summary' => $base, 'campaigns' => $campaigns, 'rankings' => $base['rankings']];
-        } catch (\Throwable $exception) {
-            if ($exception instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+        } catch (Throwable $exception) {
+            if ($exception instanceof HttpExceptionInterface) {
                 throw $exception;
             }
 
