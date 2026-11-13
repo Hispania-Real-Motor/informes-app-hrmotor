@@ -121,6 +121,7 @@ class CampaignDashboardDatasetService
         if ($request->query('source') === 'operational') {
             return $this->operationalPayload($request)['campaigns'];
         }
+
         return array_map(function (array $row): array {
             unset($row['current_status']);
 
@@ -1459,7 +1460,7 @@ class CampaignDashboardDatasetService
             }
 
             return ['start' => $start->toDateString(), 'end_exclusive' => $end->toDateString()];
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
@@ -2153,7 +2154,7 @@ class CampaignDashboardDatasetService
 
         try {
             return CarbonImmutable::parse($value)->toDateString();
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return null;
         }
     }
@@ -4565,7 +4566,7 @@ class CampaignDashboardDatasetService
 
         try {
             return CarbonImmutable::parse($value, self::REPORT_TIMEZONE)->setTimezone(self::REPORT_TIMEZONE);
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return $fallback;
         }
     }

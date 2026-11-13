@@ -310,6 +310,7 @@ final class CampaignOperationalAttributionBuilder
                 || $opportunity === null
                 || ($opportunity->is_deleted && $opportunity->deletion_detection_source === SalesforceOpportunity::DELETION_SOURCE_QUERY_ALL)) {
                 $unresolved++;
+
                 continue;
             }
             $resolved[$interest['salesforce_id']] = $opportunity;
