@@ -1554,3 +1554,29 @@ Las huellas HMAC diagnósticas actuales pueden coincidir entre registros con
 los mismos valores de categoría. Aislarlas por ID reduciría correlación, pero
 obliga a versionar formato y lectura de runs iniciados; no se cambia aquí la
 huella funcional ni la detección de cambios dentro de un mismo registro.
+
+## 2026-11-13 — derivación administrativa por pareja de runs y UTM v2 cifrados
+
+La clasificación operativa de gestión usa la regla oficial
+`SalesforceInterestDashboardDatasetService::decorateLead()` sobre la pareja
+activa Interest/Task/Event, preparada fuera de HTTP. Se eligió una cabecera
+completa y filas HMAC de booleanos/nulos en vez de recalcular los joins en
+cada petición o alterar runs completados. El lease y checkpoint por lote
+protegen la construcción; la cabecera se completa bajo bloqueo del mes tras
+recuento, versión y huella de usuarios locales. En cobertura parcial, una
+actividad reciente confirmada permite afirmar gestión, pero su ausencia no
+permite afirmar que un potencial esté sin trabajar: el valor queda nulo para
+los `WhatId` aislados por `new_during_verify`. Otras cuarentenas dejan
+incertidumbre global en los potenciales sin actividad reciente. La
+elegibilidad comercial es observación de `salesforce_users` al preparar, no
+prueba histórica de perfil/owner en Salesforce.
+
+La sincronización futura conserva `original_source` y seis UTM cifrados en
+filas operativas y marca el run con `utm_contract_version=2`; los runs v1
+permanecen inmutables y no prueban UTM vacíos. Un lector compartido fija y
+revalida punteros por lote; Campañas y Reservas/Ventas no lo adoptan hasta
+resolver en PR separadas sus identidades, cutoffs, readiness y cierres. Se
+prefiere este contrato local acotado a cambiar `InterestGenerationReader` o
+desplazar fuentes económicas oficiales. Octubre exige activación operativa
+real y conserva el fallback administrativo previo; ninguna migración activa
+la vista o el scheduler.

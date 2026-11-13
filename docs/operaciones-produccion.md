@@ -1892,3 +1892,76 @@ activas mediante su protocolo fenced; restaurar código y configuración del
 release anterior únicamente después de esa comprobación. No eliminar runs,
 snapshots ni journals. La lista ausente volvería al comportamiento previo,
 por lo que no usar ausencia de variable como mecanismo de apagado.
+
+## Intereses operativos octubre/noviembre: despliegue futuro de KPI y UTM
+
+Este procedimiento **no autoriza** ejecución productiva desde la PR. Revisar
+backup, espacio para ciphertext/índices, `APP_KEY` persistente, permisos CLI y
+estado de los dos flags provisionales antes de un despliegue aprobado. Aplicar
+en ventana autorizada `2026_11_18_120000_add_operational_interest_utm_evidence`
+y `2026_11_18_130000_add_operational_interest_kpi_projection` mediante el
+comando habitual `php artisan migrate --force`; comprobar que ambas figuran
+como `Ran` y que no se tocaron runs completados. Los runs que ya estaban
+`prepared`/`failed` se reanudan en contrato UTM v1, sin introducir columnas
+nuevas a mitad de ejecución; solo un `prepare` posterior crea v2. MariaDB puede confirmar DDL
+por partes: las columnas UTM se comprueban antes de añadirlas en un reintento.
+No ejecutar `migrate:rollback` para borrar evidencia: ambos `down()` preservan
+columnas y tablas. No hay variable nueva, scheduler ni consulta Salesforce en
+la migración o en la CLI de proyección.
+
+Verificar primero por el comando `salesforce:sync-interests-operational status
+--run-id=<id>` que el run mensual pretendido está `completed` y activo;
+comprobar con `salesforce:sync-interest-activities-operational status
+--run-id=<id_actividad>` el `source_run_id`, estado, actividad compatible y
+`coverage_complete`. Si falta actividad, la proyección KPI rechaza sin tocar
+el puntero Interest. Tras revisar las fuentes locales y la eventual cuarentena,
+un operador autorizado puede preparar **solo evidencia local**:
+
+```text
+php artisan reports:project-operational-interest-kpis 2026-11 --confirm
+```
+
+Para octubre, el mismo comando con `2026-10` exige previamente un run
+operativo **real, completado y activado** de octubre y su actividad compatible;
+esta PR no lo extrae ni lo activa. La vista antigua de octubre permanece
+disponible bajo sus controles hasta ese momento. La CLI procesa hasta 500
+Interests por lote, no llama a Salesforce y no reescribe runs fuente. Registra
+cabecera por pareja de runs, fecha de referencia, instante de observación
+local de usuarios y huella HMAC de sus campos relevantes. Si cambia un puntero
+o los usuarios durante el build, no publica la proyección; el reintento limpia
+únicamente filas derivadas de una cabecera **incompleta** bajo lease fenced.
+Los runs fuente y la última versión KPI completada permanecen intactos.
+
+Comprobar luego `/informes/leads?period=november_2026` como administrador:
+universo, filtros combinados, versión, cobertura Task/Event, fecha de
+referencia, elegibilidad y valores `null` cuando la cuarentena impide acreditar
+ausencia de actividad. Si todas las incidencias son `new_during_verify`,
+comprobar que el alcance desconocido se limita a los Interests con `WhatId`
+conservado; cualquier otro motivo amplía la incertidumbre a todos los
+potenciales sin actividad reciente. Repetir para octubre **solo tras su propia activación**.
+La ruta oficial sin período debe seguir preferiendo generación publicada si
+existe; usuarios no autorizados conservan 403/404 y las respuestas
+provisionales `no-store, private`. Un cambio de run Interest/actividad retira
+automáticamente la proyección KPI anterior de la lectura; hay que ejecutar
+de nuevo la CLI tras la nueva pareja de runs. Cambios en `salesforce_users`
+posteriores a la proyección no son sincronización ni snapshot histórico:
+revisar su fecha observada y preparar una versión operativa nueva cuando se
+necesite actualizar la clasificación.
+
+Las futuras PR de Campañas y Reservas/Ventas podrán consumir
+`OperationalInterestSourceReader` en procesos administrativos. Deben fijar
+run/clave/actividad, exigir `utm_contract_version=2` para UTM, verificar
+ambos punteros al terminar, y comprobar cobertura, cutoffs y relaciones
+Opportunity directas/inversas antes de activar datasets dependientes. Sus
+readiness, fórmulas, snapshots económicos, cierres y exportaciones siguen
+leyendo sus fuentes actuales; ningún dataset dependiente se reconstruye en
+esta operación. Los UTM v1 son **desconocidos**, no vacíos acreditados.
+
+**Desactivación/rollback de aplicación:** apagar el flag provisional del mes
+afectado, reconstruir caché de configuración según el procedimiento ordinario
+y comprobar 404 para la vista; conservar tablas, runs y proyecciones. Restaurar
+el release anterior solo tras comprobar compatibilidad de esquema y workers;
+no repuntar manualmente versiones ni borrar registros. El coste MariaDB de
+las dos DDL, la duración del build con volumen productivo, la actualidad del
+catálogo local `salesforce_users` y la semántica Salesforce de UTM requieren
+medición supervisada; las pruebas sintéticas y CI no certifican esos datos.

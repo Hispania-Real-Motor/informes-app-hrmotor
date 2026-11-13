@@ -736,6 +736,25 @@ La extracción selectiva por bloques de `WhatId` y la reconciliación local sól
 acotan esa evidencia; no cambian la generación publicada, atribución, readiness
 ni snapshots de Campañas.
 
+### Contrato operativo Interest preparado, aún no adoptado por Campañas
+
+Las próximas versiones de `OperationalInterestMonthlySync` conservan cifrados
+`original_source` y los seis UTM que `SalesforceInterestSyncService::mapRecord()`
+ya mapea. `OperationalInterestSourceReader` puede fijar octubre o noviembre y
+entregar por lotes los valores descifrados en memoria administrativa, con run,
+cutoff, cobertura e incidencias. `CampaignAttributionBuilderService` todavía
+usa `InterestGenerationReader::query()` y `CampaignPublicationReadiness`
+continúa exigiendo F2 publicado: esta PR no habilita publicación, atribuciones,
+opciones ni CSV de Campañas con la fuente operativa. Un run anterior a la
+migración no acredita UTM aunque su columna nueva esté vacía.
+
+Antes de una PR consumidora, comprobar cobertura de UTM por run, equivalencia
+de `functional_created_at`, tipo, owner, identidad Opportunity y cutoff con
+Meta/Google y los snapshots de inversión; después aplicar la resolución y
+deduplicación actuales del builder y volver a validar readiness. Una campaña
+o venta no se infiere de un UTM aislado. Las fuentes y cierres económicos
+existentes permanecen intactos.
+
 Esta garantía corresponde a la fuente Interest. Las atribuciones materializadas,
 fuentes publicitarias y otras fuentes conservan sus contratos de build/readiness;
 no se afirma una transacción global sobre ellas ni un token de carga multipetición

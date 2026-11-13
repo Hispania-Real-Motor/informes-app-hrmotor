@@ -91,7 +91,8 @@ incidencias. La versión parcial puede activarse solo si no desplaza una versió
 de actividad compatible ya completada; sus recuentos son mínimos observados.
 Un fallo conserva el puntero anterior.
 Se cuentan actividades Task/Event e Intereses con actividad, sin inferir llamada
-atendida, comercial ejecutor, gestión ni primer contacto. Los runs anteriores
+atendida, comercial ejecutor ni primer contacto. La gestión requiere una
+proyección administrativa adicional y compatible. Los runs anteriores
 no reciben claves retroactivamente; requieren una nueva sincronización
 operativa antes de preparar actividad. `APP_KEY` debe conservarse para resolver
 las claves existentes: un cambio de clave se detecta y exige un plan de
@@ -105,8 +106,66 @@ expone observados, admitidos, cuarentena, cambios y denominador activo. El
 recuento de Task/Event sólo se muestra con una ejecución de actividad compatible
 de esa misma versión y su cobertura se informa por separado. La cohorte es la
 de Intereses de noviembre, no necesariamente la fecha de las actividades.
-Gestión, comparativas y elegibilidad siguen no disponibles. La fuente operativa
-no sustituye los lectores de otros informes.
+Gestión y elegibilidad permanecen no disponibles **hasta** preparar la
+proyección KPI versionada; las comparativas siguen no disponibles. La fuente
+operativa no sustituye los lectores de otros informes.
+
+### Proyección KPI y lectura compartida de octubre/noviembre
+
+La migración aditiva `2026_11_18_120000_add_operational_interest_utm_evidence`
+añade `utm_contract_version` a los runs (`1` en los completados antes del
+despliegue, `2` sólo en runs preparados con el código nuevo) y columnas
+`*_ciphertext` para `original_source` y los seis `IN_utm_*__c`. Los runs
+preexistentes `prepared` o `failed` conservan v1 al reanudarse y **no**
+empiezan a escribir esas columnas a mitad del run. El SOQL y
+`mapRecord()` ya recuperaban esos siete valores y el hash funcional ya los
+incluía; el escritor operativo ahora cifra los valores mapeados en la fila
+del run **futuro**, sin duplicar mapeo ni reescribir noviembre anterior. Los
+nulos permanecen nulos, y el lector no interpreta una columna nula de un run
+v1 como prueba de que Salesforce carecía del campo. La migración emplea
+`MEDIUMTEXT` nullable para el ciphertext y puede reintentarse si una DDL
+MariaDB previa quedó parcialmente aplicada. No se almacenan payloads nuevos.
+
+`OperationalInterestSourceReader::open(year, month, requireUtm)` fija el run
+activo, la clave de proyección y el puntero de actividad compatible. Con
+`requireUtm=true` rechaza runs v1. `eachBatch()` entrega hasta 500 filas
+activas por clave `id` y descifra UTM sólo en memoria administrativa; incluye
+identidad, mes, fecha funcional, estado/tipo, origen, owner, Lead/Account,
+vehículos, Opportunity inversa, versión, fecha de observación, cobertura e
+incidencias agregadas. Revalida ambos punteros antes y después de cada lote;
+un consumidor futuro debe preparar resultados en staging y publicarlos sólo
+tras la comprobación final. Esta API no hace SOQL ni se conecta por sí sola
+a Campañas o Reservas/Ventas; sus lectores oficiales siguen usando
+`InterestGenerationReader` y sus contratos económicos.
+
+La segunda migración aditiva crea una cabecera por pareja de run Interest y
+run de actividad y filas de KPI por `interest_key` HMAC. La CLI administrativa
+`reports:project-operational-interest-kpis 2026-11 --confirm` (o `2026-10`
+si hay run operativo de octubre ya activado) reutiliza
+`SalesforceInterestDashboardDatasetService::decorateLead()` en lotes de 500.
+Guarda únicamente booleanos y nulos de gestión/elegibilidad, no respuestas
+Salesforce ni nombres. El lease de cabecera impide dos constructores; un
+intento fallido conserva la proyección incompleta sin exponerla, y reanudar
+reinicia sólo esas filas derivadas para observar coherentemente los usuarios
+locales. La cabecera pasa a `completed` bajo bloqueo del mes, tras comprobar
+ambos punteros, recuento completo y una huella HMAC de los usuarios locales
+antes/después. El dashboard une cabecera y filas por versión; si falta una
+clasificación dentro del filtro devuelve `null`, no un cero aparente.
+
+La regla de gestión y el período de referencia se detallan en
+[reglas de Interests](reglas-negocio-leads.md). Si toda la cuarentena se debe
+a `new_during_verify` con `WhatId` conservado, la ausencia de actividad queda
+indeterminada solo para esos Interests. Cualquier otro motivo obliga a tratar
+globalmente como desconocida la ausencia para potenciales. Conversiones,
+descartes y actividad reciente verificada siguen demostrables. La elegibilidad
+se calcula sobre `salesforce_users` **local al preparar** la proyección, no
+sobre un snapshot histórico del owner en Salesforce. Un cambio posterior de
+usuarios exige nueva preparación/versionado operativo; no se afirma frescura
+automática. Octubre solo pasa al contrato operativo con un run suyo completado
+y activado; la vista anterior no se convierte en un run. Flag por mes apagado,
+administrador, `no-store, private`, precedencia oficial y rechazo por
+incoherencia permanecen. No se inicia octubre, scheduler ni publicación con
+esta migración. No se ha medido latencia productiva ni validado UTM real.
 
 Se reutiliza de la PR Draft #145 únicamente
 `InterestMonthlyDifferenceClassifier` y sus huellas de categorías sin valores.
