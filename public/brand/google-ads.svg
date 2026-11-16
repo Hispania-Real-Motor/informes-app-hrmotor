@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 42" role="img" aria-label="Google Ads">
-  <path d="M19 5 4 31a7 7 0 0 0 12 7L31 12a7 7 0 0 0-12-7Z" fill="#4285f4"/>
-  <path d="M25 5a7 7 0 0 1 10 3l15 26a7 7 0 0 1-12 7L23 15a7 7 0 0 1 2-10Z" fill="#fbbc04"/>
-  <circle cx="10" cy="35" r="7" fill="#34a853"/>
-  <text x="59" y="30" fill="#263238" font-family="Arial,sans-serif" font-size="24" font-weight="600">Google Ads</text>
-</svg>

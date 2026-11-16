@@ -5,11 +5,11 @@
 - Objetivo: hacer visible la atribución operativa respaldada por la respuesta
   vigente del summary y mejorar la presentación del informe sin modificar sus
   cálculos. Rama aislada `codex/campaign-ux-availability-20261116`, base
-  `origin/main` `460b5e5` (incluye #146 y #149). No se creó PR, fusionó ni
-  desplegó desde esta tarea.
+  `origin/main` `460b5e5` (incluye #146 y #149). El usuario abrió la PR Draft
+  #151; no se fusionó ni desplegó desde esta tarea.
 - Archivos funcionales: `resources/js/reports/campaigns-dashboard.js`,
   `resources/views/reports/campaigns/index.blade.php`,
-  `resources/css/reports/leads-dashboard.css`, tres SVG locales en
+  `resources/css/reports/leads-dashboard.css`, tres logotipos locales en
   `public/brand/` y `tests/js/campaign-presentation.test.mjs`. Documentos:
   `docs/informe-campanas.md`, `docs/matriz-trazabilidad-kpi.md` y este handoff.
 - Decisión: la UI separa capacidades de Interest/atribución y Opportunity
@@ -24,10 +24,14 @@
   de integración pendiente, sin proveedor backend. Se retira el scroll proxy
   superior, Detalle precede a Rankings y se oculta únicamente el texto agregado
   de exclusiones; el helper de elegibilidad y sus metadatos siguen intactos.
-  Los SVG incluidos son recursos locales equivalentes; los tres archivos de
-  logo citados en el encargo no estaban accesibles en este workspace.
+  Los archivos de imagen suministrados por el usuario se incorporaron como
+  `google-ads-logo.png`, `meta-logo.webp` y `chatgpt-logo.png` en `public/brand/`.
 - Base de datos y configuración: ninguna migración, variable nueva, escritura
   de journal, cierre económico, sincronización ni cambio de permisos.
+  En la revisión de la PR #151 se actualizó solo `composer.lock`: Laravel
+  13.34.0 → 13.40.0 y `laravel/prompts` 0.3.17 → 0.3.25, requisitos mínimos
+  para resolver GHSA-63hm-g96r-2m2q detectada por el audit de CI. No se cambió
+  `composer.json` ni código PHP.
   Seguridad: selección operativa sujeta a rol/flag y validación backend;
   `no-store, private` y auditoría individual siguen sin ampliarse. Rendimiento:
   una sola petición de summary, sin nueva consulta remota ni SQL, y se eliminan
@@ -36,9 +40,12 @@
   JavaScript totales superadas; `node --check`, `git diff --check` y
   `pnpm run build` correctos. El build requirió instalar dependencias y descargar
   fuentes con acceso externo; sus artefactos generados se restauraron para no
-  incluirlos en este commit. PHP y Python no están disponibles en el entorno
-  aislado y Docker no tiene daemon activo. PHPUnit, MariaDB 11, Pint y
-  validador documental quedan pendientes del CI de una PR futura. Estas
+  incluirlos en este commit. Laragon aporta PHP 8.3, Composer y Python fuera
+  del PATH, mientras CI usa PHP 8.4. `composer audit --locked --no-dev` y
+  `composer validate --strict` pasan tras el cambio mínimo de lock. Pasaron
+  46 pruebas documentales (`unittest`, una omitida) y el validador local con
+  `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`. PHPUnit, MariaDB 11,
+  Pint y los checks documentales del SHA final se comprobarán en CI de #151. Estas
   pruebas sintéticas no verifican el bundle desplegado ni los datos productivos.
 - Despliegue humano posterior a revisión: generar `npm run build`, publicar el
   bundle y `public/build/manifest.json` del mismo release y comprobar que la
@@ -49,10 +56,10 @@
   persiste. No se inspeccionó el asset productivo, por lo que no se atribuye
   el bloqueo observado a una única causa. Rollback: release previo completo,
   incluidos bundle y manifest; sin operación sobre datos.
-- Riesgos: falta validación visual real y CI PHP/build/MariaDB; cobertura
+- Riesgos: falta validación visual real y CI PHP/MariaDB; cobertura
   Opportunity de octubre continúa bloqueada hasta nueva evidencia, sin
-  desbloqueo visual; los iconos/wordmarks locales deben revisarse contra las
-  guías de marca antes de publicación.
+  desbloqueo visual; comprobar las proporciones y el contraste de los logos
+  entregados en escritorio y móvil antes de publicación.
 
 ## 2026-11-13 — Campañas operativas provisionales de octubre y noviembre
 

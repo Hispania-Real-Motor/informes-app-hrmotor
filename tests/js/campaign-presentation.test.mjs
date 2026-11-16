@@ -671,6 +671,10 @@ test('platform comparison adds only a visual ChatGPT card after available provid
     assert.match(chatgpt, /alt="ChatGPT"/);
     assert.match(comparison.innerHTML, /alt="Google Ads"/);
     assert.match(comparison.innerHTML, /alt="Meta Ads"/);
+    for (const asset of ['google-ads-logo.png', 'meta-logo.webp', 'chatgpt-logo.png']) {
+        assert.match(comparison.innerHTML, new RegExp(`/brand/${asset.replace('.', '\\.')}`));
+        assert.ok(fs.statSync(new URL(`../../public/brand/${asset}`, import.meta.url)).size > 0);
+    }
     vm.runInContext("renderPlatformComparison([{platform:'meta',spend:10}])", isolated);
     assert.ok(!comparison.innerHTML.includes('platform-comparison-card--google'));
     assert.ok(comparison.innerHTML.includes('platform-comparison-card--chatgpt'));

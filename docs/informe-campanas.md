@@ -47,8 +47,9 @@ auditorías individuales de la fuente operativa.
 
 En la comparativa visual aparecen Google Ads y Meta Ads únicamente cuando
 existen en la respuesta, seguidos de una tarjeta ChatGPT **pendiente de
-integración** con todos sus valores en `—`. Los tres encabezados usan recursos
-SVG locales con texto alternativo y fallback textual; ChatGPT no participa
+integración** con todos sus valores en `—`. Los tres encabezados usan los
+logotipos aportados para Google Ads, Meta Ads y ChatGPT, servidos como recursos
+locales con texto alternativo y fallback textual; ChatGPT no participa
 en sincronización, atribución, filtros, exportaciones, rankings ni totales.
 El detalle de campañas usa solo el desplazamiento horizontal natural de su
 tabla, conserva la posición al cambiar columnas y precede a Rankings. Ya no

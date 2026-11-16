@@ -1713,9 +1713,9 @@ function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, m
 
 function platformComparisonLogoHtml(platform) {
     const brands = {
-        google_ads: ['/brand/google-ads.svg', 'Google Ads'],
-        meta: ['/brand/meta-ads.svg', 'Meta Ads'],
-        chatgpt: ['/brand/chatgpt.svg', 'ChatGPT'],
+        google_ads: ['/brand/google-ads-logo.png', 'Google Ads'],
+        meta: ['/brand/meta-logo.webp', 'Meta Ads'],
+        chatgpt: ['/brand/chatgpt-logo.png', 'ChatGPT'],
     };
     const [path, label] = brands[platform] || ['', formatPlatform(platform)];
     return `<span class="platform-comparison-brand"><img data-brand-logo src="${escapeHtml(path)}" alt="${escapeHtml(label)}" width="126" height="34"><strong hidden>${escapeHtml(label)}</strong></span>`;
