@@ -11,6 +11,7 @@ class SalesforceVehicleSyncService
     public function __construct(
         private readonly SalesforceClient $client,
         private readonly StockDelegationService $delegations,
+        private readonly StockDelegationMutex $mutex,
         private readonly ?StockCatalogNormalizer $catalogNormalizer = null,
     ) {}
 
@@ -20,7 +21,7 @@ class SalesforceVehicleSyncService
         $records = $this->client->query($soql);
         $seenAt = now();
 
-        DB::transaction(function () use ($records, $seenAt): void {
+        $this->mutex->run(fn () => DB::transaction(function () use ($records, $seenAt): void {
             SalesforceVehicle::query()->where('is_in_stock', true)->update(['is_in_stock' => false]);
 
             foreach ($records as $record) {
@@ -84,7 +85,7 @@ class SalesforceVehicleSyncService
                     ],
                 );
             }
-        });
+        }));
 
         return ['soql' => $soql, 'queried' => count($records), 'saved' => count($records)];
     }

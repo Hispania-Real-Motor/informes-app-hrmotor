@@ -956,3 +956,25 @@ F2/F2M/F5 al servir el dashboard. Es un módulo administrativo aislado y no
 extiende `InterestGenerationReader`: una generación publicada conserva
 precedencia, y la proyección no se convierte en publicación ni en fuente de
 otros informes.
+
+## Integridad de identidades de delegación de Stock (2026-11-16)
+
+`stock_delegations` distingue raíces operativas (`merged_into_id IS NULL`) de
+filas históricas fusionadas. `StockDelegationConsolidationService` es la única
+ruta funcional autorizada para escribir esa relación; conserva las filas y
+reasigna referencias sin cambiar fórmulas de Stock. FK/CHECK protegen destino y
+autoenlace, mientras que destino raíz y ciclos multirregistro se validan bajo
+transacción y bloqueo de filas. No debe asumirse que SQL impide por sí solo
+todos los ciclos.
+
+El scope `operational` es explícito, no global, para que reparación y auditoría
+puedan inspeccionar las filas históricas. El resolver sigue la raíz fusionada y,
+en la ventana previa a la reparación, prefiere una fila canónica ya existente
+sin apropiarse silenciosamente del Salesforce ID único del duplicado.
+
+Los escritores de identidad/asociación/capacidad comparten
+`StockDelegationMutex` antes de sus transacciones: vehículos Salesforce,
+snapshots de ventas que resuelven tienda, consolidación, importación y edición
+manual. Requiere un cache lock store compartido entre réplicas y falla cerrado
+con stores locales. El sync diario conserva el orden lock exterior → mutex de
+Stock. Esta convención es propia del dominio y no bloquea el resto de informes.

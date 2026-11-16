@@ -3,6 +3,7 @@
 namespace App\Services\Reports\Stock;
 
 use App\Models\StockDelegation;
+use RuntimeException;
 
 class StockDelegationService
 {
@@ -36,9 +37,9 @@ class StockDelegationService
             ->where('normalized_key', $normalized['normalized_key'])
             ->first();
 
-        $delegation = $salesforceDelegation?->merged_into_id !== null
-            ? $salesforceDelegation->mergedInto
-            : $salesforceDelegation;
+        $delegation = $salesforceDelegation === null
+            ? null
+            : $this->resolveOperationalDestination($salesforceDelegation);
 
         // A controlled repair may still be pending after deploying a new alias.
         // Prefer the existing canonical record without stealing the unique
@@ -66,6 +67,26 @@ class StockDelegationService
         $delegation->save();
 
         return $this->salesforceCache[$cacheKey] = $delegation;
+    }
+
+    private function resolveOperationalDestination(StockDelegation $delegation): StockDelegation
+    {
+        $visited = [];
+        $current = $delegation;
+
+        while ($current->merged_into_id !== null) {
+            $currentId = (int) $current->getKey();
+            $destinationId = (int) $current->merged_into_id;
+            if ($currentId === $destinationId || isset($visited[$destinationId])) {
+                throw new RuntimeException('Se detectó un ciclo en las identidades fusionadas de Stock.');
+            }
+
+            $visited[$currentId] = true;
+            $current = StockDelegation::query()->find($destinationId)
+                ?? throw new RuntimeException('La identidad fusionada de Stock apunta a un destino inexistente.');
+        }
+
+        return $current;
     }
 
     public function applyCapacity(string $sourceName, int $capacity): StockDelegation

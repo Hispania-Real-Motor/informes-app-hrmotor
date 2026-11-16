@@ -1611,3 +1611,33 @@ prefiere este contrato local acotado a cambiar `InterestGenerationReader` o
 desplazar fuentes económicas oficiales. Octubre exige activación operativa
 real y conserva el fallback administrativo previo; ninguna migración activa
 la vista o el scheduler.
+
+## 2026-11-16 — mutex de dominio y raíz única para delegaciones de Stock
+
+Se adopta un único mutex distribuido de dominio en lugar de locks distintos por
+comando. Vehículos, snapshots de venta con resolución de tienda, consolidación,
+importación y edición manual adquieren `stock:delegation-writes` antes de la
+transacción protegida. El comando diario mantiene primero
+`stock-analysis-daily-sync`; no existe adquisición inversa. Producción admite
+solo stores compartidos (`database`, Redis, Memcached o DynamoDB), con espera
+acotada, TTL predeterminado de cuatro horas y mínimo productivo de tres. La
+contención rechaza la operación para reintento; el token de propietario evita
+liberar un lock ajeno y la expiración recupera una terminación fatal. Esta
+elección serializa solo el dominio Stock y evita transacciones largas mientras
+se lee o parsea la fuente.
+
+La relación `merged_into_id` queda fuera de asignación masiva y solo se escribe
+en la consolidación. Bajo el mutex y `lockForUpdate()`, el destino debe ser raíz
+operativa y el grafo existente no puede contener destino ausente o ciclo. La FK
+y el `CHECK` de MariaDB 10.6 impiden referencia inexistente y autoenlace; no se
+atribuye al esquema una garantía imposible sobre ciclos multirregistro. Esa
+garantía reside en aplicación y presupone que SQL privilegiado está restringido.
+Se conservan filas históricas y referencias; no se añade borrado ni split
+automático.
+
+Se mantiene un scope operativo explícito en vez de un global scope: las lecturas
+funcionales excluyen fusionadas, pero reparación y auditoría pueden inspeccionar
+la historia. La consolidación histórica continúa separada del sync ordinario,
+con dry-run predeterminado y reglas cerradas en `config/stock.php`; el coste de
+un rollback mediante backup se acepta para evitar borrado físico o fusiones
+silenciosas durante cada sincronización.

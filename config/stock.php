@@ -1,6 +1,13 @@
 <?php
 
 return [
+    'delegation_mutex' => [
+        'store' => env('STOCK_DELEGATION_LOCK_STORE'),
+        'key' => env('STOCK_DELEGATION_LOCK_KEY', 'stock:delegation-writes'),
+        // Longer than the two-hour daily-sync lock; expiry recovers abandoned locks.
+        'ttl_seconds' => (int) env('STOCK_DELEGATION_LOCK_TTL_SECONDS', 14400),
+        'wait_seconds' => (int) env('STOCK_DELEGATION_LOCK_WAIT_SECONDS', 5),
+    ],
     'recommendation_weights' => [
         'model_sale' => 9.0,
         'brand_sale' => 2.5,

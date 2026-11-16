@@ -13,6 +13,10 @@ abstract class TestCase extends BaseTestCase
 
     protected function setUp(): void
     {
+        // Production code may set a request-scoped limit; do not leak it into
+        // the next test executed by the same long-lived PHPUnit process.
+        @set_time_limit(0);
+
         parent::setUp();
 
         if (! $this->authenticateReportsByDefault

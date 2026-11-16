@@ -13,6 +13,7 @@ class StockCapacityImportService
         private readonly CapacityFileReader $reader,
         private readonly StockDelegationService $delegations,
         private readonly StockDelegationNormalizer $normalizer,
+        private readonly StockDelegationMutex $mutex,
     ) {}
 
     public function import(string $path, string $delimiter = ',', ?string $extension = null): array
@@ -38,7 +39,7 @@ class StockCapacityImportService
             throw new RuntimeException('No se encontraron capacidades válidas en la columna Plazas totales.');
         }
 
-        DB::transaction(function () use ($capacities): void {
+        $this->mutex->run(fn () => DB::transaction(function () use ($capacities): void {
             StockDelegation::query()->operational()->update([
                 'capacity_total' => null,
                 'capacity_source_name' => null,
@@ -54,7 +55,7 @@ class StockCapacityImportService
             foreach ($capacities as $capacity) {
                 $this->delegations->applyCapacity($capacity['name'], $capacity['capacity']);
             }
-        });
+        }));
 
         return [
             'imported' => count($capacities),

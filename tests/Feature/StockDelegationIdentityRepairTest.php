@@ -11,9 +11,12 @@ use App\Services\Reports\Leads\LeadDelegationNormalizer;
 use App\Services\Reports\Stock\SalesforceVehicleSyncService;
 use App\Services\Reports\Stock\StockCapacityImportService;
 use App\Services\Reports\Stock\StockDelegationConsolidationService;
+use App\Services\Reports\Stock\StockDelegationMutex;
 use App\Services\Reports\Stock\StockDelegationService;
 use App\Services\Salesforce\SalesforceClient;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -55,7 +58,11 @@ class StockDelegationIdentityRepairTest extends TestCase
             }
         };
 
-        $service = new SalesforceVehicleSyncService($client, app(StockDelegationService::class));
+        $service = new SalesforceVehicleSyncService(
+            $client,
+            app(StockDelegationService::class),
+            app(StockDelegationMutex::class),
+        );
         $service->sync();
         $service->sync();
 
@@ -181,7 +188,11 @@ class StockDelegationIdentityRepairTest extends TestCase
             }
         };
 
-        (new SalesforceVehicleSyncService($client, app(StockDelegationService::class)))->sync();
+        (new SalesforceVehicleSyncService(
+            $client,
+            app(StockDelegationService::class),
+            app(StockDelegationMutex::class),
+        ))->sync();
 
         $this->assertSame(2, StockDelegation::query()
             ->whereIn('id', [$legacy->id, $canonical->id])
@@ -249,6 +260,76 @@ class StockDelegationIdentityRepairTest extends TestCase
             ->operational()
             ->where('normalized_key', 'villarreal almassora')
             ->count());
+    }
+
+    public function test_database_rejects_a_self_merge(): void
+    {
+        $delegation = $this->delegation('Rivas', 'rivas', 320);
+
+        $this->expectException(QueryException::class);
+        DB::table('stock_delegations')->where('id', $delegation->id)->update([
+            'merged_into_id' => $delegation->id,
+        ]);
+    }
+
+    public function test_repair_rejects_a_two_record_cycle_atomically(): void
+    {
+        $legacy = $this->delegation('HR Motor Rivas-Vaciamadrid', 'hr motor rivas vaciamadrid', 320);
+        $canonical = $this->delegation('Rivas', 'rivas', 320);
+        DB::table('stock_delegations')->where('id', $legacy->id)->update(['merged_into_id' => $canonical->id]);
+        DB::table('stock_delegations')->where('id', $canonical->id)->update(['merged_into_id' => $legacy->id]);
+
+        try {
+            app(StockDelegationConsolidationService::class)->consolidate(config('stock.delegation_identity_repairs'));
+            $this->fail('El ciclo de dos registros debía rechazarse.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('ciclo', $exception->getMessage());
+        }
+
+        $this->assertSame($canonical->id, (int) $legacy->fresh()->merged_into_id);
+        $this->assertSame($legacy->id, (int) $canonical->fresh()->merged_into_id);
+    }
+
+    public function test_repair_rejects_a_three_record_cycle_atomically(): void
+    {
+        $legacy = $this->delegation('HR Motor Rivas-Vaciamadrid', 'hr motor rivas vaciamadrid', 320);
+        $canonical = $this->delegation('Rivas', 'rivas', 320);
+        $third = $this->delegation('Histórica Rivas', 'historica rivas', null);
+        DB::table('stock_delegations')->where('id', $legacy->id)->update(['merged_into_id' => $canonical->id]);
+        DB::table('stock_delegations')->where('id', $canonical->id)->update(['merged_into_id' => $third->id]);
+        DB::table('stock_delegations')->where('id', $third->id)->update(['merged_into_id' => $legacy->id]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('ciclo');
+        app(StockDelegationConsolidationService::class)->consolidate(config('stock.delegation_identity_repairs'));
+    }
+
+    public function test_repair_rejects_an_identity_already_merged_into_another_destination(): void
+    {
+        $legacy = $this->delegation('HR Motor Rivas-Vaciamadrid', 'hr motor rivas vaciamadrid', 320);
+        $canonical = $this->delegation('Rivas', 'rivas', 320);
+        $other = $this->delegation('Otro destino', 'otro destino', null);
+        DB::table('stock_delegations')->where('id', $legacy->id)->update(['merged_into_id' => $other->id]);
+
+        try {
+            app(StockDelegationConsolidationService::class)->consolidate(config('stock.delegation_identity_repairs'));
+            $this->fail('La identidad con otro destino debía rechazarse.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('otro destino', $exception->getMessage());
+        }
+
+        $this->assertSame($other->id, (int) $legacy->fresh()->merged_into_id);
+        $this->assertNull($canonical->fresh()->merged_into_id);
+    }
+
+    public function test_merged_into_id_is_not_mass_assignable(): void
+    {
+        $target = $this->delegation('Rivas', 'rivas', 320);
+        $source = $this->delegation('Histórica', 'historica', null);
+
+        $source->fill(['merged_into_id' => $target->id])->save();
+
+        $this->assertNull($source->fresh()->merged_into_id);
     }
 
     private function delegation(

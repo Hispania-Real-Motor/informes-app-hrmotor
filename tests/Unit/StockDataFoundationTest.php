@@ -12,6 +12,7 @@ use App\Services\Reports\Stock\SalesforceSignedSaleSyncService;
 use App\Services\Reports\Stock\SalesforceVehicleSyncService;
 use App\Services\Reports\Stock\StockCapacityImportService;
 use App\Services\Reports\Stock\StockDailySnapshotService;
+use App\Services\Reports\Stock\StockDelegationMutex;
 use App\Services\Reports\Stock\StockDelegationService;
 use App\Services\Salesforce\SalesforceClient;
 use Carbon\CarbonImmutable;
@@ -41,7 +42,11 @@ class StockDataFoundationTest extends TestCase
             $this->vehicleRecord('01t-3', 'Bloqueado', 'HR MOTOR MANTENIMIENTO'),
         ];
 
-        $service = new SalesforceVehicleSyncService($client, app(StockDelegationService::class));
+        $service = new SalesforceVehicleSyncService(
+            $client,
+            app(StockDelegationService::class),
+            app(StockDelegationMutex::class),
+        );
         $result = $service->sync();
 
         $this->assertSame(3, $result['saved']);
@@ -106,7 +111,11 @@ class StockDataFoundationTest extends TestCase
         $normal['PRO_DIV_Precio_venta_financiado__c'] = 14500;
         $client->records = [$financed, $normal];
 
-        (new SalesforceVehicleSyncService($client, app(StockDelegationService::class)))->sync();
+        (new SalesforceVehicleSyncService(
+            $client,
+            app(StockDelegationService::class),
+            app(StockDelegationMutex::class),
+        ))->sync();
 
         $this->assertDatabaseHas('salesforce_vehicles', [
             'salesforce_id' => '01t-financed',
@@ -149,7 +158,11 @@ class StockDataFoundationTest extends TestCase
             }
         };
 
-        (new SalesforceVehicleSyncService($client, app(StockDelegationService::class)))->sync();
+        (new SalesforceVehicleSyncService(
+            $client,
+            app(StockDelegationService::class),
+            app(StockDelegationMutex::class),
+        ))->sync();
 
         $this->assertSame(1, StockDelegation::query()->where('normalized_key', 'badajoz')->count());
         $this->assertDatabaseHas('stock_delegations', [

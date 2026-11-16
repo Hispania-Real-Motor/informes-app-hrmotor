@@ -20,7 +20,6 @@ class StockDelegation extends Model
         'capacity_source_name',
         'capacity_updated_at',
         'is_commercial',
-        'merged_into_id',
     ];
 
     protected $casts = [

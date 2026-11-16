@@ -11,9 +11,15 @@ class SalesforceSaleSnapshotService
 {
     public function __construct(
         private readonly StockDelegationService $delegations,
+        private readonly StockDelegationMutex $mutex,
     ) {}
 
     public function captureNew(): int
+    {
+        return $this->mutex->run(fn (): int => $this->captureNewUnlocked());
+    }
+
+    private function captureNewUnlocked(): int
     {
         $captured = 0;
 
@@ -24,7 +30,7 @@ class SalesforceSaleSnapshotService
             ->orderBy('id')
             ->chunkById(250, function (Collection $opportunities) use (&$captured): void {
                 foreach ($opportunities as $opportunity) {
-                    $this->capture($opportunity);
+                    $this->captureUnlocked($opportunity);
                     $captured++;
                 }
             });
@@ -33,6 +39,11 @@ class SalesforceSaleSnapshotService
     }
 
     public function capture(SalesforceOpportunity $opportunity): SalesforceSaleSnapshot
+    {
+        return $this->mutex->run(fn (): SalesforceSaleSnapshot => $this->captureUnlocked($opportunity));
+    }
+
+    private function captureUnlocked(SalesforceOpportunity $opportunity): SalesforceSaleSnapshot
     {
         $signedDate = $opportunity->cv_signed_date
             ? CarbonImmutable::parse($opportunity->cv_signed_date)->startOfDay()

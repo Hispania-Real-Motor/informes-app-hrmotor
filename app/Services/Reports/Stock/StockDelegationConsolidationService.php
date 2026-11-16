@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports\Stock;
 
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -13,6 +14,10 @@ class StockDelegationConsolidationService
         'salesforce_sale_snapshots',
         'stock_availability_alerts',
     ];
+
+    public function __construct(
+        private readonly StockDelegationMutex $mutex,
+    ) {}
 
     /**
      * @param  array<int, array<string, mixed>>  $rules
@@ -31,11 +36,11 @@ class StockDelegationConsolidationService
      */
     public function consolidate(array $rules): array
     {
-        return DB::transaction(function () use ($rules): array {
+        return $this->mutex->run(fn (): array => DB::transaction(function () use ($rules): array {
             return collect($rules)
                 ->map(fn (array $rule): array => $this->consolidateRule($rule))
                 ->all();
-        }, 3);
+        }, 3));
     }
 
     /** @return array<string, mixed> */
@@ -69,6 +74,8 @@ class StockDelegationConsolidationService
             ];
         }
 
+        $this->assertValidExistingGraph($delegations);
+
         $capacities = $delegations->pluck('capacity_total')->filter(fn ($value): bool => $value !== null)->unique()->values();
         if ($capacities->count() > 1) {
             throw new RuntimeException("Capacidades incompatibles para {$rule['canonical_name']}; no se ha modificado ningún dato.");
@@ -78,7 +85,14 @@ class StockDelegationConsolidationService
         $target = $delegations->first(
             fn (object $delegation): bool => $delegation->normalized_key === $rule['normalized_key']
                 && $delegation->merged_into_id === null,
-        ) ?? $salesforceOwner ?? $delegations->first();
+        ) ?? $delegations->first(
+            fn (object $delegation): bool => $delegation->salesforce_id === $rule['salesforce_id']
+                && $delegation->merged_into_id === null,
+        ) ?? $delegations->first(fn (object $delegation): bool => $delegation->merged_into_id === null);
+
+        if ($target === null) {
+            throw new RuntimeException("No existe un destino operativo para {$rule['canonical_name']}; no se ha modificado ningún dato.");
+        }
 
         $unexpectedSalesforceIds = $delegations->pluck('salesforce_id')
             ->filter()
@@ -92,7 +106,8 @@ class StockDelegationConsolidationService
             ->map(fn ($id): int => (int) $id)
             ->reject(fn (int $id): bool => $id === (int) $target->id)
             ->values();
-        $allIds = $sourceIds->push((int) $target->id)->unique()->values();
+        $this->assertSourcesCanMergeInto($delegations, (int) $target->id);
+        $allIds = $sourceIds->concat([(int) $target->id])->unique()->values();
         $referenceCounts = [];
 
         foreach (self::REFERENCE_TABLES as $table) {
@@ -149,6 +164,54 @@ class StockDelegationConsolidationService
             'reference_counts' => $referenceCounts,
             'has_available_stock' => $hasAvailable,
         ];
+    }
+
+    /** @param Collection<int, object> $delegations */
+    private function assertValidExistingGraph(Collection $delegations): void
+    {
+        $loaded = $delegations->keyBy(fn (object $delegation): int => (int) $delegation->id);
+
+        foreach ($delegations as $delegation) {
+            $visited = [];
+            $current = $delegation;
+
+            while ($current->merged_into_id !== null) {
+                $currentId = (int) $current->id;
+                $destinationId = (int) $current->merged_into_id;
+                if ($currentId === $destinationId || isset($visited[$destinationId])) {
+                    throw new RuntimeException('La consolidación detectó un ciclo en merged_into_id; no se ha modificado ningún dato.');
+                }
+
+                $visited[$currentId] = true;
+                $next = $loaded->get($destinationId)
+                    ?? DB::table('stock_delegations')->where('id', $destinationId)->lockForUpdate()->first();
+                if ($next === null) {
+                    throw new RuntimeException('La consolidación detectó un destino de fusión inexistente; no se ha modificado ningún dato.');
+                }
+
+                $loaded->put($destinationId, $next);
+                $current = $next;
+            }
+        }
+    }
+
+    /** @param Collection<int, object> $delegations */
+    private function assertSourcesCanMergeInto(Collection $delegations, int $targetId): void
+    {
+        foreach ($delegations as $delegation) {
+            $id = (int) $delegation->id;
+            if ($id === $targetId) {
+                if ($delegation->merged_into_id !== null) {
+                    throw new RuntimeException('El destino de consolidación ya está fusionado; no se ha modificado ningún dato.');
+                }
+
+                continue;
+            }
+
+            if ($delegation->merged_into_id !== null && (int) $delegation->merged_into_id !== $targetId) {
+                throw new RuntimeException('Una identidad origen ya está fusionada con otro destino; no se ha modificado ningún dato.');
+            }
+        }
     }
 
     private function candidates(array $rule)

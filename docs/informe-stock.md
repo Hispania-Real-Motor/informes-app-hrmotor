@@ -1,6 +1,6 @@
 # Informe de Stock
 
-Actualizado: 2026-11-12.
+Actualizado: 2026-11-16.
 
 ## Fuentes y fotografía local
 
@@ -10,6 +10,40 @@ Actualizado: 2026-11-12.
 - Logística: `Logistica__c`.
 - Capacidades: importación CSV/XLSX y `stock_delegations`.
 - Histórico: `stock_daily_snapshots`.
+
+## Identidad operativa de delegaciones
+
+`Product2.PRO_BUS_Delegacion__c` es la identidad externa estable cuando está
+informada y `PRO_BUS_Delegacion__r.Name` conserva el nombre recibido. El
+normalizador común resuelve nombre canónico, clave, grupo y zona. En la regla
+vigente, `HR Motor Rivas-Vaciamadrid` converge en `Rivas`; `HR Motor
+Villarreal`, `Villarreal` y la grafía histórica `Villareal` convergen en
+`Villarreal/Almassora`. `HR Motor Málaga Santa Bárbara` permanece como identidad
+independiente, sin capacidad, grupo o zona inferidos.
+
+Solo una fila con `stock_delegations.merged_into_id IS NULL` es operativa. Una
+consolidación controlada conserva la fila histórica, mueve a la raíz las
+referencias de vehículos, snapshots de stock, snapshots de venta y alertas de
+disponibilidad, y deja la fila origen inactiva; no borra historia ni escribe en
+Salesforce. Dashboard, capacidades, calidad y alertas consultan únicamente
+raíces operativas, por lo que stock y capacidad se agregan una sola vez. Las
+fórmulas de inventario, ratios, recomendaciones y ventas no cambian.
+
+El resolver prioriza Salesforce ID y recorre `merged_into_id` hasta la raíz. Si
+una regla de alias ya conoce una fila canónica pero la reparación todavía no se
+ha aplicado, usa esa fila sin transferir silenciosamente el Salesforce ID del
+duplicado. Así el sync ordinario no recrea la duplicidad ni ejecuta por sí mismo
+la reparación histórica.
+
+`merged_into_id` no es asignable de forma masiva por Eloquent. La reparación
+bloquea las filas candidatas, exige una raíz operativa, rechaza capacidades o
+Salesforce IDs incompatibles, destinos inexistentes, destinos ya fusionados y
+ciclos de dos o más filas. La FK acredita existencia del destino y la
+restricción `CHECK` de MariaDB 10.6 impide el autoenlace; SQLite usa triggers
+equivalentes en pruebas. La base de datos no puede garantizar por sí sola la
+ausencia de ciclos multirregistro: esa garantía pertenece al servicio
+transaccional. SQL privilegiado que eluda el servicio podría crear uno y debe
+quedar restringido operativamente.
 
 La réplica compartida de Opportunity materializa `Captador_de_cita__c` y su
 nombre relacionado como `appointment_setter_id` y `appointment_setter_name` para
@@ -254,6 +288,55 @@ El sincronizador parcial de ventas de Stock selecciona y materializa también
 que las filas creadas inicialmente por Stock puedan participar posteriormente
 en herramientas acotadas por fecha, sin alterar las reglas ni el universo de
 ventas.
+
+### Exclusión mutua de identidades y capacidades
+
+Los escritores que pueden crear una delegación o cambiar asociaciones/capacidad
+comparten `StockDelegationMutex`: sincronización de vehículos, captura de nuevos
+snapshots de venta, consolidación, importación de capacidades y edición manual.
+El lock `stock:delegation-writes` se adquiere antes de cada transacción protegida.
+El comando diario mantiene el orden único `stock-analysis-daily-sync` → mutex de
+delegaciones; ninguna ruta adquiere esos locks en orden inverso.
+
+Producción debe usar el mismo store compartido para todos los procesos y
+réplicas. Se admiten `database`, Redis, Memcached o DynamoDB; `file` y stores en
+memoria fallan cerrado. `.env.example` recomienda `database`, que requiere las
+tablas compartidas `cache` y `cache_locks`. La configuración predeterminada es
+espera de 5 segundos, limitada por código a 30, y TTL de 14.400 segundos; en
+producción se rechaza un TTL inferior a 10.800 segundos. La ventana supera el
+lock exterior de dos horas del sync diario. Ante contención se rechaza la
+operación completa y el operador reintenta después; no hay espera indefinida.
+La liberación comprueba el token de propietario y `finally`; una terminación
+fatal depende del TTL, por lo que antes de elevar una ventana operacional por
+encima de cuatro horas debe elevarse también el TTL y medirse la duración real.
+
+### Despliegue, respaldo y reversión controlados
+
+No se ejecuta la reparación durante el despliegue automático. El procedimiento
+recomendado es: crear un backup restaurable de `stock_delegations`, las cuatro
+tablas referenciantes y `operational_alerts`, aplicar la migración, verificar que
+todas las réplicas
+comparten el store de locks, limpiar la caché de configuración y ejecutar
+primero `stock:repair-delegation-identities` sin `--apply`. Tras contrastar IDs,
+capacidades y recuentos de Rivas/Villarreal, una ventana aprobada puede ejecutar
+una sola vez `--apply` y repetir después el dry-run para comprobar idempotencia.
+La consolidación también reconcilia alertas abiertas duplicadas y cierra las
+alertas falsas cuando la raíz ya tiene stock Disponible.
+
+```bash
+php artisan migrate --force
+php artisan optimize:clear
+php artisan stock:repair-delegation-identities
+php artisan stock:repair-delegation-identities --apply
+php artisan stock:repair-delegation-identities
+```
+
+Si `--apply` no se ejecutó, se puede revertir código y migración. Si ya movió
+referencias, no existe split automático: restaurar el backup coherente o aplicar
+un plan SQL revisado que revierta conjuntamente delegaciones y referencias; no
+borrar filas históricas ni intentar reconstruirlas desde nombres. Un rollback
+solo de código o columna después de consolidar perdería trazabilidad y no es un
+procedimiento válido.
 
 ## Controles de catálogo y venta (2026-08-11)
 

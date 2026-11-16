@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Reports\Stock;
 use App\Http\Controllers\Controller;
 use App\Models\StockDelegation;
 use App\Services\Reports\Stock\StockCapacityImportService;
+use App\Services\Reports\Stock\StockDelegationMutex;
 use App\Services\Reports\Stock\StockDelegationNormalizer;
 use App\Support\ReportUserAccess;
 use Illuminate\Http\RedirectResponse;
@@ -34,8 +35,11 @@ class StockCapacityController extends Controller
             ->with('status', "Capacidades importadas correctamente: {$result['imported']} tiendas.");
     }
 
-    public function update(Request $request, StockDelegationNormalizer $normalizer): RedirectResponse
-    {
+    public function update(
+        Request $request,
+        StockDelegationNormalizer $normalizer,
+        StockDelegationMutex $mutex,
+    ): RedirectResponse {
         abort_unless(ReportUserAccess::isAdmin($request), 403);
 
         $data = $request->validate([
@@ -43,7 +47,7 @@ class StockCapacityController extends Controller
             'capacities.*' => ['nullable', 'integer', 'min:0', 'max:10000'],
         ]);
 
-        DB::transaction(function () use ($data, $normalizer): void {
+        $mutex->run(fn () => DB::transaction(function () use ($data, $normalizer): void {
             foreach ($data['capacities'] as $delegationId => $capacity) {
                 $delegation = StockDelegation::query()->operational()->findOrFail((int) $delegationId);
                 $hasCapacity = $capacity !== null && $capacity !== '';
@@ -56,7 +60,7 @@ class StockCapacityController extends Controller
                     'is_commercial' => $normalizer->isCommercial($delegation->canonical_name),
                 ]);
             }
-        });
+        }));
 
         return redirect()
             ->route('reports.stock.index', ['section' => 'capacities'])

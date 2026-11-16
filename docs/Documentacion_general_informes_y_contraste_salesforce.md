@@ -1052,6 +1052,15 @@ Identidad de delegación:
   fusionadas conservan trazabilidad pero no alimentan filtros, capacidades,
   calidad, recomendaciones ni alertas.
 
+La relación de fusión se escribe únicamente desde la consolidación: el campo no
+está en `$fillable`, las candidatas se bloquean con `lockForUpdate()` y el
+destino debe ser una raíz operativa. Se rechazan destinos inexistentes o ya
+fusionados y ciclos de cualquier longitud detectados por la aplicación. La FK y
+el `CHECK` vigente en MariaDB 10.6 cubren existencia y autoenlace; no cubren un
+ciclo multirregistro, que SQL privilegiado podría introducir si elude el
+servicio. Por ello las escrituras directas sobre `merged_into_id` deben quedar
+fuera de las operaciones ordinarias.
+
 Precio efectivo de stock:
 
 - si `Solo_financiado__c = true`, se usa
@@ -1365,6 +1374,19 @@ Salesforce incompatibles, reasigna vehículos, snapshots y alertas, y marca el
 registro duplicado con `merged_into_id` sin borrado físico. No modifica
 Salesforce. Requiere migración previa, backup, revisión del dry-run y contraste
 de recuentos; no existe split automático para rollback.
+
+Sincronización de Product2, captura de snapshots de venta que puede resolver una
+tienda, consolidación, importación y edición manual de capacidades comparten el
+mutex distribuido `stock:delegation-writes`, adquirido antes de las transacciones
+protegidas. El sync diario adquiere primero su lock exterior de dos horas y
+después el mutex de dominio; no hay ruta inversa. Todos los contenedores deben
+usar el mismo store `database`, Redis, Memcached o DynamoDB. Los stores `file` o
+en memoria se rechazan fuera de pruebas. La espera predeterminada es 5 segundos
+(máximo 30) y el TTL 14.400 segundos (mínimo productivo 10.800); al contender se
+rechaza y reintenta la operación completa. La liberación es owner-safe y ocurre
+en `finally`; el TTL recupera locks abandonados. Si la ventana puede superar
+cuatro horas, el TTL debe elevarse antes de ejecutar y contrastarse con duración
+real.
 
 Programación vigente:
 

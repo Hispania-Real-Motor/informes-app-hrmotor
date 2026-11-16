@@ -8265,3 +8265,85 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   cobertura parcial de Task/Event, UTM desconocidos en run v1, latencia/DDL
   productivas no medidas, relaciones Opportunity y readiness de consumidores
   aún sin integrar. No se consultó Salesforce ni producción.
+
+## 2026-11-16 — endurecimiento final de identidades de delegación de Stock
+
+- Rama de integración `codex/fix-stock-delegation-identities-final`, creada
+  desde `origin/main` `460b5e5aff74d089cc46b196e3c56789d09fd3f5`. El commit
+  funcional original `9c417acc554ede1d07ff6f51dbeb9abf11952d2f` se integró
+  como `211921f`; la rama anterior y la modificación local preexistente de
+  `docs/ai/HANDOFF.md` en su worktree no se reescribieron.
+- Resultado: Rivas conserva una única raíz operativa; Villarreal se presenta
+  como `Villarreal/Almassora` y acepta `Villareal`; Málaga Santa Bárbara sigue
+  independiente. La fila histórica no se borra. No cambian recuentos de
+  vehículos, fórmulas, ventas, recomendaciones ni criterios comerciales.
+- Concurrencia: nuevo `StockDelegationMutex` compartido por sincronización de
+  vehículos, captura de snapshots de venta que resuelve tienda, consolidación,
+  importación y edición manual de capacidades. Se adquiere antes de la
+  transacción; el sync diario conserva el orden lock exterior → mutex Stock.
+  Producción admite `database`, Redis, Memcached o DynamoDB y rechaza stores
+  locales. Clave `stock:delegation-writes`, espera 5 s (máximo 30), TTL 14.400 s
+  (mínimo productivo 10.800), liberación owner-safe en `finally` y recuperación
+  por expiración. Contención devuelve error seguro para reintento; no espera de
+  forma indefinida.
+- Integridad: `merged_into_id` sale de `$fillable`. La consolidación bloquea
+  candidatas, exige destino raíz, valida el grafo y rechaza autoenlace, ciclos
+  de dos/tres o más filas, destino inexistente/fusionado y reparentado
+  incompatible. FK y `CHECK` MariaDB/PostgreSQL (triggers SQLite de prueba)
+  cubren existencia/autoenlace; ningún documento atribuye al SQL la prevención
+  de ciclos multirregistro. Escrituras SQL privilegiadas podrían eludir esta
+  garantía y deben estar restringidas.
+- Base de datos/configuración: la migración aditiva
+  `2026_11_16_090000_add_merge_tracking_to_stock_delegations.php` incorpora la
+  protección de autoenlace. `.env.example` fija store de lock `database`, TTL y
+  espera; las tablas `cache`/`cache_locks` ya existen. `phpunit.xml` fija
+  `APP_KEY` de pruebas y ambos flags opt-in en `(false)`; sus tests habilitados
+  continúan activándolos expresamente. `tests/TestCase.php` restablece el límite
+  de ejecución entre tests para evitar contaminación de procesos PHPUnit.
+- Archivos funcionales principales: modelo `StockDelegation`; servicios
+  `StockDelegationMutex`, `StockDelegationConsolidationService`,
+  `StockDelegationService`, `SalesforceVehicleSyncService`,
+  `SalesforceSaleSnapshotService` y `StockCapacityImportService`; controlador
+  de capacidades, `config/stock.php`, `.env.example`, migración y pruebas de
+  identidad/mutex/foundation. Documentos: informe Stock, documentación general,
+  matriz KPI, `PROJECT_CONTEXT`, `DECISIONS` y este handoff.
+- Pruebas finales comunicadas por el agente principal: suite PHP completa
+  **1.784 pruebas**, **1.783 correctas**, **1 omitida**, **15.805 aserciones**;
+  batería Stock **58/58** con 377 aserciones; flags **33/33** con 192.
+  `Pint --test --dirty` pasó y `git diff --check` estaba correcto. El Pint
+  integral todavía señala formato previo en archivos ajenos al diff; no se
+  reescribieron dentro de esta corrección. Las migraciones SQLite y el rechazo de
+  autoenlace se ejercitaron mediante `RefreshDatabase`. No se ejecutó MariaDB
+  real ni una prueba multiproceso/distribuida: la contención usa propietarios
+  independientes del backend de locks `array`.
+- `composer audit --locked` informa un advisory **low** del framework,
+  CVE-2026-128083 / GHSA-63hm-g96r-2m2q, sobre output de tareas `Concurrency` en
+  versiones `<13.40.0`. No se actualizaron dependencias por restricción de la
+  tarea y no se encontró uso de esa API en aplicación/config/rutas/tests. Debe
+  gestionarse en una actualización de dependencias separada y revisada.
+- Despliegue manual: backup restaurable de delegaciones, las cuatro tablas de
+  referencias y `operational_alerts`; confirmar un store compartido en todas
+  las réplicas; aplicar
+  migración; limpiar caché de configuración; ejecutar reparación sin `--apply`;
+  revisar candidatos, capacidades y recuentos; ejecutar `--apply` solo en
+  ventana aprobada y repetir dry-run/idempotencia. No se realizó ninguna de
+  estas acciones ni se consultó Salesforce/producción.
+- Rollback: antes de `--apply`, revertir código/migración es suficiente. Después
+  de mover referencias no existe split automático: restaurar backup coherente
+  o usar un plan conjunto revisado que revierta todas las referencias. No borrar
+  filas históricas ni revertir solo la columna. Riesgos residuales: validar DDL
+  y lock compartido en MariaDB 10.6/infraestructura real; medir duración para
+  elevar TTL antes de cualquier ventana superior a cuatro horas; impedir SQL
+  directo; validar CI del SHA final.
+- Revisión documental delegada a `report_docs_maintainer`, contrastada con el
+  diff funcional. `scripts/check_documentation_integrity.py` no pudo ejecutarse
+  en esta sesión porque el ejecutable `python.exe` de WindowsApps no era
+  accesible; el agente principal debe ejecutar el validador y sus tests tras el
+  commit/PR body definitivo.
+
+Contrato previsto de PR:
+
+```text
+Docs-Impact: updated
+Docs-Matrix-Impact: updated
+```
