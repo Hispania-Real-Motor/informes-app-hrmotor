@@ -111,7 +111,7 @@ class LeadDelegationNormalizer
             'Collado Villalba', 'leadsvillalba@hrmotor.com',
         ]);
         $this->add($map, 'Rivas', [
-            'HR MOTOR RIVAS-VACIA MADRID', 'HR MOTOR RIVAS', 'Rivas', 'Rivas-Vaciamadrid',
+            'HR MOTOR RIVAS-VACIA MADRID', 'HR MOTOR RIVAS-VACIAMADRID', 'HR MOTOR RIVAS', 'Rivas', 'Rivas-Vaciamadrid',
             'Rivas vacia madrid', 'leadsrivas@hrmotor.com',
         ]);
         $this->add($map, 'Alcobendas', [
@@ -147,7 +147,8 @@ class LeadDelegationNormalizer
         $this->add($map, 'Castellón', ['HR MOTOR CASTELLON', 'Castellón', 'Castellon']);
         $this->add($map, 'Villarreal/Almassora', [
             'HR MOTOR VILLAREAL/ALMASSORA', 'HR MOTOR VILLARREAL/ALMASSORA', 'HR MOTOR ALMAZORAS',
-            'Villarreal', 'Villareal', 'Almassora', 'leadsvillareal@hrmotor.com',
+            'HR MOTOR VILLARREAL', 'HR MOTOR VILLAREAL', 'Villarreal', 'Villareal', 'Almassora',
+            'leadsvillareal@hrmotor.com',
         ]);
         $this->add($map, 'Castellón General', ['Castellón general', 'Castellon general', 'leadscastellon@hrmotor.com']);
 

@@ -245,6 +245,20 @@ Auditoría inicial pendiente. Secciones y KPIs concretos por verificar contra
 la interfaz actual. Referencias: [informe de Stock](informe-stock.md)
 y [documentación general](Documentacion_general_informes_y_contraste_salesforce.md).
 
+#### Impacto focal — identidad operativa de delegaciones (2026-11-16)
+
+No se promueve ninguna ficha a `verificado`: falta la auditoría inicial de 23
+campos y no se han consultado datos productivos. El cambio sí modifica la
+trazabilidad de la dimensión delegación que alimenta stock, capacidad,
+ocupación, filtros, rankings y alertas.
+
+| Contrato contrastado | Evidencia implementada y límites |
+| --- | --- |
+| Identidad y deduplicación | `Product2.PRO_BUS_Delegacion__c` es la identidad externa estable cuando existe; `PRO_BUS_Delegacion__r.Name` se conserva como nombre recibido. `StockDelegationService::resolveSalesforce()` combina Salesforce ID con `StockDelegationNormalizer`/`LeadDelegationNormalizer`, y solo `merged_into_id IS NULL` es operativo. Los aliases actuales de Rivas y Villarreal, incluida la grafía `Villareal`, convergen en `Rivas` y `Villarreal/Almassora`. Málaga Santa Bárbara no se fusiona ni recibe metadatos inferidos. |
+| Persistencia y reparación | La migración añade `stock_delegations.merged_into_id`. `stock:repair-delegation-identities` es dry-run por defecto; `--apply` usa las reglas verificadas de `config/stock.php`, transacción y bloqueo. Reasigna `salesforce_vehicles`, `stock_daily_snapshots`, `salesforce_sale_snapshots` y `stock_availability_alerts`; conserva la fila duplicada y aborta ante capacidades o Salesforce IDs incompatibles. No modifica Salesforce ni reconstruye nombres históricos de snapshots. |
+| Cálculos y presentación afectados | Dashboard, pestaña Capacidades, calidad, importador y alertas excluyen filas fusionadas. Stock y capacidad se agregan una sola vez por identidad operativa; una delegación sin capacidad mantiene ocupación no evaluable. Las fórmulas de stock, capacidad libre, ocupación, ventas/stock y recomendaciones no cambian. `StockDelegationIdentityRepairTest`, `LeadDelegationNormalizerTest`, `StockDataFoundationTest`, `StockAvailabilityAlertServiceTest` y `StockDashboardTest` cubren idempotencia, referencias, capacidades, alias e independencia de Málaga Santa Bárbara con datos sintéticos. |
+| Riesgo y verificación pendiente | La ejecución productiva requiere backup, migración, dry-run, revisión de candidatos/recuentos y `--apply` antes del contraste posterior. Los recuentos aportados en la incidencia son un corte de comprobación, no constantes ni prueba de estado actual. El rollback de datos exige restaurar backup; el `down` del esquema no separa referencias ya consolidadas. |
+
 ## Fichas verificadas
 
 Ninguna todavía. La auditoría inicial de los seis informes es una tarea

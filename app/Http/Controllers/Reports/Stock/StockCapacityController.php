@@ -45,7 +45,7 @@ class StockCapacityController extends Controller
 
         DB::transaction(function () use ($data, $normalizer): void {
             foreach ($data['capacities'] as $delegationId => $capacity) {
-                $delegation = StockDelegation::query()->findOrFail((int) $delegationId);
+                $delegation = StockDelegation::query()->operational()->findOrFail((int) $delegationId);
                 $hasCapacity = $capacity !== null && $capacity !== '';
                 $delegation->update([
                     'capacity_total' => $hasCapacity ? (int) $capacity : null,

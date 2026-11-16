@@ -1037,6 +1037,21 @@ ORDER BY PRO_BUS_Delegacion__r.Name, PRO_FEC_Fecha_entrada__c, Id
 Cada sincronización marca primero como fuera de stock todos los vehículos locales
 que estaban activos y vuelve a activar únicamente los IDs devueltos por esta query.
 
+Identidad de delegación:
+
+- `PRO_BUS_Delegacion__c` identifica la delegación externa cuando está
+  informado; el nombre relacionado se conserva como valor recibido;
+- el nombre canónico, la clave normalizada, el grupo y la zona proceden del
+  normalizador compartido de delegaciones;
+- `HR Motor Rivas-Vaciamadrid` se agrupa en `Rivas`; `HR Motor Villarreal`,
+  `Villarreal` y la variante histórica `Villareal` se agrupan en
+  `Villarreal/Almassora`;
+- `HR Motor Málaga Santa Bárbara` permanece independiente y sin capacidad,
+  grupo o zona inferidos;
+- solo filas con `stock_delegations.merged_into_id IS NULL` son operativas. Las
+  fusionadas conservan trazabilidad pero no alimentan filtros, capacidades,
+  calidad, recomendaciones ni alertas.
+
 Precio efectivo de stock:
 
 - si `Solo_financiado__c = true`, se usa
@@ -1295,7 +1310,8 @@ Normalización y volumen:
   - importación CSV/XLSX;
   - se localiza cabecera `Plazas totales`;
   - si un nombre se repite se conserva la mayor capacidad;
-  - se normalizan alias de delegación.
+  - se normalizan alias de delegación y solo se actualizan identidades
+    operativas.
 - No comerciales: mantenimiento, pendiente de entrar, fuera de stock y clave de
   prueba configurada.
 - Alerta:
@@ -1338,7 +1354,17 @@ Exportación:
 php artisan stock:sync-salesforce-catalog
 php artisan stock:import-capacities ruta/capacidades.xlsx
 php artisan stock:sync-daily --sales-days=180 --logistics-days=365
+php artisan stock:repair-delegation-identities
+php artisan stock:repair-delegation-identities --apply
 ```
+
+El último comando es una reparación local y controlada. El modo predeterminado
+es dry-run. `--apply` consolida en una transacción únicamente las identidades
+verificadas en `stock.delegation_identity_repairs`, rechaza capacidades o IDs
+Salesforce incompatibles, reasigna vehículos, snapshots y alertas, y marca el
+registro duplicado con `merged_into_id` sin borrado físico. No modifica
+Salesforce. Requiere migración previa, backup, revisión del dry-run y contraste
+de recuentos; no existe split automático para rollback.
 
 Programación vigente:
 
@@ -1372,6 +1398,8 @@ Código fuente:
 - `app/Services/Reports/Stock/StockCatalogNormalizer.php`
 - `app/Services/Reports/Stock/StockSaleValidityService.php`
 - `app/Services/Reports/Stock/StockAvailabilityAlertService.php`
+- `app/Services/Reports/Stock/StockDelegationService.php`
+- `app/Services/Reports/Stock/StockDelegationConsolidationService.php`
 - `config/stock.php`
 - `database/migrations/2026_07_31_090000_add_sale_validity_and_financed_stock_price.php`
 

@@ -27,14 +27,27 @@ class StockDelegationService
             return $this->salesforceCache[$cacheKey];
         }
 
-        $delegation = filled($salesforceId)
+        $salesforceDelegation = filled($salesforceId)
             ? StockDelegation::query()->where('salesforce_id', $salesforceId)->first()
             : null;
 
-        $delegation ??= StockDelegation::query()
+        $canonicalDelegation = StockDelegation::query()
+            ->operational()
             ->where('normalized_key', $normalized['normalized_key'])
             ->first();
 
+        $delegation = $salesforceDelegation?->merged_into_id !== null
+            ? $salesforceDelegation->mergedInto
+            : $salesforceDelegation;
+
+        // A controlled repair may still be pending after deploying a new alias.
+        // Prefer the existing canonical record without stealing the unique
+        // Salesforce ID from the historical duplicate during a normal sync.
+        if ($delegation !== null && $canonicalDelegation !== null && ! $canonicalDelegation->is($delegation)) {
+            return $this->salesforceCache[$cacheKey] = $canonicalDelegation;
+        }
+
+        $delegation ??= $canonicalDelegation;
         $delegation ??= new StockDelegation;
         $attributes = [
             'canonical_name' => $normalized['canonical_name'],
@@ -59,6 +72,7 @@ class StockDelegationService
     {
         $normalized = $this->normalizer->normalize($sourceName);
         $delegation = StockDelegation::query()
+            ->operational()
             ->where('normalized_key', $normalized['normalized_key'])
             ->firstOrNew();
 

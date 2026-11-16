@@ -39,7 +39,7 @@ class StockCapacityImportService
         }
 
         DB::transaction(function () use ($capacities): void {
-            StockDelegation::query()->update([
+            StockDelegation::query()->operational()->update([
                 'capacity_total' => null,
                 'capacity_source_name' => null,
                 'capacity_updated_at' => null,
@@ -47,6 +47,7 @@ class StockCapacityImportService
             ]);
 
             StockDelegation::query()
+                ->operational()
                 ->whereIn('normalized_key', $this->normalizer->nonCommercialKeys())
                 ->update(['is_commercial' => false]);
 

@@ -29,6 +29,7 @@ class StockDashboardController extends Controller
         StockCatalogNormalizer $catalogNormalizer,
     ): View {
         $capacityDelegations = StockDelegation::query()
+            ->operational()
             ->get()
             ->map(function (StockDelegation $delegation) use ($normalizer): StockDelegation {
                 $delegation->setAttribute('is_commercial', $normalizer->isCommercial($delegation->canonical_name));
@@ -184,6 +185,7 @@ class StockDashboardController extends Controller
             'signed_unexpected_stage' => $this->unexpectedSignedStageQuery()->count(),
             'future_entry_date' => (int) ($vehicleCounts->future_entry_date ?? 0),
             'stores_without_capacity' => StockDelegation::query()
+                ->operational()
                 ->where('is_commercial', true)
                 ->where(fn ($query) => $query->whereNull('capacity_total')->orWhere('capacity_total', '<=', 0))
                 ->count(),
@@ -226,6 +228,7 @@ class StockDashboardController extends Controller
                 $this->vehicleQualitySheet('Entradas futuras', $vehicles->clone()
                     ->whereDate('entry_date', '>', today(config('app.timezone')))->get()),
                 $this->delegationQualitySheet('Tiendas sin capacidad', StockDelegation::query()
+                    ->operational()
                     ->where('is_commercial', true)
                     ->where(fn ($query) => $query->whereNull('capacity_total')->orWhere('capacity_total', '<=', 0))
                     ->get()),

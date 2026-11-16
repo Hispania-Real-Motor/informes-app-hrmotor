@@ -23,6 +23,24 @@ return [
         'dos hermanas',
         'hr motor dos hermanas',
     ],
+    'delegation_identity_repairs' => [
+        [
+            'canonical_name' => 'Rivas',
+            'normalized_key' => 'rivas',
+            'salesforce_id' => 'a007R000010UF74QAG',
+            'source_keys' => ['hr motor rivas vaciamadrid'],
+            'commercial_group' => 'Grupo Madrid',
+            'zone' => 'Zona Sur y Centro',
+        ],
+        [
+            'canonical_name' => 'Villarreal/Almassora',
+            'normalized_key' => 'villarreal almassora',
+            'salesforce_id' => 'a00Qx00000ZB5rRIAT',
+            'source_keys' => ['hr motor villarreal'],
+            'commercial_group' => 'Grupo Castellón',
+            'zone' => 'Zona Mediterraneo',
+        ],
+    ],
     'expected_signed_stages' => [
         'Contrato',
         'Cerrada ganada',

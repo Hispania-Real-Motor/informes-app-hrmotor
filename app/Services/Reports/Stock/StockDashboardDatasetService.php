@@ -54,7 +54,7 @@ class StockDashboardDatasetService
                 ->toBase()
                 ->get()
             : collect();
-        $delegations = StockDelegation::query()->orderBy('canonical_name')->get()
+        $delegations = StockDelegation::query()->operational()->orderBy('canonical_name')->get()
             ->each(fn (StockDelegation $delegation) => $delegation->setAttribute(
                 'is_commercial',
                 $this->delegationNormalizer->isCommercial($delegation->canonical_name),

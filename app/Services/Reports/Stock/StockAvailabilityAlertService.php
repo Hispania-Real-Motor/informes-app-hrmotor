@@ -30,7 +30,7 @@ class StockAvailabilityAlertService
             ->unique('stock_delegation_id')
             ->keyBy('stock_delegation_id');
 
-        StockDelegation::query()->whereNotNull('capacity_total')->each(
+        StockDelegation::query()->operational()->whereNotNull('capacity_total')->each(
             function (StockDelegation $delegation) use ($activeByDelegation, $available, &$result): void {
                 if (! $this->normalizer->isCommercial($delegation->canonical_name)) {
                     return;
