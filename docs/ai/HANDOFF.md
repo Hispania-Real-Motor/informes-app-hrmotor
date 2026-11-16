@@ -1,5 +1,59 @@
 # Handoff para agentes
 
+## 2026-11-16 — Campañas: presentación y disponibilidad operativa
+
+- Objetivo: hacer visible la atribución operativa respaldada por la respuesta
+  vigente del summary y mejorar la presentación del informe sin modificar sus
+  cálculos. Rama aislada `codex/campaign-ux-availability-20261116`, base
+  `origin/main` `460b5e5` (incluye #146 y #149). No se creó PR, fusionó ni
+  desplegó desde esta tarea.
+- Archivos funcionales: `resources/js/reports/campaigns-dashboard.js`,
+  `resources/views/reports/campaigns/index.blade.php`,
+  `resources/css/reports/leads-dashboard.css`, tres SVG locales en
+  `public/brand/` y `tests/js/campaign-presentation.test.mjs`. Documentos:
+  `docs/informe-campanas.md`, `docs/matriz-trazabilidad-kpi.md` y este handoff.
+- Decisión: la UI separa capacidades de Interest/atribución y Opportunity
+  según `availability` de la respuesta actual. Octubre operativo puede
+  presentar `leads_salesforce` atribuido y mantiene cerradas columnas/filtros
+  comerciales si Opportunity está bloqueada; noviembre los habilita solo si
+  su cobertura consta como disponible. Sin atribución, la tarjeta «Intereses
+  generados» muestra `—`, nunca un cero inventado. La fuente oficial y sus
+  auditorías conservan su contrato. La petición obsoleta no puede reponer un
+  estado anterior; la URL conserva fuente y fechas personalizadas admisibles.
+- Presentación: ChatGPT es una tercera tarjeta local con cinco guiones y aviso
+  de integración pendiente, sin proveedor backend. Se retira el scroll proxy
+  superior, Detalle precede a Rankings y se oculta únicamente el texto agregado
+  de exclusiones; el helper de elegibilidad y sus metadatos siguen intactos.
+  Los SVG incluidos son recursos locales equivalentes; los tres archivos de
+  logo citados en el encargo no estaban accesibles en este workspace.
+- Base de datos y configuración: ninguna migración, variable nueva, escritura
+  de journal, cierre económico, sincronización ni cambio de permisos.
+  Seguridad: selección operativa sujeta a rol/flag y validación backend;
+  `no-store, private` y auditoría individual siguen sin ampliarse. Rendimiento:
+  una sola petición de summary, sin nueva consulta remota ni SQL, y se eliminan
+  listeners/cálculos de ancho del proxy.
+- Verificación local comunicada: 39 pruebas JavaScript focalizadas y 70 pruebas
+  JavaScript totales superadas; `node --check`, `git diff --check` y
+  `pnpm run build` correctos. El build requirió instalar dependencias y descargar
+  fuentes con acceso externo; sus artefactos generados se restauraron para no
+  incluirlos en este commit. PHP y Python no están disponibles en el entorno
+  aislado y Docker no tiene daemon activo. PHPUnit, MariaDB 11, Pint y
+  validador documental quedan pendientes del CI de una PR futura. Estas
+  pruebas sintéticas no verifican el bundle desplegado ni los datos productivos.
+- Despliegue humano posterior a revisión: generar `npm run build`, publicar el
+  bundle y `public/build/manifest.json` del mismo release y comprobar que la
+  ruta del manifest sirve el asset de ese commit. Probar con administrador
+  autorizado los meses octubre/noviembre, fuente oficial y provisional,
+  columnas y filtros disponibles, tabla/Rankings, móvil y ausencia de datos
+  inventados. Inspeccionar caché de navegador/intermediaria si el síntoma
+  persiste. No se inspeccionó el asset productivo, por lo que no se atribuye
+  el bloqueo observado a una única causa. Rollback: release previo completo,
+  incluidos bundle y manifest; sin operación sobre datos.
+- Riesgos: falta validación visual real y CI PHP/build/MariaDB; cobertura
+  Opportunity de octubre continúa bloqueada hasta nueva evidencia, sin
+  desbloqueo visual; los iconos/wordmarks locales deben revisarse contra las
+  guías de marca antes de publicación.
+
 ## 2026-11-13 — Campañas operativas provisionales de octubre y noviembre
 
 - Objetivo: atribuir en una fuente administrativa aislada Interests operativos

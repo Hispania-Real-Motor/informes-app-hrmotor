@@ -74,6 +74,26 @@ adquisición válida en `campaign_operational_attributions`. `interest_key` y
 | Opportunity, reservas, ventas, compras e importe | Último run completado `report_sync_runs` de `salesforce_opportunities` y último snapshot directo completado `salesforce_opportunity_interest_direct_runs`, posterior al run Opportunity, con `stats.reference_fingerprint` hexadecimal válido de 64 caracteres; cutoff directo ≥ cutoff Opportunity ≥ observación Interest. Relación directa e inversa concordante y Opportunity no borrada observable → `CampaignPublicationReadiness::operationalOpportunityEvidence`, `CampaignOperationalAttributionBuilder::opportunitiesForBatch` y `CampaignAttributionBuilderService::operationalOpportunityFlags` → booleanos y `sale_amount` locales. | Si falta cobertura temporal, huella de referencias válida o hay relación ambigua/contradictoria, `opportunity_coverage_complete=false` y los KPI Opportunity del run se muestran nulos. El fingerprint de relación invalida la lectura ante cambio del snapshot de referencias. No se infiere por Account ni se confunde propietario actual con atribución histórica. Tasación no suma ventas; Venta no suma compras. Importes usan decimal local a dos posiciones; no se crea una fórmula económica nueva. |
 | Inversión, plataformas y ratios publicitarios | `campaign_investment_closure_snapshots` para octubre cerrado; runs y métricas locales Meta/Google para noviembre abierto; `CampaignDashboardDatasetService::{operationalEconomicContext,operationalSummary}` conserva fórmulas nativas de gasto y ratios. La huella de octubre incluye versión, cutoff, regla y contenido del snapshot vigente; la de noviembre incluye runs y disponibilidad por plataforma. | La disponibilidad se determina por plataforma y cobertura efectiva. Sincronizaciones de plataforma posteriores no invalidan por sí solas el cierre de octubre; modificar el contenido del snapshot sí lo invalida aun con igual recuento. No se trata un proveedor ausente como cero. La atribución provisional no cambia cierres ni sustituye resultados nativos por conversiones Salesforce. Filtros adquiridos fuente/medio, cuenta, comercial y vehículo no están soportados y se rechazan, no se ignoran. |
 
+**Presentación vigente de la ficha «Intereses generados».** La tarjeta de
+`resources/js/reports/campaigns-dashboard.js::kpiCardsForContext()` usa el
+`leads_salesforce` ya calculado por el dataset para el contexto y filtros
+seleccionados: Interests atribuidos a campañas, no leads nativos de plataforma
+ni universo mensual total. En la fuente oficial conserva la generación
+certificada; en `operational_provisional` exige conjuntamente
+`interest_dependent.status=available` y `attribution.status=available` de la
+respuesta vigente y muestra la advertencia provisional. En
+`platform_independent_only` muestra `—` con causa, sin convertir `null` en
+cero. Las columnas y filtros de Opportunity requieren además
+`opportunity_dependent.status=available`; octubre puede mostrar Interests
+atribuidos sin resultados comerciales, mientras noviembre solo los muestra
+cuando su respuesta acredita cobertura. Los controles de plataforma conservan
+su fuente y los CSV/auditorías conservan autorización y contrato existentes.
+La tarjeta ChatGPT es exclusivamente visual, con cinco valores `—` por
+contexto; no es una fuente de KPI, coste, ranking, atribución ni exportación.
+El nuevo orden Detalle → Rankings, la retirada del scroll proxy superior y
+del texto agregado de exclusiones no cambian `advertisingDetailRows()`, sus
+metadatos ni los universos de las fichas anteriores.
+
 El puntero `campaign_operational_months.active_run_id` solo cambia después de
 revalidar Interest, proyección, evidencia económica y relaciones dentro de una
 activación fenced. Una fuente cambiada deja el run anterior visible o bloquea

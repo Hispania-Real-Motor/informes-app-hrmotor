@@ -17,6 +17,46 @@ integridad se conservan solo los indicadores económicos nativos cuya cobertura
 esté acreditada por plataforma (`platform_independent_only`); no se convierte
 la ausencia comercial en cero.
 
+### Presentación y disponibilidad de la atribución operativa
+
+El selector de origen aparece únicamente con permiso administrativo, flag del
+mes habilitado y rango que empieza el día 1 de octubre o noviembre de 2026 y
+termina dentro del mismo mes. Una URL con `period=october_2026` o
+`period=november_2026` conserva la selección mensual; las fechas personalizadas
+válidas se reflejan en la URL. Fuera del mes admitido la fuente vuelve a
+`official`. El servidor vuelve a comprobar permisos, período y vigencia del
+run; el selector no autoriza por sí solo una lectura provisional. La respuesta
+vigente del summary, no el período por sí solo, determina las capacidades de
+la pantalla. Una respuesta anterior de red no puede sustituir la más reciente.
+
+Con `availability.mode=operational_provisional`, las columnas, el filtro de tipo
+y la tarjeta **Intereses generados** se habilitan solo si
+`interest_dependent` y `attribution` están `available`. El número usa el
+`leads_salesforce` atribuido a campañas del run activo y se marca como
+operativo provisional, no certificado. No equivale a leads nativos de
+Meta/Google ni al total mensual de Interests. Las columnas y filtros de
+Opportunity, reservas, ventas, compras, importes y ratios dependientes se
+habilitan solo si `opportunity_dependent` también está `available`. Así,
+octubre puede mostrar Intereses con Opportunity bloqueada; noviembre puede
+mostrar ambas familias cuando su respuesta acredita cobertura completa. Si
+falta atribución o la fuente oficial carece de generación certificada, la
+tarjeta de Intereses muestra `—` con motivo, no cero, y las columnas
+dependientes permanecen cerradas. La fuente oficial completa conserva sus
+contratos originales; no cambia `CampaignPublicationReadiness` ni se abren
+auditorías individuales de la fuente operativa.
+
+En la comparativa visual aparecen Google Ads y Meta Ads únicamente cuando
+existen en la respuesta, seguidos de una tarjeta ChatGPT **pendiente de
+integración** con todos sus valores en `—`. Los tres encabezados usan recursos
+SVG locales con texto alternativo y fallback textual; ChatGPT no participa
+en sincronización, atribución, filtros, exportaciones, rankings ni totales.
+El detalle de campañas usa solo el desplazamiento horizontal natural de su
+tabla, conserva la posición al cambiar columnas y precede a Rankings. Ya no
+muestra el contador ni el desglose agregado de filas excluidas; los criterios
+de `advertisingDetailRows()`, sus metadatos y las auditorías permanecen.
+Esta mejora es de presentación y disponibilidad; no modifica fórmulas,
+fuentes económicas, cierres, snapshots, JSON ni CSV.
+
 `campaigns:build-operational-attribution 2026-10|2026-11 --confirm` usa
 `OperationalInterestSourceReader::open(year, month, true)`: fija mes, run,
 `projection_key`, contrato UTM v2, cutoff, observación, cobertura e incidencias.
@@ -625,11 +665,11 @@ Esta sección reemplaza, únicamente para el detalle publicitario, las reglas an
 
 advertisingEligibility() y advertisingDetailRows(), en resources/js/reports/campaign-presentation.js, admiten exclusivamente filas meta o google_ads, sin procedencia salesforce_campaign_without_spend ni salesforce_origin, con spend numérico decimal finito estrictamente mayor que cero en el período y después de los filtros funcionales existentes. Se admiten números o cadenas decimales, incluida notación exponencial; booleanos, hexadecimal, objetos, vacíos y valores no finitos no constituyen evidencia. La verificación se limita al dato local recibido, sin nueva certificación externa del gasto.
 
-Inversión cero, negativa, ausente o inválida excluye visualmente la fila aunque tenga intereses, oportunidades o ventas. Gasto positivo sin conversiones o con datos parciales conserva la fila. No se infiere inversión desde actividad CRM. Los intereses Salesforce atribuidos a campañas publicitarias siguen siendo métricas de esas campañas. El detalle muestra un conteo agregado de exclusiones por motivo (otra plataforma, procedencia no verificable, inversión desconocida, inválida, negativa o cero), solo en el DOM: no crea registros, logs ni métricas persistidas. Es un conteo del conjunto recibido tras los filtros, no del total de la base de datos. Los gastos negativos quedan disponibles en respuestas y auditorías para diagnóstico; no se corrigen importes.
+Inversión cero, negativa, ausente o inválida excluye visualmente la fila aunque tenga intereses, oportunidades o ventas. Gasto positivo sin conversiones o con datos parciales conserva la fila. No se infiere inversión desde actividad CRM. Los intereses Salesforce atribuidos a campañas publicitarias siguen siendo métricas de esas campañas. La Fase A mostraba en el DOM un conteo agregado de exclusiones por motivo (otra plataforma, procedencia no verificable, inversión desconocida, inválida, negativa o cero), calculado sobre el conjunto recibido tras los filtros. La presentación actual retira ese contador; el helper conserva las exclusiones y sus metadatos, sin crear registros, logs ni métricas persistidas. Los gastos negativos quedan disponibles en respuestas y auditorías para diagnóstico; no se corrigen importes.
 
 Se retiran result_count (Resultados) y cost_per_result (Coste por resultado) del detalle y su selector. Permanecen en backend, API/CSV, rankings, tarjetas y gráficos donde ya se utilizan. La única columna Coste por compra utiliza cost_per_purchase: inversión dividida entre compras según el backend. No se renombra el resultado funcional. Está disponible en Todos, Tasación y Otros; se conservan las restricciones de Venta, Exposición y Branding y sus subcontextos. Una selección v6 explícita puede ocultarla voluntariamente.
 
-El selector de Columnas regenera inmediatamente el encabezado y las celdas del detalle con los datos ya cargados en memoria; no realiza una nueva petición de datos y conserva abierta la selección al activar varias columnas. Las columnas no aplicables al contexto actual se muestran deshabilitadas y no se presentan como activas, aunque la preferencia global se conserva para contextos donde sí sean válidas. El proxy superior y el contenedor de tabla mantienen sincronizado el desplazamiento horizontal; las tablas anchas usan su anchura intrínseca para que la última columna siga siendo accesible.
+El selector de Columnas regenera inmediatamente el encabezado y las celdas del detalle con los datos ya cargados en memoria; no realiza una nueva petición de datos y conserva abierta la selección al activar varias columnas. Las columnas no aplicables al contexto actual se muestran deshabilitadas y no se presentan como activas, aunque la preferencia global se conserva para contextos donde sí sean válidas. La Fase A sincronizaba un proxy superior y el contenedor de tabla; la presentación actual retiró el proxy y conserva únicamente el desplazamiento horizontal natural de la tabla, incluida su posición al cambiar columnas. Las tablas anchas mantienen su anchura intrínseca para que la última columna siga siendo accesible.
 
 Las preferencias de columnas migran de hrmotor_campaign_columns_v5 a hrmotor_campaign_columns_v6: se descartan claves no definidas, se deduplican y se añade Coste por compra una sola vez en la migración. Si v6 ya existe se respeta. No se borran preferencias ajenas, de rankings, contexto o gráficos; la clave anterior se conserva para compatibilidad de rollback.
 

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 42" role="img" aria-label="ChatGPT">
+  <circle cx="21" cy="21" r="18" fill="#10a37f"/>
+  <path d="M21 9c-7-1-12 6-9 12-4 6 0 13 7 13 4 3 11 1 13-4 7-2 9-10 5-15-1-7-8-10-14-7M14 18l8-5 9 5v10l-9 5-8-5V18Zm0 0 17 10M31 18 14 28" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <text x="51" y="30" fill="#263238" font-family="Arial,sans-serif" font-size="24" font-weight="600">ChatGPT</text>
+</svg>

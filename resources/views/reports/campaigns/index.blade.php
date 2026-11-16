@@ -87,7 +87,7 @@
         <div class="panel-title">
             <div>
                 <h2>Comparativa por plataforma</h2>
-                <div class="small">Google Ads frente a Meta Ads en el contexto seleccionado</div>
+                <div class="small">Google Ads y Meta Ads con datos disponibles; ChatGPT, pendiente de integración</div>
             </div>
         </div>
         <div class="campaign-bar-list platform-comparison-grid" id="platformComparison"></div>
@@ -192,6 +192,8 @@
 
             <section class="campaign-charts-grid" id="campaignCharts"></section>
 
+            <section id="campaignTables"></section>
+
             <section class="card panel">
                 <div class="panel-title">
                     <div>
@@ -206,7 +208,6 @@
                 <div class="priority-grid" id="rankingsGrid"></div>
             </section>
 
-            <section id="campaignTables"></section>
         </section>
     </main>
 </div>
