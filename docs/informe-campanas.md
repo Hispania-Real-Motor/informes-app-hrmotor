@@ -938,3 +938,12 @@ trata la fuente como no disponible sin adoptar legacy. No convierte un nuevo
 intento F2 iniciado/fallido en una invalidación del snapshot publicado y fijado.
 Las pruebas compartidas incorporan generaciones sintéticas explícitas para
 representar estos estados, sin autorizar importaciones de datos vivos.
+
+### Refresco operacional de Interests
+
+La tarea operacional diaria puede actualizar localmente el mes vigente y su
+proyección de calidad, actividades y KPI sin ejecutar el pipeline oficial F2/F5.
+El resultado permanece provisional y no cambia atribución, readiness, snapshot,
+detalle, ratios, CSV ni generaciones publicadas de Campañas. Si el run Interest,
+la cobertura de actividades o la proyección no son compatibles, el lector
+mantiene el último estado válido y falla cerrado, sin adoptar una fuente parcial.

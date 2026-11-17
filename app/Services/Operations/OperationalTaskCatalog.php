@@ -65,6 +65,17 @@ final class OperationalTaskCatalog
                 'manual_allowed' => true, 'risk' => 'moderate',
                 'overlap_policy' => 'exclusive-persistent', 'policy' => 'Ventana ordinaria fija del scheduler.',
             ],
+            'salesforce-sync-interest-operational-current' => [
+                'label' => 'actualización operacional mensual de Interests', 'module' => 'salesforce',
+                'command' => 'salesforce:sync-interest-operational-current',
+                'arguments' => ['--allow-salesforce-read' => true],
+                'cron' => '20 2 * * *', 'timezone' => 'Europe/Madrid',
+                'window_minutes' => 240, 'grace_minutes' => 120,
+                'enabled' => (bool) config('operations.operational_interest_current_sync_enabled', false),
+                'manual_allowed' => (bool) config('operations.operational_interest_current_sync_enabled', false),
+                'risk' => 'high', 'overlap_policy' => 'exclusive-persistent',
+                'policy' => 'Orquesta Interest operacional, calidad, Task/Event y KPI local; nunca publica la generación oficial.',
+            ],
             'salesforce-sync-interest-monthly-current' => [
                 'label' => 'refresco mensual aislado de Interests', 'module' => 'salesforce',
                 'command' => 'salesforce:sync-interest-monthly-current',

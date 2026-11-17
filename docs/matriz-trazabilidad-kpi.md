@@ -503,3 +503,9 @@ persistencia; unicidad y cuarentena son por generación. Las pruebas sintéticas
 no demuestran que los 270.000 cambios procedieran de una actualización masiva
 legítima. Detalle operativo, esquema, evidencias iniciales, borrados y limitaciones
 en [generaciones F2/F5](salesforce-interest-generations.md).
+
+### Scheduler de la fuente operacional de Interests (orquestación, no KPI)
+
+| Contrato | Cadena contrastada | Estado y límites |
+| --- | --- | --- |
+| Automatización del mes actual | `OperationalTaskCatalog` → `operations:run` → `salesforce:sync-interest-operational-current --allow-salesforce-read` → `OperationalInterestCurrentAutomation::run()` encadena `OperationalInterestMonthlySync`, `OperationalInterestQualitySnapshot`, `OperationalInterestActivitySync` y `OperationalInterestKpiProjector`. La configuración `OPERATIONS_INTEREST_OPERATIONAL_CURRENT_SYNC_ENABLED` está apagada por defecto; la reserva es exclusiva/persistente y la ventana es de 240 minutos. | Coordina únicamente los contratos operativos ya descritos: mes `Europe/Madrid`, runs/proyección locales compatibles y contrato KPI explícito para octubre/noviembre de 2026. Reanudar o preparar evidencia no publica generaciones ni mueve punteros oficiales, y no altera fórmulas, universos, filtros, redondeos, nulos, exportaciones o auditorías oficiales. Requiere flag, allowlist y autorización explícita de lectura; la ausencia de contrato o una incoherencia falla cerrada. Las pruebas de catálogo/autorización son sintéticas; no hay evidencia Salesforce ni productiva. |
