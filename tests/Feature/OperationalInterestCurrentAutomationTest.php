@@ -4,9 +4,9 @@ namespace Tests\Feature;
 
 use App\Services\Operations\OperationalTaskCatalog;
 use App\Services\Salesforce\OperationalInterestCurrentAutomation;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class OperationalInterestCurrentAutomationTest extends TestCase
