@@ -1118,6 +1118,39 @@
   manualmente por operaciones antes de reintentar exclusivamente la migración.
   No ejecutar `recover-initial`, scheduler ni ninguna operación Salesforce.
 
+## 2026-11-05 — revisión documental del hotfix de cobertura histórica de Campañas
+
+- La base solicitada `888a52b003c640a20e781b49790f4175806177a3` es descendiente
+  directa del `HEAD` del worktree (`2b62ee2f471ebf92ab8210c6d6e67370c264ad2f`);
+  por tanto, el diff completo `base..HEAD` no contiene cambios de Campañas.
+  El hotfix revisado es el merge #106 (`54814e22cf8c0375e4f6c812efa02c6ab7cafc7c`),
+  ya presente en ambos árboles, contrastado contra su primer padre para no
+  atribuirle cambios del merge posterior de Interests.
+- La evidencia vigente sigue alineada: `CampaignDashboardDatasetService` separa
+  snapshots de cierres y runs abiertos, exige rangos de proveedor explícitos o
+  una única interpretación heredada válida en `Europe/Madrid`/UTC, conserva el
+  fin exclusivo y bloquea snapshots inválidos, días parciales y coberturas no
+  acreditables. `campaigns-dashboard.js` oculta únicamente el aviso genérico
+  de recuperación cuando las plataformas están disponibles; los bloqueos reales
+  se presentan con `campaign-availability-notice`, cuyo estilo está en
+  `resources/css/reports/leads-dashboard.css`.
+- `docs/informe-campanas.md` y `docs/matriz-trazabilidad-kpi.md` ya describen
+  esas reglas, sus límites, la evidencia `closure_snapshot`/`sync_run`/`mixed`,
+  el tratamiento independiente de Meta y Google y la ausencia de certificación
+  de Salesforce/atribución. No se modifican: no hay discrepancia semántica que
+  justifique cambios cosméticos.
+- Evidencia revisada: `CampaignDashboardTest` contiene regresiones para rangos
+  explícitos, DST, snapshots cerrados, tramos abiertos, mezcla sin duplicación y
+  cierres inválidos; `campaign-presentation.test.mjs` cubre la presentación del
+  modo de recuperación y plataformas bloqueadas. `node --test
+  tests/js/campaign-presentation.test.mjs` pasó 27/27. No se ejecutó PHPUnit ni
+  se consultaron bases de datos o Salesforce.
+- `check_documentation_integrity.py` no pudo ejecutarse: no hay intérprete
+  Python utilizable en el entorno (`python` resuelve a un alias inaccesible y
+  `py`/`python3` no están disponibles). El reconocimiento de
+  `report_docs_maintainer` queda `NO VERIFICADO`; esta revisión se realizó como
+  fallback del agente principal. `git diff --check` no detectó errores.
+
 ## 2026-11-04 — Campañas — endurecimiento de cobertura heredada de runs
 
 - Revisión de `CampaignDashboardDatasetService::syncRunCoverageRanges()`: los sincronizadores económicos invocan `ReportSyncRunService` con límites de días de proveedor `Europe/Madrid`; desde el contrato vigente persisten además `stats.range_start` y `stats.range_end_exclusive`. Esos campos son ahora autoritativos: una declaración presente pero inválida, incompleta o no creciente no puede ampliar el intervalo usando DATETIME heredados.
@@ -8352,3 +8385,188 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pruebas: `CampaignOperationalAttributionTest` cubre el caso con Opportunity
   bloqueada (Interests presentes, resultados nulos) y el caso completo (la
   comparativa reconcilia Interests, Opportunity, venta, importe y resultado).
+## 2026-11-17 — auditoría del scheduler integral y de Interests
+
+- Se auditó el HEAD local `9c417acc554ede1d07ff6f51dbeb9abf11952d2f` en la rama
+  `codex/fix-stock-delegation-identities`. El árbol ya contenía cambios del
+  usuario en este documento; se conservaron sin reescribirlos.
+- El scheduler vigente sigue centralizado en `routes/console.php`, usa
+  `operations:run` y las reservas persistentes de `OperationalTaskService`.
+  El catálogo cubre Stock, Opportunities, llamadas, campañas, SEO, reseñas,
+  tasaciones, publicación/reconciliación de campañas y el monitor operacional.
+  `campaigns:sync-current-status` continúa correctamente opt-in mediante
+  `CAMPAIGN_CURRENT_STATUS_ENABLED` y mantiene su aislamiento de métricas y
+  atribuciones históricas.
+- La especificación recibida referencia
+  `salesforce:sync-interest-monthly-current`,
+  `SyncCurrentMonthInterestsCommand`, `ManageInterestMonthlyMaterializationCommand`
+  y `MonthlyInterestProvisionalReader`, pero ninguno de esos componentes existe
+  en este HEAD. No se inventó ni programó un pipeline inexistente. El código
+  vigente sí contiene el pipeline F2/F5
+  `salesforce:sync-interest-reporting`, con candidata aislada, asociación F5,
+  certificación y publicación transaccional; la vista provisional existente es
+  otro componente y permanece fuera de los lectores oficiales.
+- Los comandos
+  `salesforce:sync-commercial-commission-appointments` y
+  `salesforce:sync-commercial-commission-product-deliveries` exigen
+  `--from` y `--to` explícitos. No se añadieron al scheduler porque hacerlo
+  requeriría definir una nueva ventana temporal y podría alterar la protección
+  de cierres económicos; deben programarse solo con contrato aprobado y pruebas
+  de periodo.
+- No se realizaron migraciones, sincronizaciones externas, publicaciones,
+  cargas históricas ni cambios de variables de entorno. No se modifica ninguna
+  fórmula, regla de atribución, clasificación de llamadas, semántica de Stock o
+  cierre de Comisiones.
+- Verificación realizada: inspección de catálogo, rutas, firmas de comandos,
+  servicios de Interests, configuración de campañas y pruebas existentes.
+  `php artisan test` no pudo ejecutarse porque el entorno no dispone de PHP ni
+  del binario Herd esperado; la suite, Pint, `composer audit`, el validador
+  documental y `git diff --check` deben ejecutarse en CI o en un entorno con
+  runtime instalado.
+- Riesgo/pendiente: antes de activar una actualización mensual de Interests se
+  debe proporcionar o integrar el pipeline real descrito por la especificación,
+  definir su contrato de checkpoints y demostrar que la proyección provisional
+  no se convierte en fuente oficial. La activación de campañas requiere revisión
+  operativa explícita y `CAMPAIGN_CURRENT_STATUS_ENABLED=true`; no se activó
+  desde Codex.
+
+## 2026-11-17 — corrección de base Git y auditoría sobre `origin/main`
+
+- La conclusión anterior sobre la inexistencia del pipeline mensual queda
+  expresamente corregida: se había inspeccionado una rama local desactualizada.
+  Tras `git fetch origin`, `origin/main` quedó en
+  `fd7f6f9c8df9b8b14bf55bf0ab26de83e5d3034e` y la revisión continúa en la rama
+  `codex/audit-scheduler-main`, basada directamente en ese commit.
+- La modificación local de este `HANDOFF` se preservó mediante un stash
+  reversible y se reaplicó resolviendo el conflicto documental sin eliminar el
+  historial previo.
+- En la base correcta existen `SyncCurrentMonthInterestsCommand`,
+  `MonthlyInterestProvisionalReader`, `InterestMonthlyRecoveryService`, F2M y
+  F5 mensual, además de sus migraciones y pruebas. El catálogo contiene
+  `salesforce-sync-interest-monthly-current` a las 03:10 Europe/Madrid, con
+  `--allow-salesforce-read`, lock persistente, ventana de 240 minutos y
+  desactivación por defecto mediante
+  `SALESFORCE_INTEREST_MONTHLY_CURRENT_SYNC_ENABLED`.
+- El comando mensual reanuda una revisión incompleta, limita a tres revisiones
+  consecutivas no verificadas, exige `verification.verified=true` en F2, F2M y
+  F5, conserva la última proyección válida, y devuelve fallo técnico sin
+  exponer payloads Salesforce. La proyección provisional se valida y se publica
+  sólo como lector administrativo; no crea generaciones, no mueve el puntero
+  oficial y no alimenta los seis informes oficiales.
+- `routes/console.php` registra todos los comandos a través de
+  `operations:run`; su `when()` llama a `OperationalTaskCatalog::isScheduled`,
+  por lo que respeta tanto el flag de tarea como `OPERATIONS_SCHEDULED_TASK_KEYS`.
+  No se ha encontrado un bypass del catálogo ni una ejecución paralela fuera del
+  scheduler central.
+- El estado actual de campañas permanece correctamente opt-in mediante
+  `CAMPAIGN_CURRENT_STATUS_ENABLED`; sus pruebas cubren configuración,
+  reservas, concurrencia y degradación conservadora. No se activó desde Codex.
+- Las tareas de evidencias de citas y entregas de Comisiones siguen siendo CLI
+  acotadas con `--from/--to`; no se añaden al scheduler sin aprobar una ventana
+  funcional que no pueda reescribir cierres económicos. La cadena catalogada de
+  Comisiones mantiene reseñas, tasaciones, Opportunities, usuarios/delegaciones,
+  captadores, snapshots y readiness existentes.
+- No se realizaron sincronizaciones Salesforce, migraciones, publicaciones,
+  backfills, cambios de `.env` ni operaciones productivas. PHP no está
+  disponible localmente; las pruebas PHP, Pint, Composer audit y el validador
+  documental requieren CI. `git diff --check` se ejecutó correctamente.
+- Resultado: no se identifica todavía un defecto funcional demostrado que
+  justifique modificar el código de scheduler o las reglas de publicación en
+  esta revisión. El pendiente operativo es una activación autorizada y
+  observada del pipeline mensual, no una implementación faltante.
+
+## 2026-11-17 — preflight operacional del scheduler
+
+- Se añadió `docs/ai/SCHEDULER_PREFLIGHT.md` como matriz y procedimiento de
+  activación de solo lectura sobre `origin/main` en
+  `codex/audit-scheduler-main`.
+- El documento consolida horarios, dependencias, fuentes oficiales/provisionales,
+  evidencias de frescura, recuperación, riesgos y orden de primera ejecución
+  para Interests, Campañas, Stock, Comisiones, Reservas/Ventas, Llamadas, SEO y
+  Resumen ejecutivo.
+- Incluye comandos de diagnóstico sin secretos para versión, migraciones,
+  scheduler, allowlist, flags, workers, locks, `operational_task_runs`,
+  `report_sync_runs`, generaciones y revisiones mensuales. No ejecuta comandos
+  de sincronización, migraciones, publicaciones ni lecturas masivas externas.
+- Se documenta activación gradual, suspensión y rollback conservador. No se
+  añaden tareas al catálogo, no se activan flags y no se convierte ninguna
+  proyección mensual en fuente oficial.
+- `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian: es un entregable operativo
+  documental sin modificación de arquitectura o reglas de negocio.
+- Verificación local: `git diff --check` pendiente de ejecutar tras el cierre
+  del diff; PHP, Pint, Composer audit y validador documental requieren CI por
+  ausencia de runtimes locales. No existe evidencia productiva en esta revisión.
+
+## 2026-11-17 — corrección final del preflight operacional
+
+- Se corrigió `docs/ai/SCHEDULER_PREFLIGHT.md` contra las migraciones y servicios
+  reales de observabilidad.
+- `operations:check-health` dejó de clasificarse como lectura estricta: su
+  servicio puede abrir y resolver `operational_alerts`. El preflight ahora usa
+  únicamente consultas y comandos sin efectos secundarios, y reserva health
+  check para una comprobación operacional autorizada.
+- La consulta de `operational_task_states` usa `last_completed_id` y
+  `monitoring_started_at`; se eliminó la columna inexistente
+  `last_completed_at`.
+- La detección de `OPERATIONS_SCHEDULED_TASK_KEYS` distingue variable ausente
+  (`catalog-default`), vacía (`none`) y lista restringida (`restricted`).
+- Se incorporó `reports-prune-transversal-data` a la matriz como tarea
+  destructiva de alto riesgo. Solo `--dry-run` puede usarse para estimar alcance;
+  el modo real queda fuera de la activación inicial y exige aprobación separada.
+- No se ejecutaron operaciones operativas, migraciones, sincronizaciones,
+  retenciones, publicaciones ni lecturas de proveedores. `git diff --check`
+  debe validarse al cerrar el diff; runtimes y validador documental siguen
+  pendientes de CI.
+
+## 2026-11-17 — automatización segura de Interests operacionales
+
+- Se añadió la tarea catalogada `salesforce-sync-interest-operational-current`,
+  desactivada por defecto mediante
+  `OPERATIONS_INTEREST_OPERATIONAL_CURRENT_SYNC_ENABLED`, con horario
+  `20 2 * * *` Europe/Madrid, reserva persistente y ventana de 240 minutos.
+- La nueva orquestación reutiliza `OperationalInterestMonthlySync`,
+  `OperationalInterestQualitySnapshot`, `OperationalInterestActivitySync` y
+  `OperationalInterestKpiProjector`. Conserva el `run_id` de Interests y el
+  `activity_run_id` ligado a la versión activa; no llama al pipeline oficial ni
+  modifica generaciones o punteros oficiales.
+- Reanuda runs preparados, fallidos o en ejecución según sus leases existentes;
+  si no hay run recuperable prepara uno para el mes actual de Europe/Madrid.
+  Calidad, Task/Event y KPI se ejecutan en secuencia y cualquier incoherencia
+  falla cerrado.
+- La automatización rechaza meses posteriores que aún no tienen contrato KPI
+  explícito; actualmente solo permite octubre/noviembre de 2026. No se amplió
+  el proyector ni se habilitaron períodos sin contrato de datos.
+- Se añadieron las aserciones de catálogo/scheduler y pruebas de autorización
+  explícita y flag por defecto. No se ejecutaron sincronizaciones, migraciones,
+  publicaciones ni cambios de allowlist; PHP/Pint, PHPUnit, MariaDB, Composer
+  audit y validador documental quedan pendientes de CI.
+
+## 2026-11-17 — revisión documental del diff contra origin/main
+
+- Alcance contrastado: comando y automatización PHP, catálogo/configuración,
+  aserciones y prueba de autorización, `SCHEDULER_PREFLIGHT`, operaciones de
+  producción, reglas de Interests, matriz de trazabilidad y contratos de
+  generaciones/lectores. El diff funcional está staged sobre
+  `origin/main` (`fd7f6f9c8df9b8b14bf55bf0ab26de83e5d3034e`); no se modificó
+  código.
+- Evidencia vigente: tarea `salesforce-sync-interest-operational-current`,
+  `20 2 * * *`, `Europe/Madrid`, reserva exclusiva persistente, 240 minutos,
+  flag `OPERATIONS_INTEREST_OPERATIONAL_CURRENT_SYNC_ENABLED=false` por
+  defecto y autorización `--allow-salesforce-read`. La secuencia conserva los
+  runs de Interests/actividad y la proyección local; no llama al pipeline
+  oficial ni mueve generaciones o punteros oficiales. Solo hay contrato KPI
+  explícito para octubre/noviembre de 2026.
+- Documentación actualizada: `docs/ai/SCHEDULER_PREFLIGHT.md`,
+  `docs/operaciones-produccion.md`, `docs/reglas-negocio-leads.md` y
+  `docs/matriz-trazabilidad-kpi.md`. `PROJECT_CONTEXT.md`, `DECISIONS.md` y
+  `docs/decisiones-negocio-pendientes.md` no cambian: no se adopta una nueva
+  arquitectura ni se resuelve una decisión de negocio.
+- Docs-Impact: updated. Docs-Matrix-Impact: updated. La matriz cambia para
+  registrar la orquestación y sus límites, aunque no cambian los KPI oficiales.
+- Validación: se revisó el diff completo y la consistencia de rutas/referencias;
+  `git diff --check` se ejecuta al cierre. El validador documental no pudo
+  ejecutarse porque `python.exe` no está disponible en este entorno.
+- No se ejecutaron sincronizaciones, migraciones, producción, Salesforce ni
+  bases de datos. PHPUnit, Pint, MariaDB y la semántica/latencia de Salesforce
+  requieren CI o una ejecución autorizada; las pruebas sintéticas no acreditan
+  cobertura productiva ni contrato histórico `as-of`.

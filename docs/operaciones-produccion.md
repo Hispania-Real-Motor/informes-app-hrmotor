@@ -2039,3 +2039,37 @@ no repuntar manualmente versiones ni borrar registros. El coste MariaDB de
 las dos DDL, la duración del build con volumen productivo, la actualidad del
 catálogo local `salesforce_users` y la semántica Salesforce de UTM requieren
 medición supervisada; las pruebas sintéticas y CI no certifican esos datos.
+## Automatización operacional mensual de Interests (desactivada por defecto)
+
+La tarea `salesforce-sync-interest-operational-current` orquesta únicamente la
+fuente operacional provisional del mes actual en `Europe/Madrid`. Su horario
+catalogado es `20 2 * * *`, antes de Stock, con ventana operacional de 240 minutos
+y reserva persistente. El catálogo la mantiene deshabilitada mediante
+`OPERATIONS_INTEREST_OPERATIONAL_CURRENT_SYNC_ENABLED=false`.
+
+La secuencia es estricta: reutiliza/reanuda el run de Interests operacional del
+mes, reconstruye su snapshot de calidad, reutiliza/reanuda el run de Task/Event
+ligado al `run_id` activo y construye la proyección KPI local. La tarea conserva
+los identificadores reales entre fases y no invoca el pipeline oficial
+`salesforce:sync-interest-reporting`, el refresco F2/F2M/F5 mensual ni ningún
+comando histórico. También falla cerrado si el mes actual no está incluido en
+el contrato explícito del proyector KPI (actualmente octubre/noviembre de 2026).
+
+Activación gradual, solo con intervención humana:
+
+```env
+OPERATIONS_INTEREST_OPERATIONAL_CURRENT_SYNC_ENABLED=true
+OPERATIONS_SCHEDULED_TASK_KEYS=salesforce-sync-interest-operational-current
+```
+
+La reserva del catálogo invoca `operations:run` con el argumento explícito
+`--allow-salesforce-read`; una ejecución manual sin ese argumento debe fallar
+antes de construir la automatización. La allowlist no sustituye el flag: ambos
+controles deben permitir la tarea.
+
+Después de actualizar la configuración y reiniciar los workers según el
+procedimiento de despliegue, verificar `schedule:list`, la reserva operacional,
+los tres run IDs y la proyección completada. Ampliar la allowlist solo después
+de observar una ejecución íntegra. Para rollback, apagar el flag o retirar la
+clave de la allowlist, conservar todos los runs y evidencias, y no ejecutar
+rollback de migraciones ni borrar punteros.

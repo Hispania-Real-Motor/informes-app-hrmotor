@@ -2,6 +2,15 @@
 
 ### Noviembre de 2026: fuente operativa provisional por mes (en revisión)
 
+La tarea catalogada `salesforce-sync-interest-operational-current` solo
+orquesta esta fuente provisional cuando `OPERATIONS_INTEREST_OPERATIONAL_CURRENT_SYNC_ENABLED`
+está habilitado y el scheduler le entrega `--allow-salesforce-read`. Ejecuta en
+orden el run operacional del mes, el snapshot de calidad, el run Task/Event y
+la proyección KPI local; reanuda los identificadores compatibles y falla cerrado
+si falta el contrato KPI del mes. No invoca la generación oficial, no mueve su
+puntero y no convierte esta fuente en origen de Campañas, Reservas/Ventas,
+Llamadas, SEO, Comisiones o Stock.
+
 Para el administrador autorizado, `november_2026` puede leer el puntero de la
 nueva sincronización operativa si está activo; de lo contrario conserva la ruta
 mensual estricta descrita más abajo. El puntero activo manda y una incoherencia
