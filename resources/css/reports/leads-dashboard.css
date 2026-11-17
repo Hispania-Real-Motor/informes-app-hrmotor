@@ -2714,7 +2714,6 @@ th.num {
     margin-right: auto;
 }
 
-.campaign-table-card .table-scroll-proxy,
 .campaign-table-card .table-wrap {
     overflow-x: auto;
 }
@@ -2790,20 +2789,6 @@ th.num {
 .platform-chart-group > strong {
     color: var(--brand-primary);
     font-size: 14px;
-}
-
-.table-scroll-proxy {
-    height: 14px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    margin-bottom: 8px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: #f8fafc;
-}
-
-.table-scroll-proxy > div {
-    height: 1px;
 }
 
 .columns-menu {
@@ -3310,7 +3295,50 @@ th.num {
 }
 
 .campaigns-report .platform-comparison-grid {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.campaigns-report #campaignDataSourceGroup[hidden],
+.campaigns-report #campaignOperationalNotice[hidden],
+.campaigns-report .platform-comparison-brand [hidden] {
+    display: none;
+}
+
+.campaigns-report .platform-comparison-brand {
+    display: inline-flex;
+    align-items: center;
+    min-width: 126px;
+    height: 34px;
+}
+
+.campaigns-report .platform-comparison-brand img {
+    display: block;
+    width: 126px;
+    height: 34px;
+    object-fit: contain;
+    object-position: left center;
+}
+
+.campaigns-report .platform-comparison-pending {
+    font-size: 12px;
+    color: rgba(31, 41, 68, .68);
+}
+
+.campaigns-report .platform-comparison-card--chatgpt {
+    border-left: 5px solid #10a37f;
+    background: linear-gradient(110deg, rgba(16, 163, 127, .045), rgba(255, 255, 255, .96) 34%);
+}
+
+@media (max-width: 1100px) {
+    .campaigns-report .platform-comparison-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .campaigns-report .platform-comparison-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 .campaigns-report .platform-comparison-card {

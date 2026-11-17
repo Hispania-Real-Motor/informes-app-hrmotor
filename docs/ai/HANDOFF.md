@@ -1,5 +1,76 @@
 # Handoff para agentes
 
+## 2026-11-16 — Campañas: presentación y disponibilidad operativa
+
+- Objetivo: hacer visible la atribución operativa respaldada por la respuesta
+  vigente del summary y mejorar la presentación del informe sin modificar sus
+  cálculos. Rama aislada `codex/campaign-ux-availability-20261116`, base
+  `origin/main` `460b5e5` (incluye #146 y #149). El usuario abrió la PR Draft
+  #151; no se fusionó ni desplegó desde esta tarea.
+- Archivos funcionales: `resources/js/reports/campaigns-dashboard.js`,
+  `resources/views/reports/campaigns/index.blade.php`,
+  `resources/css/reports/leads-dashboard.css`, tres logotipos locales en
+  `public/brand/` y `tests/js/campaign-presentation.test.mjs`. Documentos:
+  `docs/informe-campanas.md`, `docs/matriz-trazabilidad-kpi.md` y este handoff.
+- Decisión: la UI separa capacidades de Interest/atribución y Opportunity
+  según `availability` de la respuesta actual. Octubre operativo puede
+  presentar `leads_salesforce` atribuido y mantiene cerradas columnas/filtros
+  comerciales si Opportunity está bloqueada; noviembre los habilita solo si
+  su cobertura consta como disponible. Sin atribución, la tarjeta «Intereses
+  generados» muestra `—`, nunca un cero inventado. La fuente oficial y sus
+  auditorías conservan su contrato. La petición obsoleta no puede reponer un
+  estado anterior; la URL conserva fuente y fechas personalizadas admisibles.
+  La revisión posterior de #151 reconoce el payload oficial completo por
+  `period_mode=interest_pivot` o `availability.mode=official_complete`; un
+  modo ausente/desconocido sin ese contrato y un error definitivo cierran las
+  capacidades comerciales hasta otra respuesta válida, sin borrar preferencias.
+  Los resultados y costes mensuales nulos no se reconstruyen como cero desde
+  otras columnas; un cero real permanece visible.
+- Presentación: ChatGPT es una tercera tarjeta local con cinco guiones y aviso
+  de integración pendiente, sin proveedor backend. Se retira el scroll proxy
+  superior, Detalle precede a Rankings y se oculta únicamente el texto agregado
+  de exclusiones; el helper de elegibilidad y sus metadatos siguen intactos.
+  Los archivos de imagen suministrados por el usuario se incorporaron como
+  `google-ads-logo.png`, `meta-logo.webp` y `chatgpt-logo.png` en `public/brand/`.
+- Base de datos y configuración: ninguna migración, variable nueva, escritura
+  de journal, cierre económico, sincronización ni cambio de permisos.
+  En la revisión de la PR #151 se actualizó solo `composer.lock`: Laravel
+  13.34.0 → 13.40.0 y `laravel/prompts` 0.3.17 → 0.3.25, requisitos mínimos
+  para resolver GHSA-63hm-g96r-2m2q detectada por el audit de CI. No se cambió
+  `composer.json` ni código PHP.
+  Seguridad: selección operativa sujeta a rol/flag y validación backend;
+  `no-store, private` y auditoría individual siguen sin ampliarse. Rendimiento:
+  una sola petición de summary, sin nueva consulta remota ni SQL, y se eliminan
+  listeners/cálculos de ancho del proxy.
+- Verificación local comunicada: 39 pruebas JavaScript focalizadas y 70 pruebas
+  JavaScript totales superadas; `node --check`, `git diff --check` y
+  `pnpm run build` correctos. El build requirió instalar dependencias y descargar
+  fuentes con acceso externo; sus artefactos generados se restauraron para no
+  incluirlos en este commit. Laragon aporta PHP 8.3, Composer y Python fuera
+  del PATH, mientras CI usa PHP 8.4. `composer audit --locked --no-dev` y
+  `composer validate --strict` pasan tras el cambio mínimo de lock. Pasaron
+  46 pruebas documentales (`unittest`, una omitida) y el validador local con
+  `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`. PHPUnit, MariaDB 11,
+  Pint y los checks documentales del SHA final se comprobarán en CI de #151. Estas
+  pruebas sintéticas no verifican el bundle desplegado ni los datos productivos.
+   El SHA correctivo estabiliza también dos aserciones de
+   `StockSaleValidityServiceTest`: los fixtures de julio usan un rango histórico
+   explícito en vez de la ventana móvil de 120 días que dejó de incluir el 20 de
+   julio al avanzar la fecha de CI. No cambia el servicio ni la semántica de Stock.
+- Despliegue humano posterior a revisión: generar `npm run build`, publicar el
+  bundle y `public/build/manifest.json` del mismo release y comprobar que la
+  ruta del manifest sirve el asset de ese commit. Probar con administrador
+  autorizado los meses octubre/noviembre, fuente oficial y provisional,
+  columnas y filtros disponibles, tabla/Rankings, móvil y ausencia de datos
+  inventados. Inspeccionar caché de navegador/intermediaria si el síntoma
+  persiste. No se inspeccionó el asset productivo, por lo que no se atribuye
+  el bloqueo observado a una única causa. Rollback: release previo completo,
+  incluidos bundle y manifest; sin operación sobre datos.
+- Riesgos: falta validación visual real y CI PHP/MariaDB; cobertura
+  Opportunity de octubre continúa bloqueada hasta nueva evidencia, sin
+  desbloqueo visual; comprobar las proporciones y el contraste de los logos
+  entregados en escritorio y móvil antes de publicación.
+
 ## 2026-11-13 — Campañas operativas provisionales de octubre y noviembre
 
 - Objetivo: atribuir en una fuente administrativa aislada Interests operativos

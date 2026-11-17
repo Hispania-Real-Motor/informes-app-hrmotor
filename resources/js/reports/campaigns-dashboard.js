@@ -19,6 +19,9 @@ const campaignPointIcon = '/brand/campaign-point.svg';
 const monthlyChartEnabled = false;
 const campaignPeriodMinDate = '2026-01-01';
 const campaignPeriodMaxDate = '2026-12-31';
+const platformColumns = new Set(['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'campaign_end_date', 'last_spend_date']);
+const interestColumns = new Set(['leads_salesforce', 'cost_per_lead']);
+const officialOnlyColumns = new Set(['source_acquired', 'medium_acquired', 'acquired_id', 'content_acquired']);
 
 let campaignRows = [];
 let currentStatusExpiryTimer = null;
@@ -31,7 +34,6 @@ let tableSort = {
     otros: { key: 'spend', direction: 'desc' },
 };
 let searchTimer = null;
-let syncingTableScroll = false;
 let dailyVisibleSeries = [];
 let dailyChartType = 'lines';
 let currentCharts = {};
@@ -52,6 +54,9 @@ let latestReloadRequestId = 0;
 let lastRenderedFilterOptionsKey = '';
 let lastRenderedCampaignNamesKey = '';
 let platformOnlyMode = false;
+let opportunityMetricsAvailable = false;
+let interestMetricsAvailable = false;
+let operationalMetricsMode = false;
 const ventaSubcontexts = ['ventas', 'exposicion', 'branding', 'otros'];
 const ventaContexts = ['venta', ...ventaSubcontexts];
 
@@ -183,7 +188,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindMonthlyChartControls();
     bindMetricChartsToggle();
     bindCampaignTableActions();
-    bindTableScroll();
     syncCampaignTypeSelect();
     syncContextTabs();
     applyColumnVisibility();
@@ -209,7 +213,6 @@ function bindTabs() {
             persistMonthlyMetrics();
             renderRankingsPopover();
             await reloadAllData();
-            syncCampaignTableScrollWidth();
         });
     });
 }
@@ -570,45 +573,6 @@ function bindDailyChartControls() {
     });
 }
 
-function bindTableScroll() {
-    const root = document.getElementById('campaignTables');
-    if (!root) {
-        return;
-    }
-
-    root.addEventListener('scroll', (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) {
-            return;
-        }
-
-        const proxy = target.matches('[data-table-scroll-proxy]');
-        const wrap = target.matches('[data-table-wrap]');
-
-        if (!proxy && !wrap) {
-            return;
-        }
-
-        if (syncingTableScroll) {
-            return;
-        }
-
-        syncingTableScroll = true;
-
-        const tableType = target.dataset.tableScrollProxy || target.dataset.tableWrap;
-        const counterpart = [...root.querySelectorAll(proxy ? '[data-table-wrap]' : '[data-table-scroll-proxy]')]
-            .find((element) => element.dataset.tableWrap === tableType || element.dataset.tableScrollProxy === tableType);
-
-        if (counterpart) {
-            counterpart.scrollLeft = target.scrollLeft;
-        }
-
-        syncingTableScroll = false;
-    }, true);
-
-    window.addEventListener('resize', syncCampaignTableScrollWidth);
-}
-
 function bindMonthlyChartControls() {
     const root = document.getElementById('campaignCharts');
 
@@ -706,8 +670,6 @@ async function reloadAllData() {
         }
 
         const campaignItems = Array.isArray(summary?.campaigns) ? summary.campaigns : [];
-        platformOnlyMode = summary?.availability?.mode === 'platform_independent_only';
-
         setUpdatedBadge(summary?.datos_actualizados, false, summary);
         renderSummary(summary || {});
         const operationalNotice = document.getElementById('campaignOperationalNotice');
@@ -799,7 +761,7 @@ async function loadDiagnostics() {
 }
 
 function renderSummary(data) {
-    platformOnlyMode = data?.availability?.mode === 'platform_independent_only';
+    applyCampaignAvailability(data?.availability || {}, data?.period_mode);
     applyAvailabilityControls();
     renderWarnings(data.warnings || [], data.availability || {});
     renderInvestmentClosure(data.investment_closure || null);
@@ -827,10 +789,31 @@ function renderSummary(data) {
     renderDiagnostics(data.diagnostics || {});
 }
 
+function applyCampaignAvailability(availability = {}, periodMode = null) {
+    const mode = typeof availability?.mode === 'string' ? availability.mode : null;
+    // The certified payload predates availability.mode, but explicitly identifies
+    // its complete Interest pivot with period_mode. Do not treat an absent mode on
+    // any other response as permission to render commercial metrics.
+    const officialComplete = mode === 'official_complete' || periodMode === 'interest_pivot';
+    const operational = mode === 'operational_provisional';
+    operationalMetricsMode = operational;
+    interestMetricsAvailable = operational
+        ? availability.interest_dependent?.status === 'available' && availability.attribution?.status === 'available'
+        : officialComplete;
+    opportunityMetricsAvailable = operational
+        ? interestMetricsAvailable && availability.opportunity_dependent?.status === 'available'
+        : officialComplete;
+    platformOnlyMode = !interestMetricsAvailable;
+}
+
 function applyAvailabilityControls() {
-    ['leadType', 'hasOpportunity', 'hasReservation', 'hasSale', 'classification'].forEach((id) => {
+    ['leadType'].forEach((id) => {
         const control = document.getElementById(id);
-        if (control) control.disabled = platformOnlyMode;
+        if (control) control.disabled = !interestMetricsAvailable;
+    });
+    ['hasOpportunity', 'hasReservation', 'hasSale', 'classification'].forEach((id) => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !opportunityMetricsAvailable;
     });
     ['exportCsv', 'exportAttributionAudit'].forEach((id) => {
         const exportLink = document.getElementById(id);
@@ -879,6 +862,8 @@ function renderKpis(kpis, context = 'all') {
     root.innerHTML = '';
     const cards = platformOnlyMode ? platformOnlyKpiCards(kpis) : kpiCardsForContext(context, kpis);
     cards.forEach((card) => {
+        const provisionalInterest = interestMetricsAvailable && card.metric === 'leads_salesforce'
+            && new URLSearchParams(currentFilters()).get('source') === 'operational';
         root.insertAdjacentHTML('beforeend', `
             <div class="card kpi campaign-kpi">
                 <div class="kpi-copy">
@@ -887,7 +872,7 @@ function renderKpis(kpis, context = 'all') {
                         ${campaignKpiAuditLinkHtml(card.metric, card.label)}
                     </div>
                     <div class="kpi-value">${escapeHtml(card.value)}</div>
-                    <div class="kpi-hint">${escapeHtml(card.hint || '')}</div>
+                    <div class="kpi-hint">${escapeHtml((card.hint || '') + (provisionalInterest ? ' · Operativo provisional, no certificado' : ''))}</div>
                 </div>
             </div>
         `);
@@ -1259,7 +1244,10 @@ function metricChartRows(rows) {
     return (rows || [])
         .slice(-6)
         .map((row) => {
-            const results = numericChartValue(row.result_count) ?? monthlyResultCountForRow(row);
+            const hasResultCount = Object.prototype.hasOwnProperty.call(row, 'result_count');
+            const results = hasResultCount
+                ? numericChartValue(row.result_count)
+                : monthlyResultCountForRow(row);
             const spend = numericChartValue(row.spend);
             const costPerResult = numericChartValue(row.cost_per_result);
 
@@ -1651,7 +1639,9 @@ function renderPlatformComparison(rows, emptyMessage = '') {
 
     if (!Array.isArray(rows) || rows.length === 0) {
         panel.classList.remove('is-hidden');
-        root.innerHTML = `<div class="empty-state">${escapeHtml(emptyMessage || 'No hay campañas con estos filtros.')}</div>`;
+        root.innerHTML = `<div class="empty-state">${escapeHtml(emptyMessage || 'No hay campañas con estos filtros.')}</div>`
+            + platformComparisonCardHtml({ platform: 'chatgpt' }, 0, 0, 0, 0);
+        bindPlatformLogoFallbacks(root);
         return;
     }
 
@@ -1665,14 +1655,30 @@ function renderPlatformComparison(rows, emptyMessage = '') {
     const maxResult = Math.max(...ordered.map((row) => Number(row.result_count || 0)), 0);
 
     panel.classList.remove('is-hidden');
-    root.innerHTML = ordered.map((row) => platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, maxResult)).join('');
+    root.innerHTML = [...ordered, { platform: 'chatgpt' }]
+        .map((row) => platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, maxResult)).join('');
+    bindPlatformLogoFallbacks(root);
 }
 
 function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, maxResult) {
+    const platform = row.platform;
+    const logo = platformComparisonLogoHtml(platform);
+    if (platform === 'chatgpt') {
+        const context = presentationCampaignContext(currentContext);
+        const labels = platformOnlyMode ? ['Inversión', 'Impresiones', 'Clicks', 'CTR', 'CPC']
+            : ['Inversión', 'Intereses Salesforce', 'Oportunidades', platformResultLabelForContext(context), {
+                venta: 'Coste por venta', tasacion: 'Coste por compra', exposicion: 'Coste por oportunidad',
+                branding: 'Coste por interés', otros: 'Coste por resultado', all: 'Coste por venta / compra',
+            }[context]];
+        return `<article class="card platform-comparison-card platform-comparison-card--chatgpt">
+            <div class="platform-comparison-head">${logo}<span class="platform-comparison-pending">Pendiente de integración</span></div>
+            <div class="platform-comparison-metrics">${labels.map((label) => platformMetricItemHtml(label, null, () => '—')).join('')}</div>
+        </article>`;
+    }
     if (platformOnlyMode) {
         return `
             <article class="card platform-comparison-card platform-comparison-card--${row.platform === 'meta' ? 'meta' : 'google'}">
-                <div class="platform-comparison-head"><strong>${escapeHtml(formatPlatform(row.platform))}</strong></div>
+                <div class="platform-comparison-head">${logo}</div>
                 <div class="platform-comparison-metrics">
                     ${platformMetricItemHtml('Inversión', row.spend, formatMoney)}
                     ${platformMetricItemHtml('Impresiones', row.impressions, formatNumber)}
@@ -1700,12 +1706,12 @@ function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, m
     return `
         <article class="card platform-comparison-card platform-comparison-card--${row.platform === 'meta' ? 'meta' : 'google'}">
             <div class="platform-comparison-head">
-                <strong>${escapeHtml(formatPlatform(row.platform))}</strong>
+                ${logo}
             </div>
             <div class="platform-comparison-metrics">
                 ${platformMetricItemHtml('Inversión', row.spend, formatMoney)}
-                ${platformMetricItemHtml('Intereses Salesforce', row.leads_salesforce, formatNumber)}
-                ${platformMetricItemHtml('Oportunidades', row.opportunities, formatNumber)}
+                ${platformMetricItemHtml('Intereses Salesforce', interestMetricsAvailable ? row.leads_salesforce : null, formatNumber)}
+                ${platformMetricItemHtml('Oportunidades', opportunityMetricsAvailable ? row.opportunities : null, formatNumber)}
                 ${platformMetricItemHtml(resultLabel, resultValue, formatNumber)}
                 ${platformMetricItemHtml(costLabel, resultCost, (value) => costDisplay(value, { ...row, result_count: resultValue }, 'cost_per_result', formatMoney))}
             </div>
@@ -1713,11 +1719,32 @@ function platformComparisonCardHtml(row, maxSpend, maxLeads, maxOpportunities, m
     `;
 }
 
+function platformComparisonLogoHtml(platform) {
+    const brands = {
+        google_ads: ['/brand/google-ads-logo.png', 'Google Ads'],
+        meta: ['/brand/meta-logo.webp', 'Meta Ads'],
+        chatgpt: ['/brand/chatgpt-logo.png', 'ChatGPT'],
+    };
+    const [path, label] = brands[platform] || ['', formatPlatform(platform)];
+    return `<span class="platform-comparison-brand"><img data-brand-logo src="${escapeHtml(path)}" alt="${escapeHtml(label)}" width="126" height="34"><strong hidden>${escapeHtml(label)}</strong></span>`;
+}
+
+function bindPlatformLogoFallbacks(root) {
+    root.querySelectorAll?.('[data-brand-logo]').forEach((logo) => {
+        const showFallback = () => {
+            logo.hidden = true;
+            if (logo.nextElementSibling) logo.nextElementSibling.hidden = false;
+        };
+        logo.addEventListener('error', showFallback, { once: true });
+        if (logo.complete && logo.naturalWidth === 0) showFallback();
+    });
+}
+
 function platformMetricItemHtml(label, value, formatter) {
     return `
         <div class="platform-metric-item">
             <span>${escapeHtml(label)}</span>
-            <strong>${escapeHtml(formatter(value))}</strong>
+            <strong>${escapeHtml(value === null || value === undefined ? '—' : formatter(value))}</strong>
         </div>
     `;
 }
@@ -1741,26 +1768,32 @@ function platformResultLabelForContext(context) {
 }
 
 function platformResultValueForContext(row, context) {
+    if (!opportunityMetricsAvailable && presentationCampaignContext(context) !== 'branding') return null;
+    if (!interestMetricsAvailable && presentationCampaignContext(context) === 'branding') return null;
     switch (presentationCampaignContext(context)) {
         case 'venta':
-            return Number(row.sales || 0);
+            return row.sales === null || row.sales === undefined ? null : Number(row.sales);
         case 'tasacion':
-            return Number(row.purchases || 0);
+            return row.purchases === null || row.purchases === undefined ? null : Number(row.purchases);
         case 'exposicion':
-            return Number(row.opportunities || 0);
+            return row.opportunities === null || row.opportunities === undefined ? null : Number(row.opportunities);
         case 'branding':
-            return Number(row.leads_salesforce || 0);
+            return row.leads_salesforce === null || row.leads_salesforce === undefined ? null : Number(row.leads_salesforce);
         case 'otros':
-            return Number(row.result_count || 0);
+            return row.result_count === null || row.result_count === undefined ? null : Number(row.result_count);
         case 'all':
         default:
-            return Number(row.sales || 0) + Number(row.purchases || 0);
+            return row.sales === null || row.sales === undefined || row.purchases === null || row.purchases === undefined
+                ? null : Number(row.sales) + Number(row.purchases);
     }
 }
 
 function platformResultCostForContext(row, context) {
+    if (!opportunityMetricsAvailable && presentationCampaignContext(context) !== 'branding') return null;
+    if (!interestMetricsAvailable && presentationCampaignContext(context) === 'branding') return null;
     if (presentationCampaignContext(context) === 'all') {
-        const results = Number(row.sales || 0) + Number(row.purchases || 0);
+        if (row.sales === null || row.sales === undefined || row.purchases === null || row.purchases === undefined) return null;
+        const results = Number(row.sales) + Number(row.purchases);
         return results > 0 && row.spend !== null && row.spend !== undefined ? Number(row.spend) / results : null;
     }
 
@@ -1814,31 +1847,36 @@ function loadCampaignContext() {
 function monthlyResultCountForRow(row) {
     const context = presentationCampaignContext(currentContext);
 
+    const value = (key) => numericChartValue(row[key]);
+
     switch (context) {
         case 'venta':
-            return Number(row.sales || 0);
+            return value('sales');
         case 'tasacion':
-            return Number(row.purchases || 0);
+            return value('purchases');
         case 'exposicion':
-            return Number(row.opportunities || 0);
+            return value('opportunities');
         case 'branding':
-            return Number(row.leads_salesforce || 0);
-        case 'otros':
-            return Math.max(
-                Number(row.sales || 0),
-                Number(row.purchases || 0),
-                Number(row.opportunities || 0),
-                Number(row.leads_salesforce || 0),
-            );
+            return value('leads_salesforce');
+        case 'otros': {
+            const values = ['sales', 'purchases', 'opportunities', 'leads_salesforce'].map(value);
+
+            return values.some((item) => item === null) ? null : Math.max(...values);
+        }
         case 'all':
         default:
-            return Number(row.sales || 0) + Number(row.purchases || 0);
+            const sales = value('sales');
+            const purchases = value('purchases');
+
+            return sales === null || purchases === null ? null : sales + purchases;
     }
 }
 
 function monthlyCostPerResultForRow(row) {
     const resultCount = monthlyResultCountForRow(row);
-    return resultCount > 0 && row.spend !== null && row.spend !== undefined ? Number(row.spend) / resultCount : null;
+    const spend = numericChartValue(row.spend);
+
+    return resultCount !== null && resultCount > 0 && spend !== null ? spend / resultCount : null;
 }
 
 function bindCampaignTableActions() {
@@ -1861,7 +1899,7 @@ function kpiCardsForContext(context, kpis) {
         case 'venta':
             return [
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Intereses generados', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
                 { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${costDisplay(kpis.cost_per_reservation, kpis, 'cost_per_reservation', formatMoney)}`, metric: 'reservations' },
                 { label: 'Ventas', value: formatNumber(kpis.sales), hint: `CPV ${costDisplay(kpis.cost_per_sale, kpis, 'cost_per_sale', formatMoney)}`, metric: 'sales' },
@@ -1872,7 +1910,7 @@ function kpiCardsForContext(context, kpis) {
         case 'tasacion':
             return [
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Intereses generados', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
                 { label: 'Compras', value: formatNumber(kpis.purchases), hint: `CP compra ${costDisplay(kpis.cost_per_purchase, kpis, 'cost_per_purchase', formatMoney)}`, metric: 'purchases' },
                 { label: 'Coste por interés', value: costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
@@ -1885,7 +1923,7 @@ function kpiCardsForContext(context, kpis) {
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
                 { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
                 { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Intereses generados', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
                 { label: 'Coste por interés', value: costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
                 { label: 'Coste por oportunidad', value: costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
@@ -1898,7 +1936,7 @@ function kpiCardsForContext(context, kpis) {
                 { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
                 { label: 'CTR', value: formatPercentRatio(kpis.ctr), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
                 { label: 'CPC', value: costDisplay(kpis.cpc, kpis, 'cpc', formatMoney), hint: `Clicks ${formatNumber(kpis.clicks)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Intereses generados', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
                 { label: 'Coste por interés', value: costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `Total ${totalResults}`, metric: 'opportunities' },
             ];
@@ -1909,7 +1947,7 @@ function kpiCardsForContext(context, kpis) {
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
                 { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
                 { label: 'Clicks', value: formatNumber(kpis.clicks), hint: `Intereses SF ${formatNumber(kpis.leads_salesforce)}` },
-                { label: 'Intereses Salesforce', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
+                { label: 'Intereses generados', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
                 { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${costDisplay(kpis.cost_per_reservation, kpis, 'cost_per_reservation', formatMoney)}`, metric: 'reservations' },
                 { label: 'Ventas / Compras', value: totalResults, hint: `Ventas ${formatNumber(kpis.sales)} · Compras ${formatNumber(kpis.purchases)}`, metric: 'result_count' },
@@ -1928,7 +1966,7 @@ function platformOnlyKpiCards(kpis) {
         { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${formatMoney(kpis.cpc)}` },
         { label: 'Impresiones', value: formatNumber(kpis.impressions), hint: `CTR ${formatPercentRatio(kpis.ctr)}` },
         { label: 'Clicks', value: formatNumber(kpis.clicks), hint: 'Métrica nativa de plataforma' },
-        { label: 'Leads de plataforma', value: kpis.platform_leads === null ? 'No disponible' : formatNumber(kpis.platform_leads), hint: 'No equivale a Interests Salesforce' },
+        { label: 'Intereses generados', value: '—', hint: 'Sin atribución de Interests disponible para este período' },
     ];
 }
 
@@ -2152,7 +2190,7 @@ function currentFilters() {
     const params = new URLSearchParams();
 
     if (window.reportUserCanViewOperationalCampaigns && document.getElementById('campaignDataSource')?.value === 'operational'
-        && ['month_2026_10', 'month_2026_11'].includes(document.getElementById('periodPreset')?.value)) {
+        && operationalMonthForSelection()) {
         params.set('source', 'operational');
     }
 
@@ -2480,24 +2518,29 @@ function applyMonthlyRange(value, rows) {
 }
 
 function activeColumns(context = currentContext) {
-    const platformOnlyColumns = ['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'campaign_end_date', 'last_spend_date'];
-
     return columnDefinitions.filter((column) => visibleColumns.includes(column.key)
         && columnAllowedInContext(column.key, context)
-        && (!platformOnlyMode || platformOnlyColumns.includes(column.key)));
+        && columnAllowedByAvailability(column.key));
 }
 
 function columnAllowedInCurrentView(key) {
-    const platformOnlyColumns = ['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'campaign_end_date', 'last_spend_date'];
-
     return columnAllowedInContext(key, currentContext)
-        && (!platformOnlyMode || platformOnlyColumns.includes(key));
+        && columnAllowedByAvailability(key);
+}
+
+function columnAllowedByAvailability(key) {
+    if (platformColumns.has(key)) return true;
+    if (interestColumns.has(key)) return interestMetricsAvailable;
+    if (operationalMetricsMode && officialOnlyColumns.has(key)) return false;
+
+    return opportunityMetricsAvailable;
 }
 
 function applyColumnVisibility() {
     document.querySelectorAll('#campaignTables table[data-table-type] [data-column]').forEach((cell) => {
         const tableType = cell.closest('table')?.dataset.tableType || currentContext;
-        cell.classList.toggle('is-hidden', !visibleColumns.includes(cell.dataset.column) || !columnAllowedInContext(cell.dataset.column, tableType));
+        cell.classList.toggle('is-hidden', !visibleColumns.includes(cell.dataset.column)
+            || !columnAllowedInContext(cell.dataset.column, tableType) || !columnAllowedByAvailability(cell.dataset.column));
     });
 }
 
@@ -2515,37 +2558,14 @@ function columnAllowedInContext(key, context = currentContext) {
     return !(hiddenByContext[presentationCampaignContext(context)] || []).includes(key);
 }
 
-function syncCampaignTableScrollWidth() {
-    document.querySelectorAll('#campaignTables [data-table-scroll-proxy]').forEach((proxy) => {
-        const tableType = proxy.dataset.tableScrollProxy;
-        const wrap = [...document.querySelectorAll('#campaignTables [data-table-wrap]')]
-            .find((element) => element.dataset.tableWrap === tableType);
-        const table = wrap?.querySelector('table');
-        const spacer = proxy.firstElementChild;
-
-        if (spacer && table) {
-            spacer.style.width = `${table.scrollWidth}px`;
-        }
-    });
-}
-
 function captureCampaignTableScrollPositions() {
     const root = document.getElementById('campaignTables');
     if (!root) {
         return new Map();
     }
 
-    const positions = new Map([...root.querySelectorAll('[data-table-wrap]')]
+    return new Map([...root.querySelectorAll('[data-table-wrap]')]
         .map((element) => [element.dataset.tableWrap, element.scrollLeft]));
-
-    root.querySelectorAll('[data-table-scroll-proxy]').forEach((element) => {
-        const key = element.dataset.tableScrollProxy;
-        if (!positions.has(key)) {
-            positions.set(key, element.scrollLeft);
-        }
-    });
-
-    return positions;
 }
 
 function restoreCampaignTableScrollPositions(positions) {
@@ -2554,8 +2574,8 @@ function restoreCampaignTableScrollPositions(positions) {
         return;
     }
 
-    root.querySelectorAll('[data-table-wrap], [data-table-scroll-proxy]').forEach((element) => {
-        const key = element.dataset.tableWrap || element.dataset.tableScrollProxy;
+    root.querySelectorAll('[data-table-wrap]').forEach((element) => {
+        const key = element.dataset.tableWrap;
         if (positions.has(key)) {
             element.scrollLeft = positions.get(key);
         }
@@ -2598,20 +2618,22 @@ function applyInitialCampaignPeriod() {
     const period = query.get('period');
     const month = period === 'october_2026' ? 'month_2026_10'
         : (period === 'november_2026' ? 'month_2026_11' : null);
-    if (!month) {
-        return;
-    }
-
     const select = document.getElementById('periodPreset');
-    if (!select || ![...select.options].some((option) => option.value === month)) {
+    if (!select) {
         return;
     }
-
-    select.value = month;
-    applyPeriodPreset(select.value);
+    if (month && [...select.options].some((option) => option.value === month)) {
+        select.value = month;
+        applyPeriodPreset(select.value);
+    } else if (/^2026-\d{2}-\d{2}$/.test(query.get('start_date') || '')
+        && /^2026-\d{2}-\d{2}$/.test(query.get('end_date') || '')) {
+        select.value = 'custom';
+        document.getElementById('startDate').value = query.get('start_date');
+        document.getElementById('endDate').value = query.get('end_date');
+    }
     const source = document.getElementById('campaignDataSource');
     if (source) {
-        source.value = query.get('source') === 'operational' ? 'operational' : 'official';
+        source.value = query.get('source') === 'operational' && operationalMonthForSelection() ? 'operational' : 'official';
         if (source.value === 'operational' && document.getElementById('campaignStatus')) {
             document.getElementById('campaignStatus').value = '';
         }
@@ -2624,8 +2646,20 @@ function syncCampaignPeriodUrl() {
     const selected = document.getElementById('periodPreset')?.value;
     if (selected === 'month_2026_10' || selected === 'month_2026_11') {
         url.searchParams.set('period', selected === 'month_2026_10' ? 'october_2026' : 'november_2026');
+        url.searchParams.delete('start_date');
+        url.searchParams.delete('end_date');
     } else {
         url.searchParams.delete('period');
+        if (selected === 'custom') {
+            ['start_date', 'end_date'].forEach((key) => {
+                const value = document.getElementById(key === 'start_date' ? 'startDate' : 'endDate')?.value;
+                if (value) url.searchParams.set(key, value);
+                else url.searchParams.delete(key);
+            });
+        } else {
+            url.searchParams.delete('start_date');
+            url.searchParams.delete('end_date');
+        }
     }
     syncCampaignOperationalSelector();
     if (document.getElementById('campaignDataSource')?.value === 'operational') {
@@ -2639,11 +2673,22 @@ function syncCampaignPeriodUrl() {
 function syncCampaignOperationalSelector() {
     const group = document.getElementById('campaignDataSourceGroup');
     const source = document.getElementById('campaignDataSource');
-    const selected = document.getElementById('periodPreset')?.value;
-    const visible = (selected === 'month_2026_10' && window.campaignOperationalOctoberEnabled)
-        || (selected === 'month_2026_11' && window.campaignOperationalNovemberEnabled);
+    const visible = window.reportUserCanViewOperationalCampaigns && Boolean(operationalMonthForSelection());
     if (group) group.hidden = !visible;
     if (source && !visible) source.value = 'official';
+}
+
+function operationalMonthForSelection() {
+    const selected = document.getElementById('periodPreset')?.value;
+    const start = document.getElementById('startDate')?.value || '';
+    const end = document.getElementById('endDate')?.value || '';
+    const month = start.slice(0, 7);
+    const validDates = /^2026-(10|11)-01$/.test(start) && end.startsWith(month + '-')
+        && /^2026-\d{2}-\d{2}$/.test(end) && end >= start;
+    if (!validDates || !['custom', `month_${month.replace('-', '_')}`].includes(selected)) return null;
+    if (month === '2026-10' && window.campaignOperationalOctoberEnabled) return month;
+    if (month === '2026-11' && window.campaignOperationalNovemberEnabled) return month;
+    return null;
 }
 
 function monthPresetOptions() {
@@ -2801,6 +2846,19 @@ function renderLoadFailure(error) {
     currentDiagnostics = {};
     currentDiagnosticsKey = '';
     currentCharts = {};
+
+    // A definitive error invalidates the presentation contract. Keep the user's
+    // selections in localStorage, but fail closed until a complete response
+    // establishes availability again.
+    applyCampaignAvailability({}, null);
+    applyAvailabilityControls();
+    renderColumnsPopover();
+    applyColumnVisibility();
+    const operationalNotice = document.getElementById('campaignOperationalNotice');
+    if (operationalNotice) {
+        operationalNotice.hidden = true;
+        operationalNotice.textContent = '';
+    }
 
     renderWarnings([]);
     renderKpisState('No se han podido cargar los datos de campañas.');
@@ -3167,9 +3225,11 @@ function renderRankings(rankings, emptyMessage = '') {
     currentRankings = rankings || {};
     const context = presentationCampaignContext(currentContext);
     const platformOnlyRankings = ['top_spend', 'top_impressions', 'best_ctr', 'best_cpc'];
+    const interestRankings = ['top_leads_salesforce', 'best_cost_per_lead'];
     const visible = rankingDefinitions.filter((ranking) => visibleRankings.includes(ranking.key)
         && rankingAllowedInContext(ranking.key, context)
-        && (!platformOnlyMode || platformOnlyRankings.includes(ranking.key)));
+        && (opportunityMetricsAvailable || platformOnlyRankings.includes(ranking.key)
+            || (interestMetricsAvailable && interestRankings.includes(ranking.key))));
 
     if (emptyMessage) {
         root.innerHTML = `<div class="empty-state">${escapeHtml(emptyMessage)}</div>`;
@@ -3293,14 +3353,11 @@ function renderCampaignTables(rows, emptyMessage = null) {
     const [title, subtitle] = titleMap[context] || titleMap.all;
 
     const detail = advertisingDetailRows(rows || []);
-    const reasons = { other_platform: 'otra plataforma', unverifiable_source: 'procedencia sin inversión verificable', unknown_spend: 'inversión desconocida', invalid_spend: 'inversión inválida', negative_spend: 'inversión negativa', zero_spend: 'inversión cero' };
-    const counts = Object.entries(detail.excludedByReason).map(([reason, count]) => `${reasons[reason]}: ${formatNumber(count)}`).join(' · ');
-    root.innerHTML = `<div class="small" title="${escapeHtml(counts)}">Filas excluidas del detalle publicitario: ${formatNumber(detail.excludedTotal)}${counts ? ` (${escapeHtml(counts)})` : ''}</div>`
-        + renderCampaignTable(context, title, subtitle, detail.rows, emptyMessage);
+    root.innerHTML = renderCampaignTable(context, title, subtitle, detail.rows, emptyMessage);
     scheduleCurrentStatusExpiry();
     renderColumnsPopover();
     applyColumnVisibility();
-    syncCampaignTableScrollWidth();
+    applyAvailabilityControls();
 }
 
 function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = null) {
@@ -3360,7 +3417,6 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
                 </div>
             </div>
             <div class="${campaignDetailsVisible ? '' : 'is-hidden'}" id="campaignDetailBody">
-                <div class="table-scroll-proxy" data-table-scroll-proxy="${escapeHtml(tableType)}"><div></div></div>
                 <div class="table-wrap" data-table-wrap="${escapeHtml(tableType)}">
                     <table data-table-type="${escapeHtml(tableType)}">
                         <thead>
