@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /** Orchestrates only the bounded operational Interest pipeline for one Madrid month. */
-final class OperationalInterestCurrentAutomation
+class OperationalInterestCurrentAutomation
 {
     public function __construct(
         private readonly OperationalInterestMonthlySync $interests,
