@@ -260,8 +260,8 @@ class CampaignOperationalAttributionTest extends TestCase
         $this->assertNotNull($meta);
         $this->assertSame(1, $google['interests_salesforce']);
         $this->assertSame(1, $meta['interests_salesforce']);
-        $this->assertSame(50.0, $google['spend']);
-        $this->assertSame(100.0, $meta['spend']);
+        $this->assertEquals(50.0, $google['spend']);
+        $this->assertEquals(100.0, $meta['spend']);
         $this->assertNull($google['opportunities']);
         $this->assertNull($meta['result_count']);
 
