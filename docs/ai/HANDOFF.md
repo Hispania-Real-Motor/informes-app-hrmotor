@@ -8289,10 +8289,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Integridad: `merged_into_id` sale de `$fillable`. La consolidación bloquea
   candidatas, exige destino raíz, valida el grafo y rechaza autoenlace, ciclos
   de dos/tres o más filas, destino inexistente/fusionado y reparentado
-  incompatible. FK y `CHECK` MariaDB/PostgreSQL (triggers SQLite de prueba)
-  cubren existencia/autoenlace; ningún documento atribuye al SQL la prevención
-  de ciclos multirregistro. Escrituras SQL privilegiadas podrían eludir esta
-  garantía y deben estar restringidas.
+  incompatible. La FK y los triggers MySQL/MariaDB/SQLite o el `CHECK` de
+  PostgreSQL cubren existencia/autoenlace; ningún documento atribuye al SQL la
+  prevención de ciclos multirregistro. Escrituras SQL privilegiadas podrían
+  eludir esta garantía y deben estar restringidas.
 - Base de datos/configuración: la migración aditiva
   `2026_11_16_090000_add_merge_tracking_to_stock_delegations.php` incorpora la
   protección de autoenlace. `.env.example` fija store de lock `database`, TTL y
@@ -8316,11 +8316,12 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   autoenlace se ejercitaron mediante `RefreshDatabase`. No se ejecutó MariaDB
   real ni una prueba multiproceso/distribuida: la contención usa propietarios
   independientes del backend de locks `array`.
-- `composer audit --locked` informa un advisory **low** del framework,
-  CVE-2026-128083 / GHSA-63hm-g96r-2m2q, sobre output de tareas `Concurrency` en
-  versiones `<13.40.0`. No se actualizaron dependencias por restricción de la
-  tarea y no se encontró uso de esa API en aplicación/config/rutas/tests. Debe
-  gestionarse en una actualización de dependencias separada y revisada.
+- La primera ejecución de CI quedó bloqueada por el advisory **low**
+  CVE-2026-128083 / GHSA-63hm-g96r-2m2q de Laravel sobre output de tareas
+  `Concurrency` en versiones `<13.40.0`. Aunque no se encontró uso de esa API,
+  se actualizó de forma mínima `laravel/framework` de 13.34.0 a 13.42.0 y
+  `laravel/prompts` de 0.3.17 a 0.3.27; no cambió `composer.json` ni se
+  actualizaron otras dependencias bloqueadas.
 - Despliegue manual: backup restaurable de delegaciones, las cuatro tablas de
   referencias y `operational_alerts`; confirmar un store compartido en todas
   las réplicas; aplicar
@@ -8340,6 +8341,26 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   en esta sesión porque el ejecutable `python.exe` de WindowsApps no era
   accesible; el agente principal debe ejecutar el validador y sus tests tras el
   commit/PR body definitivo.
+- Corrección documental posterior de CI en PR #150: Documentation integrity
+  ejecutó primero sus **46 tests correctamente** y después falló únicamente por
+  alcance, al requerir `docs/reglas-negocio-leads.md` para el cambio compartido
+  de `LeadDelegationNormalizer`. Se añadió la correspondencia Rivas/Villarreal,
+  incluida `Villareal`, y se acotó su efecto a la procedencia normalizada sin
+  cambiar universos, fórmulas ni fuentes habilitadas. Reejecutar el check sobre
+  el commit documental definitivo.
+- Corrección de compatibilidad detectada por la matriz MariaDB 11.8 de CI: el
+  motor rechaza un `CHECK` que referencia la clave `AUTO_INCREMENT`, por lo que
+  la migración usa triggers `BEFORE INSERT/UPDATE` en MySQL/MariaDB, mantiene
+  triggers en SQLite y reserva el `CHECK` para PostgreSQL. La garantía funcional
+  de rechazo del autoenlace no cambia. La primera preparación de MariaDB falló
+  antes de ejecutar tests; revalidar migración y suite en CI con el SHA final.
+- Validación local posterior a las correcciones de CI: test específico de
+  identidad **11/11**, 44 aserciones; suite PHP completa **1.784 pruebas**,
+  **1.783 correctas**, **1 omitida**, **15.805 aserciones**; `composer validate
+  --no-check-publish --strict`, `composer audit --locked`, sintaxis de la
+  migración, `Pint --test --dirty` y `git diff --check` correctos. La auditoría
+  no informa advisories con el lock actualizado. La validación MariaDB y el
+  validador documental quedan a cargo de los checks remotos del SHA publicado.
 
 Contrato previsto de PR:
 

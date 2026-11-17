@@ -1629,11 +1629,13 @@ se lee o parsea la fuente.
 La relación `merged_into_id` queda fuera de asignación masiva y solo se escribe
 en la consolidación. Bajo el mutex y `lockForUpdate()`, el destino debe ser raíz
 operativa y el grafo existente no puede contener destino ausente o ciclo. La FK
-y el `CHECK` de MariaDB 10.6 impiden referencia inexistente y autoenlace; no se
-atribuye al esquema una garantía imposible sobre ciclos multirregistro. Esa
-garantía reside en aplicación y presupone que SQL privilegiado está restringido.
-Se conservan filas históricas y referencias; no se añade borrado ni split
-automático.
+impide la referencia inexistente. Triggers `BEFORE INSERT/UPDATE` impiden el
+autoenlace en MySQL/MariaDB/SQLite; PostgreSQL conserva `CHECK`. Se usan triggers
+en MariaDB porque el motor rechaza el `CHECK` que referencia la clave
+`AUTO_INCREMENT`. No se atribuye al esquema una garantía imposible sobre ciclos
+multirregistro. Esa garantía reside en aplicación y presupone que SQL
+privilegiado está restringido. Se conservan filas históricas y referencias; no
+se añade borrado ni split automático.
 
 Se mantiene un scope operativo explícito en vez de un global scope: las lecturas
 funcionales excluyen fusionadas, pero reparación y auditoría pueden inspeccionar

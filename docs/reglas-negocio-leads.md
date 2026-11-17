@@ -551,6 +551,15 @@ no aplica heurísticas basadas en `Portal_Text__c`, `Fuente_Nuevo__c`,
 - La procedencia del Interest es `origin_delegation` y se normaliza con
   `LeadDelegationNormalizer` por compatibilidad técnica.
 
+La tabla compartida de aliases reconoce `HR Motor Rivas-Vaciamadrid` como
+`Rivas` y `HR Motor Villarreal` o `HR Motor Villareal` como
+`Villarreal/Almassora`; la grafía histórica `Villareal` converge en la misma
+identidad. Esta corrección afecta la dimensión de procedencia normalizada en los
+lectores y proyecciones que reutilizan `LeadDelegationNormalizer`. No amplía el
+universo de Interests, no habilita una fuente ni completa procedencia desde
+owner/Lead, y no cambia fórmulas, estados, actividad, elegibilidad comercial o
+reglas de publicación.
+
 No se usa persona que trabajó el Lead, propietario al descarte ni fallback de
 delegación Lead.
 

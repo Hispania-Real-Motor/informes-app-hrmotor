@@ -56,7 +56,37 @@ return new class extends Migration
             return;
         }
 
-        if (in_array($driver, ['mysql', 'mariadb', 'pgsql'], true)) {
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
+            // MariaDB and MySQL reject CHECK constraints that reference the
+            // AUTO_INCREMENT primary key. Triggers provide the same invariant
+            // without depending on that unsupported expression.
+            DB::unprepared(<<<'SQL'
+                CREATE TRIGGER stock_delegations_no_self_merge_insert
+                BEFORE INSERT ON stock_delegations
+                FOR EACH ROW
+                BEGIN
+                    IF NEW.merged_into_id = NEW.id THEN
+                        SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'stock delegation cannot merge into itself';
+                    END IF;
+                END
+                SQL);
+            DB::unprepared(<<<'SQL'
+                CREATE TRIGGER stock_delegations_no_self_merge_update
+                BEFORE UPDATE ON stock_delegations
+                FOR EACH ROW
+                BEGIN
+                    IF NEW.merged_into_id = NEW.id THEN
+                        SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'stock delegation cannot merge into itself';
+                    END IF;
+                END
+                SQL);
+
+            return;
+        }
+
+        if ($driver === 'pgsql') {
             DB::statement(
                 'ALTER TABLE stock_delegations ADD CONSTRAINT stock_delegations_no_self_merge '
                 .'CHECK (merged_into_id IS NULL OR merged_into_id <> id)',
@@ -75,11 +105,10 @@ return new class extends Migration
             return;
         }
 
-        if ($driver === 'mysql') {
-            $version = strtolower((string) (DB::selectOne('SELECT VERSION() AS version')->version ?? ''));
-            $dropKeyword = str_contains($version, 'mariadb') ? 'CONSTRAINT' : 'CHECK';
-            DB::statement("ALTER TABLE stock_delegations DROP {$dropKeyword} stock_delegations_no_self_merge");
-        } elseif (in_array($driver, ['mariadb', 'pgsql'], true)) {
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
+            DB::unprepared('DROP TRIGGER IF EXISTS stock_delegations_no_self_merge_insert');
+            DB::unprepared('DROP TRIGGER IF EXISTS stock_delegations_no_self_merge_update');
+        } elseif ($driver === 'pgsql') {
             DB::statement('ALTER TABLE stock_delegations DROP CONSTRAINT stock_delegations_no_self_merge');
         }
     }

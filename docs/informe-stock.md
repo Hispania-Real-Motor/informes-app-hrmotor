@@ -38,12 +38,13 @@ la reparación histórica.
 `merged_into_id` no es asignable de forma masiva por Eloquent. La reparación
 bloquea las filas candidatas, exige una raíz operativa, rechaza capacidades o
 Salesforce IDs incompatibles, destinos inexistentes, destinos ya fusionados y
-ciclos de dos o más filas. La FK acredita existencia del destino y la
-restricción `CHECK` de MariaDB 10.6 impide el autoenlace; SQLite usa triggers
-equivalentes en pruebas. La base de datos no puede garantizar por sí sola la
-ausencia de ciclos multirregistro: esa garantía pertenece al servicio
-transaccional. SQL privilegiado que eluda el servicio podría crear uno y debe
-quedar restringido operativamente.
+ciclos de dos o más filas. La FK acredita existencia del destino. MySQL/MariaDB
+y SQLite usan triggers `BEFORE INSERT/UPDATE` para impedir el autoenlace;
+PostgreSQL usa `CHECK`. Se eligieron triggers en MariaDB porque el motor rechaza
+el `CHECK` que referencia su clave `AUTO_INCREMENT`. La base de datos no puede
+garantizar por sí sola la ausencia de ciclos multirregistro: esa garantía
+pertenece al servicio transaccional. SQL privilegiado que eluda el servicio
+podría crear uno y debe quedar restringido operativamente.
 
 La réplica compartida de Opportunity materializa `Captador_de_cita__c` y su
 nombre relacionado como `appointment_setter_id` y `appointment_setter_name` para

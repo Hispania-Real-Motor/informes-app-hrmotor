@@ -962,10 +962,10 @@ otros informes.
 `stock_delegations` distingue raíces operativas (`merged_into_id IS NULL`) de
 filas históricas fusionadas. `StockDelegationConsolidationService` es la única
 ruta funcional autorizada para escribir esa relación; conserva las filas y
-reasigna referencias sin cambiar fórmulas de Stock. FK/CHECK protegen destino y
-autoenlace, mientras que destino raíz y ciclos multirregistro se validan bajo
-transacción y bloqueo de filas. No debe asumirse que SQL impide por sí solo
-todos los ciclos.
+reasigna referencias sin cambiar fórmulas de Stock. La FK protege el destino;
+triggers protegen el autoenlace en MySQL/MariaDB/SQLite y PostgreSQL usa
+`CHECK`. Destino raíz y ciclos multirregistro se validan bajo transacción y
+bloqueo de filas. No debe asumirse que SQL impide por sí solo todos los ciclos.
 
 El scope `operational` es explícito, no global, para que reparación y auditoría
 puedan inspeccionar las filas históricas. El resolver sigue la raíz fusionada y,

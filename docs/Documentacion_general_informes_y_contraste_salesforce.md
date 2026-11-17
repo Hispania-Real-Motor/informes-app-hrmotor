@@ -1055,11 +1055,14 @@ Identidad de delegación:
 La relación de fusión se escribe únicamente desde la consolidación: el campo no
 está en `$fillable`, las candidatas se bloquean con `lockForUpdate()` y el
 destino debe ser una raíz operativa. Se rechazan destinos inexistentes o ya
-fusionados y ciclos de cualquier longitud detectados por la aplicación. La FK y
-el `CHECK` vigente en MariaDB 10.6 cubren existencia y autoenlace; no cubren un
-ciclo multirregistro, que SQL privilegiado podría introducir si elude el
-servicio. Por ello las escrituras directas sobre `merged_into_id` deben quedar
-fuera de las operaciones ordinarias.
+fusionados y ciclos de cualquier longitud detectados por la aplicación. La FK
+cubre existencia. Triggers `BEFORE INSERT/UPDATE` cubren el autoenlace en
+MySQL/MariaDB y SQLite; PostgreSQL usa `CHECK`. MariaDB rechazó en CI el
+`CHECK` que referenciaba la clave `AUTO_INCREMENT`, por lo que no se usa esa
+forma. Ninguna de estas restricciones cubre un ciclo multirregistro, que SQL
+privilegiado podría introducir si elude el servicio. Por ello las escrituras
+directas sobre `merged_into_id` deben quedar fuera de las operaciones
+ordinarias.
 
 Precio efectivo de stock:
 
