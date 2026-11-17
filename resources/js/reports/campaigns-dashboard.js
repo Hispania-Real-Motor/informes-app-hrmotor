@@ -761,7 +761,7 @@ async function loadDiagnostics() {
 }
 
 function renderSummary(data) {
-    applyCampaignAvailability(data?.availability || {});
+    applyCampaignAvailability(data?.availability || {}, data?.period_mode);
     applyAvailabilityControls();
     renderWarnings(data.warnings || [], data.availability || {});
     renderInvestmentClosure(data.investment_closure || null);
@@ -789,15 +789,20 @@ function renderSummary(data) {
     renderDiagnostics(data.diagnostics || {});
 }
 
-function applyCampaignAvailability(availability = {}) {
-    const operational = availability.mode === 'operational_provisional';
+function applyCampaignAvailability(availability = {}, periodMode = null) {
+    const mode = typeof availability?.mode === 'string' ? availability.mode : null;
+    // The certified payload predates availability.mode, but explicitly identifies
+    // its complete Interest pivot with period_mode. Do not treat an absent mode on
+    // any other response as permission to render commercial metrics.
+    const officialComplete = mode === 'official_complete' || periodMode === 'interest_pivot';
+    const operational = mode === 'operational_provisional';
     operationalMetricsMode = operational;
     interestMetricsAvailable = operational
         ? availability.interest_dependent?.status === 'available' && availability.attribution?.status === 'available'
-        : availability.mode !== 'platform_independent_only';
+        : officialComplete;
     opportunityMetricsAvailable = operational
         ? interestMetricsAvailable && availability.opportunity_dependent?.status === 'available'
-        : interestMetricsAvailable;
+        : officialComplete;
     platformOnlyMode = !interestMetricsAvailable;
 }
 
@@ -1239,7 +1244,10 @@ function metricChartRows(rows) {
     return (rows || [])
         .slice(-6)
         .map((row) => {
-            const results = numericChartValue(row.result_count) ?? monthlyResultCountForRow(row);
+            const hasResultCount = Object.prototype.hasOwnProperty.call(row, 'result_count');
+            const results = hasResultCount
+                ? numericChartValue(row.result_count)
+                : monthlyResultCountForRow(row);
             const spend = numericChartValue(row.spend);
             const costPerResult = numericChartValue(row.cost_per_result);
 
@@ -1839,31 +1847,36 @@ function loadCampaignContext() {
 function monthlyResultCountForRow(row) {
     const context = presentationCampaignContext(currentContext);
 
+    const value = (key) => numericChartValue(row[key]);
+
     switch (context) {
         case 'venta':
-            return Number(row.sales || 0);
+            return value('sales');
         case 'tasacion':
-            return Number(row.purchases || 0);
+            return value('purchases');
         case 'exposicion':
-            return Number(row.opportunities || 0);
+            return value('opportunities');
         case 'branding':
-            return Number(row.leads_salesforce || 0);
-        case 'otros':
-            return Math.max(
-                Number(row.sales || 0),
-                Number(row.purchases || 0),
-                Number(row.opportunities || 0),
-                Number(row.leads_salesforce || 0),
-            );
+            return value('leads_salesforce');
+        case 'otros': {
+            const values = ['sales', 'purchases', 'opportunities', 'leads_salesforce'].map(value);
+
+            return values.some((item) => item === null) ? null : Math.max(...values);
+        }
         case 'all':
         default:
-            return Number(row.sales || 0) + Number(row.purchases || 0);
+            const sales = value('sales');
+            const purchases = value('purchases');
+
+            return sales === null || purchases === null ? null : sales + purchases;
     }
 }
 
 function monthlyCostPerResultForRow(row) {
     const resultCount = monthlyResultCountForRow(row);
-    return resultCount > 0 && row.spend !== null && row.spend !== undefined ? Number(row.spend) / resultCount : null;
+    const spend = numericChartValue(row.spend);
+
+    return resultCount !== null && resultCount > 0 && spend !== null ? spend / resultCount : null;
 }
 
 function bindCampaignTableActions() {
@@ -2833,6 +2846,19 @@ function renderLoadFailure(error) {
     currentDiagnostics = {};
     currentDiagnosticsKey = '';
     currentCharts = {};
+
+    // A definitive error invalidates the presentation contract. Keep the user's
+    // selections in localStorage, but fail closed until a complete response
+    // establishes availability again.
+    applyCampaignAvailability({}, null);
+    applyAvailabilityControls();
+    renderColumnsPopover();
+    applyColumnVisibility();
+    const operationalNotice = document.getElementById('campaignOperationalNotice');
+    if (operationalNotice) {
+        operationalNotice.hidden = true;
+        operationalNotice.textContent = '';
+    }
 
     renderWarnings([]);
     renderKpisState('No se han podido cargar los datos de campañas.');

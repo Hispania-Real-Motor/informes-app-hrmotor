@@ -45,6 +45,16 @@ dependientes permanecen cerradas. La fuente oficial completa conserva sus
 contratos originales; no cambia `CampaignPublicationReadiness` ni se abren
 auditorías individuales de la fuente operativa.
 
+El payload oficial anterior no incluye siempre `availability.mode`: la UI
+reconoce su contrato completo mediante `period_mode=interest_pivot` (o
+`availability.mode=official_complete` cuando se declara expresamente). Una
+respuesta sin ninguno de esos contratos o con error definitivo mantiene
+cerradas las capacidades comerciales hasta recibir una respuesta
+completa válida; al fallar se retiran además el aviso operativo y los datos
+anteriores sin borrar las preferencias de columnas. Un `null` de resultados,
+ventas, compras o costes mensuales permanece ausente en los gráficos y en la
+comparativa, aunque otra métrica de la misma fila sea un cero acreditado.
+
 En la comparativa visual aparecen Google Ads y Meta Ads únicamente cuando
 existen en la respuesta, seguidos de una tarjeta ChatGPT **pendiente de
 integración** con todos sus valores en `—`. Los tres encabezados usan los

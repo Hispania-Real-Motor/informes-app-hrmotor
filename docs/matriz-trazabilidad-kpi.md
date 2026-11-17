@@ -88,6 +88,14 @@ cero. Las columnas y filtros de Opportunity requieren además
 atribuidos sin resultados comerciales, mientras noviembre solo los muestra
 cuando su respuesta acredita cobertura. Los controles de plataforma conservan
 su fuente y los CSV/auditorías conservan autorización y contrato existentes.
+El contrato oficial completo se reconoce por `period_mode=interest_pivot` en
+el payload legado sin `availability.mode`, o por `mode=official_complete` si
+se declara; los modos desconocidos sin `interest_pivot`, la ausencia de ambos
+identificadores y los fallos definitivos cierran las capacidades comerciales
+hasta la siguiente respuesta
+válida. En series mensuales, `result_count=null` no se recompone desde otros
+campos, y un numerador o denominador ausente no se convierte en cero ni en
+coste calculado; los ceros acreditados siguen siendo cero.
 La tarjeta ChatGPT es exclusivamente visual, con cinco valores `—` por
 contexto; no es una fuente de KPI, coste, ranking, atribución ni exportación.
 El nuevo orden Detalle → Rankings, la retirada del scroll proxy superior y

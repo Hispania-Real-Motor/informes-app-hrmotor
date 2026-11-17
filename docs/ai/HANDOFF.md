@@ -20,6 +20,12 @@
   generados» muestra `—`, nunca un cero inventado. La fuente oficial y sus
   auditorías conservan su contrato. La petición obsoleta no puede reponer un
   estado anterior; la URL conserva fuente y fechas personalizadas admisibles.
+  La revisión posterior de #151 reconoce el payload oficial completo por
+  `period_mode=interest_pivot` o `availability.mode=official_complete`; un
+  modo ausente/desconocido sin ese contrato y un error definitivo cierran las
+  capacidades comerciales hasta otra respuesta válida, sin borrar preferencias.
+  Los resultados y costes mensuales nulos no se reconstruyen como cero desde
+  otras columnas; un cero real permanece visible.
 - Presentación: ChatGPT es una tercera tarjeta local con cinco guiones y aviso
   de integración pendiente, sin proveedor backend. Se retira el scroll proxy
   superior, Detalle precede a Rankings y se oculta únicamente el texto agregado

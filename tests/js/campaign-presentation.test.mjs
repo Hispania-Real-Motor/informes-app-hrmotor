@@ -635,9 +635,56 @@ test('operational availability unlocks only metrics supported by the current res
     assert.equal(controls.leadType.disabled, true);
     assert.equal(controls.hasOpportunity.disabled, true);
     assert.match(popover.innerHTML.match(/<input[^>]+data-column-toggle="leads_salesforce"[^>]*>/)?.[0] || '', /disabled/);
+
+    isolated.availability = { mode: 'official_complete' };
+    vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls(); renderColumnsPopover();', isolated);
+    assert.equal(controls.leadType.disabled, false);
+    assert.equal(controls.hasOpportunity.disabled, false);
+    assert.doesNotMatch(popover.innerHTML.match(/<input[^>]+data-column-toggle="sales"[^>]*>/)?.[0] || '', /disabled/);
+
     isolated.availability = {};
     vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls();', isolated);
-    assert.equal(vm.runInContext("columnAllowedByAvailability('source_acquired')", isolated), true);
+    assert.equal(vm.runInContext("columnAllowedByAvailability('source_acquired')", isolated), false);
+    isolated.availability = { mode: 'unsupported_mode' };
+    vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls();', isolated);
+    assert.equal(vm.runInContext("columnAllowedByAvailability('sales')", isolated), false);
+    vm.runInContext('applyCampaignAvailability({}, \'interest_pivot\'); applyAvailabilityControls();', isolated);
+    assert.equal(controls.leadType.disabled, false);
+    assert.equal(controls.hasOpportunity.disabled, false);
+});
+
+test('monthly charts preserve real zeroes and do not manufacture results from unavailable metrics', () => {
+    const isolated = createDashboardSandbox({ addEventListener() {}, getElementById: () => null, querySelectorAll: () => [] });
+    vm.runInContext("currentContext = 'all';", isolated);
+    assert.equal(vm.runInContext("monthlyResultCountForRow({sales: 0, purchases: 0})", isolated), 0);
+    assert.equal(vm.runInContext("monthlyResultCountForRow({sales: null, purchases: 0})", isolated), null);
+    assert.equal(vm.runInContext("monthlyResultCountForRow({sales: 0, purchases: null})", isolated), null);
+    assert.equal(vm.runInContext("monthlyResultCountForRow({sales: null, purchases: null})", isolated), null);
+    assert.equal(vm.runInContext("metricChartRows([{result_count: null, sales: 4, purchases: 5, spend: 90}])[0].result_count", isolated), null);
+    assert.equal(vm.runInContext("metricChartRows([{sales: 0, purchases: 0, spend: 0}])[0].result_count", isolated), 0);
+    assert.equal(vm.runInContext("metricChartRows([{result_count: 0, spend: 0}])[0].cost_per_result", isolated), null);
+});
+
+test('a definitive load failure fails closed without discarding column preferences', () => {
+    const popover = { innerHTML: '' };
+    const controls = Object.fromEntries(['leadType', 'hasOpportunity', 'hasReservation', 'hasSale', 'classification']
+        .map((id) => [id, { disabled: false }]));
+    const notice = { hidden: false, textContent: 'previous operational evidence' };
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => ({ columnsPopover: popover, campaignOperationalNotice: notice, ...controls })[id] || null,
+        querySelectorAll: () => [],
+    });
+    vm.runInContext("currentContext = 'all'; visibleColumns = ['campaign', 'leads_salesforce', 'sales'];", isolated);
+    vm.runInContext("applyCampaignAvailability({mode: 'operational_provisional', interest_dependent: {status: 'available'}, attribution: {status: 'available'}, opportunity_dependent: {status: 'available'}});", isolated);
+    vm.runInContext('renderWarnings = () => {}; renderKpisState = () => {}; renderCharts = () => {}; renderPlatformComparison = () => {}; renderReviewCampaigns = () => {}; renderDiagnostics = () => {}; renderRankings = () => {}; renderCampaignTables = () => {}; showStatusMessage = () => {};', isolated);
+    vm.runInContext("renderLoadFailure(new Error('network unavailable'));", isolated);
+    assert.equal(controls.leadType.disabled, true);
+    assert.equal(controls.hasOpportunity.disabled, true);
+    assert.equal(notice.hidden, true);
+    assert.equal(notice.textContent, '');
+    assert.match(popover.innerHTML.match(/<input[^>]+data-column-toggle="sales"[^>]*>/)?.[0] || '', /disabled/);
+    assert.equal(vm.runInContext('JSON.stringify(visibleColumns)', isolated), '["campaign","leads_salesforce","sales"]');
 });
 
 test('provisional Interest KPI uses attributed count while unavailable source shows a dash', () => {
@@ -746,4 +793,25 @@ test('an older summary response cannot restore stale availability or campaign ro
     await first;
     assert.deepEqual(rendered, ['new']);
     assert.equal(vm.runInContext('campaignRows[0].campaign_name', isolated), 'New');
+});
+
+test('a cancelled request and its late response cannot clear the latest valid availability', async () => {
+    const pending = [];
+    const rendered = [];
+    const loadFailures = [];
+    const isolated = createDashboardSandbox({ addEventListener() {}, getElementById: () => null, querySelectorAll: () => [] });
+    isolated.AbortController = AbortController;
+    isolated.fetchJson = (url) => new Promise((resolve, reject) => pending.push({ url, resolve, reject }));
+    isolated.recordSummary = (summary) => rendered.push(summary.marker);
+    isolated.recordLoadFailure = (error) => loadFailures.push(error);
+    vm.runInContext("currentFilters = () => 'source=operational&start_date=2026-11-01'; setLoadingState = () => {}; setUpdatedBadge = () => {}; renderSummary = recordSummary; renderLoadFailure = recordLoadFailure; renderFilterOptions = () => {}; renderCampaignTables = () => {}; renderRankings = () => {}; renderDiagnostics = () => {};", isolated);
+    const first = vm.runInContext('reloadAllData()', isolated);
+    const second = vm.runInContext('reloadAllData()', isolated);
+    assert.equal(pending.length, 2);
+    pending[0].reject({ name: 'AbortError' });
+    pending[1].resolve({ marker: 'latest', campaigns: [{ campaign_name: 'Latest' }], rankings: {} });
+    await Promise.all([first, second]);
+    assert.deepEqual(rendered, ['latest']);
+    assert.deepEqual(loadFailures, []);
+    assert.equal(vm.runInContext('campaignRows[0].campaign_name', isolated), 'Latest');
 });
