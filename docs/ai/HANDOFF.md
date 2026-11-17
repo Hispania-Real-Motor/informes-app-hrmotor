@@ -8361,6 +8361,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   migración, `Pint --test --dirty` y `git diff --check` correctos. La auditoría
   no informa advisories con el lock actualizado. La validación MariaDB y el
   validador documental quedan a cargo de los checks remotos del SHA publicado.
+- La credencial de publicación no generó eventos `synchronize` ni `reopened`
+  en GitHub Actions para el SHA publicado. Los dos workflows incorporan
+  `workflow_dispatch` para poder validar explícitamente el mismo SHA sin
+  alterar su comportamiento automático en `pull_request` o `push`.
 
 Contrato previsto de PR:
 
