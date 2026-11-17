@@ -8368,6 +8368,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   documental exige `pr_number`, lee el contrato con token de solo lectura y
   valida `GITHUB_SHA` frente a `origin/main`; no persiste credenciales ni
   modifica la PR.
+- CI remoto detectó dos aserciones dependientes del mes actual en
+  `StockSaleValidityServiceTest`: los snapshots de julio no entraban en el
+  filtro implícito de noviembre. La prueba fija explícitamente julio de 2026
+  en las tres lecturas del dashboard; no cambia consultas ni cálculo de Stock.
 
 Contrato previsto de PR:
 
