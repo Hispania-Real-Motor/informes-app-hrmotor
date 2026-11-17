@@ -8570,3 +8570,16 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   bases de datos. PHPUnit, Pint, MariaDB y la semántica/latencia de Salesforce
   requieren CI o una ejecución autorizada; las pruebas sintéticas no acreditan
   cobertura productiva ni contrato histórico `as-of`.
+# Corrección CI PR 153 — integridad documental
+
+- Se añadieron las referencias funcionales del refresco operacional provisional
+  a `docs/informe-llamadas.md`, `docs/informe-campanas.md` y
+  `docs/informe-reservas-ventas.md`, sin modificar fórmulas, fuentes oficiales,
+  cierres ni generaciones publicadas.
+- El cuerpo de la PR debe declarar `Docs-Outside-Paths` como lista JSON exacta
+  para las rutas operativas sin mapa automático: `app/Services/Operations/OperationalTaskCatalog.php`,
+  `app/Services/Salesforce/OperationalInterestCurrentAutomation.php` y
+  `config/operations.php`, con razón y evidencia técnica.
+- `git diff --check` correcto. El validador documental local queda pendiente
+  porque este entorno no dispone de un intérprete Python ejecutable; debe
+  verificarse en CI con el cuerpo actualizado de la PR.

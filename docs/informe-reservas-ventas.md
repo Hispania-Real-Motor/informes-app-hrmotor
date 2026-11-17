@@ -952,3 +952,13 @@ construcción. Una relación ambigua sigue sin atribución: ni UTM ni owner
 actual sustituyen el comercial del evento económico o la generación
 certificada. El procedimiento de staging deberá fallar cerrado si cualquiera
 de esas evidencias cambia antes de activar un dataset dependiente.
+
+### Refresco operacional y límite de Reservas/Ventas
+
+El refresco operacional de Interests puede preparar una fuente provisional para
+el mes vigente, pero Reservas/Ventas continúa leyendo sus fuentes certificadas y
+sus snapshots propios. El scheduler no adopta automáticamente el run provisional
+ni modifica atribución de oportunidades, ventas, portales, cierres o exportaciones.
+La cobertura de Opportunities debe verificarse antes de cualquier futura
+integración consumidora; mientras tanto, una fuente provisional o parcial no se
+presenta como dato oficial.

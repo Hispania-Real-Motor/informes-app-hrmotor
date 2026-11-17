@@ -298,3 +298,13 @@ filtros, universo ni resultados oficiales de Llamadas. Sus diferencias y vista
 provisional permanecen aisladas; mientras la fuente no esté certificada y
 publicada, no pueden alimentar este informe ni sustituir su generación Interest
 publicada.
+
+### Refresco operacional de Interests y Contact Center
+
+El scheduler puede refrescar el mes vigente mediante el flujo operacional de
+Interests, calidad, actividades y proyección KPI. Esta proyección es provisional
+y administrativa: no sustituye la generación Interest publicada ni modifica la
+clasificación, cobertura, fórmulas, exportaciones o cierres de Llamadas. La
+actividad de Task/Event solo se considera utilizable cuando el run está completo
+y fijado al mismo origen Interest; ante cobertura insuficiente, el informe
+conserva su comportamiento de fuente no disponible.
