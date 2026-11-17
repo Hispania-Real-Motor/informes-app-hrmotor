@@ -8336,3 +8336,19 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   cobertura parcial de Task/Event, UTM desconocidos en run v1, latencia/DDL
   productivas no medidas, relaciones Opportunity y readiness de consumidores
   aún sin integrar. No se consultó Salesforce ni producción.
+
+## 2026-11-17 — Corrección de comparativa operativa de Campañas
+
+- Alcance: `CampaignDashboardDatasetService` agrega `platform_comparison` de
+  Google Ads y Meta a partir de las mismas filas operativas ya filtradas que
+  alimentan los KPI. Esto evita que la representación económica independiente
+  o un cruce adicional por nombre oculte los Interests atribuidos.
+- Rendimiento: reutiliza las filas filtradas ya cargadas en memoria, sin SQL
+  adicional ni consultas Salesforce durante HTTP.
+- Integridad: la cobertura incompleta de Opportunity conserva sus métricas y
+  ratios como `null`; no se fabrican ceros. ChatGPT permanece fuera de la
+  agregación. No cambian snapshots, atribuciones, matching, permisos, tablas
+  ni sincronizaciones.
+- Pruebas: `CampaignOperationalAttributionTest` cubre el caso con Opportunity
+  bloqueada (Interests presentes, resultados nulos) y el caso completo (la
+  comparativa reconcilia Interests, Opportunity, venta, importe y resultado).

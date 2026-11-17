@@ -142,6 +142,17 @@ Interests de Salesforce y no se suman entre sí. Las series temporales de
 atribución provisional y una auditoría individual siguen pendientes;
 los gráficos económicos conservan su contrato de plataforma.
 
+La **Comparativa por plataforma** de la fuente operativa se agrega a partir de
+las mismas filas de campaña, filtros y contexto que los KPI provisionales. Por
+tanto, Google Ads y Meta muestran sus Interests atribuidos y, solo con
+`opportunity_dependent.status=available`, Opportunities, reservas, ventas, compras,
+importes y ratios correspondientes. Si Opportunity no tiene cobertura, esas
+métricas permanecen `null` (no cero), aun cuando el Interest atribuido sí se
+pueda mostrar. La agregación reutiliza las filas en memoria sin consultas SQL
+ni Salesforce adicionales y no vuelve a aplicar
+matching por nombre y no incorpora ChatGPT: esa tarjeta sigue «Pendiente de
+integración» sin participar en sumas ni ratios.
+
 La activación requiere la migración aditiva, preparación, revisión y comando
 administrativo supervisado por separado; véase
 [operación y reversión](operaciones-produccion.md). La

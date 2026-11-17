@@ -583,6 +583,14 @@ class CampaignDashboardDatasetService
             ];
             $base['kpis'] = $totals;
             $base['campaigns'] = $campaigns;
+            // The platform comparison must use the same already-filtered campaign
+            // universe as the operational KPIs.  The platform-only summary is only
+            // economic evidence and deliberately has no Salesforce attribution.
+            $base['platform_comparison'] = $this->operationalPlatformBars(
+                $rows,
+                $opportunityComplete,
+                $renderFilters['context'],
+            );
             $base['rankings'] = $this->rankingsFromRows($campaigns, $renderFilters);
             if (! $opportunityComplete) {
                 foreach (['top_opportunities', 'top_reservations', 'top_sales', 'top_purchases', 'top_sale_amount', 'best_roas', 'best_cost_per_sale', 'best_cost_per_purchase'] as $key) {
@@ -2245,6 +2253,85 @@ class CampaignDashboardDatasetService
     private function platformRows(array $rows): array
     {
         return array_values(array_filter($rows, fn (array $row): bool => in_array(($row['platform'] ?? null), ['google_ads', 'meta'], true)));
+    }
+
+    /**
+     * Aggregate the operational comparison from the rendered campaign rows.
+     *
+     * Attribution has already been grouped by canonical platform/campaign and
+     * all request filters have already been applied at this point.  Keeping the
+     * aggregation here therefore prevents a second dataset (or a name-based
+     * campaign match) from changing the KPI universe.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function operationalPlatformBars(array $rows, bool $opportunityComplete, ?string $context): array
+    {
+        return collect($this->platformRows($rows))
+            ->groupBy('platform')
+            ->map(function (Collection $items, string $platform) use ($opportunityComplete, $context): array {
+                $rows = $items->all();
+                $platformLeadsAvailable = collect($rows)->contains(
+                    static fn (array $row): bool => $row['platform_leads'] !== null
+                );
+                $saleAmountAvailable = collect($rows)->contains(
+                    static fn (array $row): bool => $row['sale_amount'] !== null
+                );
+                $appraisalAmountAvailable = collect($rows)->contains(
+                    static fn (array $row): bool => $row['appraisal_amount'] !== null
+                );
+
+                $totals = $this->withRatios([
+                    'platform' => $platform,
+                    'account_id' => null,
+                    'account_name' => null,
+                    'source_acquired' => null,
+                    'medium_acquired' => null,
+                    'campaign_acquired' => null,
+                    'campaign_id' => null,
+                    'campaign_name' => null,
+                    'spend' => round((float) array_sum(array_column($rows, 'spend')), 2),
+                    'impressions' => (int) array_sum(array_column($rows, 'impressions')),
+                    'clicks' => (int) array_sum(array_column($rows, 'clicks')),
+                    'platform_leads' => $platformLeadsAvailable
+                        ? (int) array_sum(array_map(static fn (array $row): int => (int) ($row['platform_leads'] ?? 0), $rows))
+                        : null,
+                    'platform_conversions' => collect($rows)->contains(
+                        static fn (array $row): bool => $row['platform_conversions'] !== null
+                    )
+                        ? (float) array_sum(array_map(static fn (array $row): float => (float) ($row['platform_conversions'] ?? 0), $rows))
+                        : null,
+                    'leads_salesforce' => (int) array_sum(array_column($rows, 'leads_salesforce')),
+                    'opportunities' => (int) array_sum(array_column($rows, 'opportunities')),
+                    'reservations' => (int) array_sum(array_column($rows, 'reservations')),
+                    'live_reservations' => (int) array_sum(array_column($rows, 'live_reservations')),
+                    'fallen_reservations' => (int) array_sum(array_column($rows, 'fallen_reservations')),
+                    'sales' => (int) array_sum(array_column($rows, 'sales')),
+                    'sale_amount' => $saleAmountAvailable
+                        ? (float) array_sum(array_map(static fn (array $row): float => (float) ($row['sale_amount'] ?? 0), $rows))
+                        : null,
+                    'appraisals_generated' => (int) array_sum(array_column($rows, 'appraisals_generated')),
+                    'purchases' => (int) array_sum(array_column($rows, 'purchases')),
+                    'appraisal_amount' => $appraisalAmountAvailable
+                        ? (float) array_sum(array_map(static fn (array $row): float => (float) ($row['appraisal_amount'] ?? 0), $rows))
+                        : null,
+                ]);
+                $totals['result_count'] = $opportunityComplete
+                    ? $this->resultCountForTotals($totals, $context)
+                    : null;
+                $totals['cost_per_result'] = $opportunityComplete
+                    ? $this->divide($totals['spend'], $totals['result_count'])
+                    : null;
+
+                if (! $opportunityComplete) {
+                    $totals = $this->withoutOpportunityMetrics($totals);
+                }
+
+                return $totals;
+            })
+            ->sortByDesc('spend')
+            ->values()
+            ->all();
     }
 
     public function campaignEntityRows(array $rows): array
