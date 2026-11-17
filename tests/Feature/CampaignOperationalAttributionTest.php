@@ -59,11 +59,17 @@ class CampaignOperationalAttributionTest extends TestCase
         $admin = $this->reportUser(ReportUser::ROLE_ADMIN);
         $this->withSession($this->sessionFor($admin));
         $url = '/informes/campanas/data/summary?source=operational&start_date=2026-10-01&end_date=2026-10-31&campaign_status=';
-        $this->getJson($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
+        $summary = $this->getJson($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
             ->assertJsonPath('availability.mode', 'operational_provisional')
             ->assertJsonPath('kpis.interests_salesforce', 2)
             ->assertJsonPath('kpis.opportunities', null)
-            ->assertJsonPath('operational_evidence.economic_state', 'closed');
+            ->assertJsonPath('operational_evidence.economic_state', 'closed')
+            ->json();
+        $meta = collect($summary['platform_comparison'])->firstWhere('platform', 'meta');
+        $this->assertNotNull($meta);
+        $this->assertSame(2, $meta['interests_salesforce']);
+        $this->assertNull($meta['opportunities']);
+        $this->assertNull($meta['result_count']);
         $this->getJson('/informes/campanas/data/summary?start_date=2026-10-01&end_date=2026-10-31')
             ->assertOk()->assertJsonMissingPath('operational_evidence');
         DB::table('report_sync_runs')->insert([
@@ -230,6 +236,43 @@ class CampaignOperationalAttributionTest extends TestCase
             ->assertJsonPath('kpis.interests_salesforce', 2);
     }
 
+    public function test_operational_platform_comparison_uses_filtered_canonical_campaign_rows(): void
+    {
+        $sourceRun = $this->operationalMonth('2026-10', 2);
+        DB::table('salesforce_interest_operational_rows')->where('run_id', $sourceRun)
+            ->where('salesforce_id', sprintf('a01%015d', 2))
+            ->update([
+                'utm_campaign_ciphertext' => Crypt::encryptString('Google sintética'),
+                'utm_id_ciphertext' => Crypt::encryptString('google-campaign'),
+            ]);
+        $this->closedOctober(withGoogle: true);
+        $this->buildAndActivate(2026, 10);
+        $admin = $this->reportUser(ReportUser::ROLE_ADMIN);
+
+        $summary = $this->withSession($this->sessionFor($admin))
+            ->getJson('/informes/campanas/data/summary?source=operational&start_date=2026-10-01&end_date=2026-10-31&campaign_status=')
+            ->assertOk()
+            ->json();
+        $google = collect($summary['platform_comparison'])->firstWhere('platform', 'google_ads');
+        $meta = collect($summary['platform_comparison'])->firstWhere('platform', 'meta');
+        $this->assertSame(2, $summary['kpis']['interests_salesforce']);
+        $this->assertNotNull($google);
+        $this->assertNotNull($meta);
+        $this->assertSame(1, $google['interests_salesforce']);
+        $this->assertSame(1, $meta['interests_salesforce']);
+        $this->assertSame(50.0, $google['spend']);
+        $this->assertSame(100.0, $meta['spend']);
+        $this->assertNull($google['opportunities']);
+        $this->assertNull($meta['result_count']);
+
+        $filtered = $this->withSession($this->sessionFor($admin))
+            ->getJson('/informes/campanas/data/summary?source=operational&start_date=2026-10-01&end_date=2026-10-31&platform=google_ads&campaign_status=')
+            ->assertOk()
+            ->json();
+        $this->assertSame(1, $filtered['kpis']['interests_salesforce']);
+        $this->assertSame(['google_ads'], array_column($filtered['platform_comparison'], 'platform'));
+    }
+
     public function test_live_build_lease_rejects_a_competing_worker_without_changing_the_pointer(): void
     {
         $this->operationalMonth('2026-10', 2);
@@ -283,12 +326,20 @@ class CampaignOperationalAttributionTest extends TestCase
         $result = $this->buildAndActivate(2026, 10);
         $this->assertTrue($result['opportunity_coverage_complete']);
         $admin = $this->reportUser(ReportUser::ROLE_ADMIN);
-        $this->withSession($this->sessionFor($admin))
+        $summary = $this->withSession($this->sessionFor($admin))
             ->getJson('/informes/campanas/data/summary?source=operational&start_date=2026-10-01&end_date=2026-10-31&campaign_status=')
             ->assertOk()->assertJsonPath('kpis.opportunities', 1)
             ->assertJsonPath('kpis.reservations', 1)
             ->assertJsonPath('kpis.sales', 1)
-            ->assertJsonPath('kpis.sale_amount', 20000);
+            ->assertJsonPath('kpis.sale_amount', 20000)
+            ->json();
+        $meta = collect($summary['platform_comparison'])->firstWhere('platform', 'meta');
+        $this->assertNotNull($meta);
+        $this->assertSame(2, $meta['interests_salesforce']);
+        $this->assertSame(1, $meta['opportunities']);
+        $this->assertSame(1, $meta['sales']);
+        $this->assertEquals(20000.0, $meta['sale_amount']);
+        $this->assertSame(1, $meta['result_count']);
         $this->assertSame(1, DB::table('campaign_operational_attributions')->whereNotNull('opportunity_key')->count());
 
         $contradictoryRun = DB::table('salesforce_opportunity_interest_direct_runs')->insertGetId([
@@ -371,20 +422,30 @@ class CampaignOperationalAttributionTest extends TestCase
         return (int) $run;
     }
 
-    private function closedOctober(): void
+    private function closedOctober(bool $withGoogle = false): void
     {
         $closure = DB::table('campaign_investment_closures')->insertGetId([
             'month' => '2026-10-01', 'status' => 'closed', 'snapshot_version' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        $rows = [[
+            'platform' => 'meta', 'account_id' => 'account-1', 'campaign_id' => 'campaign-1',
+            'campaign_name' => 'Campaña sintética', 'spend' => 100, 'impressions' => 1000,
+            'clicks' => 100, 'platform_leads' => 3, 'platform_leads_rows' => 1,
+            'platform_conversions' => 1,
+        ]];
+        if ($withGoogle) {
+            $rows[] = [
+                'platform' => 'google_ads', 'account_id' => 'account-google', 'campaign_id' => 'google-campaign',
+                'campaign_name' => 'Google sintética', 'spend' => 50, 'impressions' => 500,
+                'clicks' => 50, 'platform_leads' => 1, 'platform_leads_rows' => 1,
+                'platform_conversions' => 0,
+            ];
+        }
         DB::table('campaign_investment_closure_snapshots')->insert([
             'closure_id' => $closure, 'version' => 1, 'source_cutoff_at' => '2026-11-01 00:00:00',
-            'rule_version' => 'test', 'economic_rows' => json_encode([[
-                'platform' => 'meta', 'account_id' => 'account-1', 'campaign_id' => 'campaign-1',
-                'campaign_name' => 'Campaña sintética', 'spend' => 100, 'impressions' => 1000,
-                'clicks' => 100, 'platform_leads' => 3, 'platform_leads_rows' => 1,
-                'platform_conversions' => 1,
-            ]], JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now(),
+            'rule_version' => 'test', 'economic_rows' => json_encode($rows, JSON_THROW_ON_ERROR),
+            'created_at' => now(), 'updated_at' => now(),
         ]);
     }
 

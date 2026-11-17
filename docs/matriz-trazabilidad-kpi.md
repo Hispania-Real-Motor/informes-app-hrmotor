@@ -98,6 +98,13 @@ campos, y un numerador o denominador ausente no se convierte en cero ni en
 coste calculado; los ceros acreditados siguen siendo cero.
 La tarjeta ChatGPT es exclusivamente visual, con cinco valores `—` por
 contexto; no es una fuente de KPI, coste, ranking, atribución ni exportación.
+En `source=operational`, `CampaignDashboardDatasetService::operationalPlatformBars()`
+construye `platform_comparison` agrupando por plataforma las mismas filas de
+campaña ya filtradas que alimentan los KPI. Por eso el recuento de Interests
+atribuidos conserva el universo de filtros y contexto; las métricas y ratios
+de Opportunity permanecen `null` si su cobertura está bloqueada. Reutiliza
+filas locales en memoria, sin otro matching por nombre ni consultas adicionales.
+La tarjeta ChatGPT no entra en esta agregación.
 El nuevo orden Detalle → Rankings, la retirada del scroll proxy superior y
 del texto agregado de exclusiones no cambian `advertisingDetailRows()`, sus
 metadatos ni los universos de las fichas anteriores.
