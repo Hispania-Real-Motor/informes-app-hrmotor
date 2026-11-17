@@ -49,6 +49,9 @@ class OperationalInterestCurrentAutomation
     {
         $run = DB::table('salesforce_interest_operational_runs')->where('month_key', $month)
             ->whereIn('status', ['prepared', 'running', 'failed'])->orderByDesc('id')->first();
+        if ($run !== null && $run->status === 'failed' && $this->isSupersededByActive($run)) {
+            $run = null;
+        }
         if ($run !== null) {
             $status = $this->interests->status((int) $run->id);
             if ($status['status'] !== 'completed' || $status['phase'] !== 'completed') {
@@ -60,6 +63,23 @@ class OperationalInterestCurrentAutomation
         }
 
         return (int) $this->reader->latestForMonth((int) substr($month, 0, 4), (int) substr($month, 5, 2))['integrity_revision'];
+    }
+
+    private function isSupersededByActive(object $candidate): bool
+    {
+        $month = DB::table('salesforce_interest_operational_months')->where('month_key', $candidate->month_key)->first();
+        if ($month === null || $month->active_run_id === null) {
+            return false;
+        }
+
+        $active = DB::table('salesforce_interest_operational_runs')->where('id', $month->active_run_id)->first();
+        if ($active === null || $active->status !== 'completed' || $active->phase !== 'completed'
+            || $active->projection_key !== $month->active_projection_key) {
+            throw new RuntimeException('Operational active pointer is inconsistent.');
+        }
+
+        return CarbonImmutable::parse($candidate->effective_cutoff_at, 'UTC')
+            ->lessThanOrEqualTo(CarbonImmutable::parse($active->effective_cutoff_at, 'UTC'));
     }
 
     private function completeActivities(string $month): int

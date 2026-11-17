@@ -8583,3 +8583,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - `git diff --check` correcto. El validador documental local queda pendiente
   porque este entorno no dispone de un intérprete Python ejecutable; debe
   verificarse en CI con el cuerpo actualizado de la PR.
+- PR #153 corrective iteration: the operational Interest orchestrator now rejects
+  a failed run whose cutoff is older than the active completed pointer, allowing
+  the next daily execution to prepare a fresh run. Added a MariaDB-backed
+  regression test for the stale-run decision; the existing authorization and
+  safe-failure tests remain unchanged.
+- No Salesforce, production, migration, publication, scheduler or flag action
+  was executed locally. CI must rerun the focused and global PHP suites.
