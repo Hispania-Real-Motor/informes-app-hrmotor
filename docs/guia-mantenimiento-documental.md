@@ -188,6 +188,12 @@ ejecutar Python, comprueba desde Git que `scripts/`, `tests/` y
 documentales rastreadas son archivos regulares; así no ejecuta un entry point
 convertido en symlink. La comprobación se limita a esas rutas de control.
 
+También admite `workflow_dispatch` con el input obligatorio `pr_number`. Este
+modo consulta únicamente la PR indicada con el token de solo lectura, usa su
+cuerpo como contrato y valida el SHA del dispatch contra `origin/main`. Sirve
+para recuperar una ejecución cuando un evento automático no se programe; no
+edita la PR, no hace push y conserva los disparadores ordinarios.
+
 Cuando la base de una PR apilada se integra en `main`, la PR dependiente debe
 volver a dirigirse a `main`. Si la pila requirió una base temporal en los
 workflows, retírala de CI y Documentation integrity y actualiza la prueba de

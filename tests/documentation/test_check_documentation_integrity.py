@@ -282,6 +282,10 @@ class IntegrityTests(unittest.TestCase):
         self.assertLess(workflow.index("Verify validator entry points"),
                         workflow.index("Test documentation validator"))
         self.assertIn("git ls-files -s -z", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("pr_number:", workflow)
+        self.assertIn("pull-requests: read", workflow)
+        self.assertIn("--pr-body-file", workflow)
 
     def test_control_changes_require_guide_and_validator_tests(self) -> None:
         change = checker.Change("M", "scripts/check_documentation_integrity.py")

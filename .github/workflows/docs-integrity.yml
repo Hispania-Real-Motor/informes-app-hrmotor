@@ -2,12 +2,18 @@ name: Documentation integrity
 
 on:
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number whose documentation contract is validated
+        required: true
+        type: string
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   docs-integrity:
@@ -18,7 +24,7 @@ jobs:
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -50,10 +56,23 @@ jobs:
 
       - name: Validate PR documentation
         env:
-          DOCS_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          DOCS_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          python scripts/check_documentation_integrity.py
-          --base "$DOCS_BASE_SHA"
-          --head "$DOCS_HEAD_SHA"
-          --event-json "$GITHUB_EVENT_PATH"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            python scripts/check_documentation_integrity.py \
+              --base "${{ github.event.pull_request.base.sha }}" \
+              --head "${{ github.event.pull_request.head.sha }}" \
+              --event-json "$GITHUB_EVENT_PATH"
+            exit 0
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/${{ inputs.pr_number }}" \
+            -o "$RUNNER_TEMP/pr.json"
+          jq -r '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr-body.md"
+          python scripts/check_documentation_integrity.py \
+            --base "$(git rev-parse origin/main)" \
+            --head "$GITHUB_SHA" \
+            --pr-body-file "$RUNNER_TEMP/pr-body.md"

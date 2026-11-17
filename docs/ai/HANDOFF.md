@@ -8364,7 +8364,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - La credencial de publicación no generó eventos `synchronize` ni `reopened`
   en GitHub Actions para el SHA publicado. Los dos workflows incorporan
   `workflow_dispatch` para poder validar explícitamente el mismo SHA sin
-  alterar su comportamiento automático en `pull_request` o `push`.
+  alterar su comportamiento automático en `pull_request` o `push`. El flujo
+  documental exige `pr_number`, lee el contrato con token de solo lectura y
+  valida `GITHUB_SHA` frente a `origin/main`; no persiste credenciales ni
+  modifica la PR.
 
 Contrato previsto de PR:
 
