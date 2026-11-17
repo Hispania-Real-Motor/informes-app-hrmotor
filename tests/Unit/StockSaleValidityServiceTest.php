@@ -28,7 +28,7 @@ class StockSaleValidityServiceTest extends TestCase
         $this->assertFalse($lostSnapshot->fresh()->is_valid);
         $this->assertSame(StockSaleValidityService::REASON_CLOSED_LOST, $lostSnapshot->fresh()->invalid_reason);
         $this->assertSame('22000.00', $lostSnapshot->fresh()->sale_price);
-        $this->assertSame(1, app(StockDashboardDatasetService::class)->build([], 'summary')['summary']['sales']);
+        $this->assertSame(1, $this->summarySales());
     }
 
     public function test_elige_la_venta_con_fecha_de_firma_mas_reciente(): void
@@ -49,7 +49,7 @@ class StockSaleValidityServiceTest extends TestCase
         );
         $this->assertSame('006-second', $firstSnapshot->fresh()->selected_opportunity_salesforce_id);
         $this->assertTrue($secondSnapshot->fresh()->is_valid);
-        $this->assertSame(1, app(StockDashboardDatasetService::class)->build([], 'summary')['summary']['sales']);
+        $this->assertSame(1, $this->summarySales());
 
         $second->update(['stage_name' => 'Cerrada perdida']);
         $service->reconcile();
@@ -61,7 +61,7 @@ class StockSaleValidityServiceTest extends TestCase
             StockSaleValidityService::REASON_CLOSED_LOST,
             $secondSnapshot->fresh()->invalid_reason,
         );
-        $this->assertSame(1, app(StockDashboardDatasetService::class)->build([], 'summary')['summary']['sales']);
+        $this->assertSame(1, $this->summarySales());
     }
 
     public function test_fecha_de_firma_empatada_marca_todas_las_ventas_como_ambiguas(): void
@@ -168,5 +168,13 @@ class StockSaleValidityServiceTest extends TestCase
             'is_valid' => true,
             'captured_at' => now(),
         ]);
+    }
+
+    private function summarySales(): int
+    {
+        return app(StockDashboardDatasetService::class)->build([
+            'date_from' => '2026-07-01',
+            'date_to' => '2026-07-31',
+        ], 'summary')['summary']['sales'];
     }
 }

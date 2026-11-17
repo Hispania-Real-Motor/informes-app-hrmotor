@@ -53,6 +53,10 @@
   `Docs-Impact: updated` y `Docs-Matrix-Impact: updated`. PHPUnit, MariaDB 11,
   Pint y los checks documentales del SHA final se comprobarán en CI de #151. Estas
   pruebas sintéticas no verifican el bundle desplegado ni los datos productivos.
+   El SHA correctivo estabiliza también dos aserciones de
+   `StockSaleValidityServiceTest`: los fixtures de julio usan un rango histórico
+   explícito en vez de la ventana móvil de 120 días que dejó de incluir el 20 de
+   julio al avanzar la fecha de CI. No cambia el servicio ni la semántica de Stock.
 - Despliegue humano posterior a revisión: generar `npm run build`, publicar el
   bundle y `public/build/manifest.json` del mismo release y comprobar que la
   ruta del manifest sirve el asset de ese commit. Probar con administrador
