@@ -27,7 +27,10 @@ class CampaignDailyOperationalAutomationTest extends TestCase
 
     public function test_daily_automation_stops_before_attribution_when_a_dependency_fails(): void
     {
-        config(['campaign_operational.daily_automation_enabled' => true]);
+        config([
+            'campaign_operational.daily_automation_enabled' => true,
+            'campaign_operational.november_2026_enabled' => true,
+        ]);
         $this->mock(OperationalTaskService::class, function ($mock): void {
             $mock->shouldReceive('claim')->once()->andThrow(new \RuntimeException('dependency unavailable'));
         });
