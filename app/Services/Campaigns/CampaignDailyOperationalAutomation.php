@@ -29,6 +29,12 @@ final class CampaignDailyOperationalAutomation
             throw new RuntimeException('La automatización diaria de Campañas está deshabilitada.');
         }
 
+        $month = CarbonImmutable::now('Europe/Madrid')->format('Y-m');
+        if (! in_array($month, ['2026-10', '2026-11'], true)
+            || ! config('campaign_operational.'.($month === '2026-10' ? 'october_2026_enabled' : 'november_2026_enabled'), false)) {
+            throw new RuntimeException('El período operacional de Campañas no tiene contrato habilitado.');
+        }
+
         $dayStart = CarbonImmutable::now('Europe/Madrid')->startOfDay()->utc();
         foreach (self::SOURCE_TASKS as $key) {
             $completedToday = DB::table('operational_task_runs')
@@ -44,23 +50,25 @@ final class CampaignDailyOperationalAutomation
             }
         }
 
-        $month = now('Europe/Madrid')->format('Y-m');
         [$year, $number] = array_map('intval', explode('-', $month));
         $attribution = $this->builder->build($year, $number);
-        if (! array_key_exists('opportunity_coverage_complete', $attribution)) {
-            $persisted = DB::table('campaign_operational_runs')->where('id', (int) ($attribution['run_id'] ?? 0))->first([
-                'status', 'opportunity_coverage_complete', 'incidents_count',
-            ]);
-            if ($persisted === null) {
-                throw new RuntimeException('No existe evidencia persistida de la atribución.');
-            }
-            $attribution['status'] = $persisted->status;
-            $attribution['opportunity_coverage_complete'] = (bool) $persisted->opportunity_coverage_complete;
-            $attribution['incidents_count'] = (int) $persisted->incidents_count;
+        $persisted = DB::table('campaign_operational_runs')->where('id', (int) ($attribution['run_id'] ?? 0))->first([
+            'status', 'opportunity_coverage_complete', 'incidents_count', 'activated_at',
+        ]);
+        if ($persisted === null) {
+            throw new RuntimeException('No existe evidencia persistida de la atribución.');
         }
-        if (($attribution['status'] ?? null) !== 'prepared'
-            || ! ($attribution['opportunity_coverage_complete'] ?? false)
-            || (int) ($attribution['incidents_count'] ?? PHP_INT_MAX) > (int) config('campaign_operational.daily_automation_max_incidents', 0)) {
+        if (! array_key_exists('opportunity_coverage_complete', $attribution)) {
+            $attribution += [
+                'status' => $persisted->status,
+                'opportunity_coverage_complete' => (bool) $persisted->opportunity_coverage_complete,
+                'incidents_count' => (int) $persisted->incidents_count,
+            ];
+        }
+        if ($persisted->status === 'completed' && $persisted->activated_at !== null) {
+            return ['month' => $month, 'steps' => self::SOURCE_TASKS, 'attribution' => $attribution, 'activation' => 'unchanged'];
+        }
+        if (($attribution['status'] ?? null) !== 'prepared' || ! ($attribution['opportunity_coverage_complete'] ?? false)) {
             throw new RuntimeException('La atribución no cumple la política de calidad operacional.');
         }
 

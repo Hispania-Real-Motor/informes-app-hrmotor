@@ -968,4 +968,6 @@ reintentar una dependencia, verifica el estado persistido y solo prepara una
 atribución con cobertura Opportunity completa y el límite de incidencias
 configurado. La activación automática requiere explícitamente
 `CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED=true`; permanece deshabilitada
-por defecto y no modifica la atribución oficial.
+por defecto y no modifica la atribución oficial. Las incidencias `salesforce_only`
+son informativas cuando la cobertura de Opportunities y la integridad de fuentes
+son completas; no se invalidan mediante un umbral numérico arbitrario.

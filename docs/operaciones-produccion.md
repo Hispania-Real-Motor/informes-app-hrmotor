@@ -2102,7 +2102,7 @@ validar workers con configuración fresca y comprobar runs, cortes, cobertura e
 incidencias. Una dependencia fallida impide preparar una nueva atribución.
 La activación automática de la atribución operacional de Campañas se controla
 separadamente de la sincronización diaria mediante
-`CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED` y exige cobertura completa,
-huellas vigentes y cero incidencias salvo que se autorice otro límite mediante
-`CAMPAIGN_OPERATIONAL_DAILY_MAX_INCIDENTS`. Sin esa aprobación, el resultado
+`CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED` y exige cobertura completa
+y huellas vigentes. Las incidencias de clasificación `salesforce_only` no son
+bloqueantes por sí mismas; una cobertura insuficiente sí lo es. Sin esa aprobación, el resultado
 queda preparado y pendiente de revisión administrativa.

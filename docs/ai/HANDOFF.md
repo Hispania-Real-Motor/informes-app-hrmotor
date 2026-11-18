@@ -4,10 +4,11 @@
 
 - El orquestador reutiliza runs operacionales exitosos del día, comprueba el
   estado persistido de dependencias reintentadas y aplica una política de
-  calidad antes de aceptar la atribución preparada.
+  calidad antes de aceptar la atribución preparada; `salesforce_only` se trata
+  como incidencia informativa cuando la cobertura e integridad son completas.
 - La activación automática es una bandera separada y falsa por defecto:
-  `CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED`; el límite de incidencias
-  es configurable y por defecto cero. No se modifican fuentes oficiales ni
+  `CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED`; no se usa un umbral
+  numérico arbitrario de incidencias. No se modifican fuentes oficiales ni
   cierres económicos.
 - No se ejecutaron proveedores reales ni cambios de producción. PHP/Composer
   no están disponibles localmente; la validación completa queda para CI.
