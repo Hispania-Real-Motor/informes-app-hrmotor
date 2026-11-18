@@ -11,6 +11,7 @@
   suite documental. `git diff --check` debe ejecutarse antes de entregar.
 - La excepción documental de esta entrega se limita al propio validador y sus
   evidencias de control; las rutas funcionales de Campañas permanecen mapeadas.
+- La descripción de la PR no declara rutas funcionales fuera de informe.
 
 ## 2026-11-16 — Campañas: presentación y disponibilidad operativa
 
