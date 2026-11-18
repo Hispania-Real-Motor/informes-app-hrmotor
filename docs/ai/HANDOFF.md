@@ -8622,3 +8622,6 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   raíz del store file y ahora exige fallo, `cache_entries.ok=false`, contador
   `unwritable` positivo y ausencia del payload sintético. Se eliminó repetición
   menor en `SCHEDULER_PREFLIGHT.md`.
+- La aserción del contador evita asumir que el entorno solo contiene una entrada:
+  verifica que `unwritable` está presente y no es cero. También trata un modo de
+  archivo no consultable como limitación segura del sistema de pruebas.
