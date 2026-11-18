@@ -8615,3 +8615,6 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   del formato exacto de serialización JSON.
 - En el commit `b6fdce4`, el CI de `test` aún debe repetirse para confirmar esta
   corrección; MariaDB y documentación habían pasado en la ejecución anterior.
+- El test de permisos usa `PendingCommand::assertFailed()` y captura únicamente
+  su aserción de código cero para justificar el skip en runners privilegiados;
+  no depende de métodos inexistentes de `PendingCommand`.
