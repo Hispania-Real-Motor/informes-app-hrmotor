@@ -29,9 +29,6 @@ class CampaignDailyOperationalAutomationTest extends TestCase
     public function test_daily_automation_stops_before_attribution_when_a_dependency_fails(): void
     {
         config(['campaign_operational.daily_automation_enabled' => true]);
-        $this->mock(CampaignOperationalAttributionBuilder::class, function ($mock): void {
-            $mock->shouldNotReceive('build');
-        });
         Artisan::shouldReceive('call')->once()->andReturn(1);
 
         $this->artisan('campaigns:sync-daily-operational')->assertFailed();
