@@ -139,7 +139,7 @@ final class OperationsPreflightCommand extends Command
 
         $mode = @fileperms($entry->getPathname());
 
-        return $mode === false || ($mode & 0222) !== 0;
+        return $mode !== false && ($mode & 0222) !== 0;
     }
 
     /** @return array{ok:bool} */

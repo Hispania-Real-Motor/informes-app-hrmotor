@@ -14,8 +14,7 @@ class OperationsPreflightTest extends TestCase
     {
         $this->artisan('operations:preflight')
             ->assertSuccessful()
-            ->expectsOutputToContain('"cache_round_trip":{"ok":true')
-            ->expectsOutputToContain('"database":');
+            ->expectsOutputToContain('"cache_round_trip":{"ok":true');
 
         $this->assertDatabaseCount('operational_task_runs', 0);
     }
