@@ -570,3 +570,31 @@ cierres, filtros, universos ni resultados oficiales de Comisiones. Las
 diferencias y la vista provisional permanecen aisladas; una fuente no
 certificada no puede alimentar este informe ni sustituir la generación Interest
 publicada.
+
+## Plan de jefes de tienda desde octubre de 2026 — estado provisional
+
+El diff incorpora únicamente `StoreManagerCommissionPlanCalculator` y su test
+unitario. No está conectado a ninguna de las seis pestañas reales, al cierre,
+a una exportación ni a un sincronizador; por tanto no publica todavía un KPI
+ni cambia el contrato vigente. La pestaña prevista sería **Delegaciones / jefes
+de tienda**, que sigue pendiente de auditoría.
+
+La evidencia permite documentar solo estas reglas del núcleo puro: vigencia
+desde `2026-10-01`; objetivo ausente `target_pending`/nulo; objetivo cero
+`not_applicable`/cero; `<90 %` cero; `90 %--<100 %` `actual * 6`; objetivo
+exacto `actual * 10`; exceso `target * 10 + exceso * 15`. Entregas individuales:
+`<10 = 0`, `10--11 = 120`, `12 = 200` y desde 13 `200 + (actual-12)*20`.
+Los mínimos monetarios devuelven nulo si falta una entrada, cero bajo el
+mínimo y base más 1 % del exceso redondeada a dos decimales. El subtotal
+individual es nulo si falta financiación, garantía o penalización; el total
+final suma todo, redondea y aplica `max(0)` solo al final.
+
+La trazabilidad de fuente, universo y auditoría queda pendiente: no hay
+sincronizador, campos API, tabla/columna local, normalizador, configuración,
+filtros, identidad ni deduplicación implementados. El handoff identifica como
+bloqueos la falta de fecha verificable de alta/reingreso, de tienda física de
+compra y de clave estable Tasación/Cambio, además del contrato de reseñas para
+fuente válida, cero confirmado, payload incompleto y error. No se deben
+importar objetivos, atribuir operaciones, certificar cierres ni exportar este
+plan. El test focalizado fue interrumpido sin resultado exitoso y no acredita
+datos productivos.

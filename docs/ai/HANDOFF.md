@@ -8747,3 +8747,60 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `python.exe` disponible; queda pendiente ejecutarlo con base, HEAD y cuerpo
   de PR. `git diff --check` y la revisión del diff documental quedan por cerrar.
 - Docs-Impact: updated. Docs-Matrix-Impact: updated.
+
+# Comisiones de jefes de tienda — octubre 2026 (2026-11-18)
+
+- Rama creada: `codex/store-manager-commissions-october-2026`. SHA base
+  revalidado antes de crearla: `45ebdc45512e2140b97e72253eba8929d14d184e`.
+- Implementado únicamente el núcleo puro y versionado del plan nuevo en
+  `StoreManagerCommissionPlanCalculator`: vigencia desde `2026-10`, objetivos
+  por periodo con estados distinto para ausente/cero, tramos exactos de
+  entregas/compras, entregas individuales, incentivos por mínimos monetarios,
+  subtotal individual y `max(0)` aplicado solo al total final.
+- Test añadido: `tests/Unit/StoreManagerCommissionPlanCalculatorTest.php`, con
+  los límites 26/27/30/32 sobre objetivo 30, objetivo cero/ausente, límites de
+  entregas individuales, acumulados negativos, datos monetarios ausentes y
+  total bruto negativo.
+- No se modificó el dashboard histórico, Area Manager, comerciales, cierres ni
+  snapshots. No se importaron objetivos ni se ejecutaron sincronizaciones o
+  escrituras en Salesforce.
+- Bloqueos verificados antes de integrar el cálculo: el modelo/sincronizador de
+  usuarios solo expone `CreatedDate`, no una fecha real verificable de alta o
+  reingreso; la réplica de oportunidades no contiene un campo verificado de
+  tienda física de compra ni una clave estable de deduplicación Tasación/Cambio;
+  y el servicio actual de reseñas necesita una ruta explícita de fuente válida,
+  cero confirmado, payload incompleto y error antes de poder liberar cierres.
+  No se usaron heurísticas ni `owner_delegation` como sustitutos.
+- Comando ejecutado: `php artisan test --filter=StoreManagerCommissionPlanCalculatorTest`.
+  El proceso no produjo salida y fue interrumpido; no hay resultado de pruebas
+  que pueda declararse exitoso. Falta ejecutar Pint, suite completa, build
+  frontend y validador documental en un entorno con runtime operativo.
+- No hay migraciones, variables de entorno ni acciones manuales de producción.
+  Octubre no queda importado, aprobado ni publicado; el componente de jefes de
+  tienda permanece provisional y bloqueado hasta verificar las tres fuentes.
+- Docs-Impact: updated (este handoff). No se actualizan `PROJECT_CONTEXT.md` ni
+  `DECISIONS.md`: el cambio no altera todavía la arquitectura integrada ni
+  adopta una decisión irreversible sobre fuentes externas.
+
+## Revisión documental — comisiones de jefes de tienda (2026-11-18)
+
+- Fallback aplicado: no se pudo invocar un agente personalizado desde esta
+  sesión; la revisión se realizó directamente siguiendo
+  `docs/guia-mantenimiento-documental.md`.
+- Se contrastaron el calculador y el test nuevos con la guía, el documento
+  funcional y la matriz. El impacto queda documentado como provisional: no hay
+  pestaña integrada, sincronizador, persistencia, exportación ni KPI oficial.
+- Documentación modificada: `docs/informe-comisiones.md`,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/decisiones-negocio-pendientes.md` y
+  este archivo.
+- Evidencia: `app/Services/Reports/CommercialCommissions/StoreManagerCommissionPlanCalculator.php`
+  y `tests/Unit/StoreManagerCommissionPlanCalculatorTest.php`. Se registran
+  las fórmulas demostradas y no se rellenan por conjetura fuente API, campo
+  local, universo, identidad o deduplicación.
+- Discrepancias/bloqueos: fecha verificable de alta o reingreso, tienda física
+  de compra, clave estable Tasación/Cambio y contrato de estados de reseñas.
+  El test focalizado fue interrumpido sin resultado exitoso; no se consultaron
+  Salesforce ni bases de datos ni se ejecutaron sincronizaciones.
+- Validador documental: pendiente de ejecutar con base, HEAD y descripción de
+  PR disponibles. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian porque no
+  hay cambio arquitectónico ni decisión irreversible.

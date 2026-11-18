@@ -95,6 +95,17 @@ controlada conforme a `operaciones-produccion.md`:
 El lifecycle/presencia de Opportunities no pertenece a esta lista: quedó
 desplegado, reconciliado e idempotente en producción el 8 de septiembre de 2026.
 
+## Plan de jefes de tienda desde octubre de 2026 — decisiones pendientes
+
+El calculador puro nuevo no resuelve todavía las decisiones necesarias para
+integrar el plan en Comisiones. Deben confirmarse, con evidencia de fuente,
+la fecha de alta/reingreso del jefe, el campo de tienda física de compra y la
+clave estable para deduplicar Tasación/Cambio. También debe definirse el
+contrato operativo de reseñas para distinguir fuente válida, cero confirmado,
+payload incompleto y error. Hasta entonces el plan permanece provisional:
+no se importan objetivos ni se certifican cierres. Esta nota no convierte las
+fórmulas unitariamente probadas en una regla de negocio publicada.
+
 ## Decisiones cerradas e implementadas
 
 | Informe | Decisión implantada |

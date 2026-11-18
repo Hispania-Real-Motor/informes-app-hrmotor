@@ -264,6 +264,15 @@ Auditoría inicial pendiente en cada una de las seis pestañas reales:
 | Área Manager | Pendiente | [Comisiones](informe-comisiones.md) |
 | Financieros | Pendiente | [Comisiones](informe-comisiones.md) y [guía financiera](informe-comisiones-financieras.md) |
 
+#### Plan de jefes de tienda desde octubre de 2026 — evidencia parcial
+
+| Contrato comprobado | Evidencia implementada y límites |
+| --- | --- |
+| Núcleo de cálculo / pestaña prevista | `StoreManagerCommissionPlanCalculator` y `StoreManagerCommissionPlanCalculatorTest` prueban vigencia `2026-10-01`, destinada provisionalmente a Delegaciones / jefes de tienda. No existe lector, pestaña, cierre, exportación ni KPI publicado que lo consuma. |
+| Fórmula demostrada | Objetivo ausente `target_pending`/`null`; cero `not_applicable`/`0`; `<90 %`: `0`; `90 %--<100 %`: `actual * 6`; exacto: `actual * 10`; exceso: `target * 10 + (actual-target) * 15`. Entrega individual: `<10 = 0`, `10--11 = 120`, `12 = 200`, desde 13 `200 + (actual-12)*20`. Mínimos monetarios: nulo ante entrada ausente, cero bajo mínimo y base más 1 % del exceso a dos decimales. Subtotal nulo si falta una entrada; total redondeado y acotado a cero solo al final. |
+| Fuente, tabla, fecha pivote, universo, identidad y deduplicación | **Pendiente**: no hay sincronizador, campos API, tabla/columna local, normalizador, configuración, filtros, exclusiones, identidad ni deduplicación implementados. El handoff señala la falta de fecha verificable de alta/reingreso, tienda física de compra y clave estable Tasación/Cambio. |
+| Nulos, readiness, cierre, auditoría y exportación | El calculador distingue algunos nulos y estados, pero no define readiness ni certificación. Reseñas carece aún de contrato explícito para fuente válida, cero confirmado, payload incompleto y error. No se autoriza importar objetivos, cerrar ni exportar. El test fue interrumpido sin resultado exitoso; no hay evidencia productiva. |
+
 #### Plan económico de Contact Center — roster y evidencia (2026-09)
 
 | Contrato comprobado | Evidencia implementada y límites |
