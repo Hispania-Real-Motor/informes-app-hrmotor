@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\Reports\CommercialCommissions\StoreManagerCommissionPlanCalculator;
 use Carbon\CarbonImmutable;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class StoreManagerCommissionPlanCalculatorTest extends TestCase
@@ -17,7 +18,7 @@ class StoreManagerCommissionPlanCalculatorTest extends TestCase
         $this->assertTrue($calculator->appliesTo(CarbonImmutable::parse('2026-11-01')));
     }
 
-    /** @dataProvider storeKpiBrackets */
+    #[DataProvider('storeKpiBrackets')]
     public function test_store_kpi_brackets_are_exact(int $actual, ?int $target, ?float $incentive, ?string $bracket): void
     {
         $result = app(StoreManagerCommissionPlanCalculator::class)->storeKpiIncentive($actual, $target);

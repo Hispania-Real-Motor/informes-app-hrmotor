@@ -8804,3 +8804,13 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Validador documental: pendiente de ejecutar con base, HEAD y descripción de
   PR disponibles. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian porque no
   hay cambio arquitectónico ni decisión irreversible.
+
+## Corrección posterior del test en PR #158
+
+- El CI identificó que PHPUnit no reconocía el comentario `@dataProvider` y
+  ejecutaba el test parametrizado sin argumentos. Se sustituyó por el atributo
+  nativo `#[DataProvider('storeKpiBrackets')]` y se importó
+  `PHPUnit\\Framework\\Attributes\\DataProvider`.
+- Verificación local: `php -l tests/Unit/StoreManagerCommissionPlanCalculatorTest.php`
+  correcto; `git diff --check` correcto. La suite CI debe reejecutarse en el
+  PR para confirmar todos los tests.
