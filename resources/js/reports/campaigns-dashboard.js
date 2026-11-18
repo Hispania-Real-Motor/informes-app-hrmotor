@@ -52,6 +52,7 @@ let summaryLoadingController = null;
 let diagnosticsLoadingController = null;
 let latestReloadRequestId = 0;
 let defaultPeriodRecoveryApplied = false;
+let periodPresetExplicitlySelected = false;
 let lastRenderedFilterOptionsKey = '';
 let lastRenderedCampaignNamesKey = '';
 let platformOnlyMode = false;
@@ -308,6 +309,7 @@ function bindFilters() {
     });
 
     document.getElementById('periodPreset')?.addEventListener('change', async (event) => {
+        periodPresetExplicitlySelected = true;
         applyPeriodPreset(event.target.value);
         syncCampaignPeriodUrl();
         await reloadAllData();
@@ -805,6 +807,7 @@ function shouldRecoverDefaultPeriod(advice) {
     const query = new URLSearchParams(window.location?.search || '');
     return document.getElementById('periodPreset')?.value === 'last_30_days'
         && advice?.type === 'partial_closed_month'
+        && !periodPresetExplicitlySelected
         && !query.has('period') && !query.has('start_date') && !query.has('end_date');
 }
 
@@ -814,15 +817,15 @@ function renderPeriodGuidance(advice) {
 
     root.classList.add('is-hidden');
     root.innerHTML = '';
-    if (advice?.type !== 'partial_closed_month' || !Array.isArray(advice.closed_months)) return;
+    const closedMonths = normalizePeriodAdviceMonths(advice);
+    if (advice?.type !== 'partial_closed_month' || closedMonths.length === 0) return;
 
-    const closedMonth = advice.closed_months[0];
-    const monthOption = [...document.querySelectorAll('#periodPreset option')]
-        .find((option) => option.value === `month_${closedMonth.replace('-', '_')}`);
+    const monthOptions = [...document.querySelectorAll('#periodPreset option')]
+        .filter((option) => closedMonths.some((month) => option.value === `month_${month.replace('-', '_')}`));
     const currentMonth = currentMonthPeriod();
     const actions = [];
     if (currentMonth) actions.push(`<button type="button" class="main-tab" data-period-guidance="current">Ver mes actual</button>`);
-    if (monthOption?.dataset.start && monthOption?.dataset.end) {
+    if (monthOptions.some((option) => option.dataset.start && option.dataset.end)) {
         actions.push(`<button type="button" class="main-tab" data-period-guidance="closed">Ver mes cerrado completo</button>`);
     }
     root.innerHTML = `<strong>Periodo bloqueado por integridad económica.</strong> El rango cruza parcialmente un mes cerrado y no puede prorratearse. ${actions.join(' ')}`;
@@ -831,13 +834,25 @@ function renderPeriodGuidance(advice) {
         if (button.dataset.periodGuidance === 'current') {
             document.getElementById('periodPreset').value = 'current_month';
             applyPeriodPreset('current_month');
-        } else if (monthOption) {
+        } else {
+            const monthOption = monthOptions.find((option) => option.dataset.start && option.dataset.end);
+            if (!monthOption) return;
             document.getElementById('periodPreset').value = monthOption.value;
             applyPeriodPreset(monthOption.value);
         }
         syncCampaignPeriodUrl();
         reloadAllData();
     }));
+}
+
+function normalizePeriodAdviceMonths(advice) {
+    if (!Array.isArray(advice?.closed_months)) return [];
+
+    return [...new Set(advice.closed_months
+        .filter((month) => typeof month === 'string')
+        .map((month) => month.match(/^(2026)-(0[1-9]|1[0-2])(?:-01)?$/)?.[0])
+        .filter(Boolean)
+        .map((month) => month.slice(0, 7)))];
 }
 
 function currentMonthPeriod() {

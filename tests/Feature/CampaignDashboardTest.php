@@ -876,6 +876,18 @@ class CampaignDashboardTest extends TestCase
         $this->assertDatabaseCount('campaign_investment_closure_events', 2);
     }
 
+    public function test_partial_closed_period_advice_exposes_normalized_month_keys(): void
+    {
+        $service = app(CampaignDashboardDatasetService::class);
+        $method = new \ReflectionMethod($service, 'blockedEconomicEvidence');
+        $method->setAccessible(true);
+
+        $evidence = $method->invoke($service, 'partial closed month', ['2026-10-01']);
+
+        $this->assertSame('partial_closed_month', $evidence['period_advice']['type']);
+        $this->assertSame(['2026-10-01'], $evidence['period_advice']['closed_months']);
+    }
+
     public function test_google_ads_query_usa_campaign_para_incluir_performance_max(): void
     {
         config()->set('services.google_ads.developer_token', 'dev-token');

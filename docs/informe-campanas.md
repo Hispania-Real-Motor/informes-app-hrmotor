@@ -271,7 +271,11 @@ para ir al mes cerrado completo o al mes actual. Solo cuando la petición no
 incluye `period`, `start_date` ni `end_date` y el preset implícito es
 `last_30_days`, el primer bloqueo recupera automáticamente el preset
 `current_month` una sola vez; una selección explícita del usuario conserva el
-bloqueo y la guía. Varios meses cerrados completos
+bloqueo y la guía. Los meses recibidos por la interfaz se validan como
+`YYYY-MM-01` o `YYYY-MM`, se normalizan a `YYYY-MM` y los valores inválidos se
+descartan antes de enlazar el selector mensual. Por ello el caso 18/10–17/11
+mantiene el bloqueo y ofrece las dos acciones verificables, mientras que
+01/11–17/11 puede mostrar sus métricas disponibles. Varios meses cerrados completos
 pueden agregarse si cada snapshot vigente es válido. La cobertura de Meta y
 Google se evalúa independientemente; no se inventan proveedores, campañas,
 inversión, clics ni impresiones ausentes. La evidencia económica no certifica

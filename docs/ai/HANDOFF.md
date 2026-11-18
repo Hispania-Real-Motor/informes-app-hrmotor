@@ -1,5 +1,21 @@
 # Handoff para agentes
 
+## 2026-11-18 — Normalización de meses en guía de periodos cerrados
+
+- Se normalizan estrictamente los meses públicos de `period_advice` aceptando
+  `YYYY-MM-01` y `YYYY-MM`, con meses inválidos descartados antes de construir
+  controles visuales. La guía vuelve a mostrar «Ver mes cerrado completo» para
+  `2026-10-01` y conserva «Ver mes actual».
+- Una selección explícita de «Últimos 30 días» ya no se confunde con la carga
+  inicial implícita: muestra el bloqueo económico y ambas alternativas sin
+  sustituir fechas. La recuperación automática inicial conserva su condición
+  original y no cambia cierres, permisos, fuentes ni URL de selecciones
+  explícitas.
+- Pruebas añadidas en `tests/js/campaign-presentation.test.mjs` y
+  `tests/Feature/CampaignDashboardTest.php`. JS focalizado: 44/44 correcto;
+  `git diff --check` correcto. PHP, Pint y Vite no están disponibles en esta
+  sesión y quedan pendientes para CI/Herd.
+
 ## 2026-11-18 — Selector de periodos y meses económicos cerrados
 
 - El selector de Campañas identifica el bloqueo público del backend cuando un

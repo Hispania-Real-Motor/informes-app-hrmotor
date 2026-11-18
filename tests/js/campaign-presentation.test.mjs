@@ -776,6 +776,53 @@ test('custom operational URL restores source and dates only for an authorized mo
     assert.ok(!vm.runInContext('currentFilters()', isolated).includes('source=operational'));
 });
 
+test('closed-period guidance normalizes backend months and offers both verified alternatives', () => {
+    const guidance = {
+        innerHTML: '',
+        classList: { add() {}, remove() {} },
+        querySelectorAll: () => [
+            { dataset: { periodGuidance: 'current' }, addEventListener: (_event, handler) => { guidance.current = handler; } },
+            { dataset: { periodGuidance: 'closed' }, addEventListener: (_event, handler) => { guidance.closed = handler; } },
+        ],
+    };
+    const preset = { value: 'custom' };
+    const options = [
+        { value: 'month_2026_10', dataset: { start: '2026-10-01', end: '2026-10-31' } },
+    ];
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => id === 'periodGuidance' ? guidance : (id === 'periodPreset' ? preset : null),
+        querySelectorAll: (selector) => selector === '#periodPreset option' ? options : [],
+    });
+    isolated.window.location = { search: '?start_date=2026-10-18&end_date=2026-11-17' };
+    isolated.window.history = { replaceState() {} };
+    isolated.applyPeriodPreset = (value) => { isolated.appliedPeriod = value; };
+    isolated.syncCampaignPeriodUrl = () => {};
+    isolated.reloadAllData = () => { isolated.reloaded = true; };
+
+    vm.runInContext("renderPeriodGuidance({ type: 'partial_closed_month', closed_months: ['2026-10-01', '2026-99', 'invalid', '2026-10'] })", isolated);
+    assert.match(guidance.innerHTML, /Ver mes actual/);
+    assert.match(guidance.innerHTML, /Ver mes cerrado completo/);
+    assert.equal(vm.runInContext("JSON.stringify(normalizePeriodAdviceMonths({closed_months: ['2026-10-01', '2026-10', '2026-13']}))", isolated), '["2026-10"]');
+
+    guidance.closed();
+    assert.equal(preset.value, 'month_2026_10');
+    assert.equal(isolated.appliedPeriod, 'month_2026_10');
+    assert.equal(isolated.reloaded, true);
+});
+
+test('explicit last-30-days selection does not trigger initial automatic recovery', () => {
+    const preset = { value: 'last_30_days' };
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => id === 'periodPreset' ? preset : null,
+        querySelectorAll: () => [],
+    });
+    isolated.window.location = { search: '' };
+    vm.runInContext('periodPresetExplicitlySelected = true', isolated);
+    assert.equal(vm.runInContext("shouldRecoverDefaultPeriod({type: 'partial_closed_month'})", isolated), false);
+});
+
 test('an older summary response cannot restore stale availability or campaign rows', async () => {
     const pending = [];
     const rendered = [];
