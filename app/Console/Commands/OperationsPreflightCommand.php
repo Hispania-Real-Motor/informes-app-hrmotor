@@ -114,7 +114,7 @@ final class OperationsPreflightCommand extends Command
                     $truncated = true;
                     break;
                 }
-                if (! $entry->isReadable() || ! $entry->isWritable()) {
+                if (! $entry->isReadable() || ! $this->entryIsWritable($entry)) {
                     $unwritable++;
                 }
             }
@@ -129,6 +129,17 @@ final class OperationsPreflightCommand extends Command
     private function requiresWwwData(): bool
     {
         return app()->environment('production') && DIRECTORY_SEPARATOR === '/';
+    }
+
+    private function entryIsWritable(\SplFileInfo $entry): bool
+    {
+        if (! is_writable($entry->getPathname())) {
+            return false;
+        }
+
+        $mode = @fileperms($entry->getPathname());
+
+        return $mode === false || ($mode & 0222) !== 0;
     }
 
     /** @return array{ok:bool} */
