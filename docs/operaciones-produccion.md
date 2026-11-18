@@ -2106,3 +2106,7 @@ separadamente de la sincronización diaria mediante
 y huellas vigentes. Las incidencias de clasificación `salesforce_only` no son
 bloqueantes por sí mismas; una cobertura insuficiente sí lo es. Sin esa aprobación, el resultado
 queda preparado y pendiente de revisión administrativa.
+La cadena usa las reservas del catálogo directamente, por lo que no debe
+añadirse un segundo cron para sus dependencias; las tareas individuales
+mantienen sus ventanas ordinarias y se reutilizan únicamente si la evidencia
+persistida sigue siendo compatible con el Interest actual.

@@ -12,6 +12,9 @@
   cierres económicos.
 - No se ejecutaron proveedores reales ni cambios de producción. PHP/Composer
   no están disponibles localmente; la validación completa queda para CI.
+- Las dependencias se reclaman mediante `OperationalTaskService` con su reserva
+  exacta; Opportunities y Opportunity–Interest se reutilizan solo si sus
+  cutoffs persistidos cubren el Interest operacional actual.
 
 ## 2026-11-18 — Corrección del contrato documental de Campañas
 

@@ -971,3 +971,5 @@ configurado. La activación automática requiere explícitamente
 por defecto y no modifica la atribución oficial. Las incidencias `salesforce_only`
 son informativas cuando la cobertura de Opportunities y la integridad de fuentes
 son completas; no se invalidan mediante un umbral numérico arbitrario.
+Las tareas de Opportunities y Opportunity–Interest solo se reutilizan cuando su
+evidencia persistida cubre el cutoff del Interest operacional seleccionado.

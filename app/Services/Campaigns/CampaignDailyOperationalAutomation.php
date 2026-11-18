@@ -3,10 +3,10 @@
 namespace App\Services\Campaigns;
 
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use App\Services\Operations\OperationalTaskService;
+use App\Services\Reports\Leads\OperationalInterestSourceReader;
 use RuntimeException;
-use Symfony\Component\Console\Output\NullOutput;
 
 final class CampaignDailyOperationalAutomation
 {
@@ -20,7 +20,11 @@ final class CampaignDailyOperationalAutomation
         'campaigns-sync-current-status',
     ];
 
-    public function __construct(private readonly CampaignOperationalAttributionBuilder $builder) {}
+    public function __construct(
+        private readonly CampaignOperationalAttributionBuilder $builder,
+        private readonly OperationalTaskService $tasks,
+        private readonly OperationalInterestSourceReader $interests,
+    ) {}
 
     /** @return array{month:string,steps:list<string>,attribution:array<string,mixed>,activation:string} */
     public function run(): array
@@ -35,22 +39,39 @@ final class CampaignDailyOperationalAutomation
             throw new RuntimeException('El período operacional de Campañas no tiene contrato habilitado.');
         }
 
+        [$year, $number] = array_map('intval', explode('-', $month));
         $dayStart = CarbonImmutable::now('Europe/Madrid')->startOfDay()->utc();
+        $interest = null;
         foreach (self::SOURCE_TASKS as $key) {
             $completedToday = DB::table('operational_task_runs')
                 ->where('task_key', $key)->where('status', 'success')
                 ->where('finished_at', '>=', $dayStart)->exists();
+            if ($interest !== null && in_array($key, ['salesforce-sync-opportunities', 'salesforce-sync-opportunity-interest-direct'], true)) {
+                $evidence = app(CampaignPublicationReadiness::class)->operationalOpportunityEvidence($interest['observed_at']);
+                $completedToday = $evidence['available']
+                    && CarbonImmutable::parse($evidence['opportunity_cutoff_at'] ?? '1970-01-01', 'UTC')->greaterThanOrEqualTo(CarbonImmutable::parse($interest['effective_cutoff_at'], 'UTC'))
+                    && CarbonImmutable::parse($evidence['direct_cutoff_at'] ?? '1970-01-01', 'UTC')->greaterThanOrEqualTo(CarbonImmutable::parse($interest['effective_cutoff_at'], 'UTC'));
+            }
             if ($completedToday) {
+                if ($key === 'salesforce-sync-interest-operational-current') {
+                    $interest = $this->interests->open($year, $number, true);
+                }
                 continue;
             }
-            $exit = Artisan::call('operations:run', ['task' => $key], new NullOutput);
-            $run = DB::table('operational_task_runs')->where('task_key', $key)->latest('id')->first();
-            if ($exit !== 0 || $run === null || $run->status !== 'success') {
+            $run = $this->tasks->claim($key, 'scheduler');
+            if ($run->status === 'skipped') {
+                throw new RuntimeException('Una dependencia operacional ya está reservada.');
+            }
+            $this->tasks->execute($run->id);
+            $run->refresh();
+            if ($run->status !== 'success') {
                 throw new RuntimeException('Una dependencia operacional no se completó.');
+            }
+            if ($key === 'salesforce-sync-interest-operational-current') {
+                $interest = $this->interests->open($year, $number, true);
             }
         }
 
-        [$year, $number] = array_map('intval', explode('-', $month));
         $attribution = $this->builder->build($year, $number);
         $persisted = DB::table('campaign_operational_runs')->where('id', (int) ($attribution['run_id'] ?? 0))->first([
             'status', 'opportunity_coverage_complete', 'incidents_count', 'activated_at',
