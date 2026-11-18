@@ -38,8 +38,12 @@ final class OperationsPreflightCommand extends Command
         $identityOk = ! $this->requiresWwwData()
             || (function_exists('posix_geteuid') && function_exists('posix_getpwuid')
                 && (posix_getpwuid(posix_geteuid())['name'] ?? null) === 'www-data');
-        $pathsOk = collect($pathChecks)->every(static fn (array $check): bool =>
-            $check['configured'] && $check['directory'] && $check['readable'] && $check['writable']);
+        $pathsOk = collect($pathChecks)->every(
+            static fn (array $check): bool => $check['configured']
+                && $check['directory']
+                && $check['readable']
+                && $check['writable'],
+        );
         $ok = $pathsOk && $cache['ok'] && $cacheEntries['ok'] && $database['ok'] && $identityOk;
 
         $this->line(json_encode([
