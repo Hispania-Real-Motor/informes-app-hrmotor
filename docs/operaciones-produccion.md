@@ -2100,3 +2100,9 @@ pero no publica generaciones oficiales ni modifica cierres económicos. Antes de
 activar, debe autorizarse la clave y todas sus dependencias en la allowlist,
 validar workers con configuración fresca y comprobar runs, cortes, cobertura e
 incidencias. Una dependencia fallida impide preparar una nueva atribución.
+La activación automática de la atribución operacional de Campañas se controla
+separadamente de la sincronización diaria mediante
+`CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED` y exige cobertura completa,
+huellas vigentes y cero incidencias salvo que se autorice otro límite mediante
+`CAMPAIGN_OPERATIONAL_DAILY_MAX_INCIDENTS`. Sin esa aprobación, el resultado
+queda preparado y pendiente de revisión administrativa.

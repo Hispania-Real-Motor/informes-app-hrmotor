@@ -1,5 +1,17 @@
 # Handoff para agentes
 
+## 2026-11-18 — Activación segura de la cadena diaria de Campañas
+
+- El orquestador reutiliza runs operacionales exitosos del día, comprueba el
+  estado persistido de dependencias reintentadas y aplica una política de
+  calidad antes de aceptar la atribución preparada.
+- La activación automática es una bandera separada y falsa por defecto:
+  `CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED`; el límite de incidencias
+  es configurable y por defecto cero. No se modifican fuentes oficiales ni
+  cierres económicos.
+- No se ejecutaron proveedores reales ni cambios de producción. PHP/Composer
+  no están disponibles localmente; la validación completa queda para CI.
+
 ## 2026-11-18 — Corrección del contrato documental de Campañas
 
 - El mapeo de `config/campaign_operational.php` se mantiene explícitamente en

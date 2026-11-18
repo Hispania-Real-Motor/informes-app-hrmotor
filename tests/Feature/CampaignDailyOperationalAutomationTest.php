@@ -32,4 +32,9 @@ class CampaignDailyOperationalAutomationTest extends TestCase
 
         $this->artisan('campaigns:sync-daily-operational')->assertFailed();
     }
+
+    public function test_auto_activation_is_disabled_by_default(): void
+    {
+        $this->assertFalse(config('campaign_operational.daily_automation_auto_activate_enabled'));
+    }
 }

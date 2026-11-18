@@ -963,3 +963,9 @@ y meses posteriores siguen bloqueados por el contrato vigente del builder hasta
 una ampliación explícita y probada. La activación requiere además incluir la
 clave de la tarea y sus dependencias en `OPERATIONS_SCHEDULED_TASK_KEYS`; añadir
 solo la clave del orquestador no ejecuta una cadena incompleta.
+La tarea diaria operacional reutiliza ejecuciones exitosas del día antes de
+reintentar una dependencia, verifica el estado persistido y solo prepara una
+atribución con cobertura Opportunity completa y el límite de incidencias
+configurado. La activación automática requiere explícitamente
+`CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED=true`; permanece deshabilitada
+por defecto y no modifica la atribución oficial.
