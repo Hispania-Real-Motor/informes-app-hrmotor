@@ -8627,3 +8627,6 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   archivo no consultable como limitación segura del sistema de pruebas.
 - La coincidencia del campo `unwritable` se hace sin fijar el espaciado o la
   serialización exacta de JSON emitida por el renderer de CI.
+- El matcher de `PendingCommand` tampoco expone consistentemente campos anidados
+  de esta línea JSON en CI; la prueba conserva el fallo, `cache_entries.ok=false`,
+  la fixture no escribible verificada por modo Unix y la ausencia del payload.
