@@ -193,10 +193,9 @@ oficial por rollback.
 ## Preflight del entorno de ejecución
 
 Antes de reintentar una tarea fallida, ejecutar el comando siguiente con el
-mismo usuario efectivo del cron (`www-data`) dentro del contenedor. No invoca
-ninguna sincronización, no consulta proveedores externos y no modifica datos de
-informes. Comprueba las rutas Laravel ordinarias, la conexión MariaDB y realiza
-una escritura temporal en el store de caché que elimina inmediatamente.
+mismo usuario efectivo del cron (`www-data`) dentro del contenedor. Comprueba las
+rutas Laravel ordinarias, la conexión MariaDB y realiza una escritura temporal
+en el store de caché que elimina inmediatamente.
 
 ```bash
 docker exec -u www-data -w /var/www laravel-informes-app \

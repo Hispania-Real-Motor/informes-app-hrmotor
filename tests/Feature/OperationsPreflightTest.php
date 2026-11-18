@@ -31,8 +31,7 @@ class OperationsPreflightTest extends TestCase
         mkdir($directory, 0755, true);
         file_put_contents($file, 'synthetic-secret-payload');
         chmod($file, 0444);
-        chmod($directory, 0555);
-        if (is_writable($file)) {
+        if ((fileperms($file) & 0222) !== 0) {
             chmod($directory, 0755);
             @unlink($file);
             @rmdir($directory);
@@ -40,8 +39,12 @@ class OperationsPreflightTest extends TestCase
         }
 
         try {
+            config(['cache.stores.file.path' => $directory]);
             $result = $this->artisan('operations:preflight');
-            $result->doesntExpectOutputToContain('synthetic-secret-payload');
+            $result->assertFailed()
+                ->expectsOutputToContain('"cache_entries":{"ok":false')
+                ->expectsOutputToContain('"unwritable":1')
+                ->doesntExpectOutputToContain('synthetic-secret-payload');
         } finally {
             chmod($directory, 0755);
             chmod($file, 0644);

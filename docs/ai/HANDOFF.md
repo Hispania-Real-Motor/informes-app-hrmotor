@@ -8618,3 +8618,7 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - El test de permisos usa `PendingCommand::assertFailed()` y captura únicamente
   su aserción de código cero para justificar el skip en runners privilegiados;
   no depende de métodos inexistentes de `PendingCommand`.
+- La prueba de entrada de caché se aisló configurando un directorio temporal como
+  raíz del store file y ahora exige fallo, `cache_entries.ok=false`, contador
+  `unwritable` positivo y ausencia del payload sintético. Se eliminó repetición
+  menor en `SCHEDULER_PREFLIGHT.md`.
