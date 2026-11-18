@@ -801,6 +801,7 @@ class CampaignDashboardDatasetService
         return [
             'platforms' => $states,
             'latest_synced_at' => $latest?->toDateTimeString(),
+            'period_advice' => $economicEvidence['period_advice'] ?? null,
         ];
     }
 
@@ -1266,7 +1267,7 @@ class CampaignDashboardDatasetService
             if ($closure === null) {
                 $openSegments[] = ['start' => $segmentStart->toDateString(), 'end_exclusive' => $segmentEnd->toDateString()];
             } elseif (! $segmentStart->equalTo($cursor) || ! $segmentEnd->equalTo($monthEnd)) {
-                return $this->blockedEconomicEvidence('El período incluye días parciales de un mes económico cerrado; el snapshot mensual no puede prorratearse de forma verificable.');
+                return $this->blockedEconomicEvidence('El período incluye días parciales de un mes económico cerrado; el snapshot mensual no puede prorratearse de forma verificable.', [$month]);
             } else {
                 $rows = $this->validSnapshotRows($closure->economic_rows);
                 if ($rows === null) {
@@ -1291,11 +1292,12 @@ class CampaignDashboardDatasetService
             'closure_months_by_platform' => $closureMonthsByPlatform,
             'open_segments' => $openSegments,
             'blocked_reason' => null,
+            'period_advice' => null,
         ];
     }
 
     /** @return array{snapshot_rows: array<int, array<string, mixed>>, closed_months: array<int, string>, closure_months_by_platform: array<string, array<int, string>>, open_segments: array<int, array{start:string, end_exclusive:string}>, blocked_reason: string} */
-    private function blockedEconomicEvidence(string $reason): array
+    private function blockedEconomicEvidence(string $reason, array $partialClosedMonths = []): array
     {
         return [
             'snapshot_rows' => [],
@@ -1303,6 +1305,10 @@ class CampaignDashboardDatasetService
             'closure_months_by_platform' => ['meta' => [], 'google_ads' => []],
             'open_segments' => [],
             'blocked_reason' => $reason,
+            'period_advice' => $partialClosedMonths === [] ? null : [
+                'type' => 'partial_closed_month',
+                'closed_months' => array_values(array_unique($partialClosedMonths)),
+            ],
         ];
     }
 

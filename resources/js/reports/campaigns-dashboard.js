@@ -51,6 +51,7 @@ let metricChartsVisible = loadMetricChartsVisible();
 let summaryLoadingController = null;
 let diagnosticsLoadingController = null;
 let latestReloadRequestId = 0;
+let defaultPeriodRecoveryApplied = false;
 let lastRenderedFilterOptionsKey = '';
 let lastRenderedCampaignNamesKey = '';
 let platformOnlyMode = false;
@@ -670,6 +671,14 @@ async function reloadAllData() {
         }
 
         const campaignItems = Array.isArray(summary?.campaigns) ? summary.campaigns : [];
+        if (!defaultPeriodRecoveryApplied && shouldRecoverDefaultPeriod(summary?.availability?.period_advice)) {
+            defaultPeriodRecoveryApplied = true;
+            document.getElementById('periodPreset').value = 'current_month';
+            applyPeriodPreset('current_month');
+            syncCampaignPeriodUrl();
+            await reloadAllData();
+            return;
+        }
         setUpdatedBadge(summary?.datos_actualizados, false, summary);
         renderSummary(summary || {});
         const operationalNotice = document.getElementById('campaignOperationalNotice');
@@ -763,6 +772,7 @@ async function loadDiagnostics() {
 function renderSummary(data) {
     applyCampaignAvailability(data?.availability || {}, data?.period_mode);
     applyAvailabilityControls();
+    renderPeriodGuidance(data?.availability?.period_advice || null);
     renderWarnings(data.warnings || [], data.availability || {});
     renderInvestmentClosure(data.investment_closure || null);
     currentContext = data.selected_context || currentContext;
@@ -770,7 +780,9 @@ function renderSummary(data) {
     syncContextTabs();
 
     if (!data.ok) {
-        showStatusMessage('No hay campañas con estos filtros.', 'empty');
+        showStatusMessage(data?.availability?.period_advice?.type === 'partial_closed_month'
+            ? 'El periodo está bloqueado por integridad económica. Consulta una alternativa verificable.'
+            : 'No hay campañas con estos filtros.', 'empty');
         renderKpisState('No hay campañas con estos filtros.');
         renderCharts({});
         renderPlatformComparison([], 'No hay campañas con estos filtros.');
@@ -787,6 +799,52 @@ function renderSummary(data) {
     renderPlatformComparison(data.platform_comparison || []);
     renderReviewCampaigns(data.review_campaigns || []);
     renderDiagnostics(data.diagnostics || {});
+}
+
+function shouldRecoverDefaultPeriod(advice) {
+    const query = new URLSearchParams(window.location?.search || '');
+    return document.getElementById('periodPreset')?.value === 'last_30_days'
+        && advice?.type === 'partial_closed_month'
+        && !query.has('period') && !query.has('start_date') && !query.has('end_date');
+}
+
+function renderPeriodGuidance(advice) {
+    const root = document.getElementById('periodGuidance');
+    if (!root) return;
+
+    root.classList.add('is-hidden');
+    root.innerHTML = '';
+    if (advice?.type !== 'partial_closed_month' || !Array.isArray(advice.closed_months)) return;
+
+    const closedMonth = advice.closed_months[0];
+    const monthOption = [...document.querySelectorAll('#periodPreset option')]
+        .find((option) => option.value === `month_${closedMonth.replace('-', '_')}`);
+    const currentMonth = currentMonthPeriod();
+    const actions = [];
+    if (currentMonth) actions.push(`<button type="button" class="main-tab" data-period-guidance="current">Ver mes actual</button>`);
+    if (monthOption?.dataset.start && monthOption?.dataset.end) {
+        actions.push(`<button type="button" class="main-tab" data-period-guidance="closed">Ver mes cerrado completo</button>`);
+    }
+    root.innerHTML = `<strong>Periodo bloqueado por integridad económica.</strong> El rango cruza parcialmente un mes cerrado y no puede prorratearse. ${actions.join(' ')}`;
+    root.classList.remove('is-hidden');
+    root.querySelectorAll('[data-period-guidance]').forEach((button) => button.addEventListener('click', () => {
+        if (button.dataset.periodGuidance === 'current') {
+            document.getElementById('periodPreset').value = 'current_month';
+            applyPeriodPreset('current_month');
+        } else if (monthOption) {
+            document.getElementById('periodPreset').value = monthOption.value;
+            applyPeriodPreset(monthOption.value);
+        }
+        syncCampaignPeriodUrl();
+        reloadAllData();
+    }));
+}
+
+function currentMonthPeriod() {
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    const end = lastCompleteDay();
+    return end < start ? null : { start: clampCampaignDate(start), end: clampCampaignDate(end) };
 }
 
 function applyCampaignAvailability(availability = {}, periodMode = null) {
