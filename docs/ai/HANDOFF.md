@@ -9,6 +9,8 @@
 - No hay cambios de base de datos, producción, credenciales ni proveedores.
 - La validación local de Python no está disponible; se deja a CI junto con la
   suite documental. `git diff --check` debe ejecutarse antes de entregar.
+- La excepción documental de esta entrega se limita al propio validador y sus
+  evidencias de control; las rutas funcionales de Campañas permanecen mapeadas.
 
 ## 2026-11-16 — Campañas: presentación y disponibilidad operativa
 
