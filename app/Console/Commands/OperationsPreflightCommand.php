@@ -122,8 +122,12 @@ final class OperationsPreflightCommand extends Command
             return ['ok' => false, 'checked' => $checked, 'unwritable' => $unwritable, 'truncated' => $truncated];
         }
 
-        return ['ok' => $unwritable === 0 && ! $truncated, 'checked' => $checked,
-            'unwritable' => $unwritable, 'truncated' => $truncated];
+        return [
+            'ok' => $unwritable === 0 && ! $truncated,
+            'checked' => $checked,
+            'unwritable' => $unwritable,
+            'truncated' => $truncated,
+        ];
     }
 
     private function requiresWwwData(): bool
