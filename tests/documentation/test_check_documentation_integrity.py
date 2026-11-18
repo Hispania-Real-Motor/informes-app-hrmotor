@@ -109,6 +109,9 @@ class IntegrityTests(unittest.TestCase):
     def test_current_campaign_status_configuration_maps_only_to_campaigns(self) -> None:
         self.assertEqual({"campaigns"}, checker.domains_for("config/campaign_current_status.php"))
 
+    def test_campaign_operational_configuration_maps_only_to_campaigns(self) -> None:
+        self.assertEqual({"campaigns"}, checker.domains_for("config/campaign_operational.php"))
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

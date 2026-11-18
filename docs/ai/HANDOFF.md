@@ -1,5 +1,15 @@
 # Handoff para agentes
 
+## 2026-11-18 — Corrección del contrato documental de Campañas
+
+- El mapeo de `config/campaign_operational.php` se mantiene explícitamente en
+  el dominio `campaigns` del validador, con una prueba de regresión dedicada.
+  La guía documental explica que esta ruta solo contiene configuración del
+  orquestador y no constituye una excepción `Docs-Outside-Paths`.
+- No hay cambios de base de datos, producción, credenciales ni proveedores.
+- La validación local de Python no está disponible; se deja a CI junto con la
+  suite documental. `git diff --check` debe ejecutarse antes de entregar.
+
 ## 2026-11-16 — Campañas: presentación y disponibilidad operativa
 
 - Objetivo: hacer visible la atribución operativa respaldada por la respuesta
