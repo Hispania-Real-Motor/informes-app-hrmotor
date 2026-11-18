@@ -2,10 +2,10 @@
 
 namespace App\Services\Campaigns;
 
-use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 use App\Services\Operations\OperationalTaskService;
 use App\Services\Reports\Leads\OperationalInterestSourceReader;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 final class CampaignDailyOperationalAutomation
@@ -56,6 +56,7 @@ final class CampaignDailyOperationalAutomation
                 if ($key === 'salesforce-sync-interest-operational-current') {
                     $interest = $this->interests->open($year, $number, true);
                 }
+
                 continue;
             }
             $run = $this->tasks->claim($key, 'scheduler');
