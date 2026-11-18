@@ -8625,3 +8625,5 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - La aserción del contador evita asumir que el entorno solo contiene una entrada:
   verifica que `unwritable` está presente y no es cero. También trata un modo de
   archivo no consultable como limitación segura del sistema de pruebas.
+- La coincidencia del campo `unwritable` se hace sin fijar el espaciado o la
+  serialización exacta de JSON emitida por el renderer de CI.
