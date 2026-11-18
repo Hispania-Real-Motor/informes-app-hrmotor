@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Services\Campaigns\CampaignDailyOperationalAutomation;
 use App\Services\Operations\OperationalTaskCatalog;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;

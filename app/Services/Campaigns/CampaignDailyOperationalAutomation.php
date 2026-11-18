@@ -2,8 +2,8 @@
 
 namespace App\Services\Campaigns;
 
-use RuntimeException;
 use Illuminate\Support\Facades\Artisan;
+use RuntimeException;
 use Symfony\Component\Console\Output\NullOutput;
 
 final class CampaignDailyOperationalAutomation
