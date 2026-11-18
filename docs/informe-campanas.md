@@ -263,7 +263,15 @@ corrección aislada y autorizada.
 Los rangos mixtos agregan snapshots de meses cerrados completos y métricas
 diarias únicamente de sus tramos abiertos, sin solapar días ni sustituir
 importes cerrados. Un rango que tome días parciales de un mes cerrado se
-bloquea: el snapshot mensual no se prorratea. Varios meses cerrados completos
+bloquea: el snapshot mensual no se prorratea. En ese caso el summary conserva
+`ok=false` y expone `availability.period_advice.type=partial_closed_month` con
+los meses cerrados afectados; no se sustituyen silenciosamente las fechas
+solicitadas ni se convierten los KPI en cero. La interfaz muestra una guía
+para ir al mes cerrado completo o al mes actual. Solo cuando la petición no
+incluye `period`, `start_date` ni `end_date` y el preset implícito es
+`last_30_days`, el primer bloqueo recupera automáticamente el preset
+`current_month` una sola vez; una selección explícita del usuario conserva el
+bloqueo y la guía. Varios meses cerrados completos
 pueden agregarse si cada snapshot vigente es válido. La cobertura de Meta y
 Google se evalúa independientemente; no se inventan proveedores, campañas,
 inversión, clics ni impresiones ausentes. La evidencia económica no certifica
@@ -302,7 +310,7 @@ mensuales o la proyección provisional de Interests. La regresión JavaScript
 cubre la selección y la retirada del parámetro con DOM sintético; no acredita
 cobertura de octubre en proveedores, Salesforce ni producción.
 
-Actualizado: 2026-11-12. URL: `/informes/campanas`.
+Actualizado: 2026-11-18. URL: `/informes/campanas`.
 
 ## Contrato funcional ROT-4
 

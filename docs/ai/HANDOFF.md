@@ -1,5 +1,30 @@
 # Handoff para agentes
 
+## 2026-11-18 — Selector de periodos y meses económicos cerrados
+
+- El selector de Campañas identifica el bloqueo público del backend cuando un
+  periodo predefinido cruza parcialmente un mes cerrado. El backend conserva
+  la protección contra prorrateo y solo añade `availability.period_advice` con
+  el tipo y los meses afectados; no expone snapshots, auditoría ni cifras.
+- La UI distingue el bloqueo económico de una ausencia real de campañas,
+  ofrece «Ver mes actual» y «Ver mes cerrado completo» cuando son verificables,
+  y conserva intactas las selecciones personalizadas explícitas. El valor
+  predeterminado «Últimos 30 días» se reubica una sola vez al mes actual ante
+  este bloqueo, sincronizando Inicio, Fin, Periodo y URL antes de recargar.
+- No hay migraciones, cambios de permisos, fuentes nuevas, prorrateos ni
+  cambios de cifras. No se altera la protección del backend ni la selección de
+  origen comercial. Las peticiones obsoletas siguen descartándose mediante el
+  identificador de recarga existente.
+- Archivos funcionales: `app/Services/Campaigns/CampaignDashboardDatasetService.php`,
+  `resources/js/reports/campaigns-dashboard.js` y
+  `resources/views/reports/campaigns/index.blade.php`.
+- Verificación: `node --test tests/js/campaign-presentation.test.mjs` pasó (42/42)
+  y `git diff --check` pasó. PHP no está disponible en el entorno de esta
+  sesión, por lo que la lint/suite PHP queda pendiente de CI/Herd.
+- Pendiente manual: validar visualmente 18/10–17/11 y 01/11–17/11 con datos de
+  referencia y generar capturas antes/después para la PR independiente. No se
+  hizo merge ni despliegue.
+
 ## 2026-11-18 — Activación segura de la cadena diaria de Campañas
 
 - El orquestador reutiliza runs operacionales exitosos del día, comprueba el
@@ -8680,3 +8705,29 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `python.exe` no está disponible en el entorno. `git diff --check` sí terminó
   sin incidencias; queda pendiente repetir el validador con Python y una
   descripción de PR que incluya el contrato `Docs-Impact`.
+
+# Mantenimiento documental — guía de periodo de Campañas (2026-11-18)
+
+- Revisión fallback del diff de `CampaignDashboardDatasetService`,
+  `campaigns-dashboard.js` y la vista de Campañas. El cambio bloquea rangos que
+  cruzan parcialmente un mes económico cerrado y añade
+  `availability.period_advice` (`partial_closed_month` + meses afectados).
+- La UI muestra una guía para el mes cerrado completo o el mes actual y solo
+  recupera automáticamente el preset `current_month` una vez cuando la carga
+  inicial implícita `last_30_days` no tiene parámetros de periodo. La selección
+  explícita conserva el bloqueo. No cambian fuentes, universo, filtros, KPI,
+  fórmulas, nulos, redondeos, exportación ni auditoría.
+- Documentación actualizada: `docs/informe-campanas.md`,
+  `docs/matriz-trazabilidad-kpi.md` y este handoff. No cambia
+  `docs/decisiones-negocio-pendientes.md`, `PROJECT_CONTEXT.md` ni
+  `DECISIONS.md`: no hay decisión de negocio o arquitectura nueva.
+- Evidencia contrastada: `economicEvidence()` y `blockedEconomicEvidence()` del
+  servicio, `renderPeriodGuidance()`/`shouldRecoverDefaultPeriod()` y la
+  plantilla `#periodGuidance`. No hay pruebas modificadas en el diff; la
+  cobertura específica del nuevo payload y de la recuperación UI queda
+  pendiente.
+- No se ejecutaron sincronizaciones, Salesforce, bases de datos ni comandos de
+  aplicación. El validador documental no se pudo ejecutar porque no hay
+  `python.exe` disponible; queda pendiente ejecutarlo con base, HEAD y cuerpo
+  de PR. `git diff --check` y la revisión del diff documental quedan por cerrar.
+- Docs-Impact: updated. Docs-Matrix-Impact: updated.
