@@ -2084,8 +2084,9 @@ docker exec -u www-data -w /var/www laravel-informes-app \
 ```
 
 El comando verifica exclusivamente usuario efectivo, directorios Laravel,
-round-trip temporal del store de caché y conexión MariaDB. El valor temporal se
-elimina antes de terminar; un resultado positivo no acredita ninguna
+round-trip temporal del store de caché, hasta 1.000 entradas existentes de la
+ruta de caché y conexión MariaDB. El valor temporal se elimina incluso si la
+lectura falla; un resultado positivo no acredita ninguna
 sincronización ni fecha de corte. Si falla, detener el diagnóstico de tareas y
 corregir únicamente la ruta concreta mediante el procedimiento del despliegue.
 No usar root permanente, `chmod -R 777`, `chown -R` indiscriminado ni limpiar la

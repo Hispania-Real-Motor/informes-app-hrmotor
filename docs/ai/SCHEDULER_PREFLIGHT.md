@@ -205,7 +205,10 @@ docker exec -u www-data -w /var/www laravel-informes-app \
 
 El resultado debe acreditar `ok=true`, `cache_round_trip.ok=true`,
 `cache_round_trip.cleaned=true`, `database.ok=true` y rutas legibles y
-escribibles. La salida solo contiene UID, usuario efectivo, configuración no
+`cache_entries.ok=true` y rutas legibles y escribibles. `cache_entries` inspecciona
+como máximo 1.000 entradas reales, sin seguir enlaces simbólicos; si informa
+`truncated=true`, la comprobación no es concluyente y debe complementarse con
+una inspección de solo lectura del árbol de caché del contenedor. La salida solo contiene UID, usuario efectivo, configuración no
 secreta y estados booleanos; no imprime `.env`, tokens, payloads ni mensajes de
 excepción.
 

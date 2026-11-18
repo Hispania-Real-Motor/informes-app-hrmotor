@@ -8600,3 +8600,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   excepciones.
 - Tests añadidos: `OperationsPreflightTest`. Runtime PHP local y CI todavía
   pendientes de ejecutar para este cambio.
+- Revisión sénior de `bf1fcde`: el preflight ahora inspecciona de forma acotada
+  hasta 1.000 entradas de `storage/framework/cache/data`, detecta archivos o
+  directorios no legibles/escribibles y declara explícitamente truncamiento.
+  La clave temporal se limpia en `finally`; una limpieza no verificable hace
+  fallar el preflight.
+- La identidad exige `www-data` únicamente en producción POSIX; en Windows y
+  entornos de pruebas no bloquea innecesariamente. Se añadieron regresiones de
+  permisos sintéticos, limpieza y ausencia de payload en la salida.
