@@ -947,3 +947,29 @@ El resultado permanece provisional y no cambia atribución, readiness, snapshot,
 detalle, ratios, CSV ni generaciones publicadas de Campañas. Si el run Interest,
 la cobertura de actividades o la proyección no son compatibles, el lector
 mantiene el último estado válido y falla cerrado, sin adoptar una fuente parcial.
+### Automatización diaria operacional
+
+La tarea `campaigns-sync-daily-operational` permanece desactivada por defecto
+mediante `CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_ENABLED=false`. Cuando se
+autoriza explícitamente, reserva una ejecución operacional y ejecuta en orden
+Meta, Google, Interests operacional, Opportunities, relación directa
+Opportunity–Interest y estados actuales mediante sus contratos existentes. Solo
+después prepara la atribución provisional del mes vigente. Una dependencia
+fallida detiene la cadena y conserva la atribución activa anterior.
+
+La tarea no invoca `salesforce:sync-interest-reporting`, no publica la fuente
+oficial y no activa automáticamente una atribución preparada. Diciembre de 2026
+y meses posteriores siguen bloqueados por el contrato vigente del builder hasta
+una ampliación explícita y probada. La activación requiere además incluir la
+clave de la tarea y sus dependencias en `OPERATIONS_SCHEDULED_TASK_KEYS`; añadir
+solo la clave del orquestador no ejecuta una cadena incompleta.
+La tarea diaria operacional reutiliza ejecuciones exitosas del día antes de
+reintentar una dependencia, verifica el estado persistido y solo prepara una
+atribución con cobertura Opportunity completa y el límite de incidencias
+configurado. La activación automática requiere explícitamente
+`CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED=true`; permanece deshabilitada
+por defecto y no modifica la atribución oficial. Las incidencias `salesforce_only`
+son informativas cuando la cobertura de Opportunities y la integridad de fuentes
+son completas; no se invalidan mediante un umbral numérico arbitrario.
+Las tareas de Opportunities y Opportunity–Interest solo se reutilizan cuando su
+evidencia persistida cubre el cutoff del Interest operacional seleccionado.

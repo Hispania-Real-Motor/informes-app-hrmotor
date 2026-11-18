@@ -1,5 +1,36 @@
 # Handoff para agentes
 
+## 2026-11-18 — Activación segura de la cadena diaria de Campañas
+
+- El orquestador reutiliza runs operacionales exitosos del día, comprueba el
+  estado persistido de dependencias reintentadas y aplica una política de
+  calidad antes de aceptar la atribución preparada; `salesforce_only` se trata
+  como incidencia informativa cuando la cobertura e integridad son completas.
+- La activación automática es una bandera separada y falsa por defecto:
+  `CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED`; no se usa un umbral
+  numérico arbitrario de incidencias. No se modifican fuentes oficiales ni
+  cierres económicos.
+- No se ejecutaron proveedores reales ni cambios de producción. PHP/Composer
+  no están disponibles localmente; la validación completa queda para CI.
+- Las dependencias se reclaman mediante `OperationalTaskService` con su reserva
+  exacta; Opportunities y Opportunity–Interest se reutilizan solo si sus
+  cutoffs persistidos cubren el Interest operacional actual.
+
+## 2026-11-18 — Corrección del contrato documental de Campañas
+
+- El mapeo de `config/campaign_operational.php` se mantiene explícitamente en
+  el dominio `campaigns` del validador, con una prueba de regresión dedicada.
+  La guía documental explica que esta ruta solo contiene configuración del
+  orquestador y no constituye una excepción `Docs-Outside-Paths`.
+- No hay cambios de base de datos, producción, credenciales ni proveedores.
+- La validación local de Python no está disponible; se deja a CI junto con la
+  suite documental. `git diff --check` debe ejecutarse antes de entregar.
+- La excepción documental de esta entrega se limita al propio validador y sus
+  evidencias de control; las rutas funcionales de Campañas permanecen mapeadas.
+- La descripción de la PR no declara rutas funcionales fuera de informe.
+- El contrato de descripción conserva `Docs-Impact: updated` para esta revisión.
+- El catálogo compartido se declara como infraestructura fuera de informes.
+
 ## 2026-11-16 — Campañas: presentación y disponibilidad operativa
 
 - Objetivo: hacer visible la atribución operativa respaldada por la respuesta
@@ -8630,3 +8661,22 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - El matcher de `PendingCommand` tampoco expone consistentemente campos anidados
   de esta línea JSON en CI; la prueba conserva el fallo, `cache_entries.ok=false`,
   la fixture no escribible verificada por modo Unix y la ausencia del payload.
+- Nueva rama independiente `codex/campaigns-daily-automation` desde `origin/main`
+  (`d3b9b3b`) para la automatización operacional diaria de Campañas. Se añadió
+  una cadena desactivada por defecto que reutiliza reservas y comandos
+  operacionales, prepara atribución provisional y no publica la fuente oficial.
+  Se eliminó de la recuperación de publicación la dependencia peligrosa del
+  pipeline masivo `salesforce-sync-interest-reporting`.
+- Variable nueva: `CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_ENABLED`, que permanece
+  false. La cadena no tiene activación automática: el builder solo prepara y el
+  contrato de meses sigue limitado; diciembre no se habilita implícitamente.
+  Tests focales añadidos, pendientes de ejecutar por falta de PHP/Composer local.
+- Revisión documental completada sobre la cadena diaria: se contrastaron código,
+  configuración y test focal con el informe de Campañas, operaciones de
+  producción, matriz KPI y guía de mantenimiento. La matriz incorpora el
+  contrato de orquestación, sin declararlo KPI. No se ejecutaron proveedores ni
+  sincronizaciones. El agente documental revisó y actualizó únicamente la matriz.
+- El validador documental y sus pruebas no pudieron ejecutarse porque
+  `python.exe` no está disponible en el entorno. `git diff --check` sí terminó
+  sin incidencias; queda pendiente repetir el validador con Python y una
+  descripción de PR que incluya el contrato `Docs-Impact`.

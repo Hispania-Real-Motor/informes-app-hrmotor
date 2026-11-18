@@ -15,6 +15,7 @@ trait AssertsOperationalSchedule
         $baseline['campaigns-sync-current-status'] = ['campaigns:sync-current-status', [], '37 */6 * * *', 240];
         $baseline['salesforce-sync-interest-monthly-current'] = ['salesforce:sync-interest-monthly-current', ['--allow-salesforce-read' => true], '10 3 * * *', 240];
         $baseline['salesforce-sync-interest-operational-current'] = ['salesforce:sync-interest-operational-current', ['--allow-salesforce-read' => true], '20 2 * * *', 240];
+        $baseline['campaigns-sync-daily-operational'] = ['campaigns:sync-daily-operational', [], '20 9 * * *', 300];
         $tasks = app(OperationalTaskCatalog::class)->all();
         $events = collect(app(Schedule::class)->events())->keyBy('description');
         $this->assertCount(count($baseline), $tasks);

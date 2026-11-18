@@ -2091,3 +2091,22 @@ sincronización ni fecha de corte. Si falla, detener el diagnóstico de tareas y
 corregir únicamente la ruta concreta mediante el procedimiento del despliegue.
 No usar root permanente, `chmod -R 777`, `chown -R` indiscriminado ni limpiar la
 caché para ocultar una reserva operacional.
+### Cadena diaria operacional de Campañas
+
+La nueva clave `campaigns-sync-daily-operational` y la variable
+`CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_ENABLED` están desactivadas por defecto.
+La cadena es provisional: actualiza fuentes operacionales y prepara atribución,
+pero no publica generaciones oficiales ni modifica cierres económicos. Antes de
+activar, debe autorizarse la clave y todas sus dependencias en la allowlist,
+validar workers con configuración fresca y comprobar runs, cortes, cobertura e
+incidencias. Una dependencia fallida impide preparar una nueva atribución.
+La activación automática de la atribución operacional de Campañas se controla
+separadamente de la sincronización diaria mediante
+`CAMPAIGN_OPERATIONAL_DAILY_AUTO_ACTIVATE_ENABLED` y exige cobertura completa
+y huellas vigentes. Las incidencias de clasificación `salesforce_only` no son
+bloqueantes por sí mismas; una cobertura insuficiente sí lo es. Sin esa aprobación, el resultado
+queda preparado y pendiente de revisión administrativa.
+La cadena usa las reservas del catálogo directamente, por lo que no debe
+añadirse un segundo cron para sus dependencias; las tareas individuales
+mantienen sus ventanas ordinarias y se reutilizan únicamente si la evidencia
+persistida sigue siendo compatible con el Interest actual.

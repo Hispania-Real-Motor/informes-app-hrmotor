@@ -263,6 +263,10 @@ entrega; la revisión humana de la PR comprueba su presencia y exactitud.
 
 `config/campaign_current_status.php` se mapea explícitamente al informe `campaigns` en el validador y su prueba de regresión; pertenece al contrato de estado operativo del detalle, aunque no modifica KPIs económicos. Las modificaciones del motor central `OperationalTaskCatalog`, `OperationalTaskService`, `OperationalTaskHealthService` y `routes/console.php` requieren declarar las rutas exactas en `Docs-Outside-Paths` cuando su diff se limita a activación/reserva/supervisión de tareas, además de documentar Campañas por las rutas funcionales mapeadas. La excepción no elimina la revisión humana ni permite omitir cambios reales de informes.
 
+La configuración `config/campaign_operational.php` también se mapea explícitamente a
+`campaigns`, porque contiene únicamente el flag y los parámetros del orquestador
+operacional; su asignación se protege mediante una prueba documental de regresión.
+
 ### Servicios mensuales de Interests
 
 `InterestMonthlyRecoveryService.php`,

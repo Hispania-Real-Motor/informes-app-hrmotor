@@ -509,3 +509,22 @@ en [generaciones F2/F5](salesforce-interest-generations.md).
 | Contrato | Cadena contrastada | Estado y límites |
 | --- | --- | --- |
 | Automatización del mes actual | `OperationalTaskCatalog` → `operations:run` → `salesforce:sync-interest-operational-current --allow-salesforce-read` → `OperationalInterestCurrentAutomation::run()` encadena `OperationalInterestMonthlySync`, `OperationalInterestQualitySnapshot`, `OperationalInterestActivitySync` y `OperationalInterestKpiProjector`. La configuración `OPERATIONS_INTEREST_OPERATIONAL_CURRENT_SYNC_ENABLED` está apagada por defecto; la reserva es exclusiva/persistente y la ventana es de 240 minutos. | Coordina únicamente los contratos operativos ya descritos: mes `Europe/Madrid`, runs/proyección locales compatibles y contrato KPI explícito para octubre/noviembre de 2026. Reanudar o preparar evidencia no publica generaciones ni mueve punteros oficiales, y no altera fórmulas, universos, filtros, redondeos, nulos, exportaciones o auditorías oficiales. Requiere flag, allowlist y autorización explícita de lectura; la ausencia de contrato o una incoherencia falla cerrada. Las pruebas de catálogo/autorización son sintéticas; no hay evidencia Salesforce ni productiva. |
+
+### Automatización diaria operacional de Campañas (orquestación, no KPI)
+
+`campaigns-sync-daily-operational` (`20 9 * * *`, `Europe/Madrid`, ventana de
+300 minutos y gracia de 120) está deshabilitada por
+`CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_ENABLED=false` y no admite ejecución
+manual. Cuando se habilita y todas las dependencias están presentes en
+`OPERATIONS_SCHEDULED_TASK_KEYS`, `CampaignDailyOperationalAutomation::run()`
+encadena Meta, Google, Interests operacional, Opportunities, la relación directa
+Opportunity–Interest y el estado actual; después invoca
+`CampaignOperationalAttributionBuilder::build()` para el mes actual. Una
+dependencia con salida distinta de cero detiene la cadena antes de preparar la
+atribución. La tarea excluye `salesforce-sync-interest-reporting`, no publica ni
+activa la preparación y no cambia los KPI, lectores, exportaciones, auditorías,
+universos, filtros, fórmulas, nulos o redondeos oficiales de Campañas. Esta evidencia
+corresponde a `app/Services/Campaigns/CampaignDailyOperationalAutomation.php`,
+`app/Services/Operations/OperationalTaskCatalog.php`,
+`config/campaign_operational.php` y
+`tests/Feature/CampaignDailyOperationalAutomationTest.php`.
