@@ -28,7 +28,7 @@ final class CampaignDailyOperationalAutomation
         }
 
         foreach (self::SOURCE_TASKS as $key) {
-            $exit = Artisan::call('operations:run', ['task' => $key], new NullOutput());
+            $exit = Artisan::call('operations:run', ['task' => $key], new NullOutput);
             if ($exit !== 0) {
                 throw new RuntimeException('Una dependencia operacional no se completó.');
             }
