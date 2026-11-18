@@ -30,7 +30,7 @@ class OperationsPreflightTest extends TestCase
         $file = $directory.'/entry';
         mkdir($directory, 0755, true);
         file_put_contents($file, 'synthetic-secret-payload');
-        chmod($file, 0444);
+        chmod($file, 0000);
         $mode = @fileperms($file);
         if ($mode === false || ($mode & 0222) !== 0) {
             chmod($directory, 0755);
