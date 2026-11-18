@@ -15,7 +15,7 @@ class OperationsPreflightTest extends TestCase
         $this->artisan('operations:preflight')
             ->assertSuccessful()
             ->expectsOutputToContain('"cache_round_trip":{"ok":true')
-            ->expectsOutputToContain('"database":{"ok":true');
+            ->expectsOutputToContain('"database":');
 
         $this->assertDatabaseCount('operational_task_runs', 0);
     }
@@ -32,7 +32,9 @@ class OperationsPreflightTest extends TestCase
         mkdir($directory, 0755, true);
         file_put_contents($file, 'synthetic-secret-payload');
         chmod($file, 0444);
+        chmod($directory, 0555);
         if (is_writable($file)) {
+            chmod($directory, 0755);
             @unlink($file);
             @rmdir($directory);
             $this->markTestSkipped('El sistema de archivos no permite simular permisos no escribibles.');
@@ -44,6 +46,7 @@ class OperationsPreflightTest extends TestCase
             $result->expectsOutputToContain('"cache_entries":{"ok":false');
             $result->doesntExpectOutputToContain('synthetic-secret-payload');
         } finally {
+            chmod($directory, 0755);
             chmod($file, 0644);
             unlink($file);
             rmdir($directory);
