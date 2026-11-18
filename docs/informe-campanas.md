@@ -963,9 +963,3 @@ y meses posteriores siguen bloqueados por el contrato vigente del builder hasta
 una ampliación explícita y probada. La activación requiere además incluir la
 clave de la tarea y sus dependencias en `OPERATIONS_SCHEDULED_TASK_KEYS`; añadir
 solo la clave del orquestador no ejecuta una cadena incompleta.
-
-`CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_AUTO_ACTIVATE` figura en la configuración
-como reserva de contrato, pero la implementación actual no la consume: aun con
-ese valor habilitado, la cadena solo deja la atribución en estado `prepared` y
-no mueve el puntero activo. La activación continúa siendo una acción
-administrativa separada y explícita.

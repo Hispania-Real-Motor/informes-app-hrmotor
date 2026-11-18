@@ -8640,3 +8640,12 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   false. La cadena no tiene activación automática: el builder solo prepara y el
   contrato de meses sigue limitado; diciembre no se habilita implícitamente.
   Tests focales añadidos, pendientes de ejecutar por falta de PHP/Composer local.
+- Revisión documental completada sobre la cadena diaria: se contrastaron código,
+  configuración y test focal con el informe de Campañas, operaciones de
+  producción, matriz KPI y guía de mantenimiento. La matriz incorpora el
+  contrato de orquestación, sin declararlo KPI. No se ejecutaron proveedores ni
+  sincronizaciones. El agente documental revisó y actualizó únicamente la matriz.
+- El validador documental y sus pruebas no pudieron ejecutarse porque
+  `python.exe` no está disponible en el entorno. `git diff --check` sí terminó
+  sin incidencias; queda pendiente repetir el validador con Python y una
+  descripción de PR que incluya el contrato `Docs-Impact`.

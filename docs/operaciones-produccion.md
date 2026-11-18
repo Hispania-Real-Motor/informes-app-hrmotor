@@ -2100,7 +2100,3 @@ pero no publica generaciones oficiales ni modifica cierres económicos. Antes de
 activar, debe autorizarse la clave y todas sus dependencias en la allowlist,
 validar workers con configuración fresca y comprobar runs, cortes, cobertura e
 incidencias. Una dependencia fallida impide preparar una nueva atribución.
-La variable `CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_AUTO_ACTIVATE` está declarada
-pero no tiene efecto en esta implementación: no debe usarse como autorización
-de publicación. La activación de una preparación sigue requiriendo el comando y
-los controles administrativos del procedimiento mensual de Campañas.
