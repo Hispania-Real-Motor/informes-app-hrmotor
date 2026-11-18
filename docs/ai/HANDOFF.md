@@ -8590,3 +8590,13 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   safe-failure tests remain unchanged.
 - No Salesforce, production, migration, publication, scheduler or flag action
   was executed locally. CI must rerun the focused and global PHP suites.
+- Primera entrega de recuperación del scheduler: añadido `operations:preflight`
+  para verificar de forma no destructiva el usuario efectivo, rutas Laravel,
+  round-trip temporal de caché y conexión MariaDB. No ejecuta tareas ni accede a
+  Salesforce, Meta o Google.
+- La prevención persistente es operativa: cron y Artisan administrativo deben
+  ejecutarse como `www-data`; no se cambia el cron a root ni se aplican permisos
+  globales. La salida del preflight no contiene secretos, payloads ni mensajes de
+  excepciones.
+- Tests añadidos: `OperationsPreflightTest`. Runtime PHP local y CI todavía
+  pendientes de ejecutar para este cambio.

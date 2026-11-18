@@ -190,3 +190,25 @@ oficial por rollback.
   periodo antes de cualquier automatización.
 - El cambio horario Europe/Madrid debe probarse con `schedule:list` y una
   ejecución controlada; no confiar solo en el cron del host.
+## Preflight del entorno de ejecución
+
+Antes de reintentar una tarea fallida, ejecutar el comando siguiente con el
+mismo usuario efectivo del cron (`www-data`) dentro del contenedor. No invoca
+ninguna sincronización, no consulta proveedores externos y no modifica datos de
+informes. Comprueba las rutas Laravel ordinarias, la conexión MariaDB y realiza
+una escritura temporal en el store de caché que elimina inmediatamente.
+
+```bash
+docker exec -u www-data -w /var/www laravel-informes-app \
+  /usr/local/bin/php artisan operations:preflight
+```
+
+El resultado debe acreditar `ok=true`, `cache_round_trip.ok=true`,
+`cache_round_trip.cleaned=true`, `database.ok=true` y rutas legibles y
+escribibles. La salida solo contiene UID, usuario efectivo, configuración no
+secreta y estados booleanos; no imprime `.env`, tokens, payloads ni mensajes de
+excepción.
+
+Las ejecuciones manuales de Artisan que puedan crear caché deben usar también
+`docker exec -u www-data`. No se debe corregir este incidente cambiando el cron
+a root, usando `chmod -R 777` o ejecutando `chown -R` sobre el volumen completo.
