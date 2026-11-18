@@ -8590,3 +8590,43 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   safe-failure tests remain unchanged.
 - No Salesforce, production, migration, publication, scheduler or flag action
   was executed locally. CI must rerun the focused and global PHP suites.
+- Primera entrega de recuperación del scheduler: añadido `operations:preflight`
+  para verificar de forma no destructiva el usuario efectivo, rutas Laravel,
+  round-trip temporal de caché y conexión MariaDB. No ejecuta tareas ni accede a
+  Salesforce, Meta o Google.
+- La prevención persistente es operativa: cron y Artisan administrativo deben
+  ejecutarse como `www-data`; no se cambia el cron a root ni se aplican permisos
+  globales. La salida del preflight no contiene secretos, payloads ni mensajes de
+  excepciones.
+- Tests añadidos: `OperationsPreflightTest`. Runtime PHP local y CI todavía
+  pendientes de ejecutar para este cambio.
+- Revisión sénior de `bf1fcde`: el preflight ahora inspecciona de forma acotada
+  hasta 1.000 entradas de `storage/framework/cache/data`, detecta archivos o
+  directorios no legibles/escribibles y declara explícitamente truncamiento.
+  La clave temporal se limpia en `finally`; una limpieza no verificable hace
+  fallar el preflight.
+- La identidad exige `www-data` únicamente en producción POSIX; en Windows y
+  entornos de pruebas no bloquea innecesariamente. Se añadieron regresiones de
+  permisos sintéticos, limpieza y ausencia de payload en la salida.
+- Tras el primer CI se endureció la detección de permisos para considerar tanto
+  `is_writable()` como los bits Unix de escritura, evitando falsos positivos
+  cuando el runner tiene privilegios superiores. La aserción de base de datos
+  conserva la validación mediante el código exitoso del comando, sin depender
+  del formato exacto de serialización JSON.
+- En el commit `b6fdce4`, el CI de `test` aún debe repetirse para confirmar esta
+  corrección; MariaDB y documentación habían pasado en la ejecución anterior.
+- El test de permisos usa `PendingCommand::assertFailed()` y captura únicamente
+  su aserción de código cero para justificar el skip en runners privilegiados;
+  no depende de métodos inexistentes de `PendingCommand`.
+- La prueba de entrada de caché se aisló configurando un directorio temporal como
+  raíz del store file y ahora exige fallo, `cache_entries.ok=false`, contador
+  `unwritable` positivo y ausencia del payload sintético. Se eliminó repetición
+  menor en `SCHEDULER_PREFLIGHT.md`.
+- La aserción del contador evita asumir que el entorno solo contiene una entrada:
+  verifica que `unwritable` está presente y no es cero. También trata un modo de
+  archivo no consultable como limitación segura del sistema de pruebas.
+- La coincidencia del campo `unwritable` se hace sin fijar el espaciado o la
+  serialización exacta de JSON emitida por el renderer de CI.
+- El matcher de `PendingCommand` tampoco expone consistentemente campos anidados
+  de esta línea JSON en CI; la prueba conserva el fallo, `cache_entries.ok=false`,
+  la fixture no escribible verificada por modo Unix y la ausencia del payload.

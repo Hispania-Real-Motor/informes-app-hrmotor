@@ -2073,3 +2073,21 @@ los tres run IDs y la proyección completada. Ampliar la allowlist solo después
 de observar una ejecución íntegra. Para rollback, apagar el flag o retirar la
 clave de la allowlist, conservar todos los runs y evidencias, y no ejecutar
 rollback de migraciones ni borrar punteros.
+### Preflight seguro del scheduler tras un incidente de caché
+
+El cron y los comandos administrativos deben ejecutarse con el mismo principal
+`www-data`. Para comprobar el entorno sin iniciar integraciones:
+
+```bash
+docker exec -u www-data -w /var/www laravel-informes-app \
+  /usr/local/bin/php artisan operations:preflight
+```
+
+El comando verifica exclusivamente usuario efectivo, directorios Laravel,
+round-trip temporal del store de caché, hasta 1.000 entradas existentes de la
+ruta de caché y conexión MariaDB. El valor temporal se elimina incluso si la
+lectura falla; un resultado positivo no acredita ninguna
+sincronización ni fecha de corte. Si falla, detener el diagnóstico de tareas y
+corregir únicamente la ruta concreta mediante el procedimiento del despliegue.
+No usar root permanente, `chmod -R 777`, `chown -R` indiscriminado ni limpiar la
+caché para ocultar una reserva operacional.
