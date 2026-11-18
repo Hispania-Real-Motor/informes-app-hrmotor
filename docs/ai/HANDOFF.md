@@ -8608,3 +8608,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - La identidad exige `www-data` únicamente en producción POSIX; en Windows y
   entornos de pruebas no bloquea innecesariamente. Se añadieron regresiones de
   permisos sintéticos, limpieza y ausencia de payload en la salida.
+- Tras el primer CI se endureció la detección de permisos para considerar tanto
+  `is_writable()` como los bits Unix de escritura, evitando falsos positivos
+  cuando el runner tiene privilegios superiores. La aserción de base de datos
+  conserva la validación mediante el código exitoso del comando, sin depender
+  del formato exacto de serialización JSON.
+- En el commit `b6fdce4`, el CI de `test` aún debe repetirse para confirmar esta
+  corrección; MariaDB y documentación habían pasado en la ejecución anterior.
