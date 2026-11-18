@@ -22,7 +22,6 @@ class ReconcileCampaignPublicationCommand extends Command
     private const RETRYABLE_TASKS = [
         'campaigns-sync-meta',
         'campaigns-sync-google',
-        'salesforce-sync-interest-reporting',
         'salesforce-sync-opportunities',
         'salesforce-sync-opportunity-interest-direct',
         'campaigns-build-attribution',

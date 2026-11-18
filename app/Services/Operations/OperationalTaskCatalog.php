@@ -114,6 +114,16 @@ final class OperationalTaskCatalog
                 'manual_allowed' => true, 'risk' => 'moderate',
                 'overlap_policy' => 'exclusive-persistent', 'policy' => 'Ventana ordinaria fija del scheduler.',
             ],
+            'campaigns-sync-daily-operational' => [
+                'label' => 'actualización diaria operacional de Campañas', 'module' => 'campaigns',
+                'command' => 'campaigns:sync-daily-operational', 'arguments' => [],
+                'cron' => '20 9 * * *', 'timezone' => 'Europe/Madrid',
+                'window_minutes' => 300, 'grace_minutes' => 120,
+                'enabled' => (bool) config('campaign_operational.daily_automation_enabled', false),
+                'manual_allowed' => false, 'risk' => 'high',
+                'overlap_policy' => 'exclusive-persistent',
+                'policy' => 'Fuentes operacionales y atribución provisional preparada; no publica la fuente oficial ni reabre cierres.',
+            ],
             'campaigns-build-attribution' => [
                 'label' => 'construcción de atribución de campañas', 'module' => 'campaigns',
                 'command' => 'campaigns:build-attribution',

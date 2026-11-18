@@ -8630,3 +8630,13 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - El matcher de `PendingCommand` tampoco expone consistentemente campos anidados
   de esta línea JSON en CI; la prueba conserva el fallo, `cache_entries.ok=false`,
   la fixture no escribible verificada por modo Unix y la ausencia del payload.
+- Nueva rama independiente `codex/campaigns-daily-automation` desde `origin/main`
+  (`d3b9b3b`) para la automatización operacional diaria de Campañas. Se añadió
+  una cadena desactivada por defecto que reutiliza reservas y comandos
+  operacionales, prepara atribución provisional y no publica la fuente oficial.
+  Se eliminó de la recuperación de publicación la dependencia peligrosa del
+  pipeline masivo `salesforce-sync-interest-reporting`.
+- Variable nueva: `CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_ENABLED`, que permanece
+  false. La cadena no tiene activación automática: el builder solo prepara y el
+  contrato de meses sigue limitado; diciembre no se habilita implícitamente.
+  Tests focales añadidos, pendientes de ejecutar por falta de PHP/Composer local.

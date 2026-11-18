@@ -947,3 +947,25 @@ El resultado permanece provisional y no cambia atribución, readiness, snapshot,
 detalle, ratios, CSV ni generaciones publicadas de Campañas. Si el run Interest,
 la cobertura de actividades o la proyección no son compatibles, el lector
 mantiene el último estado válido y falla cerrado, sin adoptar una fuente parcial.
+### Automatización diaria operacional
+
+La tarea `campaigns-sync-daily-operational` permanece desactivada por defecto
+mediante `CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_ENABLED=false`. Cuando se
+autoriza explícitamente, reserva una ejecución operacional y ejecuta en orden
+Meta, Google, Interests operacional, Opportunities, relación directa
+Opportunity–Interest y estados actuales mediante sus contratos existentes. Solo
+después prepara la atribución provisional del mes vigente. Una dependencia
+fallida detiene la cadena y conserva la atribución activa anterior.
+
+La tarea no invoca `salesforce:sync-interest-reporting`, no publica la fuente
+oficial y no activa automáticamente una atribución preparada. Diciembre de 2026
+y meses posteriores siguen bloqueados por el contrato vigente del builder hasta
+una ampliación explícita y probada. La activación requiere además incluir la
+clave de la tarea y sus dependencias en `OPERATIONS_SCHEDULED_TASK_KEYS`; añadir
+solo la clave del orquestador no ejecuta una cadena incompleta.
+
+`CAMPAIGN_OPERATIONAL_DAILY_AUTOMATION_AUTO_ACTIVATE` figura en la configuración
+como reserva de contrato, pero la implementación actual no la consume: aun con
+ese valor habilitado, la cadena solo deja la atribución en estado `prepared` y
+no mueve el puntero activo. La activación continúa siendo una acción
+administrativa separada y explícita.
