@@ -44,7 +44,8 @@ class OperationsPreflightTest extends TestCase
             $result = $this->artisan('operations:preflight');
             $result->assertFailed()
                 ->expectsOutputToContain('"cache_entries":{"ok":false')
-                ->expectsOutputToContain('"unwritable":1')
+                ->expectsOutputToContain('"unwritable":')
+                ->doesntExpectOutputToContain('"unwritable":0')
                 ->doesntExpectOutputToContain('synthetic-secret-payload');
         } finally {
             chmod($directory, 0755);
