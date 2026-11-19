@@ -25,15 +25,22 @@ class StoreManagerCommissionPlanCalculator
 
     public function storeKpiIncentive(int $actual, ?int $target): array
     {
+        if ($actual < 0) {
+            return ['incentive' => null, 'status' => 'data_invalid', 'bracket' => null, 'ratio' => null];
+        }
+
         if ($target === null) {
             return ['incentive' => null, 'status' => 'target_pending', 'bracket' => null, 'ratio' => null];
+        }
+
+        if ($target < 0) {
+            return ['incentive' => null, 'status' => 'data_invalid', 'bracket' => null, 'ratio' => null];
         }
 
         if ($target === 0) {
             return ['incentive' => 0.0, 'status' => 'not_applicable', 'bracket' => 'target_zero', 'ratio' => null];
         }
 
-        $actual = max(0, $actual);
         $ratio = $actual / $target;
 
         if ($ratio < 0.90) {
@@ -96,8 +103,12 @@ class StoreManagerCommissionPlanCalculator
         return round($delivery + $financing + $guarantee - $penalty, 2);
     }
 
-    public function finalTotal(float $storeDeliveries, float $storePurchases, float $reviewsAdjustment, array $individualSubtotals): float
+    public function finalTotal(float $storeDeliveries, float $storePurchases, float $reviewsAdjustment, array $individualSubtotals): ?float
     {
+        if (collect($individualSubtotals)->contains(fn (mixed $subtotal): bool => $subtotal === null || ! is_numeric($subtotal))) {
+            return null;
+        }
+
         return max(0.0, round($storeDeliveries + $storePurchases + $reviewsAdjustment + array_sum($individualSubtotals), 2));
     }
 }

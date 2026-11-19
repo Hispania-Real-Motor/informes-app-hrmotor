@@ -66,5 +66,15 @@ class StoreManagerCommissionPlanCalculatorTest extends TestCase
 
         $this->assertSame(0.0, $calculator->finalTotal(10, 0, -150, [-100]));
         $this->assertSame(60.0, $calculator->finalTotal(100, 50, -150, [60]));
+        $this->assertNull($calculator->finalTotal(100, 50, 0, [null]));
+    }
+
+    public function test_negative_kpi_inputs_are_invalid_and_are_not_normalized(): void
+    {
+        $calculator = app(StoreManagerCommissionPlanCalculator::class);
+
+        $this->assertSame('data_invalid', $calculator->storeKpiIncentive(-1, 30)['status']);
+        $this->assertNull($calculator->storeKpiIncentive(-1, 30)['incentive']);
+        $this->assertSame('data_invalid', $calculator->storeKpiIncentive(10, -1)['status']);
     }
 }

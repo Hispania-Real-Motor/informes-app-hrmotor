@@ -8814,3 +8814,20 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Verificación local: `php -l tests/Unit/StoreManagerCommissionPlanCalculatorTest.php`
   correcto; `git diff --check` correcto. La suite CI debe reejecutarse en el
   PR para confirmar todos los tests.
+
+## Endurecimiento del contrato del calculador (2026-11-19)
+
+- El cálculo KPI ya no normaliza silenciosamente un `actual` o `target` negativo:
+  devuelve `data_invalid`, sin incentivo ni tramo. Esto evita convertir datos
+  corruptos en comisiones pagables.
+- `finalTotal()` devuelve `null` si algún subtotal individual está ausente o no
+  es numérico; no se suma parcialmente una persona con componentes pendientes.
+- Se añadieron pruebas para ambos casos y para el subtotal incompleto.
+- No se añadieron migraciones, objetivos, sincronizaciones, campos Salesforce,
+  endpoints ni cierres. La integración funcional sigue bloqueada por la falta
+  de una fuente verificable para objetivos de octubre, tienda física de compra,
+  fecha real de alta/reingreso, deduplicación Tasación/Cambio y contrato de
+  reseñas.
+- Verificación ejecutada: `git diff --check` correcto. El runtime PHP no está
+  disponible en este entorno, por lo que la prueba focalizada no pudo ejecutarse
+  localmente; debe validarse en CI antes de cerrar la PR.
