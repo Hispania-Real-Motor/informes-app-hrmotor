@@ -64,6 +64,7 @@ class CommercialCommissionDashboardService
         'garantia_total',
         'beneficio_financiacion_comercial',
         'importe_financiado',
+        'financial_commission',
         'gestion_de_venta',
         'opo_div_descuento',
         'vehicle_interest_id',
@@ -177,6 +178,15 @@ class CommercialCommissionDashboardService
         $opportunities = $this->monthlyDelegationDeliveryOpportunities($periodStart, $periodStart->addMonth())
             ->get()
             ->filter(fn (SalesforceOpportunity $row): bool => $this->countsAsDelegationDelivery($row));
+        $deliverySourceIssues = $opportunities
+            ->filter(fn (SalesforceOpportunity $row): bool => blank($row->delivery_store))
+            ->map(fn (SalesforceOpportunity $row): string => sprintf(
+                'Entrega física pendiente: %s (%s) carece de tienda de entrega verificable.',
+                (string) ($row->salesforce_id ?: 'sin Salesforce ID'),
+                (string) ($row->name ?: 'sin nombre'),
+            ))
+            ->values()
+            ->all();
         $purchases = $this->monthlyStoreManagerPurchaseOpportunities($periodStart, $periodStart->addMonth())
             ->get()
             ->values();
@@ -219,8 +229,9 @@ class CommercialCommissionDashboardService
             collect($targets)->pluck('store_name'),
         );
         $managerHistory = $this->delegationManagers->resolve($month, collect($targets)->pluck('store_name')->all());
+        $verifiedManagerIds = array_fill_keys($this->delegationManagers->verifiedManagerIds($month), true);
 
-        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $purchaseSourceIssues, $calculator, $reviewPayloads, $managerHistory, $month): array {
+        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $purchaseSourceIssues, $deliverySourceIssues, $calculator, $reviewPayloads, $managerHistory, $verifiedManagerIds, $month): array {
             $storeKey = (string) $target['store_key'];
             $storeOperations = $deliveriesByStore->get($storeKey, collect())->values();
             $deliveries = $storeOperations->count();
@@ -233,8 +244,8 @@ class CommercialCommissionDashboardService
                     $issues[] = 'Conflicto de atribución para la tasación '.$appraisal.'.';
                 }
             }
-            $issues = array_values(array_unique([...$issues, ...$purchaseSourceIssues]));
-            $team = $this->storeManagerTeamComponents($storeOperations, $target, $month, $calculator);
+            $issues = array_values(array_unique([...$issues, ...$purchaseSourceIssues, ...$deliverySourceIssues]));
+            $team = $this->storeManagerTeamComponents($storeOperations, $target, $month, $calculator, $verifiedManagerIds);
             $review = $reviewPayloads[$target['store_name']] ?? null;
             $reviewAmount = null;
             if (is_array($review) && ($review['technical_status'] ?? null) === 'available' && is_numeric($review['average_rating'] ?? null)) {
@@ -250,6 +261,11 @@ class CommercialCommissionDashboardService
             }
             if ((int) ($manager['store_manager_distinct_count'] ?? 0) >= 2) {
                 $team['issues'][] = $manager['store_manager_alert'] ?? 'Revisar la atribución del responsable de tienda.';
+            }
+            if (is_array($review) && ($review['technical_status'] ?? null) === 'available'
+                && ((int) ($review['reviews_count'] ?? 0) === 0) !== (($review['average_rating'] ?? null) === null)) {
+                $issues[] = 'Payload de reseñas incoherente: recuento y media no son compatibles.';
+                $reviewAmount = null;
             }
             $issues = array_values(array_unique([...$issues, ...$team['issues']]));
             $complete = $issues === [] && $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
@@ -287,6 +303,10 @@ class CommercialCommissionDashboardService
                 'store_deliveries_incentive' => $status === 'calculated' ? $deliveryKpi['incentive'] : null,
                 'store_purchases_incentive' => $status === 'calculated' ? $purchaseKpi['incentive'] : null,
                 'store_reviews_adjustment' => $reviewAmount,
+                'reviews_count' => is_array($review) ? ($review['reviews_count'] ?? null) : null,
+                'reviews_average_rating' => is_array($review) ? ($review['average_rating'] ?? null) : null,
+                'reviews_technical_status' => is_array($review) ? ($review['technical_status'] ?? 'not_available') : 'not_available',
+                'reviews_fetched_at' => is_array($review) ? ($review['fetched_at'] ?? null) : null,
                 'team_components' => $team['components'],
                 'team_subtotals' => $team['subtotals'],
                 'store_manager_salesforce_user_id' => $manager['store_manager_salesforce_user_id'] ?? null,
@@ -306,7 +326,7 @@ class CommercialCommissionDashboardService
     }
 
     /** @return array{complete: bool, issues: array<int, string>, subtotals: array<int, float>, components: array<string, mixed>} */
-    private function storeManagerTeamComponents(Collection $operations, array $target, CarbonImmutable $month, StoreManagerCommissionPlanCalculator $calculator): array
+    private function storeManagerTeamComponents(Collection $operations, array $target, CarbonImmutable $month, StoreManagerCommissionPlanCalculator $calculator, array $verifiedManagerIds): array
     {
         $issues = [];
         $subtotals = [];
@@ -319,27 +339,43 @@ class CommercialCommissionDashboardService
         }
         $zone = Str::of((string) ($target['zone'] ?? ''))->ascii()->lower()->value();
         $minimums = match (true) {
+            str_contains($zone, 'sur') || str_contains($zone, 'madrid') || str_contains($zone, 'palma') => [11500.0, 4900.0],
             str_contains($zone, 'norte') => [9000.0, 3500.0],
             str_contains($zone, 'levante') || str_contains($zone, 'mediterr') => [10300.0, 3700.0],
             str_contains($zone, 'catal') => [11500.0, 3700.0],
-            default => [11500.0, 4900.0],
+            default => null,
         };
+        if ($minimums === null) {
+            $issues[] = 'Zona de tienda ausente o no reconocida; no se pueden aplicar mínimos económicos.';
+        }
+        $ownerIds = $ownerOperations->keys()->map(fn (mixed $id): string => (string) $id)->values();
+        $employmentDates = Schema::hasTable('hr_employment_dates')
+            ? HrEmploymentDate::query()->whereIn('salesforce_user_id', $ownerIds)->whereDate('effective_date', '<=', $month->addMonth()->subDay()->toDateString())->orderByDesc('effective_date')->get()->groupBy('salesforce_user_id')
+            : collect();
         foreach ($ownerOperations as $ownerId => $ownerRows) {
-            $financing = round((float) $ownerRows->sum(fn (SalesforceOpportunity $row): float => (float) ($row->importe_financiado ?? 0)), 2);
-            $guarantee = round((float) $ownerRows->sum(fn (SalesforceOpportunity $row): float => (float) ($row->garantia_total ?? 0)), 2);
-            $employment = Schema::hasTable('hr_employment_dates')
-                ? HrEmploymentDate::query()->where('salesforce_user_id', $ownerId)->whereDate('effective_date', '<=', $month->addMonth()->subDay()->toDateString())->orderByDesc('effective_date')->first()
-                : null;
+            $hasMissingFinancial = $ownerRows->contains(fn (SalesforceOpportunity $row): bool => $row->financial_commission === null);
+            $hasMissingGuarantee = $ownerRows->contains(fn (SalesforceOpportunity $row): bool => $row->garantia_total === null);
+            $financing = $hasMissingFinancial ? null : round((float) $ownerRows->sum(fn (SalesforceOpportunity $row): float => (float) $row->financial_commission), 2);
+            $guarantee = $hasMissingGuarantee ? null : round((float) $ownerRows->sum(fn (SalesforceOpportunity $row): float => (float) $row->garantia_total), 2);
+            $employment = $employmentDates->get((string) $ownerId, collect())->first();
             $penalty = null;
-            if ($employment?->effective_date !== null) {
+            if (isset($verifiedManagerIds[(string) $ownerId])) {
+                $penalty = 0.0;
+            } elseif ($employment?->effective_date !== null && $minimums !== null) {
                 $olderThanThreeMonths = $employment->effective_date->addMonths(3)->lt($month->addMonth()->subDay());
-                $penalty = $olderThanThreeMonths && ($ownerRows->count() < 10 || $financing < $minimums[0] || $guarantee < $minimums[1]) ? 100.0 : 0.0;
+                $penalty = $olderThanThreeMonths && ($ownerRows->count() < 10 || $financing === null || $guarantee === null || $financing < $minimums[0] || $guarantee < $minimums[1]) ? 100.0 : 0.0;
             } else {
-                $issues[] = 'Antigüedad laboral pendiente para '.$ownerId.'.';
+                $issues[] = $minimums === null ? 'No se puede validar la penalización individual para '.$ownerId.'.' : 'Antigüedad laboral pendiente para '.$ownerId.'.';
             }
             $delivery = $calculator->individualDeliveryIncentive($ownerRows->count());
-            $financingIncentive = $calculator->thresholdIncentive($financing, $minimums[0], 100.0);
-            $guaranteeIncentive = $calculator->thresholdIncentive($guarantee, $minimums[1], 60.0);
+            $financingIncentive = $calculator->thresholdIncentive($financing, $minimums[0] ?? null, 100.0);
+            $guaranteeIncentive = $calculator->thresholdIncentive($guarantee, $minimums[1] ?? null, 60.0);
+            if ($hasMissingFinancial) {
+                $issues[] = 'Comisión financiera pendiente para '.$ownerId.'.';
+            }
+            if ($hasMissingGuarantee) {
+                $issues[] = 'Garantías pendientes para '.$ownerId.'.';
+            }
             $subtotal = $calculator->individualSubtotal($delivery, $financingIncentive, $guaranteeIncentive, $penalty);
             if ($subtotal === null) {
                 $issues[] = 'Subtotal individual pendiente para '.$ownerId.'.';
@@ -1808,6 +1844,7 @@ class CommercialCommissionDashboardService
                 'importe_financiado',
                 'gestion_de_venta',
                 'opo_div_descuento',
+                'financial_commission',
             ] as $column) {
                 if (! Schema::hasColumn('salesforce_opportunities', $column)) {
                     $issues[] = "Falta la columna local salesforce_opportunities.{$column}. Ejecuta las migraciones pendientes.";

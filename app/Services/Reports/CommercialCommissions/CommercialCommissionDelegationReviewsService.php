@@ -147,12 +147,19 @@ class CommercialCommissionDelegationReviewsService
 
     private function normalizePayload(array $payload): array
     {
+        $rawCount = data_get($payload, 'reviews_count');
+        $rawRating = data_get($payload, 'average_rating');
+        $technicalStatus = 'available';
+        if (! is_numeric($rawCount) || ($rawCount < 0) || ($rawCount == 0 && $rawRating !== null) || ($rawCount > 0 && ! is_numeric($rawRating))) {
+            $technicalStatus = 'invalid_payload';
+        }
+
         return [
-            'reviews_count' => max(0, (int) data_get($payload, 'reviews_count', 0)),
-            'average_rating' => is_numeric(data_get($payload, 'average_rating'))
-                ? (float) data_get($payload, 'average_rating')
+            'reviews_count' => is_numeric($rawCount) ? max(0, (int) $rawCount) : null,
+            'average_rating' => is_numeric($rawRating)
+                ? (float) $rawRating
                 : null,
-            'technical_status' => 'available',
+            'technical_status' => $technicalStatus,
             'fetched_at' => filled($payload['fetched_at'] ?? null) ? (string) $payload['fetched_at'] : null,
         ];
     }

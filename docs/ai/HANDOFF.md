@@ -9001,3 +9001,24 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Verificación local: Pint y 58 pruebas focalizadas, 179 aserciones, correctas;
   `git diff --check` correcto. El plan permanece provisional hasta disponer de
   evidencias Salesforce/RR. HH. y resolver responsables o fuentes pendientes.
+
+## Auditoría económica correctiva (2026-11-19)
+
+- El mínimo de financiación individual usa `financial_commission`, que es la
+  persistencia de `Comisi_n_Financiera__c`; el capital `importe_financiado` ya
+  no participa en ese umbral. Los importes financieros o de garantías nulos
+  mantienen el componente pendiente.
+- Los empleados verificados como jefes quedan exentos de la penalización de
+  antigüedad incluso sin fecha laboral; los comerciales ordinarios requieren
+  la última fecha RR. HH. y la consulta se ejecuta por lote para evitar N+1.
+- Se validan zonas desconocidas como incidencia, la coherencia del payload de
+  reseñas y los campos de estado/fecha que consume readiness.
+- La integridad de aprobación verifica 34 filas, todos los componentes,
+  subtotales numéricos y la conciliación matemática del total; un snapshot con
+  estado `calculated` pero desglose parcial o contradictorio se rechaza.
+- Se añadió `tests/Feature/StoreManagerSettlementIntegrationTest.php` con
+  liquidación sintética de 630 EUR, validación del campo financiero,
+  exención de jefe sin RR. HH. y rechazo de snapshot inconsistente.
+- Verificación local de esta iteración: 45 pruebas y 132 aserciones correctas,
+  Pint correcto y `git diff --check` correcto. No se importaron datos reales ni
+  se modificaron Salesforce o cierres definitivos.

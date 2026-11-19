@@ -463,6 +463,11 @@ class CommercialCommissionClosureService
             return null;
         }
 
+        if ($scope === CommercialCommissionClosure::SCOPE_DELEGATIONS
+            && collect($dashboard['delegation_rows'] ?? [])->contains(fn (array $row): bool => ($row['store_manager_plan'] ?? null) === 'october_2026' && ! is_numeric($row['total_commission'] ?? null))) {
+            return null;
+        }
+
         return round((float) match ($scope) {
             CommercialCommissionClosure::SCOPE_COMMERCIALS => collect($dashboard['summary_rows'] ?? [])->sum('final_commission'),
             CommercialCommissionClosure::SCOPE_DELEGATIONS => collect($dashboard['delegation_rows'] ?? [])->sum('total_commission'),
@@ -492,9 +497,38 @@ class CommercialCommissionClosureService
             && CarbonImmutable::parse($month.'-01')->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
             $dashboard = $this->dashboardFromSnapshot($payload, $scope);
             $rows = $dashboard['delegation_rows'] ?? [];
-            if ($rows === [] || collect($rows)->contains(fn (array $row): bool => ($row['store_manager_status'] ?? null) !== 'calculated')) {
+            $invalidRow = collect($rows)->first(function (array $row): bool {
+                $subtotals = $row['team_subtotals'] ?? null;
+                $required = [
+                    $row['store_deliveries_incentive'] ?? null,
+                    $row['store_purchases_incentive'] ?? null,
+                    $row['store_reviews_adjustment'] ?? null,
+                    $row['total_commission'] ?? null,
+                ];
+                if (($row['store_manager_status'] ?? null) !== 'calculated'
+                    || ($row['reviews_technical_status'] ?? null) !== 'available'
+                    || blank($row['reviews_fetched_at'] ?? null)
+                    || ($row['store_manager_history_status'] ?? null) !== 'verified'
+                    || filled($row['store_manager_issues'] ?? [])
+                    || ! is_array($subtotals)
+                    || collect($required)->contains(fn (mixed $value): bool => ! is_numeric($value))
+                    || collect($subtotals)->contains(fn (mixed $value): bool => ! is_numeric($value))) {
+                    return true;
+                }
+
+                $expected = max(0.0, round(
+                    (float) $row['store_deliveries_incentive']
+                    + (float) $row['store_purchases_incentive']
+                    + (float) $row['store_reviews_adjustment']
+                    + (float) collect($subtotals)->sum(),
+                    2,
+                ));
+
+                return abs($expected - (float) $row['total_commission']) > 0.009;
+            });
+            if (count($rows) !== 34 || $invalidRow !== null) {
                 throw ValidationException::withMessages([
-                    'snapshot' => 'El candidato de jefes de tienda mantiene componentes económicos o fuentes pendientes.',
+                    'snapshot' => 'El candidato de jefes de tienda no contiene las 34 liquidaciones íntegras y conciliables del plan vigente.',
                 ]);
             }
         }
