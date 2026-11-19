@@ -8867,3 +8867,19 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   que no tienen mapa automático, junto con razón y evidencias. La descripción
   de PR debe actualizarse antes de declarar el check documental verde; no se
   modifica el validador para ocultar esa obligación.
+
+## Fuentes confirmadas de compra física (2026-11-19)
+
+- La sincronización de oportunidades solicita y persiste la fuente confirmada
+  por Dirección: `OPP_BUS_Tasacion__c`,
+  `OPP_BUS_Tasacion__r.TAS_BUS_Delegacion_de_compra__c` y
+  `Delegacion_de_la_tasacion__c`.
+- Se añadió una migración aditiva con índices para el identificador de
+  tasación, el ID de delegación física y su nombre. El modelo y las columnas
+  de selección del dashboard quedan alineados.
+- La identidad de compra debe deduplicarse por `purchase_appraisal_id`; no se
+  debe sustituir por matrícula, propietario, tienda de entrega ni Product2.
+- Pendiente de cerrar: conectar esta atribución al productor de filas del plan
+  nuevo, incorporar el importador de fechas RR. HH. y aplicar la exención de
+  penalizaciones ordinarias en las rutas individuales de comercial/tasador con
+  historial de jefe verificado.

@@ -318,6 +318,9 @@ class SalesforceOpportunitySyncServiceTest extends TestCase
         $this->assertStringContainsString('OPO_FEC_Fecha_de_reserva__c', $result['soql']);
         $this->assertStringContainsString('Fecha_firma_contrato__c', $result['soql']);
         $this->assertStringContainsString('Tienda_de_entrega__c', $result['soql']);
+        $this->assertStringContainsString('OPP_BUS_Tasacion__c', $result['soql']);
+        $this->assertStringContainsString('OPP_BUS_Tasacion__r.TAS_BUS_Delegacion_de_compra__c', $result['soql']);
+        $this->assertStringContainsString('Delegacion_de_la_tasacion__c', $result['soql']);
         $this->assertStringContainsString('Gestion_de_venta__c', $result['soql']);
         $this->assertStringContainsString('Captador_de_cita__c', $result['soql']);
         $this->assertStringContainsString('Captador_de_cita__r.Name', $result['soql']);
