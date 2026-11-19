@@ -8856,3 +8856,14 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   para tienda física de compra ni fecha real de contratación/reincorporación.
 - Verificación: `git diff --check` pendiente de ejecutar tras este cambio; PHP y
   PHPUnit dependen de CI porque no hay runtime PHP local disponible.
+
+## Corrección de CI posterior (2026-11-19)
+
+- Pint reportó `unary_operator_spaces` en el importador de objetivos; se
+  restauró la convención existente del repositorio (`! is_file` y
+  `! ctype_digit`).
+- El validador documental remoto requiere que la descripción de la PR declare
+  explícitamente `Docs-Outside-Paths` como JSON válido para las rutas nuevas
+  que no tienen mapa automático, junto con razón y evidencias. La descripción
+  de PR debe actualizarse antes de declarar el check documental verde; no se
+  modifica el validador para ocultar esa obligación.
