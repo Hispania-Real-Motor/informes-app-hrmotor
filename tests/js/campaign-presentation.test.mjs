@@ -373,11 +373,11 @@ test('detail columns remove functional results, use purchase costs and migrate o
     const memory = new Map([['hrmotor_campaign_columns_v5', JSON.stringify(['campaign', 'result_count', 'cost_per_result', 'sales'])], ['unrelated', 'keep']]);
     sandbox.localStorage = {getItem: (key) => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value)};
     const migrated = Array.from(vm.runInContext('loadVisibleColumns()', sandbox));
-    assert.deepEqual(migrated, ['campaign', 'sales', 'cost_per_purchase']);
+    assert.deepEqual(migrated, ['campaign', 'sales', 'cost_per_purchase', 'cost_per_lead', 'cost_per_opportunity']);
     assert.equal(memory.get('unrelated'), 'keep');
     assert.ok(memory.has('hrmotor_campaign_columns_v5'));
     memory.set('hrmotor_campaign_columns_v7', JSON.stringify(['campaign']));
-    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign']);
+    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'cost_per_lead', 'cost_per_opportunity']);
     for (const context of ['all', 'tasacion', 'otros']) {
         assert.equal(vm.runInContext(`columnAllowedInContext('cost_per_purchase', '${context}')`, sandbox), true);
     }
@@ -540,7 +540,7 @@ test('sync diagnostic distinguishes operational success from old metrics and fai
 test('current status is excluded while legacy identifiers remain safe', () => {
     const memory = new Map([['hrmotor_campaign_columns_v6', JSON.stringify(['campaign', 'campaign_status_label', 'spend'])]]);
     sandbox.localStorage = {getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value)};
-    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'spend']);
+    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'spend', 'cost_per_lead', 'cost_per_opportunity']);
     sandbox.currentRow = {platform: 'meta', campaign_id: '9007199254740993', spend: 1234.56, campaign_name: '<b>name</b>', current_status: {availability: 'fresh', verified_at: new Date().toISOString(), raw_status: 'PAUSED', label: '<img src=x>'}};
     const before = JSON.stringify(sandbox.currentRow);
     const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [currentRow])", sandbox);
@@ -860,4 +860,39 @@ test('a cancelled request and its late response cannot clear the latest valid av
     assert.deepEqual(rendered, ['latest']);
     assert.deepEqual(loadFailures, []);
     assert.equal(vm.runInContext('campaignRows[0].campaign_name', isolated), 'Latest');
+});
+
+test('mandatory rankings cannot be hidden and null percentage values are excluded', () => {
+    const ranking = vm.runInContext("rankingRowsForDisplay([{lead_to_opportunity:null},{lead_to_opportunity:0.25}], {key:'best_lead_to_opportunity', metric:'lead_to_opportunity'})", sandbox);
+    assert.deepEqual(Array.from(ranking).map((row) => row.lead_to_opportunity), [0.25]);
+    vm.runInContext("visibleRankings = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];", sandbox);
+    const target = { checked: false, dataset: { rankingToggle: 'best_ctr' }, matches: (selector) => selector === '[data-ranking-toggle]' };
+    const listeners = [];
+    const isolated = createDashboardSandbox({
+        addEventListener: (type, handler) => type === 'change' && listeners.push(handler),
+        getElementById: () => null,
+        querySelectorAll: () => [],
+    });
+    vm.runInContext('bindRankingSettings()', isolated);
+    isolated.HTMLInputElement = function HTMLInputElement() {};
+    Object.setPrototypeOf(target, isolated.HTMLInputElement.prototype);
+    listeners.find(Boolean)({ target });
+    assert.equal(target.checked, true);
+});
+
+test('formatDate does not turn null into the Unix epoch', () => {
+    assert.equal(vm.runInContext('formatDate(null)', sandbox), '-');
+    assert.equal(vm.runInContext('formatDate(undefined)', sandbox), '-');
+});
+
+test('empty diagnostics remove the diagnostics control', () => {
+    const root = { innerHTML: '' };
+    const button = { classList: { added: false, add() { this.added = true; }, remove() {} } };
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => id === 'campaignDiagnostics' ? root : (id === 'diagnosticsOpen' ? button : null),
+        querySelectorAll: () => [],
+    });
+    vm.runInContext('renderDiagnostics({})', isolated);
+    assert.equal(button.classList.added, true);
 });

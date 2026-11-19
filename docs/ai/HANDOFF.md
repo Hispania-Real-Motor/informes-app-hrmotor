@@ -8908,3 +8908,12 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   que no tienen mapa automático, junto con razón y evidencias. La descripción
   de PR debe actualizarse antes de declarar el check documental verde; no se
   modifica el validador para ocultar esa obligación.
+## 2026-11-19 — PR #159: revisión sénior de filtros, rankings y métricas
+
+- Rama: `feature/campanas-ux-rankings-filtros-20261119`; se continuó sobre la PR existente, sin crear rama, PR, merge ni despliegue.
+- Correcciones: el control de rankings se etiqueta `Filtro`; los seis rankings obligatorios se reinyectan al leer preferencias persistidas y no pueden desmarcarse; los rankings porcentuales descartan valores `null`; `formatDate(null|undefined|'')` devuelve `-`; el aviso `periodGuidance` queda inmediatamente encima de la comparativa por plataforma; se retira `bindDrawer()` de la inicialización activa; las preferencias antiguas fuerzan `cost_per_lead` y `cost_per_opportunity`, y Venta muestra ambas tarjetas de coste.
+- Diagnóstico: cuando la respuesta no aporta datos útiles, `renderDiagnostics` oculta `diagnosticsOpen`; no se fabrican fechas. La fecha fin de campaña sigue procediendo del campo `campaign_end_date` de las métricas de plataforma y la última fecha con inversión se calcula como el máximo `metric_date` con gasto positivo en el backend existente.
+- Intereses: se conserva la separación de disponibilidad; cuando la respuesta acredita atribución/Interests, el frontend mantiene la KPI y los costes; en modo solo plataforma siguen bloqueados para no presentar una inferencia como dato.
+- Base de datos, atribuciones persistidas, sincronizadores, reglas económicas, permisos y configuración: sin cambios.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (47/47), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos. PHP/Composer/npm no están disponibles en el entorno local; el build y PHPUnit quedan pendientes de CI.
+- Riesgo pendiente: no fue posible ejecutar localmente Laravel/PHP ni confirmar el check remoto hasta publicar el commit; la validación de datos reales de producción sigue fuera de alcance.

@@ -82,6 +82,7 @@
         </div>
     </section>
 
+    <div class="notice is-hidden" id="periodGuidance" role="status" aria-live="polite"></div>
     <section class="card panel is-hidden" id="platformComparisonPanel">
         <div class="panel-title">
             <div>
@@ -112,7 +113,6 @@
         <section class="tab-panel active">
             <div class="notice" id="loadingMessage">Cargando datos de campañas...</div>
             <div class="notice is-hidden" id="emptyMessage">No hay campañas de plataforma para el periodo seleccionado.</div>
-            <div class="notice is-hidden" id="periodGuidance" role="status" aria-live="polite"></div>
             <div id="warnings"></div>
             <div class="campaign-legacy-context" aria-hidden="true">
                 <span id="periodLabel"></span>
@@ -148,7 +148,7 @@
                         <div class="small">Campañas reales de Google Ads y Meta Ads</div>
                     </div>
                     <div class="ranking-settings">
-                        <button type="button" class="main-tab" id="rankingsToggle">Configurar rankings</button>
+                        <button type="button" class="main-tab" id="rankingsToggle">Filtro</button>
                         <div class="ranking-popover card is-hidden" id="rankingsPopover"></div>
                     </div>
                 </div>

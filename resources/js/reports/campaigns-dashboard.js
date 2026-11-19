@@ -22,6 +22,8 @@ const campaignPeriodMaxDate = '2026-12-31';
 const platformColumns = new Set(['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'campaign_end_date', 'last_spend_date']);
 const interestColumns = new Set(['leads_salesforce', 'cost_per_lead']);
 const officialOnlyColumns = new Set(['source_acquired', 'medium_acquired', 'acquired_id', 'content_acquired']);
+const mandatoryRankingKeys = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
+const mandatoryColumnKeys = ['cost_per_lead', 'cost_per_opportunity'];
 
 let campaignRows = [];
 let currentStatusExpiryTimer = null;
@@ -184,7 +186,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindFilters();
     bindResetFilters();
     bindSorting();
-    bindDrawer();
     bindDiagnosticsModal();
     bindCampaignNameActions();
     bindColumns();
@@ -531,6 +532,9 @@ function bindRankingSettings() {
             if (!visibleRankings.includes(ranking)) {
                 visibleRankings = [...visibleRankings, ranking];
             }
+        } else if (mandatoryRankingKeys.includes(ranking)) {
+            target.checked = true;
+            return;
         } else if (visibleRankings.length > 1) {
             visibleRankings = visibleRankings.filter((item) => item !== ranking);
         } else {
@@ -1212,7 +1216,7 @@ function syncContextTabs() {
 }
 
 function loadVisibleRankings(context = currentContext) {
-    const mandatory = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
+    const mandatory = mandatoryRankingKeys;
     try {
         const saved = JSON.parse(localStorage.getItem(rankingsStorageKey) || 'null');
         if (Array.isArray(saved) && saved.length) {
@@ -1951,6 +1955,8 @@ function kpiCardsForContext(context, kpis) {
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
                 { label: 'Intereses generados', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
+                { label: 'Coste por interés', value: costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
+                { label: 'Coste por oportunidad', value: costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
                 { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${costDisplay(kpis.cost_per_reservation, kpis, 'cost_per_reservation', formatMoney)}`, metric: 'reservations' },
                 { label: 'Ventas', value: formatNumber(kpis.sales), hint: `CPV ${costDisplay(kpis.cost_per_sale, kpis, 'cost_per_sale', formatMoney)}`, metric: 'sales' },
                 { label: 'Importe vendido', value: formatMoney(kpis.sale_amount), hint: `ROAS ${formatMultiplier(kpis.roas)} · ROI ${formatPercentRatio(kpis.estimated_roi)}`, metric: 'sales' },
@@ -3071,6 +3077,10 @@ function monthLabel(row) {
 }
 
 function formatDate(value) {
+    if (value === null || value === undefined || value === '') {
+        return '-';
+    }
+
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
         return value || '-';
@@ -3276,7 +3286,7 @@ function renderRankings(rankings, emptyMessage = '') {
     const context = presentationCampaignContext(currentContext);
     const platformOnlyRankings = ['top_spend', 'top_impressions', 'best_ctr', 'best_cpc'];
     const interestRankings = ['top_leads_salesforce', 'best_cost_per_lead'];
-    const mandatoryRankings = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
+    const mandatoryRankings = mandatoryRankingKeys;
     const visible = rankingDefinitions.filter((ranking) => visibleRankings.includes(ranking.key)
         && rankingAllowedInContext(ranking.key, context)
         && (mandatoryRankings.includes(ranking.key) || opportunityMetricsAvailable || platformOnlyRankings.includes(ranking.key)
@@ -3320,6 +3330,13 @@ function rankingRowsForDisplay(rows, ranking) {
         return [];
     }
 
+    if (['best_ctr', 'worst_ctr', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'].includes(ranking.key)) {
+        return rows.filter((row) => row[ranking.metric] !== null
+            && row[ranking.metric] !== undefined
+            && row[ranking.metric] !== ''
+            && Number.isFinite(Number(row[ranking.metric])));
+    }
+
     if (ranking.key === 'best_cost_per_sale') {
         return rows.filter((row) => Number(row.sales || 0) > 0 && Number(row.spend || 0) > 0 && Number(row.cost_per_sale || 0) > 0);
     }
@@ -3349,8 +3366,11 @@ function renderDiagnostics(diagnostics) {
 
     if (!diagnostics || Object.keys(diagnostics).length === 0) {
         root.innerHTML = '<div class="empty-state">Sin diagnóstico disponible</div>';
+        document.getElementById('diagnosticsOpen')?.classList.add('is-hidden');
         return;
     }
+
+    document.getElementById('diagnosticsOpen')?.classList.remove('is-hidden');
 
     const meta = syncOperationPresentation(diagnostics.meta_sync_operation, diagnostics.last_meta_sync);
     const google = syncOperationPresentation(diagnostics.google_sync_operation, diagnostics.last_google_sync);
@@ -3489,7 +3509,7 @@ function loadVisibleColumns() {
         if (!Array.isArray(saved) || !saved.length) return defaults;
         const known = [...new Set(saved.map((key) => key === 'campaign_status_label' ? 'current_status' : key).filter((key) => columnDefinitions.some((column) => column.key === key)))];
         if (legacy !== null && localStorage.getItem(legacyColumnsStorageKey) === null && !known.includes('cost_per_purchase')) known.push('cost_per_purchase');
-        const migrated = known.length ? known : defaults;
+        const migrated = [...new Set([...(known.length ? known : defaults), ...mandatoryColumnKeys])];
         if (legacy !== null) {
             try { localStorage.setItem(columnsStorageKey, JSON.stringify(migrated)); } catch { /* Storage may be unavailable. */ }
         }
