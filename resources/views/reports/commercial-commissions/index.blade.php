@@ -50,6 +50,20 @@
     $totalDelegationPrimaFinal = (float) $delegationRows->sum('prima_final');
     $totalDelegationCommissions = (float) $delegationRows->sum('total_commission');
     $delegationGoalsConfigured = (int) $delegationRows->filter(fn (array $row) => ($row['target_deliveries'] ?? 0) > 0)->count();
+    $pendingSafeSum = static function (string $field) use ($delegationRows): ?float {
+        if ($delegationRows->contains(fn (array $row): bool => ! is_numeric($row[$field] ?? null))) {
+            return null;
+        }
+
+        return round((float) $delegationRows->sum($field), 2);
+    };
+    $formatPending = static fn (mixed $value, int $decimals = 2): string => $value === null
+        ? 'Pendiente'
+        : number_format((float) $value, $decimals, ',', '.');
+    $newStoreDeliveriesIncentive = $pendingSafeSum('store_deliveries_incentive');
+    $newStorePurchasesIncentive = $pendingSafeSum('store_purchases_incentive');
+    $newStoreReviewsAdjustment = $pendingSafeSum('store_reviews_adjustment');
+    $newStoreTotal = $pendingSafeSum('total_commission');
     $callCenterTotalAutomatic = (float) $callCenterSummaryRows->sum('automatic_total');
     $callCenterTotalPurchases = (float) $callCenterSummaryRows->sum('purchase_commission');
     $callCenterTotalSales = (float) $callCenterSummaryRows->sum('sales_commission');
@@ -517,16 +531,28 @@
                                 <strong>{{ number_format($delegationGoalsConfigured, 0, ',', '.') }}</strong>
                             </article>
                             <article class="card campaign-context-card">
-                                <span>Prima final delegaciones</span>
-                                <strong>{{ number_format($totalDelegationPrimaFinal, 2, ',', '.') }} EUR</strong>
+                                <span>{{ $isNewStoreManagerPlan ? 'Incentivos entregas tienda' : 'Prima final delegaciones' }}</span>
+                                <strong>{{ $isNewStoreManagerPlan ? $formatPending($newStoreDeliveriesIncentive).' EUR' : number_format($totalDelegationPrimaFinal, 2, ',', '.').' EUR' }}</strong>
                             </article>
                             <article class="card campaign-context-card">
-                                <span>Comisiones delegaciones</span>
-                                <strong>{{ number_format($totalDelegationCommissions, 2, ',', '.') }} EUR</strong>
+                                <span>{{ $isNewStoreManagerPlan ? 'Incentivos compras tienda' : 'Comisiones delegaciones' }}</span>
+                                <strong>{{ $isNewStoreManagerPlan ? $formatPending($newStorePurchasesIncentive).' EUR' : number_format($totalDelegationCommissions, 2, ',', '.').' EUR' }}</strong>
                             </article>
                         </section>
 
                         <section class="platform-comparison-grid commission-overview-grid">
+                            @if ($isNewStoreManagerPlan)
+                                <article class="card platform-comparison-card">
+                                    <div class="platform-comparison-head">
+                                        <strong>Liquidación económica provisional</strong>
+                                        <span>Los importes pendientes no se convierten en cero.</span>
+                                    </div>
+                                    <div class="platform-comparison-metrics">
+                                        <div class="platform-metric-item"><span>Reseñas</span><strong>{{ $formatPending($newStoreReviewsAdjustment) }} EUR</strong></div>
+                                        <div class="platform-metric-item"><span>Total final</span><strong>{{ $formatPending($newStoreTotal) }} EUR</strong></div>
+                                    </div>
+                                </article>
+                            @else
                             <article class="card platform-comparison-card">
                                 <div class="platform-comparison-head">
                                     <strong>Volumen por delegacion</strong>
@@ -539,6 +565,7 @@
                                     <div class="platform-metric-item"><span>Bonus rentabilidad</span><strong>{{ number_format($delegationRows->sum('profitability_bonus_amount'), 2, ',', '.') }} EUR</strong></div>
                                 </div>
                             </article>
+                            @endif
                         </section>
 
                         <div class="small commission-delegation-note">
@@ -574,8 +601,21 @@
                                         <td class="num">{{ number_format($row['purchases_count'], 0, ',', '.') }}</td>
                                         <td class="num">{{ $row['store_deliveries_incentive'] === null ? 'Pendiente' : number_format($row['store_deliveries_incentive'], 2, ',', '.').' €' }}</td>
                                         <td class="num">{{ $row['store_purchases_incentive'] === null ? 'Pendiente' : number_format($row['store_purchases_incentive'], 2, ',', '.').' €' }}</td>
-                                        <td class="num">{{ $row['store_reviews_adjustment'] === null ? 'Pendiente' : number_format($row['store_reviews_adjustment'], 2, ',', '.').' €' }}</td>
-                                        <td class="num">{{ count($row['team_subtotals'] ?? []) }}</td>
+                                         <td class="num">
+                                             {{ $row['store_reviews_adjustment'] === null ? 'Pendiente' : number_format($row['store_reviews_adjustment'], 2, ',', '.').' €' }}
+                                             <small>{{ $row['reviews_count'] === null ? 'reseñas pendientes' : $row['reviews_count'].' reseñas · '.($row['reviews_average_rating'] === null ? 'sin media' : number_format($row['reviews_average_rating'], 3, ',', '.')) }}</small>
+                                         </td>
+                                         <td class="num">
+                                             {{ $row['team_roster_status'] !== 'verified' ? 'Pendiente' : count($row['team_components'] ?? []) }}
+                                             @if (! empty($row['team_components']))
+                                                 <details>
+                                                     <summary>Desglose</summary>
+                                                     @foreach ($row['team_components'] as $memberId => $component)
+                                                         <div>{{ $component['member_name'] ?? $memberId }}: {{ $formatPending($component['subtotal'] ?? null) }} €</div>
+                                                     @endforeach
+                                                 </details>
+                                             @endif
+                                         </td>
                                         <td>{{ $row['store_manager_status'] === 'calculated' ? 'Calculada' : 'Pendiente' }}</td>
                                         <td class="num">{{ $row['total_commission'] === null ? 'Pendiente' : number_format($row['total_commission'], 2, ',', '.').' €' }}</td>
                                         <td>{{ empty($row['store_manager_issues']) ? '—' : implode(' ', $row['store_manager_issues']) }}</td>

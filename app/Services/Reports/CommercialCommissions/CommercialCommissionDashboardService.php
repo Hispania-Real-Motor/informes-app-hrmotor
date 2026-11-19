@@ -112,6 +112,7 @@ class CommercialCommissionDashboardService
         private readonly EligibleDeliveryOpportunityQuery $deliveryOpportunities,
         private readonly StoreManagerCommissionTargetService $storeManagerTargets,
         private readonly StoreManagerIndividualExemptionService $storeManagerExemption,
+        private readonly StoreManagerTeamRosterService $storeManagerRoster,
     ) {}
 
     public function build(
@@ -203,17 +204,52 @@ class CommercialCommissionDashboardService
         $deliveriesByStore = $opportunities
             ->filter(fn (SalesforceOpportunity $row): bool => filled($row->delivery_store))
             ->groupBy(fn (SalesforceOpportunity $row): string => $this->storeManagerTargets->normalizeKey((string) $row->delivery_store));
-        $purchaseOwners = [];
+        $purchaseAttributions = [];
         $purchaseConflicts = [];
         foreach ($purchases as $row) {
-            $appraisal = (string) $row->purchase_appraisal_id;
+            $appraisal = trim((string) $row->purchase_appraisal_id);
+            $delegationId = trim((string) $row->purchase_delegation_id);
+            $delegationName = trim((string) $row->purchase_delegation_name);
             $storeKey = $this->storeManagerTargets->normalizeKey((string) $row->purchase_delegation_name);
-            if (isset($purchaseOwners[$appraisal]) && $purchaseOwners[$appraisal] !== $storeKey) {
-                $purchaseConflicts[$appraisal] = [$purchaseOwners[$appraisal], $storeKey];
+            if (isset($purchaseConflicts[$appraisal])) {
+                $purchaseConflicts[$appraisal] = array_values(array_unique([
+                    ...$purchaseConflicts[$appraisal],
+                    $storeKey,
+                ]));
 
                 continue;
             }
-            $purchaseOwners[$appraisal] = $storeKey;
+
+            $existing = $purchaseAttributions[$appraisal] ?? null;
+            if ($existing !== null
+                && ($existing['delegation_id'] !== $delegationId
+                    || $existing['delegation_name'] !== $delegationName
+                    || $existing['store_key'] !== $storeKey)) {
+                $purchaseConflicts[$appraisal] = array_values(array_unique([
+                    $existing['store_key'],
+                    $storeKey,
+                ]));
+                unset($purchaseAttributions[$appraisal]);
+
+                continue;
+            }
+
+            $purchaseAttributions[$appraisal] = [
+                'delegation_id' => $delegationId,
+                'delegation_name' => $delegationName,
+                'store_key' => $storeKey,
+            ];
+        }
+        $purchaseOwners = collect($purchaseAttributions)
+            ->mapWithKeys(fn (array $attribution, string $appraisal): array => [$appraisal => $attribution['store_key']])
+            ->all();
+        $crossMonthAppraisals = $this->purchaseAppraisalsFoundInMultipleMonths(array_keys($purchaseAttributions));
+        foreach ($crossMonthAppraisals as $appraisal) {
+            $purchaseSourceIssues[] = sprintf(
+                'Compra física pendiente: la tasación %s aparece firmada en más de un mes.',
+                $appraisal,
+            );
+            unset($purchaseOwners[$appraisal]);
         }
         $purchasesByStore = collect($purchaseOwners)->countBy();
         $targetKeys = collect($targets)->pluck('store_key')->map(fn (mixed $key): string => (string) $key)->all();
@@ -230,8 +266,9 @@ class CommercialCommissionDashboardService
         );
         $managerHistory = $this->delegationManagers->resolve($month, collect($targets)->pluck('store_name')->all());
         $verifiedManagerIds = array_fill_keys($this->delegationManagers->verifiedManagerIds($month), true);
+        $teamRoster = $this->storeManagerRoster->resolve($month, collect($targets)->pluck('store_name')->all());
 
-        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $purchaseSourceIssues, $deliverySourceIssues, $calculator, $reviewPayloads, $managerHistory, $verifiedManagerIds, $month): array {
+        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $purchaseSourceIssues, $deliverySourceIssues, $calculator, $reviewPayloads, $managerHistory, $verifiedManagerIds, $teamRoster, $month): array {
             $storeKey = (string) $target['store_key'];
             $storeOperations = $deliveriesByStore->get($storeKey, collect())->values();
             $deliveries = $storeOperations->count();
@@ -245,7 +282,14 @@ class CommercialCommissionDashboardService
                 }
             }
             $issues = array_values(array_unique([...$issues, ...$purchaseSourceIssues, ...$deliverySourceIssues]));
-            $team = $this->storeManagerTeamComponents($storeOperations, $target, $month, $calculator, $verifiedManagerIds);
+            $team = $this->storeManagerTeamComponents(
+                $storeOperations,
+                $target,
+                $month,
+                $calculator,
+                $verifiedManagerIds,
+                $teamRoster[$this->formulaConfig->delegationKey($target['store_name'])] ?? null,
+            );
             $review = $reviewPayloads[$target['store_name']] ?? null;
             $reviewAmount = null;
             if (is_array($review) && ($review['technical_status'] ?? null) === 'available' && is_numeric($review['average_rating'] ?? null)) {
@@ -309,6 +353,9 @@ class CommercialCommissionDashboardService
                 'reviews_fetched_at' => is_array($review) ? ($review['fetched_at'] ?? null) : null,
                 'team_components' => $team['components'],
                 'team_subtotals' => $team['subtotals'],
+                'team_roster_status' => $team['roster_status'],
+                'team_roster_evidence_count' => $team['roster_evidence_count'],
+                'team_member_count' => $team['member_count'],
                 'store_manager_salesforce_user_id' => $manager['store_manager_salesforce_user_id'] ?? null,
                 'store_manager_name' => $manager['store_manager_name'] ?? null,
                 'store_manager_history_status' => $manager['store_manager_history_status'] ?? 'unverified',
@@ -325,17 +372,71 @@ class CommercialCommissionDashboardService
         }, $targets);
     }
 
-    /** @return array{complete: bool, issues: array<int, string>, subtotals: array<int, float>, components: array<string, mixed>} */
-    private function storeManagerTeamComponents(Collection $operations, array $target, CarbonImmutable $month, StoreManagerCommissionPlanCalculator $calculator, array $verifiedManagerIds): array
+    /** @param array<int, string> $appraisalIds
+     * @return array<int, string>
+     */
+    private function purchaseAppraisalsFoundInMultipleMonths(array $appraisalIds): array
     {
-        $issues = [];
+        if ($appraisalIds === []) {
+            return [];
+        }
+
+        return SalesforceOpportunity::query()
+            ->select(['purchase_appraisal_id', 'cv_signed_date'])
+            ->whereIn('purchase_appraisal_id', $appraisalIds)
+            ->whereNotNull('cv_signed_date')
+            ->get()
+            ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->purchase_appraisal_id)
+            ->filter(fn (Collection $rows): bool => $rows
+                ->map(fn (SalesforceOpportunity $row): string => $row->cv_signed_date?->format('Y-m') ?? '')
+                ->filter()
+                ->unique()
+                ->count() > 1)
+            ->keys()
+            ->map(fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all();
+    }
+
+    /** @return array{complete: bool, issues: array<int, string>, subtotals: array<int, float>, components: array<string, mixed>} */
+    private function storeManagerTeamComponents(Collection $operations, array $target, CarbonImmutable $month, StoreManagerCommissionPlanCalculator $calculator, array $verifiedManagerIds, ?array $roster): array
+    {
+        $issues = $roster['issues'] ?? ['Adscripción histórica del equipo no verificada para el periodo.'];
         $subtotals = [];
         $components = [];
-        $ownerOperations = $operations
-            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->owner_id) && blank($row->shared_delivery_id))
+        $primaryOperations = $operations
+            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->owner_id))
             ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->owner_id);
-        if ($ownerOperations->isEmpty()) {
-            $issues[] = 'Composición del equipo sin operaciones verificables.';
+        $sharedOperations = $operations
+            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->shared_delivery_id)
+                && (string) $row->owner_id !== (string) $row->shared_delivery_id)
+            ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->shared_delivery_id);
+        $memberOperations = $primaryOperations->mapWithKeys(
+            fn (Collection $rows, string $userId): array => [$userId => $rows->values()]
+        );
+        foreach ($sharedOperations as $userId => $rows) {
+            $memberOperations->put(
+                (string) $userId,
+                $memberOperations->get((string) $userId, collect())
+                    ->merge($rows)
+                    ->unique(fn (SalesforceOpportunity $row): string => (string) $row->salesforce_id)
+                    ->values(),
+            );
+        }
+        $rosterMembers = collect($roster['members'] ?? [])
+            ->mapWithKeys(fn (array $member, string $userId): array => [$userId => $member]);
+        foreach ($rosterMembers->keys() as $userId) {
+            if (! $memberOperations->has($userId)) {
+                $memberOperations->put($userId, collect());
+            }
+        }
+        if ($memberOperations->isEmpty()) {
+            $issues[] = 'Composición del equipo sin miembros verificables.';
+        }
+        foreach ($memberOperations->keys() as $ownerId) {
+            if ($rosterMembers->isNotEmpty() && ! $rosterMembers->has((string) $ownerId)) {
+                $issues[] = 'La operación '.$ownerId.' no figura en el roster histórico verificado.';
+            }
         }
         $zone = Str::of((string) ($target['zone'] ?? ''))->ascii()->lower()->value();
         $minimums = match (true) {
@@ -348,15 +449,23 @@ class CommercialCommissionDashboardService
         if ($minimums === null) {
             $issues[] = 'Zona de tienda ausente o no reconocida; no se pueden aplicar mínimos económicos.';
         }
-        $ownerIds = $ownerOperations->keys()->map(fn (mixed $id): string => (string) $id)->values();
+        $ownerIds = $memberOperations->keys()->map(fn (mixed $id): string => (string) $id)->values();
         $employmentDates = Schema::hasTable('hr_employment_dates')
             ? HrEmploymentDate::query()->whereIn('salesforce_user_id', $ownerIds)->whereDate('effective_date', '<=', $month->addMonth()->subDay()->toDateString())->orderByDesc('effective_date')->get()->groupBy('salesforce_user_id')
             : collect();
-        foreach ($ownerOperations as $ownerId => $ownerRows) {
-            $hasMissingFinancial = $ownerRows->contains(fn (SalesforceOpportunity $row): bool => $row->financial_commission === null);
-            $hasMissingGuarantee = $ownerRows->contains(fn (SalesforceOpportunity $row): bool => $row->garantia_total === null);
-            $financing = $hasMissingFinancial ? null : round((float) $ownerRows->sum(fn (SalesforceOpportunity $row): float => (float) $row->financial_commission), 2);
-            $guarantee = $hasMissingGuarantee ? null : round((float) $ownerRows->sum(fn (SalesforceOpportunity $row): float => (float) $row->garantia_total), 2);
+        foreach ($memberOperations as $ownerId => $ownerRows) {
+            $primaryRows = $primaryOperations->get((string) $ownerId, collect());
+            $sharedRows = $sharedOperations->get((string) $ownerId, collect());
+            $hasMissingFinancial = $primaryRows->isNotEmpty()
+                && $primaryRows->contains(fn (SalesforceOpportunity $row): bool => $row->financial_commission === null);
+            $hasMissingGuarantee = $primaryRows->isNotEmpty()
+                && $primaryRows->contains(fn (SalesforceOpportunity $row): bool => $row->garantia_total === null);
+            $financing = $primaryRows->isEmpty()
+                ? 0.0
+                : ($hasMissingFinancial ? null : round((float) $primaryRows->sum(fn (SalesforceOpportunity $row): float => (float) $row->financial_commission), 2));
+            $guarantee = $primaryRows->isEmpty()
+                ? 0.0
+                : ($hasMissingGuarantee ? null : round((float) $primaryRows->sum(fn (SalesforceOpportunity $row): float => (float) $row->garantia_total), 2));
             $employment = $employmentDates->get((string) $ownerId, collect())->first();
             $penalty = null;
             if (isset($verifiedManagerIds[(string) $ownerId])) {
@@ -382,10 +491,28 @@ class CommercialCommissionDashboardService
             } else {
                 $subtotals[] = $subtotal;
             }
-            $components[$ownerId] = ['deliveries' => $ownerRows->count(), 'delivery_incentive' => $delivery, 'financing' => $financingIncentive, 'guarantee' => $guaranteeIncentive, 'penalty' => $penalty, 'subtotal' => $subtotal];
+            $components[$ownerId] = [
+                'member_name' => $rosterMembers->get((string) $ownerId)['member_name'] ?? null,
+                'deliveries' => $ownerRows->count(),
+                'primary_deliveries' => $primaryRows->count(),
+                'shared_deliveries' => $sharedRows->count(),
+                'delivery_incentive' => $delivery,
+                'financing' => $financingIncentive,
+                'guarantee' => $guaranteeIncentive,
+                'penalty' => $penalty,
+                'subtotal' => $subtotal,
+            ];
         }
 
-        return ['complete' => $issues === [] && count($subtotals) === $ownerOperations->count(), 'issues' => $issues, 'subtotals' => $subtotals, 'components' => $components];
+        return [
+            'complete' => $issues === [] && count($subtotals) === $memberOperations->count(),
+            'issues' => array_values(array_unique($issues)),
+            'subtotals' => $subtotals,
+            'components' => $components,
+            'roster_status' => $roster['status'] ?? 'pending',
+            'roster_evidence_count' => (int) ($roster['evidence_count'] ?? 0),
+            'member_count' => $rosterMembers->count(),
+        ];
     }
 
     /**

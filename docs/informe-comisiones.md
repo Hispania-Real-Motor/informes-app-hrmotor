@@ -571,30 +571,106 @@ diferencias y la vista provisional permanecen aisladas; una fuente no
 certificada no puede alimentar este informe ni sustituir la generación Interest
 publicada.
 
-## Plan de jefes de tienda desde octubre de 2026 — estado provisional
+## Plan de jefes de tienda desde octubre de 2026 — cálculo provisional
 
-El diff incorpora únicamente `StoreManagerCommissionPlanCalculator` y su test
-unitario. No está conectado a ninguna de las seis pestañas reales, al cierre,
-a una exportación ni a un sincronizador; por tanto no publica todavía un KPI
-ni cambia el contrato vigente. La pestaña prevista sería **Delegaciones / jefes
-de tienda**, que sigue pendiente de auditoría.
+Desde `2026-10-01`, la pestaña **Delegaciones** usa una fila específica del
+plan `october_2026`. Los objetivos deben existir en
+`store_manager_commission_targets`; la vista no hereda objetivos ni permite
+certificar una fila sin la configuración persistida.
 
-La evidencia permite documentar solo estas reglas del núcleo puro: vigencia
-desde `2026-10-01`; objetivo ausente `target_pending`/nulo; objetivo cero
-`not_applicable`/cero; `<90 %` cero; `90 %--<100 %` `actual * 6`; objetivo
-exacto `actual * 10`; exceso `target * 10 + exceso * 15`. Entregas individuales:
-`<10 = 0`, `10--11 = 120`, `12 = 200` y desde 13 `200 + (actual-12)*20`.
-Los mínimos monetarios devuelven nulo si falta una entrada, cero bajo el
-mínimo y base más 1 % del exceso redondeada a dos decimales. El subtotal
-individual es nulo si falta financiación, garantía o penalización; el total
-final suma todo, redondea y aplica `max(0)` solo al final.
+`ImportStoreManagerCommissionTargets` valida en dry-run o escribe explícitamente
+el CSV de octubre, con 34 tiendas y totales esperados de 907 entregas y 499
+compras. No hay herencia automática de objetivos entre meses. La fuente del
+CSV no es Salesforce y su procedencia empresarial sigue siendo evidencia
+administrativa, no una consulta productiva realizada por esta revisión.
 
-La trazabilidad de fuente, universo y auditoría queda pendiente: no hay
-sincronizador, campos API, tabla/columna local, normalizador, configuración,
-filtros, identidad ni deduplicación implementados. El handoff identifica como
-bloqueos la falta de fecha verificable de alta/reingreso, de tienda física de
-compra y de clave estable Tasación/Cambio, además del contrato de reseñas para
-fuente válida, cero confirmado, payload incompleto y error. No se deben
-importar objetivos, atribuir operaciones, certificar cierres ni exportar este
-plan. El test focalizado fue interrumpido sin resultado exitoso y no acredita
-datos productivos.
+### Trazabilidad de fuentes y universo
+
+La réplica local de `Opportunity` se alimenta mediante
+`SalesforceOpportunitySyncService::saveRecord()`: `Fecha_firma_contrato__c`
+→ `cv_signed_date`, `OPO_CAS_Contrato_CV_firmado__c` → `cv_signed`,
+`RecordType.Name` → `record_type_name`, `StageName` → `stage_name`,
+`Tienda_de_entrega__c` → `delivery_store`,
+`OPP_BUS_Tasacion__c` → `purchase_appraisal_id`,
+`OPP_BUS_Tasacion__r.TAS_BUS_Delegacion_de_compra__c` →
+`purchase_delegation_id`, `Delegacion_de_la_tasacion__c` →
+`purchase_delegation_name`, `Entrega_Compartida__c` → `shared_delivery_id`,
+`Garant_a_Total__c` → `garantia_total` y `Comisi_n_Financiera__c` →
+`financial_commission`. El dashboard usa estas columnas locales y no consulta
+Salesforce durante el render.
+
+Las entregas usan `EligibleDeliveryOpportunityQuery::forPeriod()` en el
+intervalo `[inicio del mes, inicio del mes siguiente)`, por
+`cv_signed_date`, con contrato firmado, etapa distinta de `Cerrada Perdida` y
+tipo `Venta`/`Cambio` o nombre que contenga `Facilitea`. Esta consulta compartida
+no filtra por propietario activo, delegación, zona ni gestión de venta. La
+atribución de la pestaña normaliza `delivery_store`; una tienda vacía genera
+incidencia. Discrepancia pendiente: una tienda no vacía que no coincida con un
+objetivo no genera una incidencia específica en este recorrido y queda fuera
+del agrupado de las 34 filas; no debe afirmarse todavía que toda tienda
+desconocida bloquea de forma localizada la fila.
+
+Las compras de Tasación/Cambio usan `cv_signed_date` en el mismo intervalo,
+contrato firmado y etapa distinta de `Cerrada Perdida`. Requieren los tres
+campos de atribución física. Se deduplican por `purchase_appraisal_id`; un ID,
+nombre o clave normalizada de delegación contradictorios, una tasación firmada
+en más de un mes o una tienda que no sea objetivo generan una incidencia y
+retiran esa compra del conteo. No se usa `delivery_store` como fallback.
+
+El equipo se separa de las operaciones. La adscripción mensual acreditada se
+lee de `store_manager_commission_roster_members`, con identidad Salesforce,
+periodo, procedencia, referencia y verificación. Si no existe evidencia, los
+propietarios observados pueden mostrarse como desglose provisional, pero el
+total y el cierre permanecen nulos/pedientes. Un miembro acreditado sin
+entregas conserva su fila con incentivos de volumen cero. Una entrega
+compartida se refleja en el propietario y en el miembro secundario acreditado;
+los importes de financiación y garantías solo se acumulan en el propietario
+primario para no duplicar el componente económico de la oportunidad. No se ha
+encontrado un sincronizador o comando de carga productiva para esta tabla: la
+fuente externa de adscripción histórica y su procedimiento de incorporación
+quedan pendientes.
+
+La atribución del responsable procede del histórico local
+`salesforce_delegation_manager_history`, resuelto por
+`DelegationManagerHistoryResolver`; su evidencia se registra por los comandos
+de evidencia existentes y no equivale automáticamente a una historia completa
+de Salesforce. Una identidad de responsable verificada queda exenta de la
+penalización ordinaria incluso sin fecha de RR. HH. Las fechas de alta/reingreso
+se cargan aparte con `ImportHrEmploymentDates`: el CSV se valida contra un
+`SalesforceUser` local, se persiste en `hr_employment_dates` y exige
+`--imported-by` en modo escritura. La fecha efectiva más reciente hasta el
+final del mes se usa para la antigüedad; no se usa `User.CreatedDate`.
+
+La financiación individual compara `financial_commission`, persistencia de
+`Comisi_n_Financiera__c`, con el mínimo zonal; `importe_financiado` es solo el
+capital y no se utiliza para superar ese mínimo. Las zonas desconocidas,
+financiación o garantías nulas y la antigüedad laboral ordinaria no verificable
+son incidencias bloqueantes. Un responsable verificado en el histórico mensual
+queda exento de la penalización ordinaria incluso sin fecha RR. HH.
+
+Para este plan las reseñas proceden del endpoint interno configurado en
+`services.internal_reviews`, no del sincronizador local de `Resena__c` usado
+por otros contratos de Comisiones. `CommercialCommissionDelegationReviewsService`
+solicita mes `m-y` y ubicación, conserva `reviews_count`, `average_rating`,
+`technical_status` y `fetched_at`, y cachea según la configuración vigente.
+Una respuesta disponible con media >= 4 suma 150 EUR; media inferior a 4 resta
+150 EUR; cero reseñas confirmado resta 150 EUR. Payload inválido, endpoint no
+configurado, error remoto/transporte o caché caducada dejan el ajuste pendiente;
+la media no se redondea antes de comparar.
+
+La aprobación valida el snapshot congelado, no un cálculo vivo: exige 34 filas
+únicas, versión vigente, equipo acreditado, responsables y reseñas verificadas,
+componentes numéricos, subtotales conciliados y total igual a la suma de
+incentivos de entregas, compras, reseñas y equipo. Un estado `calculated` por sí
+solo no certifica el cierre. La interfaz y la exportación XLSX muestran el
+desglose y conservan `Pendiente` para importes nulos; no se encontró una
+exportación CSV específica del plan nuevo.
+
+Las pruebas de integración cubren el escenario sintético de 630 EUR, el campo
+financiero correcto, la exención del jefe, miembros sin entregas, entregas
+compartidas, zona desconocida, conflictos de atribución física, tasaciones entre
+meses, reseñas inválidas y el rechazo de snapshots inconsistentes. El código sí
+permite preparar y aprobar un candidato cuando toda la evidencia resulta
+verificable. En esta revisión no se importaron datos productivos ni se aprobó
+octubre; la evidencia real de roster, la conciliación de las tasaciones y los
+datos RR. HH. autorizados siguen pendientes.

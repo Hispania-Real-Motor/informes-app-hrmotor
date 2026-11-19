@@ -956,3 +956,19 @@ F2/F2M/F5 al servir el dashboard. Es un módulo administrativo aislado y no
 extiende `InterestGenerationReader`: una generación publicada conserva
 precedencia, y la proyección no se convierte en publicación ni en fuente de
 otros informes.
+
+## Plan provisional de jefes de tienda (octubre de 2026)
+
+El plan `october_2026` se construye en
+`CommercialCommissionDashboardService` sobre objetivos persistidos, entregas,
+compras físicas deduplicadas por `purchase_appraisal_id`, reseñas, histórico de
+responsables, fechas RR. HH. y roster histórico de equipo. La adscripción del
+equipo se separa de la actividad y se guarda en
+`store_manager_commission_roster_members`; sin evidencia verificada el
+dashboard puede mostrar componentes observados, pero el total y los cierres
+fallan cerrados. La financiación individual usa `financial_commission`, y la
+aprobación valida el snapshot congelado, sus 34 identidades de tienda, roster,
+componentes y conciliación matemática. El plan es provisional y no autoriza
+importación productiva, aprobación ni publicación económica. La evidencia del
+roster se incorpora mediante `commissions:import-store-manager-roster`, con
+validación por fila, dry-run, idempotencia y bloqueo de periodos definitivos.

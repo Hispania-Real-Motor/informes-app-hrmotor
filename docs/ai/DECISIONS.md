@@ -1611,3 +1611,19 @@ prefiere este contrato local acotado a cambiar `InterestGenerationReader` o
 desplazar fuentes económicas oficiales. Octubre exige activación operativa
 real y conserva el fallback administrativo previo; ninguna migración activa
 la vista o el scheduler.
+
+## 2026-11-19 — roster histórico separado de las operaciones de tienda
+
+El plan provisional de jefes de tienda no infiere la composición mensual del
+equipo a partir de propietarios de oportunidades. Se eligió una tabla de
+evidencia independiente (`store_manager_commission_roster_members`) con
+identidad Salesforce, cobertura temporal, procedencia, referencia y estado de
+verificación. El importador CSV valida cada fila, normaliza la tienda contra
+los objetivos persistidos, permite dry-run e idempotencia y bloquea cambios en
+periodos de Delegaciones definitivos. Si no existe evidencia, el dashboard
+conserva el desglose observado como provisional y deja el total pendiente.
+
+Las entregas compartidas se reflejan en los dos participantes acreditados para
+el incentivo de volumen, pero financiación y garantías se acumulan una sola
+vez en el propietario primario. Esta separación evita duplicar importes
+económicos y mantiene la atribución revisable sin inventar adscripciones.

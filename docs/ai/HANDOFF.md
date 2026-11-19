@@ -9022,3 +9022,76 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Verificación local de esta iteración: 45 pruebas y 132 aserciones correctas,
   Pint correcto y `git diff --check` correcto. No se importaron datos reales ni
   se modificaron Salesforce o cierres definitivos.
+
+## Corrección final de atribución y roster (2026-11-19)
+
+- Las compras nuevas se deduplican por `purchase_appraisal_id` y ahora se
+  rechazan como pendientes cuando cambian el ID de delegación física, el
+  nombre asociado, el ID y nombre normalizados, o cuando la misma tasación
+  aparece firmada en meses diferentes. Las entregas sin tienda verificable
+  siguen generando incidencia y no se cuentan silenciosamente.
+- Se añadió el roster histórico `store_manager_commission_roster_members`,
+  con periodo, identidad Salesforce, procedencia, referencia y verificación.
+  `StoreManagerTeamRosterService` lo resuelve por lote; si falta la evidencia,
+  el dashboard conserva el desglose provisional pero no certifica el total.
+  Los miembros acreditados sin entregas sí aparecen con sus componentes cero
+  verificables.
+- El importador de RR. HH. mantiene el modo dry-run y exige `--imported-by`
+  cuando se solicita escritura, evitando filas sin actor auditado.
+- La interfaz de octubre y el XLSX de delegaciones exponen el desglose de
+  equipo, estado del roster, reseñas, incidencias y `Pendiente` para importes
+  nulos; no reutilizan los agregados económicos históricos del plan nuevo.
+- Verificación focalizada posterior: 122 pruebas, 833 aserciones correctas en
+  dashboard, readiness, cierres, evidencia e integración; Pint correcto.
+  Pendiente externo: cargar evidencia real de adscripción histórica y revisar
+  los conflictos de `OPP_BUS_Tasacion__c`; no se importaron datos reales ni se
+  aprobaron comisiones.
+
+## Readiness y validación final (2026-11-19)
+
+- `CommercialCommissionSourceReadinessService` acepta `calculated` únicamente
+  para filas `october_2026`; el cierre continúa exigiendo el contrato completo
+  y no trata `calculated` como certificación.
+- Se añadieron pruebas de importación RR. HH. para dry-run, actor obligatorio,
+  identidad única y protección de un periodo definitivo. La prueba local de
+  readiness queda en 29 pruebas y 81 aserciones; el conjunto focalizado previo
+  a las pruebas adicionales quedó en 126 pruebas y 841 aserciones.
+- La suite completa local no produjo un resumen: el runner agotó su límite de
+  ejecución de 120 segundos dentro de una consulta de un test de monitorización
+  operativo, después de ejecutar otros tests; no se observó un fallo funcional
+  de esta intervención. CI sigue siendo la validación completa, especialmente
+  MariaDB. El validador documental local no pudo ejecutarse porque el entorno
+  no tiene un intérprete Python utilizable; se revisó el contrato documental y
+  la descripción de PR debe usar un único bloque `Docs-Impact`.
+
+## Correcciones de auditoría y validación final (2026-11-19)
+
+- El modelo `CommercialCommissionRosterMember` declara explícitamente la tabla
+  `store_manager_commission_roster_members`; se corrigió la discrepancia entre
+  la convención Eloquent y el nombre de la migración.
+- El validador documental asigna explícitamente `ImportHrEmploymentDates.php` a
+  `commissions`, con cobertura en la guía y prueba de infraestructura. No se
+  utiliza una excepción `Docs-Outside-*` para una ruta que alimenta evidencia
+  de liquidaciones.
+- Verificación local final antes de publicar: 137 pruebas y 875 aserciones
+  correctas en la batería focalizada; los 11 tests de integración nuevos del
+  dashboard y del importador de roster pasan con 47 aserciones.
+- La sintaxis PHP, Pint y `git diff --check` deben repetirse tras el último
+  ajuste antes de publicar.
+
+## Operaciones compartidas y validación de fuentes (2026-11-19)
+
+- Las entregas compartidas se incorporan al desglose del propietario primario y
+  del miembro secundario acreditado. El incentivo de volumen puede reflejar la
+  participación de ambos, mientras financiación y garantías se mantienen en el
+  propietario primario para evitar doble contabilización.
+- El importador de RR. HH. valida el formato de correo cuando se proporciona,
+  exige un actor activo para escritura y protege todos los cierres definitivos
+  afectados, incluidos periodos posteriores al mes actual.
+- Se añadieron pruebas de reseñas para cero confirmado, payload contradictorio
+  y precisión 3,995; también se cubren miembro solo compartido, zona
+  desconocida, correo inválido y duplicado de identidad/fecha.
+- Se añadió `commissions:import-store-manager-roster`, con validación por fila,
+  cobertura temporal, clave de tienda normalizada, procedencia, referencia,
+  actor, dry-run, idempotencia y protección de cierres definitivos. No se
+  cargaron datos reales.

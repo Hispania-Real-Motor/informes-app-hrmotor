@@ -67,7 +67,18 @@ class CommercialCommissionSourceReadinessService
                     ->pluck('store_manager_alert')
                     ->filter();
 
-            $pendingRows = $delegationRows->filter(fn (array $row): bool => isset($row['store_manager_status']) && $row['store_manager_status'] !== 'ready');
+            $pendingRows = $delegationRows->filter(function (array $row) use ($period): bool {
+                if (! isset($row['store_manager_status'])) {
+                    return false;
+                }
+
+                $expectedStatus = $period->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                    && ($row['store_manager_plan'] ?? null) === 'october_2026'
+                    ? 'calculated'
+                    : 'ready';
+
+                return $row['store_manager_status'] !== $expectedStatus;
+            });
             $blocking = collect($blocking)->merge($pendingRows->map(fn (array $row): string => 'La tienda '.($row['delegation_name'] ?? 'desconocida').' tiene componentes económicos pendientes.'));
             if ($period->greaterThanOrEqualTo(CarbonImmutable::parse('2026-10-01'))) {
                 $blocking = $blocking->merge($validManagerAlerts);

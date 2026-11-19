@@ -1030,5 +1030,51 @@ Pruebas:
   `database/seeders/StoreManagerCommissionTargetsOctober2026.csv`, validada
   por el importador con 34 tiendas y totales 907 entregas / 499 compras.
 - La atribución económica permanece provisional cuando faltan evidencias de
-  tienda física de compra, identidad de operación, reseñas o antigüedad laboral.
-  No se sustituye una fuente ausente por el propietario de Salesforce.
+  tienda física de compra, identidad de operación, roster de equipo, reseñas o
+  antigüedad laboral. No se sustituye una fuente ausente por el propietario de
+  Salesforce.
+- La réplica local de Opportunity procede de
+  `SalesforceOpportunitySyncService::saveRecord()`: `Fecha_firma_contrato__c`
+  → `cv_signed_date`, `OPO_CAS_Contrato_CV_firmado__c` → `cv_signed`,
+  `RecordType.Name`/`StageName` → `record_type_name`/`stage_name`,
+  `Tienda_de_entrega__c` → `delivery_store`, `OPP_BUS_Tasacion__c` →
+  `purchase_appraisal_id`, `OPP_BUS_Tasacion__r.TAS_BUS_Delegacion_de_compra__c`
+  → `purchase_delegation_id`, `Delegacion_de_la_tasacion__c` →
+  `purchase_delegation_name`, `Entrega_Compartida__c` → `shared_delivery_id`,
+  `Garant_a_Total__c` → `garantia_total` y `Comisi_n_Financiera__c` →
+  `financial_commission`.
+- Las entregas usan la réplica local en el intervalo civil del mes, con
+  contrato firmado, etapa distinta de `Cerrada Perdida` y tipo Venta/Cambio o
+  nombre Facilitea; la atribución se normaliza por `delivery_store`. La
+  implementación actual no genera una incidencia específica para una tienda de
+  entrega no vacía que no coincida con un objetivo: queda como discrepancia
+  pendiente y no debe documentarse como bloqueo ya resuelto.
+- Desde octubre de 2026, las compras de jefes de tienda se deduplican por
+  `purchase_appraisal_id` y se bloquean ante IDs/nombres de delegación física
+  contradictorios, una misma tasación firmada en varios meses o una tienda que
+  no sea objetivo. Exigen `purchase_delegation_id` y
+  `purchase_delegation_name`; no usan `delivery_store` como fallback.
+- La financiación individual usa `financial_commission` (`Comisi_n_Financiera__c`),
+  nunca `importe_financiado`, para comparar el mínimo zonal. Un valor nulo no
+  se convierte en cero. La zona no reconocida es una incidencia bloqueante.
+- La adscripción histórica del equipo se conserva en
+  `store_manager_commission_roster_members`; los miembros sin entregas no se
+  eliminan. Una entrega compartida aparece en el propietario y en el miembro
+  secundario acreditado; financiación y garantías se acumulan una sola vez en
+  el propietario primario. Sin roster verificado el desglose puede ser
+  provisional, pero el total no es certificable. No se ha encontrado un
+  sincronizador o importador productivo para esta tabla; la fuente externa y su
+  carga auditada siguen pendientes.
+- Las fechas de alta/reingreso no proceden de `User.CreatedDate`:
+  `ImportHrEmploymentDates` valida un CSV contra `SalesforceUser` y persiste
+  `hr_employment_dates`; en escritura exige `--imported-by`.
+- Las reseñas del plan nuevo proceden del endpoint interno configurado en
+  `services.internal_reviews`, con `reviews_count`, `average_rating`, estado
+  técnico y fecha de consulta cacheada. El sincronizador de `Resena__c` es otro
+  contrato de Comisiones y no debe tratarse como la fuente de este plan.
+- La preparación y aprobación validan el snapshot congelado, sus 34 tiendas,
+  responsables, reseñas, roster, componentes, subtotales y total conciliado.
+  El código permite aprobar cuando toda la evidencia es verificable; en esta
+  revisión no se importaron datos productivos ni se aprobó octubre. La ausencia
+  de evidencia real mantiene la liquidación pendiente, pero no constituye por
+  sí sola una prohibición permanente del flujo de aprobación.

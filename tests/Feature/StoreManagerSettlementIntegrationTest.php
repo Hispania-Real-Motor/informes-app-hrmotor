@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CommercialCommissionClosure;
+use App\Models\CommercialCommissionRosterMember;
 use App\Models\CommercialCommissionSnapshot;
 use App\Models\HrEmploymentDate;
 use App\Models\ReportUser;
@@ -79,6 +80,160 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         $this->assertSame('calculated', $row['store_manager_status']);
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-1.penalty'));
         $this->assertSame(280.0, data_get($row, 'team_components.TEAM-1.subtotal'));
+    }
+
+    public function test_roster_member_without_deliveries_remains_in_the_team_breakdown(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        CommercialCommissionRosterMember::query()->create([
+            'month' => '2026-10',
+            'delegation_key' => 'norte-test',
+            'delegation_name' => 'Norte Test',
+            'salesforce_user_id' => 'TEAM-2',
+            'member_name' => 'Comercial sin entregas',
+            'coverage_from' => '2026-10-01 00:00:00',
+            'coverage_to' => '2026-11-01 00:00:00',
+            'source' => 'fixture',
+            'evidence_reference' => 'fixture-roster-no-deliveries',
+            'recorded_by' => 'integration-test',
+            'history_verified' => true,
+        ]);
+        HrEmploymentDate::query()->create([
+            'salesforce_user_id' => 'TEAM-2',
+            'corporate_email' => 'fixture-two@example.test',
+            'effective_date' => '2026-01-01',
+            'source_label' => 'fixture',
+            'source_reference' => 'fixture-hr-two',
+        ]);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertArrayHasKey('TEAM-2', $row['team_components']);
+        $this->assertSame(0, data_get($row, 'team_components.TEAM-2.deliveries'));
+        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-2.subtotal'));
+        $this->assertSame(530.0, $row['total_commission']);
+    }
+
+    public function test_shared_delivery_is_attributed_to_the_secondary_roster_member_without_losing_the_primary(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        CommercialCommissionRosterMember::query()->create([
+            'month' => '2026-10',
+            'delegation_key' => 'norte-test',
+            'delegation_name' => 'Norte Test',
+            'salesforce_user_id' => 'TEAM-2',
+            'member_name' => 'Comercial compartido',
+            'coverage_from' => '2026-10-01 00:00:00',
+            'coverage_to' => '2026-11-01 00:00:00',
+            'source' => 'fixture',
+            'evidence_reference' => 'fixture-roster-shared',
+            'recorded_by' => 'integration-test',
+            'history_verified' => true,
+        ]);
+        HrEmploymentDate::query()->create([
+            'salesforce_user_id' => 'TEAM-2',
+            'corporate_email' => 'fixture-shared@example.test',
+            'effective_date' => '2026-01-01',
+            'source_label' => 'fixture',
+            'source_reference' => 'fixture-hr-shared',
+        ]);
+        SalesforceOpportunity::query()->create([
+            'salesforce_id' => 'DELIVERY-SHARED',
+            'name' => 'Entrega compartida',
+            'stage_name' => 'Cerrada ganada',
+            'record_type_name' => 'Venta',
+            'owner_id' => 'TEAM-1',
+            'owner_name' => 'Comercial fixture',
+            'owner_is_active' => true,
+            'shared_delivery_id' => 'TEAM-2',
+            'shared_delivery_name' => 'Comercial compartido',
+            'delivery_store' => 'HR Motor Norte Test',
+            'garantia_total' => 350.0,
+            'financial_commission' => 900.0,
+            'cv_signed' => true,
+            'cv_signed_date' => '2026-10-29',
+        ]);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertSame(2, $row['team_member_count']);
+        $this->assertSame(1, data_get($row, 'team_components.TEAM-2.deliveries'));
+        $this->assertSame(0, data_get($row, 'team_components.TEAM-2.primary_deliveries'));
+        $this->assertSame(1, data_get($row, 'team_components.TEAM-2.shared_deliveries'));
+        $this->assertSame(0.0, data_get($row, 'team_components.TEAM-2.financing'));
+        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-2.subtotal'));
+    }
+
+    public function test_unknown_store_zone_blocks_the_economic_total_without_default_minimums(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        StoreManagerCommissionTarget::query()->where('store_key', 'norte-test')->update(['zone' => 'Zona no reconocida']);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertSame('pending_source', $row['store_manager_status']);
+        $this->assertNull($row['total_commission']);
+        $this->assertStringContainsString('Zona de tienda ausente o no reconocida', implode(' ', $row['store_manager_issues']));
+    }
+
+    public function test_conflicting_physical_delegation_ids_do_not_count_a_purchase_twice(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        SalesforceOpportunity::query()->create([
+            'salesforce_id' => 'PURCHASE-CONFLICT',
+            'name' => 'Tasación duplicada',
+            'stage_name' => 'Cerrada ganada',
+            'record_type_name' => 'Tasacion',
+            'owner_id' => 'PURCHASE-OWNER',
+            'owner_is_active' => true,
+            'purchase_appraisal_id' => 'APPRAISAL-1',
+            'purchase_delegation_id' => 'STORE-NORTE-CONFLICT',
+            'purchase_delegation_name' => 'Norte Test',
+            'cv_signed' => true,
+            'cv_signed_date' => '2026-10-22',
+        ]);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertSame(9, $row['purchases_count']);
+        $this->assertSame('pending_source', $row['store_manager_status']);
+        $this->assertStringContainsString('APPRAISAL-1', implode(' ', $row['store_manager_issues']));
+        $this->assertNull($row['total_commission']);
+    }
+
+    public function test_purchase_appraisal_signed_in_another_month_is_pending(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        SalesforceOpportunity::query()->create([
+            'salesforce_id' => 'PURCHASE-CROSS-MONTH',
+            'name' => 'Tasación repetida en otro mes',
+            'stage_name' => 'Cerrada ganada',
+            'record_type_name' => 'Tasacion',
+            'owner_id' => 'PURCHASE-OWNER',
+            'owner_is_active' => true,
+            'purchase_appraisal_id' => 'APPRAISAL-1',
+            'purchase_delegation_id' => 'STORE-NORTE-1',
+            'purchase_delegation_name' => 'Norte Test',
+            'cv_signed' => true,
+            'cv_signed_date' => '2026-09-30',
+        ]);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertSame(9, $row['purchases_count']);
+        $this->assertSame('pending_source', $row['store_manager_status']);
+        $this->assertStringContainsString('más de un mes', implode(' ', $row['store_manager_issues']));
+        $this->assertNull($row['total_commission']);
     }
 
     public function test_closure_rejects_a_snapshot_with_a_contradictory_total(): void
@@ -191,6 +346,19 @@ class StoreManagerSettlementIntegrationTest extends TestCase
             'coverage_to' => '2026-11-01 00:00:00',
             'observed_at' => '2026-10-31 23:59:00',
             'source' => 'fixture',
+            'history_verified' => true,
+        ]);
+        CommercialCommissionRosterMember::query()->create([
+            'month' => '2026-10',
+            'delegation_key' => 'norte-test',
+            'delegation_name' => 'Norte Test',
+            'salesforce_user_id' => 'TEAM-1',
+            'member_name' => 'Comercial fixture',
+            'coverage_from' => '2026-10-01 00:00:00',
+            'coverage_to' => '2026-11-01 00:00:00',
+            'source' => 'fixture',
+            'evidence_reference' => 'fixture-roster',
+            'recorded_by' => 'integration-test',
             'history_verified' => true,
         ]);
 

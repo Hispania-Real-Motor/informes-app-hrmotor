@@ -264,14 +264,14 @@ Auditoría inicial pendiente en cada una de las seis pestañas reales:
 | Área Manager | Pendiente | [Comisiones](informe-comisiones.md) |
 | Financieros | Pendiente | [Comisiones](informe-comisiones.md) y [guía financiera](informe-comisiones-financieras.md) |
 
-#### Plan de jefes de tienda desde octubre de 2026 — evidencia parcial
+#### Plan de jefes de tienda desde octubre de 2026 — cálculo provisional integrado
 
 | Contrato comprobado | Evidencia implementada y límites |
 | --- | --- |
-| Núcleo de cálculo / pestaña prevista | `StoreManagerCommissionPlanCalculator` y `StoreManagerCommissionPlanCalculatorTest` prueban vigencia `2026-10-01`, destinada provisionalmente a Delegaciones / jefes de tienda. No existe lector, pestaña, cierre, exportación ni KPI publicado que lo consuma. |
+| Núcleo de cálculo / pestaña | `CommercialCommissionDashboardService::buildStoreManagerProvisionalRows()` conecta `StoreManagerCommissionPlanCalculator` con la pestaña Delegaciones, el cierre y el XLSX. La vista distingue el plan `october_2026`; el resultado sigue provisional y no se publica ni se aprueba. |
 | Fórmula demostrada | Objetivo ausente `target_pending`/`null`; cero `not_applicable`/`0`; `<90 %`: `0`; `90 %--<100 %`: `actual * 6`; exacto: `actual * 10`; exceso: `target * 10 + (actual-target) * 15`. Entrega individual: `<10 = 0`, `10--11 = 120`, `12 = 200`, desde 13 `200 + (actual-12)*20`. Mínimos monetarios: nulo ante entrada ausente, cero bajo mínimo y base más 1 % del exceso a dos decimales. Subtotal nulo si falta una entrada; total redondeado y acotado a cero solo al final. |
-| Fuente, tabla, fecha pivote, universo, identidad y deduplicación | **Pendiente**: no hay sincronizador, campos API, tabla/columna local, normalizador, configuración, filtros, exclusiones, identidad ni deduplicación implementados. El handoff señala la falta de fecha verificable de alta/reingreso, tienda física de compra y clave estable Tasación/Cambio. |
-| Nulos, readiness, cierre, auditoría y exportación | El calculador distingue algunos nulos y estados, pero no define readiness ni certificación. Reseñas carece aún de contrato explícito para fuente válida, cero confirmado, payload incompleto y error. No se autoriza importar objetivos, cerrar ni exportar. El test fue interrumpido sin resultado exitoso; no hay evidencia productiva. |
+| Fuente, tabla, fecha pivote, universo, identidad y deduplicación | Objetivos: `store_manager_commission_targets`. Entregas: `EligibleDeliveryOpportunityQuery` por `delivery_store`; compras Tasación/Cambio: `purchase_appraisal_id`, `purchase_delegation_id` y `purchase_delegation_name`, con conflictos y repetición entre meses bloqueantes. Equipo: `store_manager_commission_roster_members` por identidad Salesforce, periodo y evidencia verificada. Finanzas: `financial_commission` y `garantia_total`; RR. HH.: `hr_employment_dates`. No se usa `User.CreatedDate`, matrícula, tienda de entrega ni propietario como fallback de compra. |
+| Nulos, readiness, cierre, auditoría y exportación | Readiness exige filas nuevas compatibles con el payload de reseñas (`reviews_technical_status`, `reviews_fetched_at`) y bloquea estados pendientes. Nulos de financiación, garantías, reseñas, roster, objetivos o totales permanecen nulos. La aprobación valida 34 tiendas únicas, versión vigente, jefe, roster, componentes, subtotales y conciliación matemática del snapshot congelado. La interfaz y XLSX muestran desglose de equipo e incidencias con `Pendiente`. Sin evidencia externa de roster histórico, Salesforce o RR. HH. la liquidación no es certificable. |
 
 #### Plan económico de Contact Center — roster y evidencia (2026-09)
 

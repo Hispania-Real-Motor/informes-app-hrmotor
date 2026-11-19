@@ -106,6 +106,12 @@ class IntegrityTests(unittest.TestCase):
         ):
             self.assertEqual({"commissions"}, checker.domains_for(path))
 
+    def test_hr_employment_import_maps_to_commissions(self) -> None:
+        self.assertEqual(
+            {"commissions"},
+            checker.domains_for("app/Console/Commands/ImportHrEmploymentDates.php"),
+        )
+
     def test_current_campaign_status_configuration_maps_only_to_campaigns(self) -> None:
         self.assertEqual({"campaigns"}, checker.domains_for("config/campaign_current_status.php"))
 

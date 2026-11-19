@@ -45,6 +45,11 @@ class ImportHrEmploymentDates extends Command
 
                 return self::FAILURE;
             }
+            if ($row[1] !== '' && filter_var($row[1], FILTER_VALIDATE_EMAIL) === false) {
+                $this->error('Invalid corporate email in HR CSV.');
+
+                return self::FAILURE;
+            }
 
             $date = CarbonImmutable::createFromFormat('!Y-m-d', $row[2]);
             if ($date === false || $date->format('Y-m-d') !== $row[2]) {
@@ -84,7 +89,12 @@ class ImportHrEmploymentDates extends Command
         }
 
         $importedBy = $this->option('imported-by');
-        if ($importedBy !== null && ! ReportUser::query()->whereKey($importedBy)->exists()) {
+        if ($importedBy === null || trim((string) $importedBy) === '') {
+            $this->error('The --imported-by report user is required for a write import.');
+
+            return self::FAILURE;
+        }
+        if (! ReportUser::query()->whereKey($importedBy)->where('is_active', true)->exists()) {
             $this->error('The imported-by report user does not exist.');
 
             return self::FAILURE;
@@ -96,7 +106,6 @@ class ImportHrEmploymentDates extends Command
                 if (CommercialCommissionClosure::query()
                     ->where('status', CommercialCommissionClosure::STATUS_DEFINITIVE)
                     ->where('month', '>=', $month)
-                    ->where('month', '<=', now()->format('Y-m'))
                     ->exists()) {
                     throw new \RuntimeException('Cannot import HR dates affecting a definitive commission period from '.$month.'.');
                 }
