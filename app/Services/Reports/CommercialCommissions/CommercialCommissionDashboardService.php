@@ -178,7 +178,17 @@ class CommercialCommissionDashboardService
             ->filter(fn (SalesforceOpportunity $row): bool => $this->countsAsDelegationDelivery($row));
         $purchases = $this->monthlyStoreManagerPurchaseOpportunities($periodStart, $periodStart->addMonth())
             ->get()
-            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->purchase_appraisal_id) && filled($row->purchase_delegation_name));
+            ->values();
+        $purchaseSourceIssues = $purchases
+            ->filter(fn (SalesforceOpportunity $row): bool => blank($row->purchase_appraisal_id) || blank($row->purchase_delegation_id) || blank($row->purchase_delegation_name))
+            ->map(fn (SalesforceOpportunity $row): string => sprintf(
+                'Compra física pendiente: %s (%s) carece de identificador de tasación o delegación física verificable.',
+                (string) ($row->salesforce_id ?: 'sin Salesforce ID'),
+                (string) ($row->name ?: 'sin nombre'),
+            ))
+            ->values()
+            ->all();
+        $purchases = $purchases->filter(fn (SalesforceOpportunity $row): bool => filled($row->purchase_appraisal_id) && filled($row->purchase_delegation_id) && filled($row->purchase_delegation_name));
         $deliveriesByStore = $opportunities
             ->filter(fn (SalesforceOpportunity $row): bool => filled($row->delivery_store))
             ->groupBy(fn (SalesforceOpportunity $row): string => $this->storeManagerTargets->normalizeKey((string) $row->delivery_store));
@@ -195,9 +205,16 @@ class CommercialCommissionDashboardService
             $purchaseOwners[$appraisal] = $storeKey;
         }
         $purchasesByStore = collect($purchaseOwners)->countBy();
+        $targetKeys = collect($targets)->pluck('store_key')->map(fn (mixed $key): string => (string) $key)->all();
+        foreach ($purchaseOwners as $appraisal => $storeKey) {
+            if (! in_array($storeKey, $targetKeys, true)) {
+                $purchaseSourceIssues[] = sprintf('Compra física pendiente: la tasación %s no corresponde a una tienda objetivo verificable.', $appraisal);
+            }
+        }
+        $purchaseSourceIssues = array_values(array_unique($purchaseSourceIssues));
         $calculator = app(StoreManagerCommissionPlanCalculator::class);
 
-        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $calculator): array {
+        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $purchaseSourceIssues, $calculator): array {
             $storeKey = (string) $target['store_key'];
             $deliveries = $deliveriesByStore->get($storeKey, collect())->count();
             $purchases = (int) $purchasesByStore->get($storeKey, 0);
@@ -209,6 +226,7 @@ class CommercialCommissionDashboardService
                     $issues[] = 'Conflicto de atribución para la tasación '.$appraisal.'.';
                 }
             }
+            $issues = array_values(array_unique([...$issues, ...$purchaseSourceIssues]));
             $status = $issues === [] && $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
                 ? 'calculated'
                 : 'pending_source';
@@ -224,6 +242,20 @@ class CommercialCommissionDashboardService
                 'purchases_count' => $purchases,
                 'objective_reached' => $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
                     && $deliveries >= (int) $target['target_deliveries'] && $purchases >= (int) $target['target_purchases'],
+                'objective_percentage' => $deliveryKpi['percentage'] ?? null,
+                'objective_commission_percent' => $deliveryKpi['rate'] ?? null,
+                'rentability_total' => null,
+                'average_rentability' => null,
+                'prima_final' => null,
+                'reviews_count' => null,
+                'reviews_average_rating' => null,
+                'reviews_commission_amount' => null,
+                'financing_profitability_percentage' => null,
+                'profitability_bonus_amount' => null,
+                'profitability_bonus_percent' => null,
+                'financed_amount_percentage' => null,
+                'financed_amount_bonus_amount' => null,
+                'financed_amount_bonus_percent' => null,
                 'store_manager_plan' => 'october_2026',
                 'store_manager_status' => $status,
                 'store_manager_issues' => $issues,
@@ -1626,8 +1658,6 @@ class CommercialCommissionDashboardService
             ->where('cv_signed', true)
             ->whereDate('cv_signed_date', '>=', $periodStart->toDateString())
             ->whereDate('cv_signed_date', '<', $periodEnd->toDateString())
-            ->whereNotNull('purchase_appraisal_id')
-            ->whereNotNull('purchase_delegation_name')
             ->whereRaw("LOWER(COALESCE(stage_name, '')) <> ?", ['cerrada perdida']);
 
         $this->applyRecordTypeFilter($query, ['tasacion', 'cambio']);

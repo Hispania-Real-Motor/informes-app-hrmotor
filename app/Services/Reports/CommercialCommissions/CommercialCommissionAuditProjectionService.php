@@ -150,7 +150,7 @@ class CommercialCommissionAuditProjectionService
             $projected = [
                 'name' => $row['commercial_name'] ?? $row['delegation_name'] ?? $row['manager_name'] ?? $row['responsible_name'] ?? $row['summary_label'] ?? $row['agent_name'] ?? $row['captador_name'] ?? 'Sin identificar',
                 'final_total' => (float) ($row['final_commission'] ?? $row['total_commission'] ?? $row['final_total'] ?? 0),
-                'alert' => $scope === 'delegations' && $managerCount > 2 ? ($row['store_manager_alert'] ?? null) : null,
+                'alert' => $scope === 'delegations' && $managerCount >= 2 ? ($row['store_manager_alert'] ?? null) : null,
             ];
 
             return $scope === 'delegations'

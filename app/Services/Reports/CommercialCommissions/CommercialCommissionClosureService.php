@@ -304,7 +304,7 @@ class CommercialCommissionClosureService
                 'final_total' => $dashboard === null ? null : $this->finalTotal($dashboard, $scope),
                 'status' => $status,
                 'alerts' => $scope === CommercialCommissionClosure::SCOPE_DELEGATIONS && $dashboard !== null
-                    ? $this->delegationManagerAlerts($dashboard)
+                    ? $this->delegationManagerAlerts($dashboard, $monthKey)
                     : [],
             ];
         })->values()->all();
@@ -440,8 +440,12 @@ class CommercialCommissionClosureService
     }
 
     /** @return array<int, string> */
-    private function delegationManagerAlerts(array $dashboard): array
+    private function delegationManagerAlerts(array $dashboard, string $month): array
     {
+        if (CarbonImmutable::parse($month.'-01')->lt(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
+            return [];
+        }
+
         return collect($dashboard['delegation_rows'] ?? [])
             ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) >= 2)
             ->pluck('store_manager_alert')

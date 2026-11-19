@@ -71,7 +71,7 @@ class CommercialCommissionSourceReadinessService
             // alerts explicitly linked to manager rows, preserving source warnings.
             $warnings = $warnings
                 ->reject(fn (string $warning): bool => $managerAlerts->contains($warning))
-                ->merge($validManagerAlerts);
+                ->merge($period->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM)) ? $validManagerAlerts : collect());
         }
 
         $blocking = collect($blocking)->unique()->values()->all();

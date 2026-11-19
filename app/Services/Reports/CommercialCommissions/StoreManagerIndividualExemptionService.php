@@ -10,7 +10,9 @@ class StoreManagerIndividualExemptionService
             return $row;
         }
 
-        $discountPenalty = (float) ($row['discount_penalty_amount'] ?? 0);
+        $discountPenalty = array_key_exists('prima_total', $row)
+            ? (float) ($row['discount_penalty_amount'] ?? 0)
+            : 0.0;
         $row['discount_penalty_amount'] = 0.0;
         $row['guarantee_penalty'] = 0.0;
         $row['reviews_penalty'] = 0.0;

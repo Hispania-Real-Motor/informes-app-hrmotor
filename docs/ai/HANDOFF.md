@@ -8950,3 +8950,23 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pendiente externo: verificar con Salesforce la cobertura real de
   `OPP_BUS_Tasacion__c` y con RR. HH. el fichero autorizado; sin esas
   evidencias el importe permanece pendiente y no se publica ni se aprueba.
+
+## Regresión CI y trazabilidad histórica (2026-11-19)
+
+- Se corrigió la exención para restaurar el descuento ordinario únicamente
+  cuando la fila contiene evidencia de `prima_total`; una fila sintética que
+  ya representa la base positiva no se sobrecompensa. Se conservaron los
+  incentivos positivos y la cancelación financiera única.
+- La alerta de dos responsables se aplica únicamente desde octubre de 2026.
+  Julio-septiembre mantienen el umbral histórico de más de dos responsables.
+  La misma vigencia se refleja en readiness, cierre, proyección de auditoría y
+  vista Blade.
+- Las oportunidades Tasación/Cambio incompletas ya no desaparecen: se
+  registran como incidencias de fuente y dejan la fila pendiente. También se
+  registra una incidencia si la delegación física no corresponde a una tienda
+  objetivo del periodo.
+- Se completaron las claves ausentes que la plantilla histórica consultaba en
+  las filas nuevas con valores nulos explícitos; no se convierten estados
+  pendientes en importes cero.
+- Verificación: los dos fallos auditados pasan (19 pruebas, 69 aserciones),
+  Pint sobre los archivos de la corrección y `git diff --check` correctos.

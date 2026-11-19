@@ -67,7 +67,8 @@ class DelegationManagerHistoryResolver
             $rotationVerified = $this->coversWholePeriod($effective, $month, $monthEnd);
             $distinct = $effective->pluck('manager_salesforce_user_id')->filter()->unique()->count();
             $label = $closing?->delegation_name ?? $effective->last()?->delegation_name ?? $key;
-            $alert = $distinct >= 2
+            $newPlan = $month->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM));
+            $alert = ($newPlan ? $distinct >= 2 : $distinct > 2)
                 ? sprintf(
                     '%s ha tenido %d jefes de tienda demostrados durante %s. Revisar la asignación de la comisión.',
                     $label,

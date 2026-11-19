@@ -89,7 +89,7 @@
     $closureStatus = $commissionClosure['status'] ?? 'provisional';
     $visibleDashboardWarnings = $activeCommissionTab === 'delegations'
         ? $delegationRows
-            ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) > 2)
+            ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) >= 2)
             ->pluck('store_manager_alert')->filter()->unique()->values()
         : collect($dashboard['warnings'] ?? []);
 @endphp
@@ -584,7 +584,7 @@
                                         <td>{{ $row['delegation_name'] }}</td>
                                         <td>
                                             {{ $row['store_manager_name'] ?? 'Sin datos suficientes' }}
-                                            @if ((int) ($row['store_manager_distinct_count'] ?? 0) > 2 && filled($row['store_manager_alert'] ?? null))
+                                            @if ((int) ($row['store_manager_distinct_count'] ?? 0) >= 2 && filled($row['store_manager_alert'] ?? null))
                                                 <span class="type-pill pending" title="{{ $row['store_manager_alert'] }}">Revisar</span>
                                             @endif
                                         </td>
