@@ -168,20 +168,66 @@ class CommercialCommissionDashboardService
     {
         $targets = $this->storeManagerTargets->forMonth($month);
 
-        return array_map(function (array $target): array {
+        if ($targets === []) {
+            return [];
+        }
+
+        $periodStart = $month->startOfMonth();
+        $opportunities = $this->monthlyDelegationDeliveryOpportunities($periodStart, $periodStart->addMonth())
+            ->get()
+            ->filter(fn (SalesforceOpportunity $row): bool => $this->countsAsDelegationDelivery($row));
+        $deliveriesByStore = $opportunities
+            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->delivery_store))
+            ->groupBy(fn (SalesforceOpportunity $row): string => $this->storeManagerTargets->normalizeKey((string) $row->delivery_store));
+        $purchaseOwners = [];
+        $purchaseConflicts = [];
+        foreach ($opportunities->filter(fn (SalesforceOpportunity $row): bool => filled($row->purchase_appraisal_id)) as $row) {
+            $appraisal = (string) $row->purchase_appraisal_id;
+            $storeKey = $this->storeManagerTargets->normalizeKey((string) ($row->purchase_delegation_name ?: $row->delivery_store));
+            if (isset($purchaseOwners[$appraisal]) && $purchaseOwners[$appraisal] !== $storeKey) {
+                $purchaseConflicts[$appraisal] = [$purchaseOwners[$appraisal], $storeKey];
+                continue;
+            }
+            $purchaseOwners[$appraisal] = $storeKey;
+        }
+        $purchasesByStore = collect($purchaseOwners)->countBy();
+        $calculator = app(StoreManagerCommissionPlanCalculator::class);
+
+        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $calculator): array {
+            $storeKey = (string) $target['store_key'];
+            $deliveries = $deliveriesByStore->get($storeKey, collect())->count();
+            $purchases = (int) $purchasesByStore->get($storeKey, 0);
+            $deliveryKpi = $calculator->storeKpiIncentive($deliveries, (int) $target['target_deliveries']);
+            $purchaseKpi = $calculator->storeKpiIncentive($purchases, (int) $target['target_purchases']);
+            $issues = [];
+            foreach ($purchaseConflicts as $appraisal => $stores) {
+                if (in_array($storeKey, $stores, true)) {
+                    $issues[] = 'Conflicto de atribución para la tasación '.$appraisal.'.';
+                }
+            }
+            $status = $issues === [] && $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
+                ? 'calculated'
+                : 'pending_source';
+            $total = $status === 'calculated'
+                ? round((float) $deliveryKpi['incentive'] + (float) $purchaseKpi['incentive'], 2)
+                : null;
+
             return [
                 'delegation_name' => $target['store_name'],
                 'target_deliveries' => $target['target_deliveries'],
                 'target_purchases' => $target['target_purchases'],
-                'deliveries_count' => null,
-                'purchases_count' => null,
-                'objective_reached' => false,
-                'store_manager_plan' => 'october_2026_provisional',
-                'store_manager_status' => 'pending_source',
-                'store_manager_issues' => ['No hay todavía una atribución verificable para todas las fuentes económicas de esta tienda.'],
-                'total_commission' => null,
-                'total_bruto' => null,
-                'total_final' => null,
+                'deliveries_count' => $deliveries,
+                'purchases_count' => $purchases,
+                'objective_reached' => $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
+                    && $deliveries >= (int) $target['target_deliveries'] && $purchases >= (int) $target['target_purchases'],
+                'store_manager_plan' => 'october_2026',
+                'store_manager_status' => $status,
+                'store_manager_issues' => $issues,
+                'store_deliveries_incentive' => $status === 'calculated' ? $deliveryKpi['incentive'] : null,
+                'store_purchases_incentive' => $status === 'calculated' ? $purchaseKpi['incentive'] : null,
+                'total_commission' => $total,
+                'total_bruto' => $total,
+                'total_final' => $total,
                 'target_source' => $target['target_source'],
             ];
         }, $targets);
@@ -384,16 +430,9 @@ class CommercialCommissionDashboardService
             ->filter(fn (SalesforceOpportunity $row) => filled($row->shared_delivery_id))
             ->groupBy(fn (SalesforceOpportunity $row) => (string) $row->shared_delivery_id);
         $salesforceUsersById = $this->salesforceUsersById();
-        $storeManagerIds = [];
-        if ($periodStart->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
-            $managerLabels = $monthlyOperations->pluck('owner_delegation')->filter()->unique()->values()->all();
-            $storeManagerIds = collect($this->delegationManagers->resolve($periodStart, $managerLabels))
-                ->filter(fn (array $manager): bool => ($manager['store_manager_history_status'] ?? null) === 'verified')
-                ->pluck('store_manager_salesforce_user_id')
-                ->filter()
-                ->values()
-                ->all();
-        }
+        $storeManagerIds = $periodStart->greaterThanOrEqualTo(
+            CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM)
+        ) ? $this->delegationManagers->verifiedManagerIds($periodStart) : [];
 
         $userNames = [];
 
@@ -709,16 +748,9 @@ class CommercialCommissionDashboardService
             })
             ->values();
 
-        $storeManagerIds = [];
-        if ($periodStart->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
-            $managerLabels = $monthlyOperations->pluck('owner_delegation')->filter()->unique()->values()->all();
-            $storeManagerIds = collect($this->delegationManagers->resolve($periodStart, $managerLabels))
-                ->filter(fn (array $manager): bool => ($manager['store_manager_history_status'] ?? null) === 'verified')
-                ->pluck('store_manager_salesforce_user_id')
-                ->filter()
-                ->values()
-                ->all();
-        }
+        $storeManagerIds = $periodStart->greaterThanOrEqualTo(
+            CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM)
+        ) ? $this->delegationManagers->verifiedManagerIds($periodStart) : [];
 
         return $userIds->map(function (string $userId) use (
             $operationsByOwner,

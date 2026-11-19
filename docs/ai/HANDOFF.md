@@ -8897,3 +8897,16 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   comerciales desde octubre para IDs de jefe verificados por historial. Pone a
   cero únicamente penalizaciones ordinarias, conserva incentivos positivos y
   mantiene el importe de cancelaciones financieras exactamente una vez.
+
+## Integración del plan de octubre (2026-11-19)
+
+- El dashboard calcula ahora los KPI de entregas y compras por tienda con los
+  objetivos persistidos; las compras se agrupan por `purchase_appraisal_id`.
+  Las colisiones entre tiendas quedan como incidencia pendiente y no producen
+  un importe económico inventado.
+- La exención de jefe se resuelve con todos los historiales verificados que
+  cubren el mes, incluso cuando el jefe no tiene operaciones propias en ese
+  periodo; ya no depende de que aparezca como propietario de una oportunidad.
+- Se corrigió el formato Pint del importador de objetivos. La validación local
+  disponible fue `git diff --check`; PHP no está instalado en este entorno y la
+  suite PHP debe verificarse mediante GitHub Actions.

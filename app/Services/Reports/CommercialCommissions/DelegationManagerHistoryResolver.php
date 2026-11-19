@@ -89,6 +89,30 @@ class DelegationManagerHistoryResolver
         })->all();
     }
 
+    /**
+     * Returns every verified manager covering any part of the month. This is
+     * deliberately independent from opportunity owners: a manager with no
+     * operation in the period must still receive the correct exemption.
+     */
+    public function verifiedManagerIds(CarbonImmutable $month): array
+    {
+        if ($month->lt(CarbonImmutable::parse('2026-10-01')) || $this->schemaIssue() !== null) {
+            return [];
+        }
+
+        return SalesforceDelegationManagerHistory::query()
+            ->where('history_verified', true)
+            ->whereNotNull('manager_salesforce_user_id')
+            ->where('coverage_from', '<', $month->addMonth())
+            ->where(fn ($query) => $query->whereNull('coverage_to')->orWhere('coverage_to', '>', $month))
+            ->distinct()
+            ->pluck('manager_salesforce_user_id')
+            ->filter()
+            ->map(fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all();
+    }
+
     private function schemaIssue(): ?string
     {
         if (! Schema::hasTable(self::TABLE)) {
