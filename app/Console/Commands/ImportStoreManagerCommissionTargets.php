@@ -20,7 +20,7 @@ class ImportStoreManagerCommissionTargets extends Command
     public function handle(StoreManagerCommissionTargetService $keys): int
     {
         $path = base_path($this->argument('file'));
-        if (! is_file($path)) {
+        if (!is_file($path)) {
             $this->error('Target file not found.');
 
             return self::FAILURE;
@@ -42,13 +42,13 @@ class ImportStoreManagerCommissionTargets extends Command
                 return self::FAILURE;
             }
             [$zone, $store, $deliveries, $purchases] = $row;
-            if (! ctype_digit($deliveries) || ! ctype_digit($purchases) || $zone === '' || $store === '') {
+            if (!ctype_digit($deliveries) || !ctype_digit($purchases) || $zone === '' || $store === '') {
                 $this->error('Invalid target value for '.$store.'.');
 
                 return self::FAILURE;
             }
             $storeKey = $keys->normalizeKey($store);
-            if (isset($keysSeen[$storeKey]) || ! in_array($zone, ['Levante', 'Norte', 'Cataluña', 'Sur', 'Madrid'], true)) {
+            if (isset($keysSeen[$storeKey]) || !in_array($zone, ['Levante', 'Norte', 'Cataluña', 'Sur', 'Madrid'], true)) {
                 $this->error('Duplicate or unknown store mapping for '.$store.'.');
 
                 return self::FAILURE;
@@ -78,7 +78,7 @@ class ImportStoreManagerCommissionTargets extends Command
         }
         $source = hash_file('sha256', $path);
         $this->info(sprintf('Validated %d rows, totals %d/%d, source %s.', count($rows), $deliveryTotal, $purchaseTotal, $source));
-        if (! $this->option('write')) {
+        if (!$this->option('write')) {
             $this->comment('Dry-run: no database writes performed.');
             return self::SUCCESS;
         }

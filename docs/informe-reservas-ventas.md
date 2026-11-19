@@ -962,3 +962,6 @@ ni modifica atribución de oportunidades, ventas, portales, cierres o exportacio
 La cobertura de Opportunities debe verificarse antes de cualquier futura
 integración consumidora; mientras tanto, una fuente provisional o parcial no se
 presenta como dato oficial.
+### Alcance de la PR 158
+
+La PR 158 conserva sin cambios el universo, la atribución y las reglas de Reservas/Ventas. La nueva atribución física de compras se persiste en el modelo compartido de oportunidades para el plan de comisiones, pero no cambia este informe ni sus cierres históricos.
