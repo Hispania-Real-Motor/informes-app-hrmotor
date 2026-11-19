@@ -1019,3 +1019,16 @@ Pruebas:
 - Financieros depende del interés elegido; un dato ausente no se inventa.
 - La configuración del período prevalece sobre los valores por defecto.
 - Nunca guardar contraseñas, tokens o credenciales en este archivo.
+
+15. COMISIONES DE JEFES DE TIENDA DESDE OCTUBRE DE 2026
+========================================================
+
+- Los objetivos mensuales se persisten en `store_manager_commission_targets`
+  mediante una importación explícita y auditable; no se insertan objetivos al
+  arrancar ni se heredan automáticamente a meses posteriores.
+- La fuente de octubre es la hoja «Detalle por tienda» transcrita en
+  `database/seeders/StoreManagerCommissionTargetsOctober2026.csv`, validada
+  por el importador con 34 tiendas y totales 907 entregas / 499 compras.
+- La atribución económica permanece provisional cuando faltan evidencias de
+  tienda física de compra, identidad de operación, reseñas o antigüedad laboral.
+  No se sustituye una fuente ausente por el propietario de Salesforce.
