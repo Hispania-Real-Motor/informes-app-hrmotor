@@ -23,6 +23,9 @@ class CommercialCommissionSourceReadinessService
             ],
             'delegations' => [
                 'sales' => $this->syncRunState('salesforce_opportunities', 'Oportunidades', $period),
+                ...($period->greaterThanOrEqualTo(CarbonImmutable::parse('2026-10-01')) ? [
+                    'store_manager_targets' => $this->storeManagerTargetsState($month),
+                ] : []),
                 'reviews' => $this->delegationReviewsState($dashboard, $period),
             ],
             'area_manager' => [
@@ -209,6 +212,23 @@ class CommercialCommissionSourceReadinessService
         }
 
         return $this->state('Reseñas de Delegaciones', 'ready', false, $oldest->toIso8601String(), 'Endpoint interno y caché verificados para '.$month->translatedFormat('F \d\e Y').'.');
+    }
+
+    private function storeManagerTargetsState(string $month): array
+    {
+        if (! Schema::hasTable('store_manager_commission_targets')) {
+            return $this->state('Objetivos de jefes de tienda', 'error', true, null, 'Falta el esquema persistente de objetivos de jefes de tienda.');
+        }
+
+        $count = DB::table('store_manager_commission_targets')->where('month', $month)->count();
+        if ($count === 0) {
+            return $this->state('Objetivos de jefes de tienda', 'pending', true, null, 'No hay objetivos persistidos para el mes seleccionado.');
+        }
+        if ($count !== 34) {
+            return $this->state('Objetivos de jefes de tienda', 'error', true, null, 'La configuración debe contener exactamente 34 objetivos por tienda.');
+        }
+
+        return $this->state('Objetivos de jefes de tienda', 'ready', false, DB::table('store_manager_commission_targets')->where('month', $month)->max('updated_at'), 'Objetivos persistidos y auditables.');
     }
 
     private function isEconomicallyInertNotApplicableReviewRow(array $row): bool

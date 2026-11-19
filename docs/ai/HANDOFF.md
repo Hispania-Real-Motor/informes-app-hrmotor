@@ -8831,3 +8831,28 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Verificación ejecutada: `git diff --check` correcto. El runtime PHP no está
   disponible en este entorno, por lo que la prueba focalizada no pudo ejecutarse
   localmente; debe validarse en CI antes de cerrar la PR.
+
+## Integración persistente de objetivos de jefes de tienda (2026-11-19)
+
+- Añadidos `store_manager_commission_targets` y el modelo
+  `StoreManagerCommissionTarget`, con mes, zona, clave canónica, objetivos,
+  SHA256 de fuente, etiqueta de fuente, actor y timestamps. La migración no
+  inserta datos automáticamente.
+- Añadida la transcripción versionada
+  `database/seeders/StoreManagerCommissionTargetsOctober2026.csv` con 34 filas;
+  el importador comprueba 34 filas y sumas 907/499, y ofrece dry-run por
+  defecto: `php artisan commissions:import-store-manager-targets`.
+  La escritura explícita de staging es `--write`; es idempotente por mes y
+  clave canónica y no se ejecutó en este entorno.
+- `CommercialCommissionDashboardService` incorpora las filas objetivo del plan
+  octubre+ al bloque existente de Delegaciones cuando están persistidas. Las
+  filas sin atribución económica verificable quedan `pending_source`, con
+  `total_bruto` y `total_final` nulos; no se presentan como cero ni como
+  definitivas. Septiembre y meses anteriores conservan el camino histórico.
+- `CommercialCommissionSourceReadinessService` bloquea el ámbito delegations
+  desde octubre si falta la tabla, no hay objetivos o no hay exactamente 34.
+- Pendiente: conectar las operaciones, equipos, reseñas, exportación/API y
+  resolución manual a este payload; esta entrega no inventa campos Salesforce
+  para tienda física de compra ni fecha real de contratación/reincorporación.
+- Verificación: `git diff --check` pendiente de ejecutar tras este cambio; PHP y
+  PHPUnit dependen de CI porque no hay runtime PHP local disponible.
