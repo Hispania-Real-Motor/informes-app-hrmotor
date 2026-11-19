@@ -6,6 +6,7 @@ use App\Models\StoreManagerCommissionTarget;
 use App\Services\Reports\CommercialCommissions\StoreManagerCommissionTargetService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ImportStoreManagerCommissionTargets extends Command
 {
@@ -26,7 +27,12 @@ class ImportStoreManagerCommissionTargets extends Command
 
         $handle = fopen($path, 'rb');
         $header = fgetcsv($handle);
+        if ($header !== ['zone', 'store_name', 'delivery_target', 'purchase_target']) {
+            $this->error('Invalid target CSV header.');
+            return self::FAILURE;
+        }
         $rows = [];
+        $keysSeen = [];
         while (($row = fgetcsv($handle)) !== false) {
             if (count($row) !== 4) {
                 $this->error('Invalid column count in target file.');
@@ -37,7 +43,13 @@ class ImportStoreManagerCommissionTargets extends Command
                 $this->error('Invalid target value for '.$store.'.');
                 return self::FAILURE;
             }
-            $rows[] = compact('zone', 'store', 'deliveries', 'purchases');
+            $storeKey = $keys->normalizeKey($store);
+            if (isset($keysSeen[$storeKey]) || ! in_array($zone, ['Levante', 'Norte', 'Cataluña', 'Sur', 'Madrid'], true)) {
+                $this->error('Duplicate or unknown store mapping for '.$store.'.');
+                return self::FAILURE;
+            }
+            $keysSeen[$storeKey] = true;
+            $rows[] = compact('zone', 'store', 'deliveries', 'purchases', 'storeKey');
         }
         fclose($handle);
 
@@ -49,6 +61,14 @@ class ImportStoreManagerCommissionTargets extends Command
         }
 
         $month = (string) $this->option('month');
+        if (Schema::hasTable('commercial_commission_closures')) {
+            $approved = DB::table('commercial_commission_closures')
+                ->where('month', $month)->where('status', 'definitive')->exists();
+            if ($approved) {
+                $this->error('Approved delegation period cannot be modified.');
+                return self::FAILURE;
+            }
+        }
         $source = hash_file('sha256', $path);
         $this->info(sprintf('Validated %d rows, totals %d/%d, source %s.', count($rows), $deliveryTotal, $purchaseTotal, $source));
         if (! $this->option('write')) {

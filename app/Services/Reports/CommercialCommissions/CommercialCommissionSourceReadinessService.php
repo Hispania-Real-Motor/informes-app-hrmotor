@@ -57,9 +57,16 @@ class CommercialCommissionSourceReadinessService
             $delegationRows = collect($dashboard['delegation_rows'] ?? []);
             $managerAlerts = $delegationRows->pluck('store_manager_alert')->filter();
             $validManagerAlerts = $delegationRows
-                ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) > 2)
+                ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) >= 2)
                 ->pluck('store_manager_alert')
                 ->filter();
+
+            $pendingRows = $delegationRows->filter(fn (array $row): bool =>
+                isset($row['store_manager_status']) && $row['store_manager_status'] !== 'ready'
+            );
+            $blocking = collect($blocking)->merge($pendingRows->map(
+                fn (array $row): string => 'La tienda '.($row['delegation_name'] ?? 'desconocida').' tiene componentes económicos pendientes.'
+            ));
 
             // Legacy snapshots may retain obsolete coverage warnings. Remove only
             // alerts explicitly linked to manager rows, preserving source warnings.

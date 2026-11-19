@@ -135,11 +135,10 @@ class CommercialCommissionDashboardService
             ? $this->buildSummaryRows($periodStart, $periodEnd, $formulaSettings, $financingPenaltyLedger, $includeDetails)
             : [];
         $delegationRows = $blockingIssues === [] && $includeDelegationRows
-            ? $this->buildDelegationRows($periodStart, $periodEnd, $formulaSettings)
+            ? ($selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                ? $this->buildStoreManagerProvisionalRows($selectedMonth)
+                : $this->buildDelegationRows($periodStart, $periodEnd, $formulaSettings))
             : [];
-        if ($selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM)) && $includeDelegationRows) {
-            $delegationRows = $this->addStoreManagerTargetRows($selectedMonth, $delegationRows);
-        }
         foreach ($delegationRows as $delegationRow) {
             if (filled($delegationRow['store_manager_alert'] ?? null)) {
                 $warnings[] = $delegationRow['store_manager_alert'];
@@ -161,19 +160,11 @@ class CommercialCommissionDashboardService
         ];
     }
 
-    private function addStoreManagerTargetRows(CarbonImmutable $month, array $rows): array
+    private function buildStoreManagerProvisionalRows(CarbonImmutable $month): array
     {
         $targets = $this->storeManagerTargets->forMonth($month);
-        if ($targets === []) {
-            return $rows;
-        }
-
-        $existing = collect($rows)->keyBy(fn (array $row): string => $this->storeManagerTargets->normalizeKey((string) ($row['delegation_name'] ?? '')));
-        foreach ($targets as $target) {
-            if ($existing->has($target['store_key'])) {
-                continue;
-            }
-            $rows[] = [
+        return array_map(function (array $target): array {
+            return [
                 'delegation_name' => $target['store_name'],
                 'target_deliveries' => $target['target_deliveries'],
                 'target_purchases' => $target['target_purchases'],
@@ -188,9 +179,7 @@ class CommercialCommissionDashboardService
                 'total_final' => null,
                 'target_source' => $target['target_source'],
             ];
-        }
-
-        return $rows;
+        }, $targets);
     }
 
     /**
