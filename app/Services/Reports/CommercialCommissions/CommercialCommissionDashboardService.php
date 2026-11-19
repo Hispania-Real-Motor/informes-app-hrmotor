@@ -109,6 +109,7 @@ class CommercialCommissionDashboardService
         private readonly DelegationManagerHistoryResolver $delegationManagers,
         private readonly EligibleDeliveryOpportunityQuery $deliveryOpportunities,
         private readonly StoreManagerCommissionTargetService $storeManagerTargets,
+        private readonly StoreManagerIndividualExemptionService $storeManagerExemption,
     ) {}
 
     public function build(
@@ -383,6 +384,16 @@ class CommercialCommissionDashboardService
             ->filter(fn (SalesforceOpportunity $row) => filled($row->shared_delivery_id))
             ->groupBy(fn (SalesforceOpportunity $row) => (string) $row->shared_delivery_id);
         $salesforceUsersById = $this->salesforceUsersById();
+        $storeManagerIds = [];
+        if ($periodStart->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
+            $managerLabels = $monthlyOperations->pluck('owner_delegation')->filter()->unique()->values()->all();
+            $storeManagerIds = collect($this->delegationManagers->resolve($periodStart, $managerLabels))
+                ->filter(fn (array $manager): bool => ($manager['store_manager_history_status'] ?? null) === 'verified')
+                ->pluck('store_manager_salesforce_user_id')
+                ->filter()
+                ->values()
+                ->all();
+        }
 
         $userNames = [];
 
@@ -625,6 +636,8 @@ class CommercialCommissionDashboardService
                     'financing_cancellations' => $financingPenaltyDetails[$userId] ?? [],
                 ];
             }
+
+            $row = $this->storeManagerExemption->apply($row, in_array($userId, $storeManagerIds, true));
 
             return $row;
         })->sortByDesc('final_commission')->values()->all();
@@ -1142,6 +1155,7 @@ class CommercialCommissionDashboardService
 
         $sales = $this->salesForPurchasedVehicles($purchases);
         $details = [];
+        $usedPurchaseAppraisals = [];
 
         foreach ($purchases as $purchase) {
             $purchaseDate = $purchase->cv_signed_date ? CarbonImmutable::parse($purchase->cv_signed_date)->startOfDay() : null;
@@ -1462,6 +1476,18 @@ class CommercialCommissionDashboardService
 
             if (! $purchase) {
                 $purchase = null;
+            }
+
+            if (
+                $saleDate->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                && filled($purchase?->purchase_appraisal_id)
+            ) {
+                $appraisalId = (string) $purchase->purchase_appraisal_id;
+                if (isset($usedPurchaseAppraisals[$appraisalId])) {
+                    continue;
+                }
+
+                $usedPurchaseAppraisals[$appraisalId] = true;
             }
 
             $purchaseOwnerId = (string) ($sale->vehicle_buyer_id ?: $purchase?->vehicle_buyer_id ?: $purchase?->owner_id ?: '');

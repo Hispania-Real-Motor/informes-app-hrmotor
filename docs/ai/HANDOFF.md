@@ -8883,3 +8883,17 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   nuevo, incorporar el importador de fechas RR. HH. y aplicar la exención de
   penalizaciones ordinarias en las rutas individuales de comercial/tasador con
   historial de jefe verificado.
+
+## Deduplicación, RR. HH. y exención individual (2026-11-19)
+
+- Desde octubre, `resolvePurchaseCommissionDetails()` no vuelve a contabilizar
+  una compra cuyo `purchase_appraisal_id` ya fue usada en el periodo. La regla
+  no altera los meses anteriores y utiliza la tasación, no matrícula ni vehículo.
+- Añadidos `hr_employment_dates`, `HrEmploymentDate` y el comando
+  `commissions:import-hr-employment-dates`. El importador valida identidad,
+  fecha, duplicados, referencia y funciona en dry-run; nunca lee
+  `User.CreatedDate`.
+- Añadido `StoreManagerIndividualExemptionService`, conectado al resumen de
+  comerciales desde octubre para IDs de jefe verificados por historial. Pone a
+  cero únicamente penalizaciones ordinarias, conserva incentivos positivos y
+  mantiene el importe de cancelaciones financieras exactamente una vez.
