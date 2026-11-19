@@ -67,6 +67,9 @@ class CommercialCommissionSourceReadinessService
             $blocking = collect($blocking)->merge($pendingRows->map(
                 fn (array $row): string => 'La tienda '.($row['delegation_name'] ?? 'desconocida').' tiene componentes económicos pendientes.'
             ));
+            if ($period->greaterThanOrEqualTo(CarbonImmutable::parse('2026-10-01'))) {
+                $blocking = $blocking->merge($validManagerAlerts);
+            }
 
             // Legacy snapshots may retain obsolete coverage warnings. Remove only
             // alerts explicitly linked to manager rows, preserving source warnings.
@@ -74,6 +77,8 @@ class CommercialCommissionSourceReadinessService
                 ->reject(fn (string $warning): bool => $managerAlerts->contains($warning))
                 ->merge($validManagerAlerts);
         }
+
+        $blocking = collect($blocking)->unique()->values()->all();
 
         return [
             'ready' => $blocking === [],
