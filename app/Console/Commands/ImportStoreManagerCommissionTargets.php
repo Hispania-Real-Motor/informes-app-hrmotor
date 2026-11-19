@@ -78,7 +78,7 @@ class ImportStoreManagerCommissionTargets extends Command
         }
         $source = hash_file('sha256', $path);
         $this->info(sprintf('Validated %d rows, totals %d/%d, source %s.', count($rows), $deliveryTotal, $purchaseTotal, $source));
-        if (!$this->option('write')) {
+        if (! $this->option('write')) {
             $this->comment('Dry-run: no database writes performed.');
             return self::SUCCESS;
         }
