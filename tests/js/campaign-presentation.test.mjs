@@ -703,6 +703,35 @@ test('provisional Interest KPI uses attributed count while unavailable source sh
     assert.match(kpis.innerHTML, /Sin atribución de Interests disponible/);
 });
 
+test('interest availability requires the certified mode and preserves attributed KPI values', () => {
+    const kpis = { innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; } };
+    const isolated = createDashboardSandbox({ addEventListener() {}, querySelectorAll: () => [],
+        getElementById: (id) => id === 'summaryKpis' ? kpis : null });
+    vm.runInContext('applyCampaignAvailability({}, null); renderKpis({spend:20, leads_salesforce:7})', isolated);
+    assert.match(kpis.innerHTML, /Intereses generados[\s\S]*kpi-value">—/);
+    kpis.innerHTML = '';
+    vm.runInContext("currentContext = 'venta'; applyCampaignAvailability({}, 'interest_pivot'); renderKpis({spend:20, leads_salesforce:7, opportunities:3, cost_per_lead:2.8571, cost_per_opportunity:6.6667}, 'venta')", isolated);
+    assert.match(kpis.innerHTML, /Intereses generados[\s\S]*kpi-value">7/);
+    assert.match(kpis.innerHTML, /Coste por interés[\s\S]*2,86/);
+});
+
+test('all six mandatory rankings remain visible with complete values and no invented null rows', () => {
+    const rankings = { innerHTML: '' };
+    const isolated = createDashboardSandbox({ addEventListener() {}, querySelectorAll: () => [],
+        getElementById: (id) => id === 'rankingsGrid' ? rankings : null });
+    vm.runInContext("visibleRankings = mandatoryRankingKeys; opportunityMetricsAvailable = true; interestMetricsAvailable = true; currentContext = 'all';", isolated);
+    vm.runInContext(`renderRankings({
+        best_ctr: [{campaign_name:'A', ctr:0.2}], worst_ctr: [{campaign_name:'B', ctr:0.01}],
+        best_cpc: [{campaign_name:'C', cpc:2}], worst_cpc: [{campaign_name:'D', cpc:20}],
+        best_lead_to_opportunity: [{campaign_name:'E', lead_to_opportunity:0.5}, {campaign_name:'N', lead_to_opportunity:null}],
+        worst_lead_to_opportunity: [{campaign_name:'F', lead_to_opportunity:0.01}, {campaign_name:'N', lead_to_opportunity:null}]
+    })`, isolated);
+    for (const title of ['Mejor CTR', 'Peor CTR', 'Mejor CPC', 'Peor CPC', 'Mayor porcentaje de oportunidades', 'Menor porcentaje de oportunidades']) {
+        assert.ok(rankings.innerHTML.includes(title), title);
+    }
+    assert.equal((rankings.innerHTML.match(/>N<\/span>/g) || []).length, 0);
+});
+
 test('platform comparison adds only a visual ChatGPT card after available providers', () => {
     const comparison = { innerHTML: '' };
     const panel = { classList: { remove() {} } };
@@ -883,6 +912,10 @@ test('mandatory rankings cannot be hidden and null percentage values are exclude
 test('formatDate does not turn null into the Unix epoch', () => {
     assert.equal(vm.runInContext('formatDate(null)', sandbox), '-');
     assert.equal(vm.runInContext('formatDate(undefined)', sandbox), '-');
+    assert.equal(vm.runInContext("formatDate('')", sandbox), '-');
+    assert.equal(vm.runInContext('formatDate(0)', sandbox), '-');
+    assert.equal(vm.runInContext("formatDate('0')", sandbox), '-');
+    assert.match(vm.runInContext("formatDate('2026-11-19')", sandbox), /19\/11\/2026/);
 });
 
 test('empty diagnostics remove the diagnostics control', () => {
@@ -895,4 +928,19 @@ test('empty diagnostics remove the diagnostics control', () => {
     });
     vm.runInContext('renderDiagnostics({})', isolated);
     assert.equal(button.classList.added, true);
+});
+
+test('diagnostics with only null properties remain hidden while real evidence is rendered', () => {
+    const root = { innerHTML: '' };
+    const button = { classList: { added: false, removed: false, add() { this.added = true; }, remove() { this.removed = true; } } };
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => id === 'campaignDiagnostics' ? root : (id === 'diagnosticsOpen' ? button : null),
+        querySelectorAll: () => [],
+    });
+    vm.runInContext('renderDiagnostics({meta_sync_operation:{verified_at:null,last_attempt_status:null}, google_sync_operation:{verified_at:null,last_attempt_status:null}, meta_metric_rows:0, google_metric_rows:0})', isolated);
+    assert.match(root.innerHTML, /Sin diagnóstico disponible/);
+    root.innerHTML = '';
+    vm.runInContext("renderDiagnostics({meta_metric_rows:2, last_meta_sync:'2026-11-19 10:00:00'})", isolated);
+    assert.match(root.innerHTML, /Filas Meta/);
 });

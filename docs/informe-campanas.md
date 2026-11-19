@@ -1031,3 +1031,9 @@ son informativas cuando la cobertura de Opportunities y la integridad de fuentes
 son completas; no se invalidan mediante un umbral numérico arbitrario.
 Las tareas de Opportunities y Opportunity–Interest solo se reutilizan cuando su
 evidencia persistida cubre el cutoff del Interest operacional seleccionado.
+## Revisión final de presentación — 2026-11-19
+
+- El diagnóstico de sincronización solo se considera disponible cuando contiene evidencia útil: una fecha real, una ejecución con estado/fecha o un contador positivo. Objetos vacíos, contadores cero y propiedades nulas no habilitan el botón. El panel lateral usa fondo blanco opaco, conserva apertura/cierre y no cambia autorización.
+- La presentación distingue el payload certificado `period_mode=interest_pivot`, el payload provisional `operational_provisional` con `availability.attribution.status=available` y el modo `platform_independent_only`. Solo los dos primeros acreditan Interests; el último muestra guiones y no sustituye Interests por conversiones nativas de Ads.
+- Los seis rankings obligatorios permanecen visibles con datos o con estado vacío. Los porcentajes de oportunidades excluyen valores nulos; no se inventan ceros ni resultados cuando faltan atribuciones.
+- Las fechas ausentes (`null`, cero numérico, cadena `0` o cadena vacía) se muestran como `-`. `last_spend_date` mantiene la procedencia backend de la última fecha diaria con gasto positivo; `campaign_end_date` mantiene el campo de campaña recibido desde las métricas de plataforma.

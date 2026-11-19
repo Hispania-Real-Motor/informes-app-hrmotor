@@ -3077,7 +3077,7 @@ function monthLabel(row) {
 }
 
 function formatDate(value) {
-    if (value === null || value === undefined || value === '') {
+    if (value === null || value === undefined || value === '' || value === 0 || value === '0') {
         return '-';
     }
 
@@ -3364,7 +3364,7 @@ function renderDiagnostics(diagnostics) {
         return;
     }
 
-    if (!diagnostics || Object.keys(diagnostics).length === 0) {
+    if (!hasUsefulDiagnostics(diagnostics)) {
         root.innerHTML = '<div class="empty-state">Sin diagnóstico disponible</div>';
         document.getElementById('diagnosticsOpen')?.classList.add('is-hidden');
         return;
@@ -3388,6 +3388,25 @@ function renderDiagnostics(diagnostics) {
             ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
         </div>
     `).join('');
+}
+
+function hasUsefulDiagnostics(diagnostics = {}) {
+    if (!diagnostics || typeof diagnostics !== 'object') {
+        return false;
+    }
+
+    const hasPositiveCount = ['meta_metric_rows', 'google_metric_rows', 'salesforce_leads_with_campaign_period',
+        'valid_candidate_leads', 'built_attributions', 'platform_campaigns', 'crossed_campaigns']
+        .some((key) => Number.isFinite(Number(diagnostics[key])) && Number(diagnostics[key]) > 0);
+    const hasDate = ['last_meta_sync', 'last_google_sync', 'last_attribution_build']
+        .some((key) => diagnostics[key] !== null && diagnostics[key] !== undefined && diagnostics[key] !== '' && diagnostics[key] !== 0 && diagnostics[key] !== '0');
+    const hasOperationEvidence = ['meta_sync_operation', 'google_sync_operation']
+        .some((key) => ['verified_at', 'last_attempt_status'].some((field) => {
+            const value = diagnostics[key]?.[field];
+            return value !== null && value !== undefined && value !== '';
+        }));
+
+    return hasPositiveCount || hasDate || hasOperationEvidence;
 }
 
 function syncOperationPresentation(operation, metricSyncedAt, now = Date.now()) {
