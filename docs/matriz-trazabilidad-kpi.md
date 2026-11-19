@@ -250,6 +250,19 @@ La propuesta de estado actual se detalla en
 [CAMPAIGN_CURRENT_STATUS_PROPOSAL](ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md).
 Reglas funcionales vigentes: [Informe de Campañas](informe-campanas.md).
 
+#### Iteración UX de rankings y filtros (2026-11-19)
+
+| Contrato afectado | Evidencia implementada | Impacto y estado de auditoría |
+| --- | --- | --- |
+| Rankings de CTR, CPC y conversión Interest → Opportunity | `CampaignDashboardDatasetService::platformOnlyRankings()`; `withRatios()`; `resources/js/reports/campaigns-dashboard.js::rankingDefinitions()/loadVisibleRankings()/renderRankings()` | Se muestran por defecto mejor/peor CTR, mejor/peor CPC y mayor/menor `lead_to_opportunity`; cada lista toma hasta cinco filas y exige valor no nulo. CTR/CPC conservan sus métricas existentes; `lead_to_opportunity = opportunities / leads_salesforce`, donde el alias público `leads_salesforce` representa Interests. No cambian fuente, universo, deduplicación, fórmula económica, API, CSV ni auditoría. Auditoría completa de los KPI de adquisición y campos externos/API pendiente. |
+| Formato de porcentajes | `campaigns-dashboard.js::percentFormatter()/formatPercentRatio()`; `tests/js/campaign-presentation.test.mjs` | La presentación pasa de una a dos cifras decimales con `Intl.NumberFormat('es-ES')`. No cambia el valor JSON, el redondeo backend ni la ordenación numérica. Verificado mediante prueba JavaScript sintética; no es certificación productiva. |
+| Detalle y filtros de presentación | `resources/views/reports/campaigns/index.blade.php`; `campaigns-dashboard.js::renderCampaignTable()`; `resources/css/reports/leads-dashboard.css` | La tabla queda siempre visible con scroll interno; se retira la columna Estado actual de la UI, se elimina el cajón de Filtros avanzados y «Columnas» se etiqueta «Filtro». El backend conserva sus parámetros y contratos de filtrado; API/CSV y persistencia no cambian. Estado actual sigue siendo un contrato histórico documentado, no un KPI auditado. |
+
+La prueba `campaign-presentation.test.mjs` es la evidencia disponible para esta
+iteración. No se consultaron Salesforce ni bases de datos y no se ejecutaron
+sincronizaciones. La matriz conserva la auditoría inicial como pendiente y no
+rellena los 23 campos de una ficha KPI por inferencia.
+
 
 ### Comisiones
 
