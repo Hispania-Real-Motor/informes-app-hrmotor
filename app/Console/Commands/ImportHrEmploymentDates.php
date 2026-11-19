@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\CommercialCommissionClosure;
 use App\Models\HrEmploymentDate;
+use App\Models\ReportUser;
 use App\Models\SalesforceUser;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -13,7 +14,8 @@ class ImportHrEmploymentDates extends Command
 {
     protected $signature = 'commissions:import-hr-employment-dates
         {file : CSV with salesforce_user_id,corporate_email,effective_date,source_reference}
-        {--write : Persist validated rows; otherwise run as a dry-run}';
+        {--write : Persist validated rows; otherwise run as a dry-run}
+        {--imported-by= : Report user id for an audited service import}';
 
     protected $description = 'Validate and optionally import HR employment/re-employment dates';
 
@@ -51,11 +53,12 @@ class ImportHrEmploymentDates extends Command
                 return self::FAILURE;
             }
 
-            $user = SalesforceUser::query()
+            $users = SalesforceUser::query()
                 ->when($row[0] !== '', fn ($query) => $query->where('salesforce_id', $row[0]))
                 ->when($row[0] === '' && $row[1] !== '', fn ($query) => $query->whereRaw('LOWER(email) = ?', [strtolower($row[1])]))
-                ->first();
-            if ($user === null || ($row[1] !== '' && strtolower((string) $user->email) !== strtolower($row[1]))) {
+                ->get();
+            $user = $users->first();
+            if ($users->count() !== 1 || ($row[1] !== '' && strtolower((string) $user?->email) !== strtolower($row[1]))) {
                 $this->error('HR identity does not match a single local Salesforce user.');
 
                 return self::FAILURE;
@@ -80,15 +83,26 @@ class ImportHrEmploymentDates extends Command
             return self::SUCCESS;
         }
 
-        DB::transaction(function () use ($rows): void {
+        $importedBy = $this->option('imported-by');
+        if ($importedBy !== null && ! ReportUser::query()->whereKey($importedBy)->exists()) {
+            $this->error('The imported-by report user does not exist.');
+
+            return self::FAILURE;
+        }
+
+        DB::transaction(function () use ($rows, $importedBy): void {
             foreach ($rows as $row) {
                 $month = CarbonImmutable::parse($row['effective_date'])->startOfMonth()->format('Y-m');
-                if (CommercialCommissionClosure::query()->where('month', $month)->where('status', CommercialCommissionClosure::STATUS_DEFINITIVE)->exists()) {
-                    throw new \RuntimeException('Cannot import HR dates into a definitive commission period: '.$month);
+                if (CommercialCommissionClosure::query()
+                    ->where('status', CommercialCommissionClosure::STATUS_DEFINITIVE)
+                    ->where('month', '>=', $month)
+                    ->where('month', '<=', now()->format('Y-m'))
+                    ->exists()) {
+                    throw new \RuntimeException('Cannot import HR dates affecting a definitive commission period from '.$month.'.');
                 }
                 HrEmploymentDate::query()->updateOrCreate(
                     ['salesforce_user_id' => $row['salesforce_user_id'], 'effective_date' => $row['effective_date']],
-                    [...$row, 'source_label' => 'RR. HH. validado']
+                    [...$row, 'source_label' => 'RR. HH. validado', 'imported_by' => $importedBy]
                 );
             }
         });

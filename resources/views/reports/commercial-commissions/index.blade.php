@@ -19,6 +19,7 @@
     $activeCommissionTab = $activeCommissionTab ?? 'summary';
     $summaryRows = collect($dashboard['summary_rows'] ?? []);
     $delegationRows = collect($dashboard['delegation_rows'] ?? []);
+    $isNewStoreManagerPlan = $delegationRows->contains(fn (array $row): bool => ($row['store_manager_plan'] ?? null) === 'october_2026');
     $callCenterSummaryRows = collect($callCenterDashboard['summary_rows'] ?? []);
     $contactCenterSummaryRows = collect($contactCenterDashboard['summary_rows'] ?? []);
     $areaManagerSummaryRows = collect($areaManagerDashboard['summary_rows'] ?? []);
@@ -556,6 +557,33 @@
                             </div>
 
                             <div class="table-shell commission-delegation-table-shell" id="commissionDelegationTableShell">
+                            @if ($isNewStoreManagerPlan)
+                            <table data-sortable-table="commission-delegations" id="commissionDelegationTable">
+                                <thead><tr>
+                                    <th>Tienda</th><th>Jefe</th><th>Meta entregas</th><th>Entregas</th><th>Meta compras</th><th>Compras</th>
+                                    <th>Incentivo entregas</th><th>Incentivo compras</th><th>Reseñas</th><th>Equipo</th><th>Estado</th><th>Total</th><th>Incidencias</th>
+                                </tr></thead>
+                                <tbody data-sort-body="commission-delegations">
+                                @foreach ($delegationRows as $row)
+                                    <tr>
+                                        <td>{{ $row['delegation_name'] }}</td>
+                                        <td>{{ $row['store_manager_name'] ?? 'Pendiente' }}</td>
+                                        <td class="num">{{ number_format($row['target_deliveries'], 0, ',', '.') }}</td>
+                                        <td class="num">{{ number_format($row['deliveries_count'], 0, ',', '.') }}</td>
+                                        <td class="num">{{ number_format($row['target_purchases'], 0, ',', '.') }}</td>
+                                        <td class="num">{{ number_format($row['purchases_count'], 0, ',', '.') }}</td>
+                                        <td class="num">{{ $row['store_deliveries_incentive'] === null ? 'Pendiente' : number_format($row['store_deliveries_incentive'], 2, ',', '.').' €' }}</td>
+                                        <td class="num">{{ $row['store_purchases_incentive'] === null ? 'Pendiente' : number_format($row['store_purchases_incentive'], 2, ',', '.').' €' }}</td>
+                                        <td class="num">{{ $row['store_reviews_adjustment'] === null ? 'Pendiente' : number_format($row['store_reviews_adjustment'], 2, ',', '.').' €' }}</td>
+                                        <td class="num">{{ count($row['team_subtotals'] ?? []) }}</td>
+                                        <td>{{ $row['store_manager_status'] === 'calculated' ? 'Calculada' : 'Pendiente' }}</td>
+                                        <td class="num">{{ $row['total_commission'] === null ? 'Pendiente' : number_format($row['total_commission'], 2, ',', '.').' €' }}</td>
+                                        <td>{{ empty($row['store_manager_issues']) ? '—' : implode(' ', $row['store_manager_issues']) }}</td>
+                                    </tr>
+                                @endforeach
+                                </tbody>
+                            </table>
+                            @else
                             <table data-sortable-table="commission-delegations" id="commissionDelegationTable">
                                 <thead>
                                 <tr>
@@ -639,6 +667,7 @@
                                 @endforeach
                                 </tbody>
                             </table>
+                            @endif
                             </div>
                         </div>
                     </div>

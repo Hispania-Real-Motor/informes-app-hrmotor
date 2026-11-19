@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports\CommercialCommissions;
 
+use App\Models\HrEmploymentDate;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceReview;
 use App\Models\SalesforceUser;
@@ -213,10 +214,16 @@ class CommercialCommissionDashboardService
         }
         $purchaseSourceIssues = array_values(array_unique($purchaseSourceIssues));
         $calculator = app(StoreManagerCommissionPlanCalculator::class);
+        $reviewPayloads = $this->delegationReviews->forMonthAndDelegations(
+            $month,
+            collect($targets)->pluck('store_name'),
+        );
+        $managerHistory = $this->delegationManagers->resolve($month, collect($targets)->pluck('store_name')->all());
 
-        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $purchaseSourceIssues, $calculator): array {
+        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $purchaseSourceIssues, $calculator, $reviewPayloads, $managerHistory, $month): array {
             $storeKey = (string) $target['store_key'];
-            $deliveries = $deliveriesByStore->get($storeKey, collect())->count();
+            $storeOperations = $deliveriesByStore->get($storeKey, collect())->values();
+            $deliveries = $storeOperations->count();
             $purchases = (int) $purchasesByStore->get($storeKey, 0);
             $deliveryKpi = $calculator->storeKpiIncentive($deliveries, (int) $target['target_deliveries']);
             $purchaseKpi = $calculator->storeKpiIncentive($purchases, (int) $target['target_purchases']);
@@ -227,12 +234,30 @@ class CommercialCommissionDashboardService
                 }
             }
             $issues = array_values(array_unique([...$issues, ...$purchaseSourceIssues]));
-            $status = $issues === [] && $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
-                ? 'calculated'
-                : 'pending_source';
-            $total = $status === 'calculated'
-                ? round((float) $deliveryKpi['incentive'] + (float) $purchaseKpi['incentive'], 2)
+            $team = $this->storeManagerTeamComponents($storeOperations, $target, $month, $calculator);
+            $review = $reviewPayloads[$target['store_name']] ?? null;
+            $reviewAmount = null;
+            if (is_array($review) && ($review['technical_status'] ?? null) === 'available' && is_numeric($review['average_rating'] ?? null)) {
+                $reviewAmount = (float) $review['average_rating'] >= 4.0 ? 150.0 : -150.0;
+            } elseif (is_array($review) && ($review['technical_status'] ?? null) === 'available' && (int) ($review['reviews_count'] ?? 0) === 0) {
+                $reviewAmount = -150.0;
+            } else {
+                $team['issues'][] = 'Reseñas de tienda pendientes de verificación.';
+            }
+            $manager = $managerHistory[$this->formulaConfig->delegationKey($target['store_name'])] ?? [];
+            if (($manager['store_manager_history_status'] ?? 'unverified') !== 'verified') {
+                $team['issues'][] = 'Historial del responsable de tienda no verificable.';
+            }
+            if ((int) ($manager['store_manager_distinct_count'] ?? 0) >= 2) {
+                $team['issues'][] = $manager['store_manager_alert'] ?? 'Revisar la atribución del responsable de tienda.';
+            }
+            $issues = array_values(array_unique([...$issues, ...$team['issues']]));
+            $complete = $issues === [] && $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
+                && $reviewAmount !== null && $team['complete'];
+            $total = $complete
+                ? $calculator->finalTotal((float) $deliveryKpi['incentive'], (float) $purchaseKpi['incentive'], $reviewAmount, $team['subtotals'])
                 : null;
+            $status = $complete && $total !== null ? 'calculated' : 'pending_source';
 
             return [
                 'delegation_name' => $target['store_name'],
@@ -242,8 +267,8 @@ class CommercialCommissionDashboardService
                 'purchases_count' => $purchases,
                 'objective_reached' => $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
                     && $deliveries >= (int) $target['target_deliveries'] && $purchases >= (int) $target['target_purchases'],
-                'objective_percentage' => $deliveryKpi['percentage'] ?? null,
-                'objective_commission_percent' => $deliveryKpi['rate'] ?? null,
+                'objective_percentage' => $deliveryKpi['ratio'] === null ? null : round((float) $deliveryKpi['ratio'] * 100, 2),
+                'objective_commission_percent' => null,
                 'rentability_total' => null,
                 'average_rentability' => null,
                 'prima_final' => null,
@@ -261,12 +286,70 @@ class CommercialCommissionDashboardService
                 'store_manager_issues' => $issues,
                 'store_deliveries_incentive' => $status === 'calculated' ? $deliveryKpi['incentive'] : null,
                 'store_purchases_incentive' => $status === 'calculated' ? $purchaseKpi['incentive'] : null,
+                'store_reviews_adjustment' => $reviewAmount,
+                'team_components' => $team['components'],
+                'team_subtotals' => $team['subtotals'],
+                'store_manager_salesforce_user_id' => $manager['store_manager_salesforce_user_id'] ?? null,
+                'store_manager_name' => $manager['store_manager_name'] ?? null,
+                'store_manager_history_status' => $manager['store_manager_history_status'] ?? 'unverified',
+                'store_manager_closing_status' => $manager['store_manager_closing_status'] ?? 'unverified',
+                'store_manager_rotation_history_status' => $manager['store_manager_rotation_history_status'] ?? 'unverified',
+                'store_manager_distinct_count' => $manager['store_manager_distinct_count'] ?? null,
+                'store_manager_alert' => $manager['store_manager_alert'] ?? null,
+                'store_manager_evidence_count' => $manager['store_manager_evidence_count'] ?? 0,
                 'total_commission' => $total,
                 'total_bruto' => $total,
                 'total_final' => $total,
                 'target_source' => $target['target_source'],
             ];
         }, $targets);
+    }
+
+    /** @return array{complete: bool, issues: array<int, string>, subtotals: array<int, float>, components: array<string, mixed>} */
+    private function storeManagerTeamComponents(Collection $operations, array $target, CarbonImmutable $month, StoreManagerCommissionPlanCalculator $calculator): array
+    {
+        $issues = [];
+        $subtotals = [];
+        $components = [];
+        $ownerOperations = $operations
+            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->owner_id) && blank($row->shared_delivery_id))
+            ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->owner_id);
+        if ($ownerOperations->isEmpty()) {
+            $issues[] = 'Composición del equipo sin operaciones verificables.';
+        }
+        $zone = Str::of((string) ($target['zone'] ?? ''))->ascii()->lower()->value();
+        $minimums = match (true) {
+            str_contains($zone, 'norte') => [9000.0, 3500.0],
+            str_contains($zone, 'levante') || str_contains($zone, 'mediterr') => [10300.0, 3700.0],
+            str_contains($zone, 'catal') => [11500.0, 3700.0],
+            default => [11500.0, 4900.0],
+        };
+        foreach ($ownerOperations as $ownerId => $ownerRows) {
+            $financing = round((float) $ownerRows->sum(fn (SalesforceOpportunity $row): float => (float) ($row->importe_financiado ?? 0)), 2);
+            $guarantee = round((float) $ownerRows->sum(fn (SalesforceOpportunity $row): float => (float) ($row->garantia_total ?? 0)), 2);
+            $employment = Schema::hasTable('hr_employment_dates')
+                ? HrEmploymentDate::query()->where('salesforce_user_id', $ownerId)->whereDate('effective_date', '<=', $month->addMonth()->subDay()->toDateString())->orderByDesc('effective_date')->first()
+                : null;
+            $penalty = null;
+            if ($employment?->effective_date !== null) {
+                $olderThanThreeMonths = $employment->effective_date->addMonths(3)->lt($month->addMonth()->subDay());
+                $penalty = $olderThanThreeMonths && ($ownerRows->count() < 10 || $financing < $minimums[0] || $guarantee < $minimums[1]) ? 100.0 : 0.0;
+            } else {
+                $issues[] = 'Antigüedad laboral pendiente para '.$ownerId.'.';
+            }
+            $delivery = $calculator->individualDeliveryIncentive($ownerRows->count());
+            $financingIncentive = $calculator->thresholdIncentive($financing, $minimums[0], 100.0);
+            $guaranteeIncentive = $calculator->thresholdIncentive($guarantee, $minimums[1], 60.0);
+            $subtotal = $calculator->individualSubtotal($delivery, $financingIncentive, $guaranteeIncentive, $penalty);
+            if ($subtotal === null) {
+                $issues[] = 'Subtotal individual pendiente para '.$ownerId.'.';
+            } else {
+                $subtotals[] = $subtotal;
+            }
+            $components[$ownerId] = ['deliveries' => $ownerRows->count(), 'delivery_incentive' => $delivery, 'financing' => $financingIncentive, 'guarantee' => $guaranteeIncentive, 'penalty' => $penalty, 'subtotal' => $subtotal];
+        }
+
+        return ['complete' => $issues === [] && count($subtotals) === $ownerOperations->count(), 'issues' => $issues, 'subtotals' => $subtotals, 'components' => $components];
     }
 
     /**

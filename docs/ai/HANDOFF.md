@@ -8982,3 +8982,22 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - La liquidación completa de equipo, antigüedad y reseñas del plan nuevo sigue
   requiriendo la integración de sus fuentes verificables; no se presenta un
   total parcial como definitivo.
+
+## Liquidación económica integral de jefes (2026-11-19)
+
+- `buildStoreManagerProvisionalRows()` conecta ahora entregas y compras con
+  reseñas de tienda, responsables históricos, equipo operativo, incentivos
+  individuales, financiación, garantías y penalización única de antigüedad.
+  El total usa `StoreManagerCommissionPlanCalculator::finalTotal()` y queda
+  nulo si cualquier componente obligatorio carece de evidencia.
+- Las filas nuevas incluyen estados, subtotales, responsables, referencias de
+  fuente e incidencias; las compras incompletas y las tiendas no reconocidas
+  bloquean la liquidación. La vista de octubre usa una tabla específica y no
+  presenta columnas históricas de rentabilidad.
+- El cálculo consulta `hr_employment_dates` para la última fecha aplicable y
+  nunca `User.CreatedDate`. El importador exige correspondencia inequívoca,
+  permite registrar `--imported-by`, mantiene dry-run y protege todos los
+  cierres definitivos afectados desde la fecha laboral.
+- Verificación local: Pint y 58 pruebas focalizadas, 179 aserciones, correctas;
+  `git diff --check` correcto. El plan permanece provisional hasta disponer de
+  evidencias Salesforce/RR. HH. y resolver responsables o fuentes pendientes.
