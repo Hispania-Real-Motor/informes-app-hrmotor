@@ -443,6 +443,7 @@ class CommercialCommissionDashboardService
             $financingPenaltyAmounts,
             $financingPenaltyDetails,
             $includeDetails,
+            $storeManagerIds,
         ): array {
             /** @var Collection<int, SalesforceOpportunity> $ownerOperations */
             $ownerOperations = $operationsByOwner->get($userId, collect());
@@ -708,6 +709,17 @@ class CommercialCommissionDashboardService
             })
             ->values();
 
+        $storeManagerIds = [];
+        if ($periodStart->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
+            $managerLabels = $monthlyOperations->pluck('owner_delegation')->filter()->unique()->values()->all();
+            $storeManagerIds = collect($this->delegationManagers->resolve($periodStart, $managerLabels))
+                ->filter(fn (array $manager): bool => ($manager['store_manager_history_status'] ?? null) === 'verified')
+                ->pluck('store_manager_salesforce_user_id')
+                ->filter()
+                ->values()
+                ->all();
+        }
+
         return $userIds->map(function (string $userId) use (
             $operationsByOwner,
             $reviewsByOwner,
@@ -719,13 +731,14 @@ class CommercialCommissionDashboardService
             $financingPenaltyAmounts,
             $financingPenaltyDetails,
             $includeDetails,
+            $storeManagerIds,
         ): array {
             /** @var Collection<int, SalesforceOpportunity> $ownerOperations */
             $ownerOperations = $operationsByOwner->get($userId, collect())->values();
             $salesforceUser = $salesforceUsersById->get($userId);
 
             if ($salesforceUser?->commission_appraiser === true) {
-                return $this->buildAppraiserMonthlySummaryRow(
+                $row = $this->buildAppraiserMonthlySummaryRow(
                     $userId,
                     $userNames[$userId] ?? $userId,
                     $ownerOperations,
@@ -734,9 +747,11 @@ class CommercialCommissionDashboardService
                     $financingPenaltyDetails[$userId] ?? [],
                     $includeDetails,
                 );
+
+                return $this->storeManagerExemption->apply($row, in_array($userId, $storeManagerIds, true));
             }
 
-            return $this->buildCommercialMonthlySummaryRow(
+            $row = $this->buildCommercialMonthlySummaryRow(
                 $userId,
                 $userNames[$userId] ?? $userId,
                 $salesforceUser,
@@ -748,6 +763,8 @@ class CommercialCommissionDashboardService
                 $financingPenaltyDetails[$userId] ?? [],
                 $includeDetails,
             );
+
+            return $this->storeManagerExemption->apply($row, in_array($userId, $storeManagerIds, true));
         })->sortByDesc('final_commission')->values()->all();
     }
 
