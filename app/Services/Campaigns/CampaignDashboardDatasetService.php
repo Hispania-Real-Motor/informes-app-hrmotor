@@ -877,7 +877,11 @@ class CampaignDashboardDatasetService
             'top_spend' => $this->top(array_values(array_filter($rows, static fn (array $row): bool => (float) ($row['spend'] ?? 0) > 0)), 'spend'),
             'top_impressions' => $this->top($rows, 'impressions'),
             'best_ctr' => $this->top($rows, 'ctr', requireValue: true),
+            'worst_ctr' => $this->top($rows, 'ctr', ascending: true, requireValue: true),
             'best_cpc' => $this->top($rows, 'cpc', ascending: true, requireValue: true),
+            'worst_cpc' => $this->top($rows, 'cpc', requireValue: true),
+            'best_lead_to_opportunity' => $this->top($rows, 'lead_to_opportunity', requireValue: true),
+            'worst_lead_to_opportunity' => $this->top($rows, 'lead_to_opportunity', ascending: true, requireValue: true),
         ];
     }
 

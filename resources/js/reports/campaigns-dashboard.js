@@ -2,7 +2,7 @@ import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation,
 
 const numberFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true });
 const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', useGrouping: true });
-const percentFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const percentFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const multiplierFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const columnsStorageKey = 'hrmotor_campaign_columns_v7';
 const legacyColumnsStorageKey = 'hrmotor_campaign_columns_v6';
@@ -39,7 +39,6 @@ let dailyChartType = 'lines';
 let currentCharts = {};
 let currentRankings = {};
 let currentContext = 'all';
-let campaignDetailsVisible = true;
 let campaignNameSelections = [];
 let monthlySelectedMonths = [];
 let monthlyVisibleMetrics = [];
@@ -95,14 +94,18 @@ const rankingDefinitions = [
     { key: 'top_spend', title: 'Campañas con más inversión', metric: 'spend', formatter: formatMoney, visible: true },
     { key: 'top_impressions', title: 'Campañas con más impresiones', metric: 'impressions', formatter: formatNumber, visible: false },
     { key: 'top_leads_salesforce', title: 'Más intereses Salesforce', metric: 'leads_salesforce', formatter: formatNumber, visible: true },
-    { key: 'top_opportunities', title: 'Mas oportunidades', metric: 'opportunities', formatter: formatNumber, visible: false },
-    { key: 'top_reservations', title: 'Mas reservas', metric: 'reservations', formatter: formatNumber, visible: false },
-    { key: 'top_sales', title: 'Mas ventas', metric: 'sales', formatter: formatNumber, visible: true },
-    { key: 'top_purchases', title: 'Mas compras', metric: 'purchases', formatter: formatNumber, visible: false },
+    { key: 'top_opportunities', title: 'Más oportunidades', metric: 'opportunities', formatter: formatNumber, visible: false },
+    { key: 'top_reservations', title: 'Más reservas', metric: 'reservations', formatter: formatNumber, visible: false },
+    { key: 'top_sales', title: 'Más ventas', metric: 'sales', formatter: formatNumber, visible: true },
+    { key: 'top_purchases', title: 'Más compras', metric: 'purchases', formatter: formatNumber, visible: false },
     { key: 'top_sale_amount', title: 'Mayor importe vendido', metric: 'sale_amount', formatter: formatMoney, visible: false },
     { key: 'best_roas', title: 'Mejor ROAS', metric: 'roas', formatter: formatMultiplier, visible: false },
-    { key: 'best_ctr', title: 'Mejor CTR', metric: 'ctr', formatter: formatPercentRatio, visible: false },
-    { key: 'best_cpc', title: 'Mejor CPC', metric: 'cpc', formatter: formatMoney, visible: false },
+    { key: 'best_ctr', title: 'Mejor CTR', metric: 'ctr', formatter: formatPercentRatio, visible: true },
+    { key: 'worst_ctr', title: 'Peor CTR', metric: 'ctr', formatter: formatPercentRatio, visible: true },
+    { key: 'best_cpc', title: 'Mejor CPC', metric: 'cpc', formatter: formatMoney, visible: true },
+    { key: 'worst_cpc', title: 'Peor CPC', metric: 'cpc', formatter: formatMoney, visible: true },
+    { key: 'best_lead_to_opportunity', title: 'Mayor porcentaje de oportunidades', metric: 'lead_to_opportunity', formatter: formatPercentRatio, visible: true },
+    { key: 'worst_lead_to_opportunity', title: 'Menor porcentaje de oportunidades', metric: 'lead_to_opportunity', formatter: formatPercentRatio, visible: true },
     { key: 'best_cost_per_sale', title: 'Mejor coste por venta', metric: 'cost_per_sale', formatter: formatMoney, visible: true },
     { key: 'best_cost_per_purchase', title: 'Mejor coste por compra', metric: 'cost_per_purchase', formatter: formatMoney, visible: false },
     { key: 'best_cost_per_lead', title: 'Mejor coste por interés', metric: 'cost_per_lead', formatter: formatMoney, visible: false },
@@ -123,7 +126,6 @@ const rankingDefinitions = [
 const columnDefinitions = [
     { key: 'campaign', label: 'Campaña', visible: true, formatter: (_value, row) => campaignLabel(row) },
     { key: 'platform', label: 'Plataforma', visible: true, formatter: formatPlatform },
-    { key: 'current_status', label: 'Estado actual', visible: true },
     { key: 'spend', label: 'Inversión', visible: true, numeric: true, formatter: formatMoney },
     { key: 'impressions', label: 'Impresiones', visible: true, numeric: true, formatter: formatNumber },
     { key: 'clicks', label: 'Clicks', visible: true, numeric: true, formatter: formatNumber },
@@ -189,7 +191,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindRankingSettings();
     bindMonthlyChartControls();
     bindMetricChartsToggle();
-    bindCampaignTableActions();
     syncCampaignTypeSelect();
     syncContextTabs();
     applyColumnVisibility();
@@ -1211,12 +1212,13 @@ function syncContextTabs() {
 }
 
 function loadVisibleRankings(context = currentContext) {
+    const mandatory = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
     try {
         const saved = JSON.parse(localStorage.getItem(rankingsStorageKey) || 'null');
         if (Array.isArray(saved) && saved.length) {
             const known = saved.filter((key) => rankingDefinitions.some((ranking) => ranking.key === key));
             if (known.length) {
-                return known.filter((key) => rankingAllowedInContext(key, context));
+                return [...new Set([...mandatory, ...known])].filter((key) => rankingAllowedInContext(key, context));
             }
         }
     } catch (error) {
@@ -1227,20 +1229,7 @@ function loadVisibleRankings(context = currentContext) {
 }
 
 function defaultRankingKeys(context = currentContext) {
-    switch (presentationCampaignContext(context)) {
-        case 'venta':
-            return ['best_cost_per_sale', 'review_campaigns', 'top_spend'];
-        case 'tasacion':
-            return ['best_cost_per_purchase', 'review_campaigns', 'top_spend'];
-        case 'exposicion':
-            return ['best_cost_per_opportunity', 'review_campaigns', 'top_spend'];
-        case 'branding':
-            return ['best_cpc', 'review_campaigns', 'top_spend'];
-        case 'otros':
-        case 'all':
-        default:
-            return ['best_cost_per_sale', 'review_campaigns', 'top_spend'];
-    }
+    return ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
 }
 
 function rankingAllowedInContext(key, context = currentContext) {
@@ -1950,18 +1939,6 @@ function monthlyCostPerResultForRow(row) {
     const spend = numericChartValue(row.spend);
 
     return resultCount !== null && resultCount > 0 && spend !== null ? spend / resultCount : null;
-}
-
-function bindCampaignTableActions() {
-    document.getElementById('campaignTables')?.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-toggle-campaign-detail]');
-        if (!button) {
-            return;
-        }
-
-        campaignDetailsVisible = !campaignDetailsVisible;
-        renderCampaignTables(campaignRows);
-    });
 }
 
 function kpiCardsForContext(context, kpis) {
@@ -3299,9 +3276,10 @@ function renderRankings(rankings, emptyMessage = '') {
     const context = presentationCampaignContext(currentContext);
     const platformOnlyRankings = ['top_spend', 'top_impressions', 'best_ctr', 'best_cpc'];
     const interestRankings = ['top_leads_salesforce', 'best_cost_per_lead'];
+    const mandatoryRankings = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
     const visible = rankingDefinitions.filter((ranking) => visibleRankings.includes(ranking.key)
         && rankingAllowedInContext(ranking.key, context)
-        && (opportunityMetricsAvailable || platformOnlyRankings.includes(ranking.key)
+        && (mandatoryRankings.includes(ranking.key) || opportunityMetricsAvailable || platformOnlyRankings.includes(ranking.key)
             || (interestMetricsAvailable && interestRankings.includes(ranking.key))));
 
     if (emptyMessage) {
@@ -3327,7 +3305,7 @@ function renderRankings(rankings, emptyMessage = '') {
                 <article class="card panel">
                     <div class="panel-title compact">
                         <div>
-                            <h2>${escapeHtml(ranking.title)}</h2>
+                    <h3>${escapeHtml(ranking.title)}</h3>
                         </div>
                     </div>
                     <div class="campaign-bar-list">${body}</div>
@@ -3369,6 +3347,11 @@ function renderDiagnostics(diagnostics) {
         return;
     }
 
+    if (!diagnostics || Object.keys(diagnostics).length === 0) {
+        root.innerHTML = '<div class="empty-state">Sin diagnóstico disponible</div>';
+        return;
+    }
+
     const meta = syncOperationPresentation(diagnostics.meta_sync_operation, diagnostics.last_meta_sync);
     const google = syncOperationPresentation(diagnostics.google_sync_operation, diagnostics.last_google_sync);
     const entries = [
@@ -3377,11 +3360,6 @@ function renderDiagnostics(diagnostics) {
         ['Filas Meta', formatNumber(diagnostics.meta_metric_rows)],
         ['Filas Google Ads', formatNumber(diagnostics.google_metric_rows)],
     ];
-
-    if (!diagnostics || Object.keys(diagnostics).length === 0) {
-        root.innerHTML = '<div class="empty-state">Sin diagnóstico disponible</div>';
-        return;
-    }
 
     root.innerHTML = entries.map(([label, value, detail]) => `
         <div class="diagnostic-item">
@@ -3421,7 +3399,7 @@ function renderCampaignTables(rows, emptyMessage = null) {
         exposicion: ['Detalle de campañas de exposición', 'Vista detallada de campañas orientadas a exposición'],
         branding: ['Detalle de campañas de branding', 'Vista detallada de campañas orientadas a branding'],
         otros: ['Detalle de campañas', 'Vista general de campañas no clasificadas en un tipo principal'],
-        all: ['Detalle de campañas', 'Vista general por tipos de campaña'],
+        all: ['Detalle de campañas', 'Detalle de campañas'],
     };
     const [title, subtitle] = titleMap[context] || titleMap.all;
 
@@ -3478,18 +3456,15 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
                     <div class="small">${escapeHtml(subtitle)}</div>
                 </div>
                 <div class="campaign-table-actions">
-                    <button type="button" class="main-tab campaign-detail-toggle" data-toggle-campaign-detail>
-                        ${campaignDetailsVisible ? 'Ocultar detalle de campañas' : 'Mostrar detalle de campañas'}
-                    </button>
                     <div class="columns-menu">
-                        <button type="button" class="main-tab" id="columnsToggle">Columnas</button>
+                        <button type="button" class="main-tab" id="columnsToggle">Filtro</button>
                         <div class="columns-popover card is-hidden" id="columnsPopover"></div>
                     </div>
                     ${window.reportUserCanExport ? '<a class="main-tab" id="exportCsv" href="/informes/campanas/export/campaigns.csv">Export CSV</a>' : ''}
                     ${window.reportUserCanAudit ? '<a class="main-tab" id="exportAttributionAudit" href="/informes/campanas/export/attributions.csv">Auditar atribuciones</a>' : ''}
                 </div>
             </div>
-            <div class="${campaignDetailsVisible ? '' : 'is-hidden'}" id="campaignDetailBody">
+            <div id="campaignDetailBody">
                 <div class="table-wrap" data-table-wrap="${escapeHtml(tableType)}">
                     <table data-table-type="${escapeHtml(tableType)}">
                         <thead>

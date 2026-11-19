@@ -1,5 +1,46 @@
 # Handoff para agentes
 
+## 2026-11-19 — Campañas: UX de filtros, tabla y rankings
+
+### Revisión documental — report_docs_maintainer
+
+- Se contrastó el diff completo frente a `dd30757f8966dc2cf33c276efd8e9dc982b33418`.
+  El impacto real queda limitado a la presentación de la pestaña Campañas y a
+  los rankings; no hay cambio de fuente, tabla, columna, sincronizador,
+  fórmula económica, permisos, API, CSV, auditoría ni base de datos.
+- Se actualizaron `docs/informe-campanas.md` y
+  `docs/matriz-trazabilidad-kpi.md` con los seis rankings visibles, sus
+  ordenaciones y nulos, el formato de porcentajes, la retirada visual de
+  Estado actual/Filtros avanzados y los límites de auditoría. No se promovieron
+  fichas KPI a verificadas.
+- No se consultaron Salesforce ni bases de datos ni se ejecutaron
+  sincronizaciones. El validador documental requiere una descripción de PR;
+  queda pendiente ejecutarlo con `--pr-body-file` y los SHA disponibles.
+
+- Rama: `feature/campanas-ux-rankings-filtros-20261119`. SHA base:
+  `dd30757f8966dc2cf33c276efd8e9dc982b33418`.
+- La revisión mantiene la atribución, los cierres económicos, permisos y fuentes
+  locales. No hay migraciones, cambios de `.env`, sincronizaciones ni despliegue.
+- La tabla de campañas queda siempre visible con scroll interno, elimina «Estado
+  actual» del selector y de la vista, conserva Campaign ID oculto por defecto,
+  renombra «Columnas» a «Filtro» y presenta CTR con dos decimales. Los filtros
+  avanzados se desactivan retirando su interfaz y listeners exclusivos.
+- Los rankings obligatorios (mejor/peor CTR, mejor/peor CPC y mayor/menor
+  porcentaje de oportunidades) se normalizan frente a localStorage y se muestran
+  por defecto. El backend ordena valores válidos y no convierte `null` en cero;
+  el porcentaje usa el campo canónico `lead_to_opportunity` de las atribuciones.
+- Se retiró el texto de integración pendiente y la etiqueta de vista general.
+  Las tarjetas de ranking usan `h3`, estructura vertical común, Instrument Sans y
+  barras rojas sólidas. El diagnóstico conserva su flujo autorizado y ahora
+  gestiona payload vacío sin lanzar una excepción.
+- Verificación: `node --check resources/js/reports/campaigns-dashboard.js`,
+  `node --test tests/js/campaign-presentation.test.mjs` (44/44) y `git diff --check`
+  correctos. PHP, Composer y npm no están disponibles en esta sesión; lint PHP,
+  suite Laravel y build quedan pendientes de CI/Herd.
+- Riesgo pendiente: validar visualmente la altura de tabla, el orden de los seis
+  rankings y la presencia de intereses/costes con datos reales en Venta y
+  Tasación. El SHA final se añadirá tras el commit de revisión.
+
 ## 2026-11-18 — Normalización de meses en guía de periodos cerrados
 
 - Se normalizan estrictamente los meses públicos de `period_advice` aceptando

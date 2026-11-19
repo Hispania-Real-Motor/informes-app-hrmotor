@@ -145,7 +145,7 @@ test('real detail rendering preserves shared rows, hides empty rows and escapes 
     vm.runInContext('renderCampaignTables(rows)', sandbox);
     assert.ok(!root.innerHTML.includes('EMPTY'));
     assert.ok(root.innerHTML.includes('&lt;script&gt;paused&lt;/script&gt;'));
-    assert.ok(root.innerHTML.includes('Estado no disponible'));
+    assert.ok(!root.innerHTML.includes('Estado actual'));
     assert.ok(root.innerHTML.includes('>—</td>'));
     assert.ok(root.innerHTML.includes(money(0)));
     assert.ok(root.innerHTML.includes('/informes/campanas/export/campaigns.csv'));
@@ -247,7 +247,7 @@ test('historical labels are presented only with platform evidence, without infer
         const before = JSON.stringify(sandbox.statusRow);
         const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [statusRow])", sandbox);
         assert.equal(historicalStatusPresentation(sandbox.statusRow).text, expected);
-        assert.ok(html.includes('Estado no disponible'));
+        assert.ok(!html.includes('Estado actual'));
         assert.ok(!html.includes('(histórico)</td>'));
         assert.equal(JSON.stringify(sandbox.statusRow), before);
     }
@@ -286,7 +286,7 @@ test('only explicit provider campaign states admit the backend historical label'
                 sandbox.invalidStatusRow = { platform, [field]: state, campaign_status_label: label };
                 assert.equal(historicalStatusPresentation(sandbox.invalidStatusRow).text, 'Estado no disponible');
                 const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [invalidStatusRow])", sandbox);
-                assert.ok(html.includes('Estado no disponible'));
+                assert.ok(!html.includes('Estado actual'));
                 assert.ok(!html.includes('>Inactiva (histórico)<'));
                 assert.ok(!html.includes('>Activa (histórico)<'));
                 assert.ok(!html.includes('<script>'));
@@ -472,7 +472,7 @@ test('real dashboard formatters group four digits, preserve precision, negatives
         assert.equal(formatted.replace(/\s/g, ' '), expected + ' €');
         assert.equal(vm.runInContext(`formatCompactAxisValue(${value}, true)`, sandbox), formatted);
     }
-    assert.equal(vm.runInContext('formatPercentRatio(12.345)', sandbox), '1.234,5%');
+    assert.equal(vm.runInContext('formatPercentRatio(12.345)', sandbox), '1.234,50%');
     assert.equal(vm.runInContext('formatMultiplier(1234.5)', sandbox), '1.234,50');
     assert.equal(vm.runInContext('formatMoney(null)', sandbox), 'Sin datos');
     assert.equal(vm.runInContext('formatReviewValue({value: "1234 / 9999"})', sandbox), '1.234 / 9.999');
@@ -537,15 +537,14 @@ test('sync diagnostic distinguishes operational success from old metrics and fai
     assert.ok(root.innerHTML.includes('Último dato de métricas'));
 });
 
-test('current status is rendered and escaped, legacy columns migrate without altering identifiers', () => {
+test('current status is excluded while legacy identifiers remain safe', () => {
     const memory = new Map([['hrmotor_campaign_columns_v6', JSON.stringify(['campaign', 'campaign_status_label', 'spend'])]]);
     sandbox.localStorage = {getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value)};
-    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'current_status', 'spend']);
+    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'spend']);
     sandbox.currentRow = {platform: 'meta', campaign_id: '9007199254740993', spend: 1234.56, campaign_name: '<b>name</b>', current_status: {availability: 'fresh', verified_at: new Date().toISOString(), raw_status: 'PAUSED', label: '<img src=x>'}};
     const before = JSON.stringify(sandbox.currentRow);
     const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [currentRow])", sandbox);
-    assert.ok(html.includes('Estado actual'));
-    assert.ok(html.includes('&lt;img src=x&gt;'));
+    assert.ok(!html.includes('Estado actual'));
     assert.ok(html.includes('1.234,56'));
     assert.equal(sandbox.currentRow.campaign_id, '9007199254740993');
     assert.ok(!html.includes('<img src=x>'));
