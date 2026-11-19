@@ -8908,5 +8908,7 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   cubren el mes, incluso cuando el jefe no tiene operaciones propias en ese
   periodo; ya no depende de que aparezca como propietario de una oportunidad.
 - Se corrigió el formato Pint del importador de objetivos. La validación local
-  disponible fue `git diff --check`; PHP no está instalado en este entorno y la
-  suite PHP debe verificarse mediante GitHub Actions.
+  incluye `git diff --check`, Pint y `artisan test --filter=StoreManagerCommission`
+  con 11 pruebas, 30 aserciones y resultado correcto. GitHub Actions confirma
+  además `CI / test`, `CI / october-provisional-mariadb` y `Documentation
+  integrity / docs-integrity` en verde.
