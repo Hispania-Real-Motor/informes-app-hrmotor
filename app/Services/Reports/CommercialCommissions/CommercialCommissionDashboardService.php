@@ -163,6 +163,7 @@ class CommercialCommissionDashboardService
     private function buildStoreManagerProvisionalRows(CarbonImmutable $month): array
     {
         $targets = $this->storeManagerTargets->forMonth($month);
+
         return array_map(function (array $target): array {
             return [
                 'delegation_name' => $target['store_name'],

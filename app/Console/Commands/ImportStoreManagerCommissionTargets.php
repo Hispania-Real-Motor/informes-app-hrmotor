@@ -22,6 +22,7 @@ class ImportStoreManagerCommissionTargets extends Command
         $path = base_path($this->argument('file'));
         if (! is_file($path)) {
             $this->error('Target file not found.');
+
             return self::FAILURE;
         }
 
@@ -29,6 +30,7 @@ class ImportStoreManagerCommissionTargets extends Command
         $header = fgetcsv($handle);
         if ($header !== ['zone', 'store_name', 'delivery_target', 'purchase_target']) {
             $this->error('Invalid target CSV header.');
+
             return self::FAILURE;
         }
         $rows = [];
@@ -36,16 +38,19 @@ class ImportStoreManagerCommissionTargets extends Command
         while (($row = fgetcsv($handle)) !== false) {
             if (count($row) !== 4) {
                 $this->error('Invalid column count in target file.');
+
                 return self::FAILURE;
             }
             [$zone, $store, $deliveries, $purchases] = $row;
             if (! ctype_digit($deliveries) || ! ctype_digit($purchases) || $zone === '' || $store === '') {
                 $this->error('Invalid target value for '.$store.'.');
+
                 return self::FAILURE;
             }
             $storeKey = $keys->normalizeKey($store);
             if (isset($keysSeen[$storeKey]) || ! in_array($zone, ['Levante', 'Norte', 'Cataluña', 'Sur', 'Madrid'], true)) {
                 $this->error('Duplicate or unknown store mapping for '.$store.'.');
+
                 return self::FAILURE;
             }
             $keysSeen[$storeKey] = true;
@@ -57,6 +62,7 @@ class ImportStoreManagerCommissionTargets extends Command
         $purchaseTotal = array_sum(array_column($rows, 'purchases'));
         if (count($rows) !== 34 || $deliveryTotal !== 907 || $purchaseTotal !== 499) {
             $this->error('Expected 34 rows and totals 907/499.');
+
             return self::FAILURE;
         }
 
@@ -66,6 +72,7 @@ class ImportStoreManagerCommissionTargets extends Command
                 ->where('month', $month)->where('status', 'definitive')->exists();
             if ($approved) {
                 $this->error('Approved delegation period cannot be modified.');
+
                 return self::FAILURE;
             }
         }
