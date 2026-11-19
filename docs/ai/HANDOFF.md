@@ -8970,3 +8970,15 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   pendientes en importes cero.
 - Verificación: los dos fallos auditados pasan (19 pruebas, 69 aserciones),
   Pint sobre los archivos de la corrección y `git diff --check` correctos.
+
+## Regresión SourceReadiness histórica (2026-11-19)
+
+- `CommercialCommissionSourceReadinessService` conserva ahora las alertas
+  históricas legítimas de julio-septiembre cuando hay más de dos responsables.
+  Esas advertencias siguen siendo informativas; desde octubre las alertas de
+  dos o más responsables permanecen bloqueantes para el plan nuevo.
+- Verificación focalizada: 47 pruebas pasadas y 149 aserciones incluyendo
+  SourceReadiness, evolución de gobierno y exención individual.
+- La liquidación completa de equipo, antigüedad y reseñas del plan nuevo sigue
+  requiriendo la integración de sus fuentes verificables; no se presenta un
+  total parcial como definitivo.

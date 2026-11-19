@@ -60,6 +60,12 @@ class CommercialCommissionSourceReadinessService
                 ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) >= 2)
                 ->pluck('store_manager_alert')
                 ->filter();
+            $effectiveManagerAlerts = $period->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                ? $validManagerAlerts
+                : $delegationRows
+                    ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) > 2)
+                    ->pluck('store_manager_alert')
+                    ->filter();
 
             $pendingRows = $delegationRows->filter(fn (array $row): bool => isset($row['store_manager_status']) && $row['store_manager_status'] !== 'ready');
             $blocking = collect($blocking)->merge($pendingRows->map(fn (array $row): string => 'La tienda '.($row['delegation_name'] ?? 'desconocida').' tiene componentes económicos pendientes.'));
@@ -71,7 +77,7 @@ class CommercialCommissionSourceReadinessService
             // alerts explicitly linked to manager rows, preserving source warnings.
             $warnings = $warnings
                 ->reject(fn (string $warning): bool => $managerAlerts->contains($warning))
-                ->merge($period->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM)) ? $validManagerAlerts : collect());
+                ->merge($effectiveManagerAlerts);
         }
 
         $blocking = collect($blocking)->unique()->values()->all();
