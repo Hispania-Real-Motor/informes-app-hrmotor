@@ -150,7 +150,7 @@ class CommercialCommissionDelegationReviewsService
         return [
             'reviews_count' => max(0, (int) data_get($payload, 'reviews_count', 0)),
             'average_rating' => is_numeric(data_get($payload, 'average_rating'))
-                ? round((float) data_get($payload, 'average_rating'), 2)
+                ? (float) data_get($payload, 'average_rating')
                 : null,
             'technical_status' => 'available',
             'fetched_at' => filled($payload['fetched_at'] ?? null) ? (string) $payload['fetched_at'] : null,

@@ -29,6 +29,15 @@ class StoreManagerCommissionTargetService
 
     public function normalizeKey(string $name): string
     {
-        return Str::of($name)->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', '-')->trim('-')->value();
+        $key = Str::of($name)->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', '-')->trim('-')->value();
+        $key = (string) preg_replace('/^hr-motor-/', '', $key);
+
+        return match ($key) {
+            'a-coruna', 'acoruna' => 'a-coruna',
+            'malaga-ortega' => 'malaga-ortega',
+            'malaga-almacha' => 'malaga-almacha',
+            'llica-de-vall' => 'llica-de-vall',
+            default => $key,
+        };
     }
 }

@@ -176,14 +176,17 @@ class CommercialCommissionDashboardService
         $opportunities = $this->monthlyDelegationDeliveryOpportunities($periodStart, $periodStart->addMonth())
             ->get()
             ->filter(fn (SalesforceOpportunity $row): bool => $this->countsAsDelegationDelivery($row));
+        $purchases = $this->monthlyStoreManagerPurchaseOpportunities($periodStart, $periodStart->addMonth())
+            ->get()
+            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->purchase_appraisal_id) && filled($row->purchase_delegation_name));
         $deliveriesByStore = $opportunities
             ->filter(fn (SalesforceOpportunity $row): bool => filled($row->delivery_store))
             ->groupBy(fn (SalesforceOpportunity $row): string => $this->storeManagerTargets->normalizeKey((string) $row->delivery_store));
         $purchaseOwners = [];
         $purchaseConflicts = [];
-        foreach ($opportunities->filter(fn (SalesforceOpportunity $row): bool => filled($row->purchase_appraisal_id)) as $row) {
+        foreach ($purchases as $row) {
             $appraisal = (string) $row->purchase_appraisal_id;
-            $storeKey = $this->storeManagerTargets->normalizeKey((string) ($row->purchase_delegation_name ?: $row->delivery_store));
+            $storeKey = $this->storeManagerTargets->normalizeKey((string) $row->purchase_delegation_name);
             if (isset($purchaseOwners[$appraisal]) && $purchaseOwners[$appraisal] !== $storeKey) {
                 $purchaseConflicts[$appraisal] = [$purchaseOwners[$appraisal], $storeKey];
 
@@ -1612,6 +1615,24 @@ class CommercialCommissionDashboardService
         CarbonImmutable $periodEnd
     ): Builder {
         return $this->deliveryOpportunities->forPeriod($periodStart, $periodEnd, self::OPPORTUNITY_COLUMNS);
+    }
+
+    private function monthlyStoreManagerPurchaseOpportunities(
+        CarbonImmutable $periodStart,
+        CarbonImmutable $periodEnd
+    ): Builder {
+        $query = SalesforceOpportunity::query()
+            ->select(self::OPPORTUNITY_COLUMNS)
+            ->where('cv_signed', true)
+            ->whereDate('cv_signed_date', '>=', $periodStart->toDateString())
+            ->whereDate('cv_signed_date', '<', $periodEnd->toDateString())
+            ->whereNotNull('purchase_appraisal_id')
+            ->whereNotNull('purchase_delegation_name')
+            ->whereRaw("LOWER(COALESCE(stage_name, '')) <> ?", ['cerrada perdida']);
+
+        $this->applyRecordTypeFilter($query, ['tasacion', 'cambio']);
+
+        return $query;
     }
 
     /**

@@ -2,7 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Models\CommercialCommissionClosure;
 use App\Models\HrEmploymentDate;
+use App\Models\SalesforceUser;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -34,13 +37,31 @@ class ImportHrEmploymentDates extends Command
         $rows = [];
         $keys = [];
         while (($row = fgetcsv($handle)) !== false) {
-            if (count($row) !== 4 || ($row[0] === '' && $row[1] === '') || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $row[2])) {
+            $row = array_map('trim', $row);
+            if (count($row) !== 4 || ($row[0] === '' && $row[1] === '') || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $row[2]) || $row[3] === '') {
                 $this->error('Invalid identity or date in HR CSV.');
 
                 return self::FAILURE;
             }
 
-            $key = strtolower(trim($row[0].'|'.$row[1].'|'.$row[2]));
+            $date = CarbonImmutable::createFromFormat('!Y-m-d', $row[2]);
+            if ($date === false || $date->format('Y-m-d') !== $row[2]) {
+                $this->error('Invalid calendar date in HR CSV.');
+
+                return self::FAILURE;
+            }
+
+            $user = SalesforceUser::query()
+                ->when($row[0] !== '', fn ($query) => $query->where('salesforce_id', $row[0]))
+                ->when($row[0] === '' && $row[1] !== '', fn ($query) => $query->whereRaw('LOWER(email) = ?', [strtolower($row[1])]))
+                ->first();
+            if ($user === null || ($row[1] !== '' && strtolower((string) $user->email) !== strtolower($row[1]))) {
+                $this->error('HR identity does not match a single local Salesforce user.');
+
+                return self::FAILURE;
+            }
+
+            $key = strtolower($user->salesforce_id.'|'.$date->format('Y-m-d'));
             if (isset($keys[$key])) {
                 $this->error('Duplicate HR identity/date row.');
 
@@ -48,7 +69,7 @@ class ImportHrEmploymentDates extends Command
             }
 
             $keys[$key] = true;
-            $rows[] = ['salesforce_user_id' => $row[0] ?: null, 'corporate_email' => $row[1] ?: null, 'effective_date' => $row[2], 'source_reference' => $row[3]];
+            $rows[] = ['salesforce_user_id' => $user->salesforce_id, 'corporate_email' => $user->email ?: $row[1], 'effective_date' => $date->format('Y-m-d'), 'source_reference' => $row[3]];
         }
         fclose($handle);
 
@@ -61,6 +82,10 @@ class ImportHrEmploymentDates extends Command
 
         DB::transaction(function () use ($rows): void {
             foreach ($rows as $row) {
+                $month = CarbonImmutable::parse($row['effective_date'])->startOfMonth()->format('Y-m');
+                if (CommercialCommissionClosure::query()->where('month', $month)->where('status', CommercialCommissionClosure::STATUS_DEFINITIVE)->exists()) {
+                    throw new \RuntimeException('Cannot import HR dates into a definitive commission period: '.$month);
+                }
                 HrEmploymentDate::query()->updateOrCreate(
                     ['salesforce_user_id' => $row['salesforce_user_id'], 'effective_date' => $row['effective_date']],
                     [...$row, 'source_label' => 'RR. HH. validado']

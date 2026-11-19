@@ -443,7 +443,7 @@ class CommercialCommissionClosureService
     private function delegationManagerAlerts(array $dashboard): array
     {
         return collect($dashboard['delegation_rows'] ?? [])
-            ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) > 2)
+            ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) >= 2)
             ->pluck('store_manager_alert')
             ->filter()
             ->unique()
@@ -484,6 +484,17 @@ class CommercialCommissionClosureService
 
     private function assertCandidateEconomicIntegrity(array $payload, string $month, string $scope): void
     {
+        if ($scope === CommercialCommissionClosure::SCOPE_DELEGATIONS
+            && CarbonImmutable::parse($month.'-01')->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
+            $dashboard = $this->dashboardFromSnapshot($payload, $scope);
+            $rows = $dashboard['delegation_rows'] ?? [];
+            if ($rows === [] || collect($rows)->contains(fn (array $row): bool => ($row['store_manager_status'] ?? null) !== 'calculated')) {
+                throw ValidationException::withMessages([
+                    'snapshot' => 'El candidato de jefes de tienda mantiene componentes económicos o fuentes pendientes.',
+                ]);
+            }
+        }
+
         if ($scope !== CommercialCommissionClosure::SCOPE_CONTACT_CENTER
             || CarbonImmutable::parse($month.'-01')->lt(CarbonImmutable::parse('2026-09-01'))) {
             return;

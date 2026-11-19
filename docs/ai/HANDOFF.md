@@ -8912,3 +8912,41 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   con 11 pruebas, 30 aserciones y resultado correcto. GitHub Actions confirma
   además `CI / test`, `CI / october-provisional-mariadb` y `Documentation
   integrity / docs-integrity` en verde.
+
+## Corrección final de defectos económicos de la PR 158 (2026-11-19)
+
+- El KPI de compras físicas del plan octubre+ usa exclusivamente oportunidades
+  Tasación/Cambio firmadas en el mes, con `purchase_appraisal_id` y
+  `purchase_delegation_name`; no utiliza la tienda de entrega como fallback.
+  La deduplicación conserva una sola compra por tasación y deja los conflictos
+  como `pending_source`.
+- Se normalizan las claves de tienda eliminando el prefijo HR Motor y se
+  preservan las variantes auditadas de A Coruña, Málaga y Lliçà de Vall.
+- La exención de jefe restaura el descuento ordinario previamente aplicado,
+  elimina las penalizaciones ordinarias sin perder incentivos positivos,
+  conserva los incentivos de tasador y suma la cancelación financiera una sola
+  vez.
+- Dos o más jefes demostrados generan alerta de revisión. El promedio de
+  reseñas conserva su precisión de origen para evaluar el umbral sin redondeo
+  previo.
+- El cierre definitivo de Delegaciones desde octubre bloquea filas económicas
+  no calculadas o con fuente pendiente. El importador de RR. HH. valida la
+  identidad contra `salesforce_users`, fecha calendario, referencia, duplicados
+  y periodos definitivos; no usa `User.CreatedDate`.
+- Seguridad: no se importan datos sin identidad Salesforce inequívoca ni se
+  escriben filas durante el dry-run. No se han incluido credenciales ni datos
+  reales.
+- Base de datos: no se añade migración en esta corrección; requiere tener
+  aplicadas las migraciones existentes de objetivos, historial, campos de
+  compra y `hr_employment_dates` antes de usar el flujo.
+- Verificación local: Pint completado; `artisan test
+  --filter=StoreManagerCommission` pasó (11 pruebas, 30 aserciones); `git
+  diff --check` pasó. Las suites de dashboard/cierre deben confirmarse en CI
+  si el entorno local no devuelve salida completa.
+- Documentación: no fue posible invocar el agente personalizado
+  `report_docs_maintainer` en esta sesión; se aplicó el procedimiento de
+  revisión documental como fallback del agente principal. La descripción de
+  la PR debe conservar un único bloque `Docs-Impact` y `Docs-Matrix-Impact`.
+- Pendiente externo: verificar con Salesforce la cobertura real de
+  `OPP_BUS_Tasacion__c` y con RR. HH. el fichero autorizado; sin esas
+  evidencias el importe permanece pendiente y no se publica ni se aprueba.
