@@ -1,5 +1,46 @@
 # Handoff para agentes
 
+## 2026-11-19 — Campañas: UX de filtros, tabla y rankings
+
+### Revisión documental — report_docs_maintainer
+
+- Se contrastó el diff completo frente a `dd30757f8966dc2cf33c276efd8e9dc982b33418`.
+  El impacto real queda limitado a la presentación de la pestaña Campañas y a
+  los rankings; no hay cambio de fuente, tabla, columna, sincronizador,
+  fórmula económica, permisos, API, CSV, auditoría ni base de datos.
+- Se actualizaron `docs/informe-campanas.md` y
+  `docs/matriz-trazabilidad-kpi.md` con los seis rankings visibles, sus
+  ordenaciones y nulos, el formato de porcentajes, la retirada visual de
+  Estado actual/Filtros avanzados y los límites de auditoría. No se promovieron
+  fichas KPI a verificadas.
+- No se consultaron Salesforce ni bases de datos ni se ejecutaron
+  sincronizaciones. El validador documental requiere una descripción de PR;
+  queda pendiente ejecutarlo con `--pr-body-file` y los SHA disponibles.
+
+- Rama: `feature/campanas-ux-rankings-filtros-20261119`. SHA base:
+  `dd30757f8966dc2cf33c276efd8e9dc982b33418`.
+- La revisión mantiene la atribución, los cierres económicos, permisos y fuentes
+  locales. No hay migraciones, cambios de `.env`, sincronizaciones ni despliegue.
+- La tabla de campañas queda siempre visible con scroll interno, elimina «Estado
+  actual» del selector y de la vista, conserva Campaign ID oculto por defecto,
+  renombra «Columnas» a «Filtro» y presenta CTR con dos decimales. Los filtros
+  avanzados se desactivan retirando su interfaz y listeners exclusivos.
+- Los rankings obligatorios (mejor/peor CTR, mejor/peor CPC y mayor/menor
+  porcentaje de oportunidades) se normalizan frente a localStorage y se muestran
+  por defecto. El backend ordena valores válidos y no convierte `null` en cero;
+  el porcentaje usa el campo canónico `lead_to_opportunity` de las atribuciones.
+- Se retiró el texto de integración pendiente y la etiqueta de vista general.
+  Las tarjetas de ranking usan `h3`, estructura vertical común, Instrument Sans y
+  barras rojas sólidas. El diagnóstico conserva su flujo autorizado y ahora
+  gestiona payload vacío sin lanzar una excepción.
+- Verificación: `node --check resources/js/reports/campaigns-dashboard.js`,
+  `node --test tests/js/campaign-presentation.test.mjs` (44/44) y `git diff --check`
+  correctos. PHP, Composer y npm no están disponibles en esta sesión; lint PHP,
+  suite Laravel y build quedan pendientes de CI/Herd.
+- Riesgo pendiente: validar visualmente la altura de tabla, el orden de los seis
+  rankings y la presencia de intereses/costes con datos reales en Venta y
+  Tasación. El SHA final se añadirá tras el commit de revisión.
+
 ## 2026-11-18 — Normalización de meses en guía de periodos cerrados
 
 - Se normalizan estrictamente los meses públicos de `period_advice` aceptando
@@ -8867,3 +8908,21 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   que no tienen mapa automático, junto con razón y evidencias. La descripción
   de PR debe actualizarse antes de declarar el check documental verde; no se
   modifica el validador para ocultar esa obligación.
+## 2026-11-19 — PR #159: revisión sénior de filtros, rankings y métricas
+
+- Rama: `feature/campanas-ux-rankings-filtros-20261119`; se continuó sobre la PR existente, sin crear rama, PR, merge ni despliegue.
+- Correcciones: el control de rankings se etiqueta `Filtro`; los seis rankings obligatorios se reinyectan al leer preferencias persistidas y no pueden desmarcarse; los rankings porcentuales descartan valores `null`; `formatDate(null|undefined|'')` devuelve `-`; el aviso `periodGuidance` queda inmediatamente encima de la comparativa por plataforma; se retira `bindDrawer()` de la inicialización activa; las preferencias antiguas fuerzan `cost_per_lead` y `cost_per_opportunity`, y Venta muestra ambas tarjetas de coste.
+- Diagnóstico: cuando la respuesta no aporta datos útiles, `renderDiagnostics` oculta `diagnosticsOpen`; no se fabrican fechas. La fecha fin de campaña sigue procediendo del campo `campaign_end_date` de las métricas de plataforma y la última fecha con inversión se calcula como el máximo `metric_date` con gasto positivo en el backend existente.
+- Intereses: se conserva la separación de disponibilidad; cuando la respuesta acredita atribución/Interests, el frontend mantiene la KPI y los costes; en modo solo plataforma siguen bloqueados para no presentar una inferencia como dato.
+- Base de datos, atribuciones persistidas, sincronizadores, reglas económicas, permisos y configuración: sin cambios.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (47/47), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos. PHP/Composer/npm no están disponibles en el entorno local; el build y PHPUnit quedan pendientes de CI.
+- Riesgo pendiente: no fue posible ejecutar localmente Laravel/PHP ni confirmar el check remoto hasta publicar el commit; la validación de datos reales de producción sigue fuera de alcance.
+## 2026-11-19 — PR #159: validación final de diagnóstico, Interests, rankings y fechas
+
+- Rama/PR: se continuó exclusivamente en `feature/campanas-ux-rankings-filtros-20261119` / PR #159. No se creó rama, no hubo merge, despliegue, backfill ni sincronización masiva.
+- Cambios: fondo `#ffffff` opaco para el panel de diagnóstico; nueva detección de evidencia útil (fechas reales, contadores positivos o estado/fecha de ejecución), ocultando el botón cuando solo hay propiedades nulas/cero; fechas `null`, `undefined`, vacías, `0` y `'0'` muestran `-`; pruebas para fecha válida; pruebas de los seis rankings con valores completos y descarte de porcentajes nulos.
+- Interests: se verificaron los tres contratos del payload. `platform_independent_only` mantiene `platformOnlyMode` y guiones; `period_mode=interest_pivot` habilita la KPI acreditada; `operational_provisional` requiere simultáneamente `interest_dependent.available` y `attribution.available`. No se alteran atribuciones, conversiones Ads, persistencia ni reglas económicas.
+- Procedencia: `last_spend_date` continúa siendo `MAX(metric_date)` con gasto positivo; `campaign_end_date` continúa procediendo del campo homónimo de `campaign_platform_daily_metrics`. No se añadió fallback temporal ni fecha inventada.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (50/50), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos.
+- Validación no ejecutable: `npm ci` falló porque `npm` no existe; el build no puede ejecutarse sin Vite; PHP/Composer no están disponibles para PHPUnit/Pint. La URL local `https://informes-app-hrmotor.test/informes/campanas` rechazó la conexión, por lo que no se declara verificación visual real de apertura/cierre, responsive ni permisos.
+- Riesgos pendientes: CI debe ejecutar build, PHPUnit y Pint; la inspección con datos reales de producción sigue pendiente y no se sustituyó por datos sintéticos.

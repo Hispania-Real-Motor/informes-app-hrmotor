@@ -250,6 +250,19 @@ La propuesta de estado actual se detalla en
 [CAMPAIGN_CURRENT_STATUS_PROPOSAL](ai/CAMPAIGN_CURRENT_STATUS_PROPOSAL.md).
 Reglas funcionales vigentes: [Informe de Campañas](informe-campanas.md).
 
+#### Iteración UX de rankings y filtros (2026-11-19)
+
+| Contrato afectado | Evidencia implementada | Impacto y estado de auditoría |
+| --- | --- | --- |
+| Rankings de CTR, CPC y conversión Interest → Opportunity | `CampaignDashboardDatasetService::platformOnlyRankings()`; `withRatios()`; `resources/js/reports/campaigns-dashboard.js::rankingDefinitions()/loadVisibleRankings()/renderRankings()` | Se muestran por defecto mejor/peor CTR, mejor/peor CPC y mayor/menor `lead_to_opportunity`; cada lista toma hasta cinco filas y exige valor no nulo. CTR/CPC conservan sus métricas existentes; `lead_to_opportunity = opportunities / leads_salesforce`, donde el alias público `leads_salesforce` representa Interests. No cambian fuente, universo, deduplicación, fórmula económica, API, CSV ni auditoría. Auditoría completa de los KPI de adquisición y campos externos/API pendiente. |
+| Formato de porcentajes | `campaigns-dashboard.js::percentFormatter()/formatPercentRatio()`; `tests/js/campaign-presentation.test.mjs` | La presentación pasa de una a dos cifras decimales con `Intl.NumberFormat('es-ES')`. No cambia el valor JSON, el redondeo backend ni la ordenación numérica. Verificado mediante prueba JavaScript sintética; no es certificación productiva. |
+| Detalle y filtros de presentación | `resources/views/reports/campaigns/index.blade.php`; `campaigns-dashboard.js::renderCampaignTable()`; `resources/css/reports/leads-dashboard.css` | La tabla queda siempre visible con scroll interno; se retira la columna Estado actual de la UI, se elimina el cajón de Filtros avanzados y «Columnas» se etiqueta «Filtro». El backend conserva sus parámetros y contratos de filtrado; API/CSV y persistencia no cambian. Estado actual sigue siendo un contrato histórico documentado, no un KPI auditado. |
+
+La prueba `campaign-presentation.test.mjs` es la evidencia disponible para esta
+iteración. No se consultaron Salesforce ni bases de datos y no se ejecutaron
+sincronizaciones. La matriz conserva la auditoría inicial como pendiente y no
+rellena los 23 campos de una ficha KPI por inferencia.
+
 
 ### Comisiones
 
@@ -321,7 +334,7 @@ No se audita aquí una nueva fórmula económica ni se promueven fichas KPI a ve
 | Exportación / auditoría | Metadata solo en summary.campaigns/items; CSV no se amplía. Última observación y último válido separados en tabla; auditoría por cuenta existente reutilizada. |
 | Estado / referencia | Verificación focal de implementación y tests sintéticos; auditoría integral KPI y acceso real pendientes. Integración limpia sobre main 89282a32b79060fca671adee4bc49741c954308f (Fase A/PR #85 ya incorporados), rama feat/campaign-current-status-ready; solo commits B, sin repetir dependencia 2f3791e. Pruebas MariaDB locales aisladas adicionales; SHA y resultados finales en HANDOFF, sin promover auditoría KPI. |
 
-Formato: `campaigns-dashboard.js` NumberFormat es-ES con agrupación explícita, moneda dos decimales, porcentajes uno y multiplicadores dos. Los ejes muestran miles completos en vez de k/M; null y guiones mantienen el contrato visual de Fase A. JSON, IDs y ordenación numérica intactos. Evidencia: pruebas JS ejecutan formateadores y renderizadores reales, no solo un auxiliar aislado. [Contrato vigente](informe-campanas.md); evidencia de ejecución en docs/ai/HANDOFF.md.
+Formato histórico de Fase B: `campaigns-dashboard.js` NumberFormat es-ES con agrupación explícita, moneda dos decimales, porcentajes uno y multiplicadores dos. Desde la iteración UX del 2026-11-19, los porcentajes visibles usan dos decimales; los ejes muestran miles completos en vez de k/M, y null, guiones, JSON, IDs y ordenación numérica mantienen su contrato. Evidencia: pruebas JS ejecutan formateadores y renderizadores reales, no solo un auxiliar aislado. [Contrato vigente](informe-campanas.md); evidencia de ejecución en docs/ai/HANDOFF.md.
 
 ### Corrección focal de fuentes publicitarias para estado actual (2026-10-27)
 
