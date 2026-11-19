@@ -186,6 +186,7 @@ class CommercialCommissionDashboardService
             $storeKey = $this->storeManagerTargets->normalizeKey((string) ($row->purchase_delegation_name ?: $row->delivery_store));
             if (isset($purchaseOwners[$appraisal]) && $purchaseOwners[$appraisal] !== $storeKey) {
                 $purchaseConflicts[$appraisal] = [$purchaseOwners[$appraisal], $storeKey];
+
                 continue;
             }
             $purchaseOwners[$appraisal] = $storeKey;
