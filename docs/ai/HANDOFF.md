@@ -9223,6 +9223,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   confundían el campo positivo `penalty` con el subtotal negativo resultante.
   Se corrigieron esas aserciones para exigir `penalty = 100.0` y
   `subtotal = -100.0`; el mismo ajuste queda cubierto para SQLite y MariaDB.
+- Revalidación del SHA `97745cbd`: `CI / test`,
+  `CI / october-provisional-mariadb` y `Documentation integrity / docs-integrity`
+  terminaron correctamente. La PR permanece abierta y en draft; no se hizo
+  merge, despliegue, aprobación económica ni importación real.
 - Documentación: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated` y
   `Docs-Scope: commissions`. El agente `report_docs_maintainer` sí fue
   invocado con el diff funcional, pero no devolvió un resultado utilizable tras
