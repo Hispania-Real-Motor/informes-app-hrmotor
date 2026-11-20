@@ -985,3 +985,6 @@ son informativas cuando la cobertura de Opportunities y la integridad de fuentes
 son completas; no se invalidan mediante un umbral numérico arbitrario.
 Las tareas de Opportunities y Opportunity–Interest solo se reutilizan cuando su
 evidencia persistida cubre el cutoff del Interest operacional seleccionado.
+### Alcance de la PR 158
+
+La PR 158 no modifica las reglas, fuentes, atribución ni exportaciones de Campañas. Sus cambios de comisiones de jefes de tienda permanecen aislados del universo de campañas y no alteran sus snapshots ni sus KPIs.

@@ -22,6 +22,11 @@ siempre el diff real y declarar `Docs-Impact: updated` y
 dashboard provisional. La documentación de dependencias de otros informes
 puede describir su aislamiento sin tratarlos como consumidores de la fuente.
 
+El comando `ImportHrEmploymentDates.php` está mapeado explícitamente al dominio
+`commissions`: sus fechas históricas de empleo son una evidencia de atribución
+para las liquidaciones de jefes de tienda, aunque el importador no dependa de
+un listado productivo de RR. HH. durante las pruebas.
+
 ## Instalación y reconocimiento
 
 El agente de proyecto está en `.codex/agents/report_docs_maintainer.toml`,

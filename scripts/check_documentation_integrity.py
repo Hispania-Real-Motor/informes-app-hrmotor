@@ -95,6 +95,7 @@ EXACT = {
     "app/Console/Commands/SalesforceSyncOpportunitiesCommand.php": {"reservations", "campaigns", "commissions", "stock"},
     "app/Console/Commands/SalesforceSyncCommercialCommissionAppointmentEvidenceCommand.php": {"commissions"},
     "app/Console/Commands/SalesforceSyncCommercialCommissionProductDeliveriesCommand.php": {"commissions"},
+    "app/Console/Commands/ImportHrEmploymentDates.php": {"commissions"},
     "config/campaign_current_status.php": {"campaigns"},
     "config/campaign_operational.php": {"campaigns"},
     "config/commercial_commissions.php": {"commissions"},
