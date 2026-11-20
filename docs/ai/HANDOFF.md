@@ -9218,6 +9218,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   documental ni `tests/documentation`, porque `python`, `python3` y `py` no
   están disponibles. No se deben interpretar estas verificaciones bloqueadas
   como una suite verde.
+- Primer CI del SHA `8e4dca1c` ejecutó 1.817 pruebas y 16.206 aserciones; la
+  documentación pasó y fallaron únicamente dos expectativas nuevas que
+  confundían el campo positivo `penalty` con el subtotal negativo resultante.
+  Se corrigieron esas aserciones para exigir `penalty = 100.0` y
+  `subtotal = -100.0`; el mismo ajuste queda cubierto para SQLite y MariaDB.
 - Documentación: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated` y
   `Docs-Scope: commissions`. El agente `report_docs_maintainer` sí fue
   invocado con el diff funcional, pero no devolvió un resultado utilizable tras

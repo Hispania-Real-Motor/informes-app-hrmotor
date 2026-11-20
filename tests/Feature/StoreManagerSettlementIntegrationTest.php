@@ -204,12 +204,14 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-1.delivery_incentive'));
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-1.financing'));
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-1.guarantee'));
-        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-1.penalty'));
+        $this->assertSame(100.0, data_get($row, 'team_components.TEAM-1.penalty'));
+        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-1.subtotal'));
         $this->assertSame(0, data_get($row, 'team_components.TEAM-2.deliveries'));
         $this->assertSame(1, data_get($row, 'team_components.TEAM-2.shared_deliveries'));
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-2.financing'));
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-2.guarantee'));
-        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-2.penalty'));
+        $this->assertSame(100.0, data_get($row, 'team_components.TEAM-2.penalty'));
+        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-2.subtotal'));
         $this->assertSame(150.0, $row['total_commission']);
     }
 
@@ -252,8 +254,10 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-1.guarantee'));
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-2.financing'));
         $this->assertSame(0.0, data_get($row, 'team_components.TEAM-2.guarantee'));
-        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-1.penalty'));
-        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-2.penalty'));
+        $this->assertSame(100.0, data_get($row, 'team_components.TEAM-1.penalty'));
+        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-1.subtotal'));
+        $this->assertSame(100.0, data_get($row, 'team_components.TEAM-2.penalty'));
+        $this->assertSame(-100.0, data_get($row, 'team_components.TEAM-2.subtotal'));
     }
 
     public function test_roster_coverage_excludes_operations_outside_the_verified_interval(): void
