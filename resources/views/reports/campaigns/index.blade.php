@@ -135,8 +135,6 @@
             </section>
 
             <section class="kpis dashboard-kpis" id="summaryKpis"></section>
-            <p class="small" id="investmentClosureStatus" aria-live="polite"></p>
-
             <section class="campaign-charts-grid" id="campaignCharts"></section>
 
             <section id="campaignTables"></section>

@@ -8926,3 +8926,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (50/50), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos.
 - Validación no ejecutable: `npm ci` falló porque `npm` no existe; el build no puede ejecutarse sin Vite; PHP/Composer no están disponibles para PHPUnit/Pint. La URL local `https://informes-app-hrmotor.test/informes/campanas` rechazó la conexión, por lo que no se declara verificación visual real de apertura/cierre, responsive ni permisos.
 - Riesgos pendientes: CI debe ejecutar build, PHPUnit y Pint; la inspección con datos reales de producción sigue pendiente y no se sustituyó por datos sintéticos.
+## 2026-11-20 — PR #159: ajustes visuales finales de Campañas
+
+- Se trabajó en un worktree aislado desde `origin/feature/campanas-ux-rankings-filtros-20261119`; no se tocaron los artefactos Vite ni el worktree de Comisiones.
+- Cambios: se eliminó la presentación de `investmentClosureStatus` y su listener/render innecesario; el cierre económico, bloqueos y advertencias no se modifican. El contexto `all` ya no genera subtítulo redundante. `campaign_end_date` se retiró de `platformColumns` y `columnDefinitions`, por lo que preferencias antiguas la descartan sin alterar el dato de backend. Se sustituyó `public/brand/google-ads-logo.png` por el PNG adjunto del usuario.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (52/52), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos.
+- Build: `npm run build` no ejecutable porque Vite no está instalado en el entorno. No se ejecutaron migraciones, sincronizaciones, backfills ni procesos de producción.
+- Riesgos pendientes: falta validar visualmente con Herd compilado en un entorno con dependencias frontend instaladas; el fallback textual del logo conserva accesibilidad si la imagen falla.

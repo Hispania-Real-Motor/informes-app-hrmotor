@@ -1037,3 +1037,9 @@ evidencia persistida cubre el cutoff del Interest operacional seleccionado.
 - La presentación distingue el payload certificado `period_mode=interest_pivot`, el payload provisional `operational_provisional` con `availability.attribution.status=available` y el modo `platform_independent_only`. Solo los dos primeros acreditan Interests; el último muestra guiones y no sustituye Interests por conversiones nativas de Ads.
 - Los seis rankings obligatorios permanecen visibles con datos o con estado vacío. Los porcentajes de oportunidades excluyen valores nulos; no se inventan ceros ni resultados cuando faltan atribuciones.
 - Las fechas ausentes (`null`, cero numérico, cadena `0` o cadena vacía) se muestran como `-`. `last_spend_date` mantiene la procedencia backend de la última fecha diaria con gasto positivo; `campaign_end_date` mantiene el campo de campaña recibido desde las métricas de plataforma.
+## Ajustes visuales finales de Campañas — 2026-11-20
+
+- La etiqueta informativa de cierre «Inversión: Abierta. Resultados comerciales: Abiertos.» deja de generarse en la vista. El estado económico y sus reglas de bloqueo permanecen en el payload y en las advertencias de integridad.
+- El contexto `Todos` muestra un único H2 «Detalle de campañas»; no se renderiza un subtítulo idéntico. Los contextos con descripciones específicas conservan sus subtítulos útiles.
+- `campaign_end_date` permanece en backend, métricas y contratos, pero se elimina de la configuración visual, del selector y de la migración de preferencias antiguas.
+- La comparativa por plataforma usa el PNG facilitado para Google Ads en `/brand/google-ads-logo.png`, manteniendo `alt="Google Ads"`, dimensiones explícitas y fallback textual si la imagen falla.

@@ -19,7 +19,7 @@ const campaignPointIcon = '/brand/campaign-point.svg';
 const monthlyChartEnabled = false;
 const campaignPeriodMinDate = '2026-01-01';
 const campaignPeriodMaxDate = '2026-12-31';
-const platformColumns = new Set(['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'campaign_end_date', 'last_spend_date']);
+const platformColumns = new Set(['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'last_spend_date']);
 const interestColumns = new Set(['leads_salesforce', 'cost_per_lead']);
 const officialOnlyColumns = new Set(['source_acquired', 'medium_acquired', 'acquired_id', 'content_acquired']);
 const mandatoryRankingKeys = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
@@ -154,7 +154,6 @@ const columnDefinitions = [
     { key: 'content_acquired', label: 'Contenido adquirido', visible: false },
     { key: 'classification', label: 'Clasificación', visible: false },
     { key: 'campaign_start_date', label: 'Fecha inicio de campaña', visible: false, formatter: formatDate },
-    { key: 'campaign_end_date', label: 'Fecha fin de campaña', visible: false, formatter: formatDate },
     { key: 'last_spend_date', label: 'Última fecha con inversión', visible: false, formatter: formatDate },
     { key: 'appraisals_generated', label: 'Tasaciones generadas', visible: false, numeric: true, formatter: formatNumber },
     { key: 'cost_per_appraisal', label: 'Coste por tasación', visible: false, numeric: true, formatter: formatMoney },
@@ -781,7 +780,6 @@ function renderSummary(data) {
     applyAvailabilityControls();
     renderPeriodGuidance(data?.availability?.period_advice || null);
     renderWarnings(data.warnings || [], data.availability || {});
-    renderInvestmentClosure(data.investment_closure || null);
     currentContext = data.selected_context || currentContext;
     syncCampaignTypeSelect();
     syncContextTabs();
@@ -897,19 +895,6 @@ function applyAvailabilityControls() {
         const exportLink = document.getElementById(id);
         if (exportLink) exportLink.classList.toggle('is-hidden', platformOnlyMode);
     });
-}
-
-function renderInvestmentClosure(closure) {
-    const root = document.getElementById('investmentClosureStatus');
-    if (!root) return;
-
-    if (!closure) {
-        root.textContent = '';
-        return;
-    }
-
-    const investment = closure.investment_status === 'closed' ? 'Cerrada' : 'Abierta';
-    root.textContent = `Inversión: ${investment}. Resultados comerciales: Abiertos.`;
 }
 
 function renderWarnings(warnings, availability = {}) {
@@ -3438,7 +3423,7 @@ function renderCampaignTables(rows, emptyMessage = null) {
         exposicion: ['Detalle de campañas de exposición', 'Vista detallada de campañas orientadas a exposición'],
         branding: ['Detalle de campañas de branding', 'Vista detallada de campañas orientadas a branding'],
         otros: ['Detalle de campañas', 'Vista general de campañas no clasificadas en un tipo principal'],
-        all: ['Detalle de campañas', 'Detalle de campañas'],
+        all: ['Detalle de campañas', ''],
     };
     const [title, subtitle] = titleMap[context] || titleMap.all;
 
@@ -3492,7 +3477,7 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
             <div class="panel-title compact">
                 <div>
                     <h2>${escapeHtml(title)}</h2>
-                    <div class="small">${escapeHtml(subtitle)}</div>
+                    ${subtitle ? `<div class="small">${escapeHtml(subtitle)}</div>` : ''}
                 </div>
                 <div class="campaign-table-actions">
                     <div class="columns-menu">

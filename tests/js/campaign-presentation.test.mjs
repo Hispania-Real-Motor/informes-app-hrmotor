@@ -387,6 +387,28 @@ test('detail columns remove functional results, use purchase costs and migrate o
     assert.equal((html.match(/Coste por compra/g) || []).length, 1);
 });
 
+test('campaign end date is never a visual column, including legacy preferences', () => {
+    const memory = new Map([['hrmotor_campaign_columns_v7', JSON.stringify(['campaign', 'campaign_end_date', 'spend'])]]);
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => id === 'campaignTables' ? { innerHTML: '' } : null,
+        querySelectorAll: () => [],
+    });
+    isolated.localStorage = { getItem: (key) => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value) };
+    vm.runInContext("visibleColumns = loadVisibleColumns(); currentContext = 'all';", isolated);
+    assert.ok(!Array.from(vm.runInContext('visibleColumns', isolated)).includes('campaign_end_date'));
+    const html = vm.runInContext("renderCampaignTable('all', 'Detalle de campañas', '', [{campaign_name:'A', campaign_end_date:'2026-11-20', spend:10}])", isolated);
+    assert.ok(!html.includes('campaign_end_date'));
+    assert.ok(!html.includes('Fecha fin de campaña'));
+    assert.equal((html.match(/Detalle de campañas/g) || []).length, 1);
+});
+
+test('economic closure status is no longer rendered in the campaigns view', () => {
+    const blade = fs.readFileSync(new URL('../../resources/views/reports/campaigns/index.blade.php', import.meta.url), 'utf8');
+    assert.ok(!blade.includes('investmentClosureStatus'));
+    assert.ok(!source.includes('function renderInvestmentClosure'));
+});
+
 test('only detail monetary cells use a dash while preserving reasons, valid zeros and negatives', () => {
     assert.equal(detailMoneyPresentation(0, {spend: 0, purchases: 1}, 'cost_per_purchase', money).text, money(0));
     assert.equal(detailMoneyPresentation(-5, {spend: -10, purchases: 2}, 'cost_per_purchase', money).text, money(-5));
