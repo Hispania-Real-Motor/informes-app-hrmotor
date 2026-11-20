@@ -4,6 +4,7 @@ namespace App\Services\Reports\CommercialCommissions;
 
 use App\Models\CommercialCommissionRosterMember;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
 class StoreManagerTeamRosterService
@@ -37,18 +38,38 @@ class StoreManagerTeamRosterService
         }
 
         $monthEnd = $month->addMonth();
-        $rows = CommercialCommissionRosterMember::query()
+        $evidenceRows = CommercialCommissionRosterMember::query()
             ->where('month', $month->format('Y-m'))
-            ->whereIn('delegation_key', $keys)
             ->where('coverage_from', '<', $monthEnd)
             ->where(fn ($query) => $query->whereNull('coverage_to')->orWhere('coverage_to', '>', $month))
             ->orderBy('coverage_from')
-            ->get()
-            ->groupBy('delegation_key');
+            ->get();
+        $rows = $evidenceRows->groupBy('delegation_key');
 
-        return $keys->mapWithKeys(function (string $key) use ($rows): array {
+        $conflictsByDelegation = [];
+        $conflictingUserIdsByDelegation = [];
+        $evidenceRows->groupBy('salesforce_user_id')->each(function ($userRows, string $userId) use (&$conflictsByDelegation, &$conflictingUserIdsByDelegation): void {
+            $userRows = $userRows->values();
+
+            foreach ($userRows as $index => $left) {
+                foreach ($userRows->slice($index + 1) as $right) {
+                    if (! $this->intervalsOverlap($left, $right)) {
+                        continue;
+                    }
+
+                    $message = 'El usuario Salesforce '.$userId.' tiene adscripciones solapadas entre '
+                        .$left->delegation_name.' y '.$right->delegation_name.'.';
+                    $conflictsByDelegation[$left->delegation_key][] = $message;
+                    $conflictsByDelegation[$right->delegation_key][] = $message;
+                    $conflictingUserIdsByDelegation[$left->delegation_key][] = $userId;
+                    $conflictingUserIdsByDelegation[$right->delegation_key][] = $userId;
+                }
+            }
+        });
+
+        return $keys->mapWithKeys(function (string $key) use ($rows, $conflictsByDelegation, $conflictingUserIdsByDelegation): array {
             $evidence = $rows->get($key, collect());
-            $issues = [];
+            $issues = $conflictsByDelegation[$key] ?? [];
             if ($evidence->isEmpty()) {
                 return [$key => $this->pendingResult('Adscripción histórica del equipo no verificada para el periodo.')];
             }
@@ -60,13 +81,28 @@ class StoreManagerTeamRosterService
                 $issues[] = 'La adscripción del equipo carece de procedencia o referencia auditable.';
             }
 
+            $conflictingUserIds = array_values(array_unique(array_map(
+                'strval',
+                $conflictingUserIdsByDelegation[$key] ?? [],
+            )));
             $members = $evidence
                 ->filter(fn (CommercialCommissionRosterMember $row): bool => $row->history_verified
                     && filled($row->salesforce_user_id))
-                ->mapWithKeys(fn (CommercialCommissionRosterMember $row): array => [(string) $row->salesforce_user_id => [
-                    'salesforce_user_id' => (string) $row->salesforce_user_id,
-                    'member_name' => $row->member_name,
-                ]])
+                ->groupBy(fn (CommercialCommissionRosterMember $row): string => (string) $row->salesforce_user_id)
+                ->mapWithKeys(function ($memberRows, string $userId) use ($conflictingUserIds): array {
+                    /** @var Collection<int, CommercialCommissionRosterMember> $memberRows */
+                    $first = $memberRows->first();
+
+                    return [$userId => [
+                        'salesforce_user_id' => $userId,
+                        'member_name' => $first?->member_name,
+                        'coverage_conflict' => in_array($userId, $conflictingUserIds, true),
+                        'coverage_intervals' => $memberRows->map(fn (CommercialCommissionRosterMember $row): array => [
+                            'from' => $row->coverage_from?->toIso8601String(),
+                            'to' => $row->coverage_to?->toIso8601String(),
+                        ])->values()->all(),
+                    ]];
+                })
                 ->all();
 
             if ($members === []) {
@@ -91,5 +127,26 @@ class StoreManagerTeamRosterService
             'evidence_count' => 0,
             'issues' => [$issue],
         ];
+    }
+
+    private function intervalsOverlap(CommercialCommissionRosterMember $left, CommercialCommissionRosterMember $right): bool
+    {
+        if ($left->coverage_from === null || $right->coverage_from === null) {
+            return false;
+        }
+
+        $leftTo = $left->coverage_to;
+        $rightTo = $right->coverage_to;
+        $latestFrom = $left->coverage_from->greaterThan($right->coverage_from)
+            ? $left->coverage_from
+            : $right->coverage_from;
+        $earliestTo = match (true) {
+            $leftTo === null => $rightTo,
+            $rightTo === null => $leftTo,
+            $leftTo->lessThan($rightTo) => $leftTo,
+            default => $rightTo,
+        };
+
+        return $earliestTo === null || $latestFrom->lessThan($earliestTo);
     }
 }

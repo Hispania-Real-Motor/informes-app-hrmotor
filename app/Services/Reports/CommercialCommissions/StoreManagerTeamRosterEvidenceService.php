@@ -4,12 +4,17 @@ namespace App\Services\Reports\CommercialCommissions;
 
 use App\Models\CommercialCommissionClosure;
 use App\Models\CommercialCommissionRosterMember;
+use App\Models\SalesforceUser;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class StoreManagerTeamRosterEvidenceService
 {
+    /** @var array<string, array<int, array{salesforce_id: string|null, name: string|null}>> */
+    private array $identityCache = [];
+
     private const SOURCES = [
         'salesforce_export',
         'hr_export',
@@ -46,6 +51,16 @@ class StoreManagerTeamRosterEvidenceService
         }
         if (! $this->validSalesforceId($salesforceUserId)) {
             $errors[] = 'salesforce_user_id no es un ID Salesforce valido.';
+        }
+        if ($salesforceUserId !== '' && Schema::hasTable('salesforce_users')) {
+            $identityMatches = $this->localIdentities($salesforceUserId);
+            if (count($identityMatches) > 1) {
+                $errors[] = 'salesforce_user_id tiene varias identidades locales y es ambiguo.';
+            } elseif (count($identityMatches) === 1
+                && filled($identityMatches[0]['name'] ?? null)
+                && $this->normalizeName((string) $identityMatches[0]['name']) !== $this->normalizeName($memberName)) {
+                $errors[] = 'member_name no coincide con la identidad local del usuario Salesforce.';
+            }
         }
         if ($memberName === '' || mb_strlen($memberName) > 255) {
             $errors[] = 'member_name es obligatorio y no puede superar 255 caracteres.';
@@ -105,17 +120,143 @@ class StoreManagerTeamRosterEvidenceService
     }
 
     /** @param array<string, mixed> $validated */
-    public function record(array $validated): CommercialCommissionRosterMember
+    public function record(array $validated, string $importedBy): CommercialCommissionRosterMember
     {
-        return CommercialCommissionRosterMember::query()->updateOrCreate(
-            [
-                'month' => $validated['month'],
-                'delegation_key' => $validated['delegation_key'],
-                'salesforce_user_id' => $validated['salesforce_user_id'],
-                'coverage_from' => $validated['coverage_from'],
-            ],
-            $validated,
-        );
+        $identity = [
+            'month' => $validated['month'],
+            'delegation_key' => $validated['delegation_key'],
+            'salesforce_user_id' => $validated['salesforce_user_id'],
+            'coverage_from' => $validated['coverage_from'],
+        ];
+        $existing = CommercialCommissionRosterMember::query()->where($identity)->first();
+        if ($existing !== null) {
+            $incoming = collect($validated)
+                ->map(fn (mixed $value): mixed => $this->auditValue($value))
+                ->all();
+            $stored = collect($existing->only(array_keys($incoming)))
+                ->map(fn (mixed $value): mixed => $this->auditValue($value))
+                ->all();
+            if ($incoming !== $stored) {
+                throw ValidationException::withMessages([
+                    'roster' => ['La evidencia existente para la misma adscripción no puede sobrescribirse silenciosamente.'],
+                ]);
+            }
+
+            return $existing;
+        }
+
+        return CommercialCommissionRosterMember::query()->create([
+            ...$validated,
+            'imported_by' => $importedBy,
+        ]);
+    }
+
+    /** @param array<int, array<string, mixed>> $validated */
+    public function assertNoConflictingCoverage(array $validated): void
+    {
+        if ($validated === []) {
+            return;
+        }
+
+        $months = collect($validated)->pluck('month')->unique()->values();
+        $userIds = collect($validated)->pluck('salesforce_user_id')->unique()->values();
+        $existing = Schema::hasTable('store_manager_commission_roster_members')
+            ? CommercialCommissionRosterMember::query()
+                ->whereIn('month', $months->all())
+                ->whereIn('salesforce_user_id', $userIds->all())
+                ->get()
+            : collect();
+        $records = collect($validated)->map(fn (array $row): array => [
+            ...$row,
+            '_source' => 'file',
+        ])->merge($existing->map(fn (CommercialCommissionRosterMember $row): array => [
+            ...$row->toArray(),
+            '_source' => 'database',
+        ]));
+
+        foreach ($records->groupBy(fn (array $row): string => $row['month'].'|'.$row['salesforce_user_id']) as $group) {
+            $group = $group->values();
+            foreach ($group as $index => $left) {
+                foreach ($group->slice($index + 1) as $right) {
+                    if (! $this->intervalsOverlap($left, $right)) {
+                        continue;
+                    }
+
+                    $sameKey = $left['delegation_key'] === $right['delegation_key']
+                        && $this->sameDate($left['coverage_from'] ?? null, $right['coverage_from'] ?? null);
+                    if ($sameKey && $left['_source'] !== $right['_source']) {
+                        continue;
+                    }
+                    if ($sameKey) {
+                        throw ValidationException::withMessages([
+                            'roster' => ['El CSV contiene filas duplicadas para la misma adscripción y cobertura.'],
+                        ]);
+                    }
+
+                    throw ValidationException::withMessages([
+                        'roster' => ['Existen adscripciones solapadas o contradictorias para el mismo usuario Salesforce.'],
+                    ]);
+                }
+            }
+        }
+    }
+
+    private function intervalsOverlap(array $left, array $right): bool
+    {
+        $leftFrom = $this->dateTime($left['coverage_from'] ?? null);
+        $rightFrom = $this->dateTime($right['coverage_from'] ?? null);
+        $leftTo = $this->dateTime($left['coverage_to'] ?? null, nullable: true);
+        $rightTo = $this->dateTime($right['coverage_to'] ?? null, nullable: true);
+        if ($leftFrom === null || $rightFrom === null) {
+            return false;
+        }
+
+        $latestFrom = $leftFrom->greaterThan($rightFrom) ? $leftFrom : $rightFrom;
+        $earliestTo = match (true) {
+            $leftTo === null => $rightTo,
+            $rightTo === null => $leftTo,
+            $leftTo->lessThan($rightTo) => $leftTo,
+            default => $rightTo,
+        };
+
+        return $earliestTo === null || $latestFrom->lessThan($earliestTo);
+    }
+
+    private function sameDate(mixed $left, mixed $right): bool
+    {
+        $leftDate = $this->dateTime($left);
+        $rightDate = $this->dateTime($right);
+
+        return $leftDate !== null && $rightDate !== null && $leftDate->equalTo($rightDate);
+    }
+
+    private function normalizeName(string $value): string
+    {
+        return Str::of($value)->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', ' ')->trim()->value();
+    }
+
+    /** @return array<int, array{salesforce_id: string|null, name: string|null}> */
+    private function localIdentities(string $salesforceUserId): array
+    {
+        if (! array_key_exists($salesforceUserId, $this->identityCache)) {
+            $this->identityCache[$salesforceUserId] = SalesforceUser::query()
+                ->where('salesforce_id', $salesforceUserId)
+                ->get(['salesforce_id', 'name'])
+                ->map(fn (SalesforceUser $user): array => [
+                    'salesforce_id' => $user->salesforce_id,
+                    'name' => $user->name,
+                ])
+                ->all();
+        }
+
+        return $this->identityCache[$salesforceUserId];
+    }
+
+    private function auditValue(mixed $value): mixed
+    {
+        return $value instanceof \DateTimeInterface
+            ? CarbonImmutable::instance($value)->toIso8601String()
+            : $value;
     }
 
     public function hasDefinitiveDelegationClosure(string $month): bool

@@ -488,7 +488,10 @@ Archivos principales:
 ## Preparación y evidencia de responsables
 
 - Administración prepara cada bloque después de validaciones automáticas en servidor. No existen confirmaciones manuales de fuentes en el formulario. Dirección aprueba exactamente el snapshot candidato preparado; la aprobación no recalcula el mes.
-- `Resena__c` es la fuente de reseñas comerciales. Las reseñas de Delegaciones proceden del endpoint interno de Google Reviews y su caché; disponibilidad y freshness se comprueban de forma independiente.
+- `Resena__c` es la fuente de reseñas comerciales del contrato histórico. El
+  plan de jefes de tienda desde octubre usa el endpoint interno de Google
+  Reviews y su caché; disponibilidad y freshness se comprueban de forma
+  independiente.
 - El jefe al cierre puede estar confirmado aunque el historial de rotaciones del mes no sea verificable. En ese caso se muestra el jefe, se le atribuye inicialmente el 100 % y se conserva una alerta. Solo evidencia continua del mes permite informar el número de responsables.
 - Backfill unitario en validación: `php artisan commissions:record-delegation-manager-evidence <delegation-id> "<delegación>" <manager-id> "<jefe>" 2026-07 --source=it_confirmation --reference=<referencia> --recorded-by=<usuario> --evidence-type=month_end --dry-run`.
 - Backfill por lote: `php artisan commissions:import-delegation-manager-evidence <csv> --dry-run`. El CSV requiere `delegation_id,delegation_name,manager_id,manager_name,month,source,reference,recorded_by,evidence_type`. No usar `full_month` salvo evidencia real de cobertura completa.
@@ -582,7 +585,9 @@ certificar una fila sin la configuración persistida.
 el CSV de octubre, con 34 tiendas y totales esperados de 907 entregas y 499
 compras. No hay herencia automática de objetivos entre meses. La fuente del
 CSV no es Salesforce y su procedencia empresarial sigue siendo evidencia
-administrativa, no una consulta productiva realizada por esta revisión.
+administrativa; el comando persiste hash y etiqueta de fuente, pero no recibe
+ni guarda un actor de importación. Esta revisión tampoco realizó una consulta
+productiva.
 
 ### Trazabilidad de fuentes y universo
 
@@ -622,13 +627,40 @@ lee de `store_manager_commission_roster_members`, con identidad Salesforce,
 periodo, procedencia, referencia y verificación. Si no existe evidencia, los
 propietarios observados pueden mostrarse como desglose provisional, pero el
 total y el cierre permanecen nulos/pedientes. Un miembro acreditado sin
-entregas conserva su fila con incentivos de volumen cero. Una entrega
-compartida se refleja en el propietario y en el miembro secundario acreditado;
-los importes de financiación y garantías solo se acumulan en el propietario
-primario para no duplicar el componente económico de la oportunidad. No se ha
-encontrado un sincronizador o comando de carga productiva para esta tabla: la
-fuente externa de adscripción histórica y su procedimiento de incorporación
-quedan pendientes.
+entregas conserva su fila con incentivos de volumen cero.
+
+Una entrega compartida se cuenta una sola vez en el volumen físico de la
+tienda. La fila separa `deliveries_count`, `individual_deliveries_count` y
+`shared_deliveries_count`; la operación compartida puede aparecer en el
+desglose del propietario y del miembro secundario acreditado, pero no suma
+entregas a la base del incentivo individual de ninguno. Financiación y
+garantías solo se acumulan sobre operaciones individuales del miembro
+primario; la penalización, si corresponde, se evalúa sobre el componente
+individual del usuario y no convierte la operación compartida en una operación
+económica. Una operación compartida no puede alcanzar por sí sola el mínimo ni
+producir un incentivo económico individual.
+
+La vigencia del roster se aplica a cada operación por `cv_signed_date` dentro
+del intervalo semiabierto `[coverage_from, coverage_to)`. Un miembro con una
+operación fuera de su intervalo acreditado queda con incidencia y su subtotal
+es nulo. Las coberturas solapadas o contradictorias para el mismo usuario y
+mes, incluso entre tiendas distintas, dejan el componente pendiente; no hay
+fallback al propietario de la Opportunity.
+
+La evidencia se puede validar e importar mediante
+`commissions:import-store-manager-roster <file>`, con las cabeceras
+`month,delegation_name,salesforce_user_id,member_name,coverage_from,coverage_to,source,evidence_reference,recorded_by,history_verified`.
+Por defecto el comando valida y no escribe; `--dry-run` hace explícito ese
+modo y `--apply` habilita la persistencia atómica. `--imported-by` es obligatorio
+con `--apply` y se conserva como actor de importación, separado de
+`recorded_by`. La validación limita `source` a las procedencias admitidas,
+exige identidad local no ambigua, cobertura que intersecte el mes, referencia y
+actor, normaliza la delegación, rechaza duplicados y solapamientos de cobertura
+del mismo usuario y no permite modificar un periodo con cierre definitivo. Una
+fila ya existente solo se acepta si coincide exactamente; no se sobrescribe
+silenciosamente. No existe evidencia en esta revisión de la fuente externa
+autorizada ni de una ejecución productiva del comando; por tanto, el roster real
+y su conciliación siguen pendientes.
 
 La atribución del responsable procede del histórico local
 `salesforce_delegation_manager_history`, resuelto por
@@ -653,18 +685,27 @@ Para este plan las reseñas proceden del endpoint interno configurado en
 por otros contratos de Comisiones. `CommercialCommissionDelegationReviewsService`
 solicita mes `m-y` y ubicación, conserva `reviews_count`, `average_rating`,
 `technical_status` y `fetched_at`, y cachea según la configuración vigente.
-Una respuesta disponible con media >= 4 suma 150 EUR; media inferior a 4 resta
-150 EUR; cero reseñas confirmado resta 150 EUR. Payload inválido, endpoint no
-configurado, error remoto/transporte o caché caducada dejan el ajuste pendiente;
-la media no se redondea antes de comparar.
+El payload es válido con cero reseñas y media nula; con reseñas positivas exige
+media numérica, y la ruta económica exige además una media entre 0 y 5. Un
+recuento cero con media informada, una media fuera de rango o un valor no
+numérico dejan el ajuste pendiente. Se conserva la precisión recibida (por
+ejemplo, 3,995) y no se redondea antes de comparar: media >= 4 suma 150 EUR,
+media inferior a 4 resta 150 EUR y cero reseñas confirmado resta 150 EUR.
+Endpoint no configurado, error remoto/transporte o caché caducada también dejan
+el ajuste pendiente.
 
 La aprobación valida el snapshot congelado, no un cálculo vivo: exige 34 filas
-únicas, versión vigente, equipo acreditado, responsables y reseñas verificadas,
-componentes numéricos, subtotales conciliados y total igual a la suma de
-incentivos de entregas, compras, reseñas y equipo. Un estado `calculated` por sí
-solo no certifica el cierre. La interfaz y la exportación XLSX muestran el
-desglose y conservan `Pendiente` para importes nulos; no se encontró una
-exportación CSV específica del plan nuevo.
+únicas, objetivos y claves de tienda congelados, versión vigente, equipo
+acreditado, responsables y reseñas verificadas, componentes numéricos,
+coherencia entre volumen físico/individual/compartido, subtotales por
+Salesforce User ID conciliados y total igual a la suma de incentivos de
+entregas, compras, reseñas y equipo. Un estado `calculated` por sí solo no
+certifica el cierre. La interfaz muestra los contadores de entregas físicas,
+individuales y compartidas, y el desglose de cada usuario con sus entregas
+individuales/compartidas y subtotal. La hoja XLSX `Delegaciones` exporta las
+mismas columnas, además de roster, miembros, estado e incidencias, y conserva
+`Pendiente` cuando un importe no es numérico; no se encontró una exportación
+CSV específica del plan nuevo.
 
 Las pruebas de integración cubren el escenario sintético de 630 EUR, el campo
 financiero correcto, la exención del jefe, miembros sin entregas, entregas

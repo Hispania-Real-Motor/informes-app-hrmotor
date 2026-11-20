@@ -12,7 +12,9 @@ class ImportStoreManagerCommissionRoster extends Command
 {
     protected $signature = 'commissions:import-store-manager-roster
         {file : CSV UTF-8 con la evidencia historica del equipo}
-        {--dry-run : Valida todas las filas sin persistir}';
+        {--dry-run : Valida todas las filas sin persistir}
+        {--apply : Persiste la evidencia validada de forma atomica}
+        {--imported-by= : Actor o servicio que ejecuta la importacion}';
 
     protected $description = 'Valida e importa evidencia historica auditable del equipo de jefes de tienda';
 
@@ -54,23 +56,51 @@ class ImportStoreManagerCommissionRoster extends Command
             return self::FAILURE;
         }
 
-        if ($this->option('dry-run')) {
-            $this->info('Dry-run correcto: '.count($validated).' filas validas.');
+        if ($this->option('dry-run') && $this->option('apply')) {
+            $this->error('No se pueden combinar --dry-run y --apply.');
+
+            return self::FAILURE;
+        }
+
+        try {
+            $evidence->assertNoConflictingCoverage($validated);
+        } catch (ValidationException $exception) {
+            foreach ($exception->errors()['roster'] ?? ['Evidencia de roster incompatible.'] as $error) {
+                $this->error($error);
+            }
+
+            return self::FAILURE;
+        }
+
+        if (! $this->option('apply')) {
+            $this->info('Validacion correcta: '.count($validated).' filas validas; no se ha escrito nada.');
 
             return self::SUCCESS;
         }
 
+        $importedBy = trim((string) $this->option('imported-by'));
+        if ($importedBy === '' || mb_strlen($importedBy) > 255) {
+            $this->error('Debe indicarse --imported-by con un actor o servicio identificable de hasta 255 caracteres.');
+
+            return self::FAILURE;
+        }
+
         try {
-            DB::transaction(function () use ($validated, $evidence): void {
+            DB::transaction(function () use ($validated, $evidence, $importedBy): void {
                 foreach ($validated as $row) {
                     if ($evidence->hasDefinitiveDelegationClosure($row['month'])) {
                         throw new RuntimeException('No se puede modificar el roster de un periodo de Delegaciones definitivo: '.$row['month'].'.');
                     }
-                    $evidence->record($row);
+                    $evidence->record($row, $importedBy);
                 }
             });
-        } catch (RuntimeException $exception) {
-            $this->error($exception->getMessage());
+        } catch (RuntimeException|ValidationException $exception) {
+            $messages = $exception instanceof ValidationException
+                ? ($exception->errors()['roster'] ?? ['No se pudo completar la importacion.'])
+                : [$exception->getMessage()];
+            foreach ($messages as $message) {
+                $this->error($message);
+            }
 
             return self::FAILURE;
         }

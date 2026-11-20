@@ -1618,12 +1618,20 @@ El plan provisional de jefes de tienda no infiere la composición mensual del
 equipo a partir de propietarios de oportunidades. Se eligió una tabla de
 evidencia independiente (`store_manager_commission_roster_members`) con
 identidad Salesforce, cobertura temporal, procedencia, referencia y estado de
-verificación. El importador CSV valida cada fila, normaliza la tienda contra
-los objetivos persistidos, permite dry-run e idempotencia y bloquea cambios en
-periodos de Delegaciones definitivos. Si no existe evidencia, el dashboard
-conserva el desglose observado como provisional y deja el total pendiente.
+verificación. La carga se realiza mediante
+`commissions:import-store-manager-roster`, que por defecto valida sin escribir;
+`--apply` exige y persiste `--imported-by`, valida de forma atómica, es
+idempotente para la misma evidencia y protege periodos definitivos. Las
+coberturas se contrastan por operación y los solapamientos contradictorios del
+mismo usuario y mes se rechazan para evitar una atribución simultánea. La
+fuente externa autorizada y la ejecución productiva siguen pendientes de
+acreditación. Si no existe evidencia, el dashboard conserva el desglose
+observado como provisional y deja el total pendiente.
 
-Las entregas compartidas se reflejan en los dos participantes acreditados para
-el incentivo de volumen, pero financiación y garantías se acumulan una sola
-vez en el propietario primario. Esta separación evita duplicar importes
-económicos y mantiene la atribución revisable sin inventar adscripciones.
+Las entregas compartidas se reflejan en el volumen físico de la tienda una sola
+vez y en el desglose de los dos participantes acreditados. No aportan
+incentivos económicos individuales: financiación y garantías solo usan
+operaciones individuales; una penalización puede seguir derivándose del
+componente individual no alcanzado, pero no atribuye economía a la operación
+compartida. Esta separación evita duplicar importes económicos y mantiene la
+atribución revisable sin inventar adscripciones.

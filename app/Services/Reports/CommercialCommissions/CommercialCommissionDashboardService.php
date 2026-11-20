@@ -164,6 +164,12 @@ class CommercialCommissionDashboardService
             'diagnostics' => $diagnostics,
             'summary_rows' => $summaryRows,
             'delegation_rows' => $delegationRows,
+            'store_manager_plan' => $selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                ? 'october_2026'
+                : null,
+            'store_manager_target_keys' => $selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                ? collect($delegationRows)->pluck('store_manager_target_key')->filter()->values()->all()
+                : [],
         ];
     }
 
@@ -272,6 +278,10 @@ class CommercialCommissionDashboardService
             $storeKey = (string) $target['store_key'];
             $storeOperations = $deliveriesByStore->get($storeKey, collect())->values();
             $deliveries = $storeOperations->count();
+            $individualDeliveries = $storeOperations
+                ->filter(fn (SalesforceOpportunity $row): bool => blank($row->shared_delivery_id))
+                ->count();
+            $sharedDeliveries = $deliveries - $individualDeliveries;
             $purchases = (int) $purchasesByStore->get($storeKey, 0);
             $deliveryKpi = $calculator->storeKpiIncentive($deliveries, (int) $target['target_deliveries']);
             $purchaseKpi = $calculator->storeKpiIncentive($purchases, (int) $target['target_purchases']);
@@ -292,10 +302,25 @@ class CommercialCommissionDashboardService
             );
             $review = $reviewPayloads[$target['store_name']] ?? null;
             $reviewAmount = null;
-            if (is_array($review) && ($review['technical_status'] ?? null) === 'available' && is_numeric($review['average_rating'] ?? null)) {
-                $reviewAmount = (float) $review['average_rating'] >= 4.0 ? 150.0 : -150.0;
-            } elseif (is_array($review) && ($review['technical_status'] ?? null) === 'available' && (int) ($review['reviews_count'] ?? 0) === 0) {
+            $reviewStatus = is_array($review) ? ($review['technical_status'] ?? null) : null;
+            $reviewCount = is_array($review) ? $review['reviews_count'] ?? null : null;
+            $reviewAverage = is_array($review) ? $review['average_rating'] ?? null : null;
+            $reviewCountIsInteger = is_int($reviewCount)
+                || (is_string($reviewCount) && preg_match('/^\d+$/', $reviewCount) === 1);
+            $reviewCount = $reviewCountIsInteger ? (int) $reviewCount : null;
+            $reviewAverageIsValid = is_numeric($reviewAverage)
+                && (float) $reviewAverage >= 0.0
+                && (float) $reviewAverage <= 5.0;
+            if ($reviewStatus === 'available'
+                && $reviewCount !== null
+                && $reviewCount === 0
+                && $reviewAverage === null) {
                 $reviewAmount = -150.0;
+            } elseif ($reviewStatus === 'available'
+                && $reviewCount !== null
+                && $reviewCount > 0
+                && $reviewAverageIsValid) {
+                $reviewAmount = (float) $reviewAverage >= 4.0 ? 150.0 : -150.0;
             } else {
                 $team['issues'][] = 'Reseñas de tienda pendientes de verificación.';
             }
@@ -306,8 +331,8 @@ class CommercialCommissionDashboardService
             if ((int) ($manager['store_manager_distinct_count'] ?? 0) >= 2) {
                 $team['issues'][] = $manager['store_manager_alert'] ?? 'Revisar la atribución del responsable de tienda.';
             }
-            if (is_array($review) && ($review['technical_status'] ?? null) === 'available'
-                && ((int) ($review['reviews_count'] ?? 0) === 0) !== (($review['average_rating'] ?? null) === null)) {
+            if ($reviewStatus === 'available'
+                && ($reviewCount === null || ($reviewCount === 0) !== ($reviewAverage === null) || ($reviewAverage !== null && ! $reviewAverageIsValid))) {
                 $issues[] = 'Payload de reseñas incoherente: recuento y media no son compatibles.';
                 $reviewAmount = null;
             }
@@ -321,9 +346,12 @@ class CommercialCommissionDashboardService
 
             return [
                 'delegation_name' => $target['store_name'],
+                'store_manager_target_key' => $storeKey,
                 'target_deliveries' => $target['target_deliveries'],
                 'target_purchases' => $target['target_purchases'],
                 'deliveries_count' => $deliveries,
+                'individual_deliveries_count' => $individualDeliveries,
+                'shared_deliveries_count' => $sharedDeliveries,
                 'purchases_count' => $purchases,
                 'objective_reached' => $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
                     && $deliveries >= (int) $target['target_deliveries'] && $purchases >= (int) $target['target_purchases'],
@@ -385,6 +413,9 @@ class CommercialCommissionDashboardService
             ->select(['purchase_appraisal_id', 'cv_signed_date'])
             ->whereIn('purchase_appraisal_id', $appraisalIds)
             ->whereNotNull('cv_signed_date')
+            ->where(function (Builder $query): void {
+                $this->applyRecordTypeFilter($query, ['tasacion', 'cambio']);
+            })
             ->get()
             ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->purchase_appraisal_id)
             ->filter(fn (Collection $rows): bool => $rows
@@ -398,45 +429,46 @@ class CommercialCommissionDashboardService
             ->all();
     }
 
-    /** @return array{complete: bool, issues: array<int, string>, subtotals: array<int, float>, components: array<string, mixed>} */
+    /** @return array{complete: bool, issues: array<int, string>, subtotals: array<string, float|null>, components: array<string, mixed>} */
     private function storeManagerTeamComponents(Collection $operations, array $target, CarbonImmutable $month, StoreManagerCommissionPlanCalculator $calculator, array $verifiedManagerIds, ?array $roster): array
     {
         $issues = $roster['issues'] ?? ['Adscripción histórica del equipo no verificada para el periodo.'];
+        foreach ($operations->filter(fn (SalesforceOpportunity $row): bool => blank($row->owner_id)) as $operation) {
+            $issues[] = 'La operación '.(string) ($operation->salesforce_id ?: 'sin Salesforce ID').' carece de propietario Salesforce verificable.';
+        }
         $subtotals = [];
         $components = [];
-        $primaryOperations = $operations
+        $individualOperations = $operations
+            ->filter(fn (SalesforceOpportunity $row): bool => blank($row->shared_delivery_id))
             ->filter(fn (SalesforceOpportunity $row): bool => filled($row->owner_id))
             ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->owner_id);
-        $sharedOperations = $operations
-            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->shared_delivery_id)
-                && (string) $row->owner_id !== (string) $row->shared_delivery_id)
-            ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->shared_delivery_id);
-        $memberOperations = $primaryOperations->mapWithKeys(
-            fn (Collection $rows, string $userId): array => [$userId => $rows->values()]
-        );
-        foreach ($sharedOperations as $userId => $rows) {
-            $memberOperations->put(
-                (string) $userId,
-                $memberOperations->get((string) $userId, collect())
-                    ->merge($rows)
-                    ->unique(fn (SalesforceOpportunity $row): string => (string) $row->salesforce_id)
-                    ->values(),
-            );
+        $sharedOperations = collect();
+        foreach ($operations as $row) {
+            if (blank($row->shared_delivery_id)) {
+                continue;
+            }
+
+            foreach (collect([(string) $row->owner_id, (string) $row->shared_delivery_id])->filter()->unique() as $userId) {
+                $sharedOperations->put(
+                    $userId,
+                    $sharedOperations->get($userId, collect())
+                        ->push($row)
+                        ->unique(fn (SalesforceOpportunity $sharedRow): string => (string) $sharedRow->salesforce_id)
+                        ->values(),
+                );
+            }
         }
         $rosterMembers = collect($roster['members'] ?? [])
             ->mapWithKeys(fn (array $member, string $userId): array => [$userId => $member]);
-        foreach ($rosterMembers->keys() as $userId) {
-            if (! $memberOperations->has($userId)) {
-                $memberOperations->put($userId, collect());
-            }
-        }
-        if ($memberOperations->isEmpty()) {
+        $memberIds = $individualOperations->keys()
+            ->merge($sharedOperations->keys())
+            ->merge($rosterMembers->keys())
+            ->map(fn (mixed $id): string => (string) $id)
+            ->filter()
+            ->unique()
+            ->values();
+        if ($memberIds->isEmpty()) {
             $issues[] = 'Composición del equipo sin miembros verificables.';
-        }
-        foreach ($memberOperations->keys() as $ownerId) {
-            if ($rosterMembers->isNotEmpty() && ! $rosterMembers->has((string) $ownerId)) {
-                $issues[] = 'La operación '.$ownerId.' no figura en el roster histórico verificado.';
-            }
         }
         $zone = Str::of((string) ($target['zone'] ?? ''))->ascii()->lower()->value();
         $minimums = match (true) {
@@ -449,13 +481,43 @@ class CommercialCommissionDashboardService
         if ($minimums === null) {
             $issues[] = 'Zona de tienda ausente o no reconocida; no se pueden aplicar mínimos económicos.';
         }
-        $ownerIds = $memberOperations->keys()->map(fn (mixed $id): string => (string) $id)->values();
+        $ownerIds = $memberIds;
         $employmentDates = Schema::hasTable('hr_employment_dates')
             ? HrEmploymentDate::query()->whereIn('salesforce_user_id', $ownerIds)->whereDate('effective_date', '<=', $month->addMonth()->subDay()->toDateString())->orderByDesc('effective_date')->get()->groupBy('salesforce_user_id')
             : collect();
-        foreach ($memberOperations as $ownerId => $ownerRows) {
-            $primaryRows = $primaryOperations->get((string) $ownerId, collect());
-            $sharedRows = $sharedOperations->get((string) $ownerId, collect());
+        foreach ($memberIds as $ownerId) {
+            $ownerId = (string) $ownerId;
+            $rawIndividualRows = $individualOperations->get($ownerId, collect());
+            $sharedRows = $sharedOperations->get($ownerId, collect());
+            $member = $rosterMembers->get($ownerId);
+            $memberIssues = [];
+            $primaryRows = collect();
+
+            if ($member === null) {
+                foreach ($rawIndividualRows->merge($sharedRows) as $row) {
+                    $memberIssues[] = 'La operación '.(string) ($row->salesforce_id ?: 'sin Salesforce ID').' no figura en el roster histórico verificado para '.$ownerId.'.';
+                }
+            } elseif (($member['coverage_conflict'] ?? false) === true) {
+                $memberIssues[] = 'La adscripción de '.$ownerId.' presenta coberturas contradictorias entre tiendas.';
+            } else {
+                $primaryRows = $rawIndividualRows->filter(function (SalesforceOpportunity $row) use ($member, &$memberIssues): bool {
+                    if ($this->operationCoveredByRoster($row, $member)) {
+                        return true;
+                    }
+
+                    $memberIssues[] = 'La operación '.(string) ($row->salesforce_id ?: 'sin Salesforce ID').' queda fuera de la vigencia acreditada del roster.';
+
+                    return false;
+                })->values();
+
+                foreach ($sharedRows as $row) {
+                    if (! $this->operationCoveredByRoster($row, $member)) {
+                        $memberIssues[] = 'La participación compartida '.(string) ($row->salesforce_id ?: 'sin Salesforce ID').' queda fuera de la vigencia acreditada del roster.';
+                    }
+                }
+            }
+
+            $issues = [...$issues, ...$memberIssues];
             $hasMissingFinancial = $primaryRows->isNotEmpty()
                 && $primaryRows->contains(fn (SalesforceOpportunity $row): bool => $row->financial_commission === null);
             $hasMissingGuarantee = $primaryRows->isNotEmpty()
@@ -472,11 +534,11 @@ class CommercialCommissionDashboardService
                 $penalty = 0.0;
             } elseif ($employment?->effective_date !== null && $minimums !== null) {
                 $olderThanThreeMonths = $employment->effective_date->addMonths(3)->lt($month->addMonth()->subDay());
-                $penalty = $olderThanThreeMonths && ($ownerRows->count() < 10 || $financing === null || $guarantee === null || $financing < $minimums[0] || $guarantee < $minimums[1]) ? 100.0 : 0.0;
+                $penalty = $olderThanThreeMonths && ($primaryRows->count() < 10 || $financing === null || $guarantee === null || $financing < $minimums[0] || $guarantee < $minimums[1]) ? 100.0 : 0.0;
             } else {
                 $issues[] = $minimums === null ? 'No se puede validar la penalización individual para '.$ownerId.'.' : 'Antigüedad laboral pendiente para '.$ownerId.'.';
             }
-            $delivery = $calculator->individualDeliveryIncentive($ownerRows->count());
+            $delivery = $calculator->individualDeliveryIncentive($primaryRows->count());
             $financingIncentive = $calculator->thresholdIncentive($financing, $minimums[0] ?? null, 100.0);
             $guaranteeIncentive = $calculator->thresholdIncentive($guarantee, $minimums[1] ?? null, 60.0);
             if ($hasMissingFinancial) {
@@ -485,15 +547,17 @@ class CommercialCommissionDashboardService
             if ($hasMissingGuarantee) {
                 $issues[] = 'Garantías pendientes para '.$ownerId.'.';
             }
-            $subtotal = $calculator->individualSubtotal($delivery, $financingIncentive, $guaranteeIncentive, $penalty);
+            $subtotal = $memberIssues === []
+                ? $calculator->individualSubtotal($delivery, $financingIncentive, $guaranteeIncentive, $penalty)
+                : null;
             if ($subtotal === null) {
                 $issues[] = 'Subtotal individual pendiente para '.$ownerId.'.';
-            } else {
-                $subtotals[] = $subtotal;
             }
+            $subtotals[$ownerId] = $subtotal;
             $components[$ownerId] = [
-                'member_name' => $rosterMembers->get((string) $ownerId)['member_name'] ?? null,
-                'deliveries' => $ownerRows->count(),
+                'member_name' => $member['member_name'] ?? null,
+                'deliveries' => $primaryRows->count(),
+                'individual_deliveries' => $primaryRows->count(),
                 'primary_deliveries' => $primaryRows->count(),
                 'shared_deliveries' => $sharedRows->count(),
                 'delivery_incentive' => $delivery,
@@ -501,11 +565,14 @@ class CommercialCommissionDashboardService
                 'guarantee' => $guaranteeIncentive,
                 'penalty' => $penalty,
                 'subtotal' => $subtotal,
+                'assignment_issues' => array_values(array_unique($memberIssues)),
             ];
         }
 
         return [
-            'complete' => $issues === [] && count($subtotals) === $memberOperations->count(),
+            'complete' => $issues === []
+                && count($subtotals) === $memberIds->count()
+                && collect($subtotals)->every(fn (mixed $subtotal): bool => is_numeric($subtotal)),
             'issues' => array_values(array_unique($issues)),
             'subtotals' => $subtotals,
             'components' => $components,
@@ -513,6 +580,34 @@ class CommercialCommissionDashboardService
             'roster_evidence_count' => (int) ($roster['evidence_count'] ?? 0),
             'member_count' => $rosterMembers->count(),
         ];
+    }
+
+    /** @param array<string, mixed> $member */
+    private function operationCoveredByRoster(SalesforceOpportunity $operation, array $member): bool
+    {
+        if ($operation->cv_signed_date === null) {
+            return false;
+        }
+
+        $operationDate = CarbonImmutable::parse($operation->cv_signed_date->toDateString())->startOfDay();
+
+        foreach ($member['coverage_intervals'] ?? [] as $interval) {
+            try {
+                $coverageFrom = CarbonImmutable::parse((string) ($interval['from'] ?? ''))->startOfDay();
+                $coverageTo = blank($interval['to'] ?? null)
+                    ? null
+                    : CarbonImmutable::parse((string) $interval['to'])->startOfDay();
+            } catch (\Throwable) {
+                continue;
+            }
+
+            if ($operationDate->greaterThanOrEqualTo($coverageFrom)
+                && ($coverageTo === null || $operationDate->lessThan($coverageTo))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

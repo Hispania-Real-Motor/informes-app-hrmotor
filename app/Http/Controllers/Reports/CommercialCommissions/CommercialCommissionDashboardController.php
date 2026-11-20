@@ -740,7 +740,7 @@ class CommercialCommissionDashboardController extends Controller
         return [
             'name' => 'Delegaciones',
             'headers' => [
-                'Tienda', 'Jefe', 'Meta entregas', 'Entregas', 'Meta compras', 'Compras',
+                'Tienda', 'Jefe', 'Meta entregas', 'Entregas físicas', 'Entregas individuales', 'Compartidas', 'Meta compras', 'Compras',
                 'Incentivo entregas', 'Incentivo compras', 'Reseñas', 'Ajuste reseñas',
                 'Roster', 'Miembros', 'Desglose equipo', 'Estado', 'Total', 'Incidencias',
             ],
@@ -758,6 +758,8 @@ class CommercialCommissionDashboardController extends Controller
                     (string) ($row['store_manager_name'] ?? 'Pendiente'),
                     $row['target_deliveries'] ?? 'Pendiente',
                     $row['deliveries_count'] ?? 'Pendiente',
+                    $row['individual_deliveries_count'] ?? 'Pendiente',
+                    $row['shared_deliveries_count'] ?? 'Pendiente',
                     $row['target_purchases'] ?? 'Pendiente',
                     $row['purchases_count'] ?? 'Pendiente',
                     $money($row['store_deliveries_incentive'] ?? null),

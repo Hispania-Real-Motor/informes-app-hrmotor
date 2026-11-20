@@ -19,6 +19,7 @@ class CommercialCommissionRosterMember extends Model
         'source',
         'evidence_reference',
         'recorded_by',
+        'imported_by',
         'history_verified',
     ];
 
