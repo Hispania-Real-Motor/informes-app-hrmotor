@@ -163,6 +163,16 @@ class CommissionGovernanceEvolutionTest extends TestCase
         $this->assertNull($resolved['store_manager_name']);
     }
 
+    public function test_verified_closing_manager_with_a_gap_does_not_claim_full_month_coverage(): void
+    {
+        $this->managerEvidence('verified-closing-gap', '005B', 'Pedro', '2026-07-15', '2026-08-01', true);
+
+        $resolved = app(DelegationManagerHistoryResolver::class)->resolve(CarbonImmutable::parse('2026-07-01'), ['Alicante'])['alicante'];
+
+        $this->assertSame('verified', $resolved['store_manager_history_status']);
+        $this->assertSame('unverified', $resolved['store_manager_rotation_history_status']);
+    }
+
     public function test_july_without_evidence_does_not_invent_a_manager(): void
     {
         $resolved = app(DelegationManagerHistoryResolver::class)->resolve(CarbonImmutable::parse('2026-07-01'), ['Alicante'])['alicante'];

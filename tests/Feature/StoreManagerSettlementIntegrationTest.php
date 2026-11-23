@@ -86,6 +86,21 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         $this->assertSame(280.0, data_get($row, 'team_components.TEAM-1.subtotal'));
     }
 
+    public function test_verified_closing_manager_without_full_month_coverage_keeps_settlement_pending(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        SalesforceDelegationManagerHistory::query()->where('source_key', 'fixture-manager')->update([
+            'coverage_from' => '2026-10-15 00:00:00',
+        ]);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertSame('pending_source', $row['store_manager_status']);
+        $this->assertStringContainsString('Historial del responsable de tienda no verificable', implode(' ', $row['store_manager_issues']));
+    }
+
     public function test_roster_member_without_deliveries_remains_in_the_team_breakdown(): void
     {
         CarbonImmutable::setTestNow('2026-11-19 12:00:00');

@@ -557,10 +557,20 @@ class CommercialCommissionClosureService
         $frozenTargets = is_array($frozenTargets) ? $this->canonicalTargetDefinitions($frozenTargets) : [];
         $authorizedTargets = $this->canonicalTargetDefinitions($authorizedTargets);
         $referenceTargets = $reference === null ? [] : $this->canonicalTargetDefinitions($reference['targets']);
+        $isOctober = $month === '2026-10';
+        if ($isOctober && $reference === null) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'La referencia aprobada de objetivos de octubre no está disponible o no es válida.',
+            ]);
+        }
         if ($reference !== null) {
             $referenceIsComplete = count($referenceTargets) === 34
                 && $reference['delivery_total'] === 907
-                && $reference['purchase_total'] === 499;
+                && $reference['purchase_total'] === 499
+                && filled($reference['source_sha256'])
+                && filled($reference['source_label'])
+                && collect($referenceTargets)->every(fn (array $target): bool => data_get($target, 'target_source.sha256') === $reference['source_sha256']
+                    && data_get($target, 'target_source.label') === $reference['source_label']);
             if (! $referenceIsComplete || $authorizedTargets !== $referenceTargets || $frozenTargets !== $referenceTargets) {
                 throw ValidationException::withMessages([
                     'snapshot' => 'Los objetivos congelados no coinciden con la referencia autorizada e inmutable del periodo.',
@@ -579,9 +589,9 @@ class CommercialCommissionClosureService
         sort($expectedTargetKeys);
         $actualDashboardTargetKeys = $dashboardTargetKeys;
         sort($actualDashboardTargetKeys);
-        $isOctober = $month === '2026-10';
         $expectedTargetCount = count($frozenTargets);
         $targetByKey = collect($frozenTargets)->keyBy('store_key')->all();
+        $expectedStoreManagerPlan = 'october_2026';
 
         if (! is_array($rows)
             || $rows === []
@@ -620,6 +630,10 @@ class CommercialCommissionClosureService
             ];
             $targetKey = (string) ($row['store_manager_target_key'] ?? '');
             $targetDefinition = $targetByKey[$targetKey] ?? null;
+            $expectedReviewAdjustment = $this->storeManagerCalculator->storeReviewAdjustment(
+                $row['reviews_count'] ?? null,
+                $row['reviews_average_rating'] ?? null,
+            );
             $componentKeys = is_array($components) ? array_map('strval', array_keys($components)) : [];
             $subtotalKeys = is_array($subtotals) ? array_map('strval', array_keys($subtotals)) : [];
             $countsCoherent = is_numeric($row['deliveries_count'] ?? null)
@@ -633,7 +647,7 @@ class CommercialCommissionClosureService
                 ? $this->storeManagerCalculator->storeKpiIncentive((int) $row['purchases_count'], (int) $row['target_purchases'])['incentive']
                 : null;
 
-            if (! is_string($row['store_manager_plan'] ?? null) || trim((string) $row['store_manager_plan']) === ''
+            if (($row['store_manager_plan'] ?? null) !== $expectedStoreManagerPlan
                 || ($row['store_manager_status'] ?? null) !== 'calculated'
                 || ($row['reviews_technical_status'] ?? null) !== 'available'
                 || blank($row['reviews_fetched_at'] ?? null)
@@ -659,6 +673,11 @@ class CommercialCommissionClosureService
                 || $expectedPurchase === null
                 || ! is_numeric($row['store_deliveries_incentive'] ?? null)
                 || ! is_numeric($row['store_purchases_incentive'] ?? null)
+                || ! array_key_exists('reviews_count', $row)
+                || ! array_key_exists('reviews_average_rating', $row)
+                || $expectedReviewAdjustment === null
+                || ! is_numeric($row['store_reviews_adjustment'] ?? null)
+                || abs((float) $expectedReviewAdjustment - (float) $row['store_reviews_adjustment']) > 0.009
                 || abs((float) $expectedDelivery - (float) $row['store_deliveries_incentive']) > 0.009
                 || abs((float) $expectedPurchase - (float) $row['store_purchases_incentive']) > 0.009
                 || collect($required)->contains(fn (mixed $value): bool => ! is_numeric($value))

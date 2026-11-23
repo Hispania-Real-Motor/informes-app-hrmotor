@@ -58,7 +58,8 @@ class DelegationManagerHistoryResolver
                 && ($row->coverage_to === null || $row->coverage_to->gt($month)))->values();
             $closingInstant = $monthEnd->subSecond();
             $closing = $effective
-                ->filter(fn ($row): bool => filled($row->manager_salesforce_user_id)
+                ->filter(fn ($row): bool => $row->history_verified
+                    && filled($row->manager_salesforce_user_id)
                     && $row->coverage_from->lte($closingInstant)
                     && ($row->coverage_to === null || $row->coverage_to->gt($closingInstant)))
                 ->sortByDesc('effective_at')

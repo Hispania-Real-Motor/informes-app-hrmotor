@@ -345,33 +345,22 @@ class CommercialCommissionDashboardService
             $reviewCountIsInteger = is_int($reviewCount)
                 || (is_string($reviewCount) && preg_match('/^\d+$/', $reviewCount) === 1);
             $reviewCount = $reviewCountIsInteger ? (int) $reviewCount : null;
-            $reviewAverageIsValid = is_numeric($reviewAverage)
-                && (float) $reviewAverage >= 0.0
-                && (float) $reviewAverage <= 5.0;
-            if ($reviewStatus === 'available'
-                && $reviewCount !== null
-                && $reviewCount === 0
-                && $reviewAverage === null) {
-                $reviewAmount = -150.0;
-            } elseif ($reviewStatus === 'available'
-                && $reviewCount !== null
-                && $reviewCount > 0
-                && $reviewAverageIsValid) {
-                $reviewAmount = (float) $reviewAverage >= 4.0 ? 150.0 : -150.0;
-            } else {
+            $reviewAmount = $reviewStatus === 'available'
+                ? $calculator->storeReviewAdjustment($reviewCount, $reviewAverage)
+                : null;
+            if ($reviewStatus !== 'available' || $reviewAmount === null) {
                 $team['issues'][] = 'Reseñas de tienda pendientes de verificación.';
             }
             $manager = $managerHistory[$this->formulaConfig->delegationKey($target['store_name'])] ?? [];
-            if (($manager['store_manager_history_status'] ?? 'unverified') !== 'verified') {
+            if (($manager['store_manager_history_status'] ?? 'unverified') !== 'verified'
+                || ($manager['store_manager_rotation_history_status'] ?? 'unverified') !== 'verified') {
                 $team['issues'][] = 'Historial del responsable de tienda no verificable.';
             }
             if ((int) ($manager['store_manager_distinct_count'] ?? 0) >= 2) {
                 $team['issues'][] = $manager['store_manager_alert'] ?? 'Revisar la atribución del responsable de tienda.';
             }
-            if ($reviewStatus === 'available'
-                && ($reviewCount === null || ($reviewCount === 0) !== ($reviewAverage === null) || ($reviewAverage !== null && ! $reviewAverageIsValid))) {
+            if ($reviewStatus === 'available' && $reviewAmount === null) {
                 $issues[] = 'Payload de reseñas incoherente: recuento y media no son compatibles.';
-                $reviewAmount = null;
             }
             $issues = array_values(array_unique([...$issues, ...$team['issues']]));
             $complete = $issues === [] && $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
