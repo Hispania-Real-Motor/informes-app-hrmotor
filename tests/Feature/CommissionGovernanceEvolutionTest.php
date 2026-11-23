@@ -182,14 +182,15 @@ class CommissionGovernanceEvolutionTest extends TestCase
         $this->assertSame('unverified', $resolved['store_manager_history_status']);
     }
 
-    public function test_confirmed_closing_manager_is_shown_without_claiming_rotation_coverage(): void
+    public function test_unverified_closing_manager_is_not_shown_as_verified(): void
     {
         $this->managerEvidence('confirmed-close', '005B', 'Pedro', '2026-07-31 23:59:59', '2026-08-01 00:00:00', false);
 
         $resolved = app(DelegationManagerHistoryResolver::class)->resolve(CarbonImmutable::parse('2026-07-01'), ['Alicante'])['alicante'];
 
-        $this->assertSame('005B', $resolved['store_manager_salesforce_user_id']);
-        $this->assertSame('verified', $resolved['store_manager_closing_status']);
+        $this->assertNull($resolved['store_manager_salesforce_user_id']);
+        $this->assertSame('unverified', $resolved['store_manager_history_status']);
+        $this->assertSame('unverified', $resolved['store_manager_closing_status']);
         $this->assertSame('unverified', $resolved['store_manager_rotation_history_status']);
         $this->assertSame(1, $resolved['store_manager_distinct_count']);
         $this->assertNull($resolved['store_manager_alert']);

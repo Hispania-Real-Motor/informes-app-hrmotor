@@ -608,7 +608,7 @@ class CommercialCommissionClosureService
             ]);
         }
 
-        $invalidRow = collect($rows)->first(function (mixed $rawRow) use ($targetKeys, $targetByKey): bool {
+        $invalidRow = collect($rows)->first(function (mixed $rawRow) use ($targetKeys, $targetByKey, $expectedStoreManagerPlan): bool {
             if (! is_array($rawRow)) {
                 return true;
             }
