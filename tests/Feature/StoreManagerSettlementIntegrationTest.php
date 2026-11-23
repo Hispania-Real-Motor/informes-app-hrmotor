@@ -601,7 +601,8 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         int $reviewsCount,
         ?float $averageRating,
         float $reviewAdjustment,
-    ): void {
+    ): void
+    {
         $reference = $this->seedApprovedOctoberTargets();
 
         $this->invokeStoreManagerCandidateValidation(
