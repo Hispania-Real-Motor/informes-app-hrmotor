@@ -478,7 +478,7 @@ Archivos principales:
 - La meta de entregas de Delegaciones es la misma configurada para la delegación en Area Manager. Solo se comparte el objetivo; las entregas reales mantienen sus reglas independientes.
 - Los seis bloques tienen cierres y snapshots independientes.
 - Call Center y Contact Center detallados son exclusivos de Administrador. Dirección puede aprobar o reabrir ambos mediante un resumen sin detalle.
-- El jefe de tienda procede de `Delegacion__c.DEL_BUS_Jefe_Tienda__c` (lookup a `User`). La comisión mensual completa se atribuye al último responsable verificable del mes, sin prorrateo. Las rotaciones generan alertas no bloqueantes.
+- En los contratos históricos, el jefe de tienda procede de `Delegacion__c.DEL_BUS_Jefe_Tienda__c` (lookup a `User`). La comisión mensual completa se atribuye al último responsable verificable del mes, sin prorrateo; las rotaciones generan alertas no bloqueantes. El plan `october_2026` de Delegaciones añade la exigencia de cobertura continua verificada descrita abajo.
 - Si Salesforce no aporta evidencia histórica suficiente, el informe muestra el histórico como no verificable y no inventa una asignación pasada.
 - Un mes es verificable únicamente cuando existe cobertura continua. Para julio, una confirmación real puede registrarse con `php artisan commissions:record-delegation-manager-evidence <delegation-id> "<delegación>" <manager-id> "<jefe>" 2026-07 --source=<fuente> --reference=<ticket-o-documento> --recorded-by=<responsable>`.
 - Financieros, Call Center y Contact Center disponen de cierre únicamente desde julio de 2026. Los filtros contractuales de Call Center son visuales y nunca alteran el snapshot mensual canónico.
@@ -492,7 +492,7 @@ Archivos principales:
   plan de jefes de tienda desde octubre usa el endpoint interno de Google
   Reviews y su caché; disponibilidad y freshness se comprueban de forma
   independiente.
-- El jefe al cierre puede estar confirmado aunque el historial de rotaciones del mes no sea verificable. En ese caso se muestra el jefe, se le atribuye inicialmente el 100 % y se conserva una alerta. Solo evidencia continua del mes permite informar el número de responsables.
+- El responsable al cierre solo se publica como verificado cuando existe una evidencia con `history_verified` que cubre el último instante del mes. En contratos históricos, esa evidencia puede mostrar el responsable aunque la cobertura de rotaciones no sea verificable; se conserva la alerta y no se afirma que fuera el único responsable. En el plan `october_2026`, además, la cobertura continua de rotaciones debe estar verificada: una evidencia de cierre no verificada o un hueco del mes deja la fila `pending_source`, sin importe certificable ni ID/nombre de responsable presentado como verificado.
 - Backfill unitario en validación: `php artisan commissions:record-delegation-manager-evidence <delegation-id> "<delegación>" <manager-id> "<jefe>" 2026-07 --source=it_confirmation --reference=<referencia> --recorded-by=<usuario> --evidence-type=month_end --dry-run`.
 - Backfill por lote: `php artisan commissions:import-delegation-manager-evidence <csv> --dry-run`. El CSV requiere `delegation_id,delegation_name,manager_id,manager_name,month,source,reference,recorded_by,evidence_type`. No usar `full_month` salvo evidencia real de cobertura completa.
 
@@ -583,11 +583,18 @@ certificar una fila sin la configuración persistida.
 
 `ImportStoreManagerCommissionTargets` valida en dry-run o escribe explícitamente
 el CSV de octubre, con 34 tiendas y totales esperados de 907 entregas y 499
-compras. No hay herencia automática de objetivos entre meses. La fuente del
-CSV no es Salesforce y su procedencia empresarial sigue siendo evidencia
-administrativa; el comando persiste hash y etiqueta de fuente, pero no recibe
-ni guarda un actor de importación. Esta revisión tampoco realizó una consulta
-productiva.
+compras. Para preparar o aprobar octubre, `StoreManagerCommissionTargetService`
+lee además la referencia aprobada controlada por el repositorio, independiente
+de la tabla mutable: debe existir y ser válida, conservar un SHA-256 y una
+etiqueta no vacíos, mantener exactamente 34 tiendas y los totales 907/499, y
+cada fila debe repetir exactamente ese SHA-256 y etiqueta. Los objetivos
+persistidos y los objetivos congelados en el snapshot deben coincidir con esa
+referencia canónica; si falta o no coincide, el flujo falla cerrado y no usa la
+tabla persistida como sustituto. No hay herencia automática de objetivos entre
+meses. La fuente del CSV no es Salesforce y su procedencia empresarial sigue
+siendo evidencia administrativa; el comando persiste hash y etiqueta de fuente,
+pero no recibe ni guarda un actor de importación. Esta revisión tampoco realizó
+una consulta productiva.
 
 ### Trazabilidad de fuentes y universo
 
@@ -673,6 +680,14 @@ se cargan aparte con `ImportHrEmploymentDates`: el CSV se valida contra un
 `--imported-by` en modo escritura. La fecha efectiva más reciente hasta el
 final del mes se usa para la antigüedad; no se usa `User.CreatedDate`.
 
+Para el plan de octubre, el resolver solo toma como responsable al cierre una
+fila con `history_verified` que cubra el último instante del mes. La cobertura
+del histórico de rotaciones se calcula por intervalos igualmente verificados y
+debe cubrir todo `[inicio del mes, inicio del mes siguiente)` sin huecos. El
+plan no queda calculado si falla cualquiera de los dos ejes: una fila de cierre
+verificada con una brecha de rotación, o una fila de cierre no verificada, deja
+la identidad y el importe de la tienda pendientes.
+
 La financiación individual compara `financial_commission`, persistencia de
 `Comisi_n_Financiera__c`, con el mínimo zonal; `importe_financiado` es solo el
 capital y no se utiliza para superar ese mínimo. Las zonas desconocidas,
@@ -692,15 +707,22 @@ numérico dejan el ajuste pendiente. Se conserva la precisión recibida (por
 ejemplo, 3,995) y no se redondea antes de comparar: media >= 4 suma 150 EUR,
 media inferior a 4 resta 150 EUR y cero reseñas confirmado resta 150 EUR.
 Endpoint no configurado, error remoto/transporte o caché caducada también dejan
-el ajuste pendiente.
+el ajuste pendiente. En un snapshot candidato, `reviews_count` y
+`reviews_average_rating` son campos obligatorios aunque su valor sea cero/nulo;
+la aprobación vuelve a calcular el ajuste con el mismo calculador y rechaza el
+ snapshot si falta una métrica o si `store_reviews_adjustment` difiere más de
+ `0,009` del valor derivado. La media `3,995`, por
+ejemplo, conserva su precisión y produce el tramo inferior, no el de `>= 4`.
 
-La aprobación valida el snapshot congelado, no un cálculo vivo: exige 34 filas
-únicas, objetivos y claves de tienda congelados, versión vigente, equipo
-acreditado, responsables y reseñas verificadas, componentes numéricos,
-coherencia entre volumen físico/individual/compartido, subtotales por
-Salesforce User ID conciliados y total igual a la suma de incentivos de
-entregas, compras, reseñas y equipo. Un estado `calculated` por sí solo no
-certifica el cierre. La interfaz muestra los contadores de entregas físicas,
+La aprobación valida el snapshot congelado, no un cálculo vivo: exige el plan
+`october_2026`, 34 filas únicas, objetivos y claves de tienda congelados y
+coincidentes con la referencia aprobada, versión vigente, fuente SHA-256 y
+etiqueta repetidas por objetivo, equipo acreditado, responsable de cierre y
+rotaciones verificadas, reseñas verificadas con sus métricas congeladas,
+componentes numéricos, coherencia entre volumen físico/individual/compartido,
+subtotales por Salesforce User ID conciliados y total igual a la suma de
+incentivos de entregas, compras, reseñas y equipo. Un estado `calculated` por sí
+solo no certifica el cierre. La interfaz muestra los contadores de entregas físicas,
 individuales y compartidas, y el desglose de cada usuario con sus entregas
 individuales/compartidas y subtotal. La hoja XLSX `Delegaciones` exporta las
 mismas columnas, además de roster, miembros, estado e incidencias, y conserva
@@ -710,8 +732,12 @@ CSV específica del plan nuevo.
 Las pruebas de integración cubren el escenario sintético de 630 EUR, el campo
 financiero correcto, la exención del jefe, miembros sin entregas, entregas
 compartidas, zona desconocida, conflictos de atribución física, tasaciones entre
-meses, reseñas inválidas y el rechazo de snapshots inconsistentes. El código sí
-permite preparar y aprobar un candidato cuando toda la evidencia resulta
-verificable. En esta revisión no se importaron datos productivos ni se aprobó
-octubre; la evidencia real de roster, la conciliación de las tasaciones y los
-datos RR. HH. autorizados siguen pendientes.
+meses, reseñas inválidas y el rechazo de snapshots inconsistentes. Las
+regresiones de gobierno cubren que un cierre no verificado no se muestre como
+verificado y que una brecha impida declarar cobertura mensual completa. Las
+pruebas de cierre cubren la ausencia de la referencia aprobada de octubre,
+métricas de reseñas ausentes, el umbral sin redondeo previo y snapshots válidos
+de cero/positivos. El código sí permite preparar y aprobar un candidato cuando
+toda la evidencia resulta verificable. En esta revisión no se importaron datos
+productivos ni se aprobó octubre; la evidencia real de roster, la conciliación
+de las tasaciones y los datos RR. HH. autorizados siguen pendientes.

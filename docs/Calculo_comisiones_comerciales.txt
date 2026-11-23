@@ -1032,11 +1032,19 @@ Pruebas:
 - Los objetivos mensuales se persisten en `store_manager_commission_targets`
   mediante una importación explícita y auditable; no se insertan objetivos al
   arrancar ni se heredan automáticamente a meses posteriores.
-- La fuente de octubre es la hoja «Detalle por tienda» transcrita en
-  `database/seeders/StoreManagerCommissionTargetsOctober2026.csv`, validada
-  por el importador con 34 tiendas y totales 907 entregas / 499 compras. La
-  importación conserva hash y etiqueta de fuente, pero el comando no recibe ni
-  guarda un actor de importación.
+- La referencia aprobada de octubre es el archivo controlado por el repositorio
+  `database/seeders/StoreManagerCommissionTargetsOctober2026.csv`, descrito
+  como la hoja «Detalle por tienda». `StoreManagerCommissionTargetService` la
+  lee de forma independiente de la tabla mutable y calcula su SHA-256; la
+  referencia debe ser válida, tener etiqueta y hash no vacíos, 34 tiendas y
+  totales 907 entregas / 499 compras, y repetir ese mismo hash y etiqueta en
+  cada objetivo. La tabla persistida y los objetivos del snapshot deben
+  coincidir exactamente con ella. Para octubre, si el archivo falta, no se
+  puede leer o no cumple el contrato, la preparación/aprobación falla cerrada y
+  no usa la tabla persistida como sustituto. La importación conserva hash y
+  etiqueta de fuente, pero el comando no recibe ni guarda un actor de
+  importación; la procedencia empresarial del archivo sigue siendo evidencia
+  administrativa y no se ha acreditado una carga productiva.
 - La atribución económica permanece provisional cuando faltan evidencias de
   tienda física de compra, identidad de operación, roster de equipo, reseñas o
   antigüedad laboral. No se sustituye una fuente ausente por el propietario de
@@ -1092,6 +1100,12 @@ Pruebas:
   definitivos. No hay evidencia de la fuente externa autorizada ni de una
   ejecución productiva en esta revisión, por lo que la carga real sigue
   pendiente.
+- En el plan de octubre, el responsable al cierre solo es utilizable si la fila
+  de histórico está marcada `history_verified` y cubre el último instante del
+  mes. La cobertura de rotaciones debe estar compuesta por intervalos verificados
+  que cubran el mes completo sin huecos; cualquiera de los dos controles
+  incompletos deja la fila económica pendiente y no muestra una identidad no
+  verificada como responsable certificado.
 - Las fechas de alta/reingreso no proceden de `User.CreatedDate`:
   `ImportHrEmploymentDates` valida un CSV contra `SalesforceUser` y persiste
   `hr_employment_dates`; en escritura exige `--imported-by`.
@@ -1102,13 +1116,22 @@ Pruebas:
   Un payload contradictorio o media fuera de rango queda pendiente y la
   precisión recibida no se redondea antes del umbral. El sincronizador de
   `Resena__c` es otro contrato de Comisiones y no debe tratarse como la fuente
-  de este plan.
+  de este plan. En el snapshot candidato son obligatorios `reviews_count` y
+  `reviews_average_rating`, incluso como `0` y `null`; la aprobación vuelve a
+  derivar `store_reviews_adjustment` con el mismo calculador y rechaza el
+  snapshot si falta una métrica o el importe no coincide. La media conserva su
+  precisión hasta el umbral: `3.995` queda por debajo de 4 y produce `-150`,
+  mientras `4.0` o más produce `+150`; cero reseñas con media nula produce
+  `-150`.
 - La preparación y aprobación validan el snapshot congelado, sus 34 tiendas,
   responsables, objetivos y su fuente, reseñas, roster, componentes,
-  subtotales por usuario y total conciliado. La aprobación comprueba también
-  que las entregas físicas sean la suma de individuales y compartidas y que
-  cada subtotal coincida con su componente y clave Salesforce. El código
-  permite aprobar cuando toda la evidencia es verificable; en esta revisión no
-  se importaron datos productivos ni se aprobó octubre. La ausencia de evidencia
-  real mantiene la liquidación pendiente, pero no constituye por sí sola una
-  prohibición permanente del flujo de aprobación.
+  subtotales por usuario y total conciliado. Para octubre exigen además el
+  plan exacto `october_2026`, coincidencia exacta de objetivos/fuente con la
+  referencia aprobada y presencia de métricas de reseñas que permitan
+  recalcular el ajuste. La aprobación comprueba también que las entregas
+  físicas sean la suma de individuales y compartidas y que cada subtotal
+  coincida con su componente y clave Salesforce. El código permite aprobar
+  cuando toda la evidencia es verificable; en esta revisión no se importaron
+  datos productivos ni se aprobó octubre. La ausencia de evidencia real mantiene
+  la liquidación pendiente, pero no constituye por sí sola una prohibición
+  permanente del flujo de aprobación.

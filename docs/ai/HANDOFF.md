@@ -9306,3 +9306,69 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   funcional y las referencias exigidas, pero no devolvió un resultado utilizable
   tras dos esperas y se cerró. El agente principal revisó y mantuvo estos
   documentos como fallback, sin atribuir al agente cambios que no realizó.
+
+## Cierre de tres defectos de certificación económica PR 158 (2026-11-23)
+
+- Alcance: se mantuvo exclusivamente el worktree
+  `C:\Users\Usuario\Herd\informes-app-hrmotor-comisiones`, en la rama
+  `work/comisiones-20261120`. El estado funcional de partida fue
+  `908a9729b2078fb911546524a2d41e3e736b5285`; el código quedó en
+  `2791d1f797dada633c71652bb446e43509cc7f76` antes de la documentación. No
+  se tocó el worktree padre, Campañas, otra rama ni otro worktree.
+- Problemas corregidos: octubre falla cerrado si falta o es inválida la
+  referencia aprobada de objetivos y no usa la tabla mutable como sustituto;
+  la aprobación recalcula las reseñas desde `reviews_count` y
+  `reviews_average_rating`, sin redondear antes del umbral, exige el plan
+  `october_2026` y rechaza payloads ausentes, contradictorios o manipulados;
+  y el historial de responsables exige identidad/cierre verificados y
+  cobertura verificada de rotaciones para todo el mes antes de permitir una
+  liquidación certificable.
+- Archivos funcionales modificados: `app/Services/Reports/CommercialCommissions/CommercialCommissionClosureService.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionDashboardService.php`,
+  `app/Services/Reports/CommercialCommissions/DelegationManagerHistoryResolver.php` y
+  `app/Services/Reports/CommercialCommissions/StoreManagerCommissionPlanCalculator.php`.
+  Archivos de pruebas: `tests/Feature/StoreManagerSettlementIntegrationTest.php` y
+  `tests/Feature/CommissionGovernanceEvolutionTest.php`.
+- Documentación modificada: `docs/informe-comisiones.md`,
+  `docs/Calculo_comisiones_comerciales.txt`, `docs/matriz-trazabilidad-kpi.md`,
+  este `docs/ai/HANDOFF.md` y `docs/ai/DECISIONS.md`. No se actualizó
+  `docs/ai/PROJECT_CONTEXT.md` porque no cambió la arquitectura, los módulos
+  ni las convenciones generales.
+- Decisiones: la referencia de octubre es una fuente controlada independiente
+  de los objetivos mutables; el snapshot es una entrada no confiable que debe
+  contener y demostrar sus métricas congeladas; y la identidad de cierre y la
+  cobertura mensual son ejes verificables separados. Las rotaciones siguen
+  generando advertencias según las reglas históricas, pero no habilitan un
+  importe cuando la cobertura exigida no está acreditada.
+- Base de datos/configuración: no se añadieron tablas, columnas, migraciones,
+  variables de entorno ni dependencias. No se ejecutaron migraciones,
+  sincronizaciones, imports reales ni despliegues.
+- Seguridad y fiabilidad: se eliminaron fallbacks silenciosos para objetivos,
+  se evita aceptar ajustes de reseñas auto-declarados y se bloquea la
+  atribución económica cuando falta evidencia histórica verificable. La
+  aprobación no hace llamadas remotas ni modifica cierres definitivos.
+- Rendimiento: la referencia se lee una vez por validación, la fórmula de
+  reseñas se comparte con el dashboard y la aprobación trabaja en memoria
+  sobre el snapshot; no se añadieron consultas Salesforce ni consultas N+1.
+- Reproducción: en `941de10` se reprodujeron los tres defectos con cuatro
+  fallos esperados y 1.830 pruebas pasadas. La corrección funcional en
+  `2791d1f` pasó `CI / test`, `CI / october-provisional-mariadb` y
+  `Documentation integrity / docs-integrity` en el run `45145172467`.
+  Localmente `git diff --check` es correcto; no hay PHP, Composer,
+  `vendor/autoload.php` ni un runtime Python utilizable, por lo que PHPUnit,
+  Pint, lint PHP y el validador documental no se ejecutaron localmente.
+- Mantenimiento documental: se invocó `report_docs_maintainer` con el rango
+  base/HEAD y el alcance de Comisiones. El agente dejó actualizados los tres
+  documentos funcionales, pero se detuvo antes de completar HANDOFF y el
+  validador; el agente principal revisó el diff y completó este registro como
+  fallback, sin atribuirle la validación final.
+- Contrato de PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
+  `Docs-Scope: commissions`. La documentación queda pendiente de su commit y
+  de la nueva ejecución de CI sobre el SHA final.
+- Acciones manuales: revisar el diff completo antes de fusionar, mantener la
+  PR en draft y aportar la procedencia empresarial del CSV, la evidencia
+  autorizada del roster, la conciliación Salesforce/RR. HH. y cualquier
+  validación productiva autorizada. No se aprobó octubre ni ninguna liquidación.
+- Riesgos pendientes: sin esas fuentes externas el plan continúa provisional;
+  una referencia, reseña, responsable o cobertura incompleta debe permanecer
+  pendiente y no convertirse en cero o en importe económico.
