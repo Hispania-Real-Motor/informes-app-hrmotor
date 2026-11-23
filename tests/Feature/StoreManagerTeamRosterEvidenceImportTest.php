@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\CommercialCommissionClosure;
+use App\Models\ReportUser;
+use App\Models\SalesforceUser;
 use App\Models\StoreManagerCommissionTarget;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
@@ -22,6 +24,8 @@ class StoreManagerTeamRosterEvidenceImportTest extends TestCase
 
     public function test_roster_import_is_auditable_idempotent_and_supports_dry_run(): void
     {
+        $this->seedSalesforceIdentity();
+        $actor = $this->seedImportActor();
         StoreManagerCommissionTarget::query()->create([
             'month' => '2026-10',
             'zone' => 'Norte',
@@ -41,13 +45,13 @@ class StoreManagerTeamRosterEvidenceImportTest extends TestCase
         $this->artisan('commissions:import-store-manager-roster', [
             'file' => $this->relativePath,
             '--apply' => true,
-            '--imported-by' => 'report-user:fixture',
+            '--imported-by' => $actor,
         ])
             ->assertExitCode(0);
         $this->artisan('commissions:import-store-manager-roster', [
             'file' => $this->relativePath,
             '--apply' => true,
-            '--imported-by' => 'report-user:fixture',
+            '--imported-by' => $actor,
         ])
             ->assertExitCode(0);
 
@@ -57,12 +61,62 @@ class StoreManagerTeamRosterEvidenceImportTest extends TestCase
             'salesforce_user_id' => '005000000000001',
             'history_verified' => true,
             'recorded_by' => 'fixture-actor',
-            'imported_by' => 'report-user:fixture',
+            'imported_by' => $actor,
         ]);
+    }
+
+    public function test_roster_import_rejects_missing_local_salesforce_identity_without_writes(): void
+    {
+        $actor = $this->seedImportActor();
+        StoreManagerCommissionTarget::query()->create([
+            'month' => '2026-10',
+            'zone' => 'Norte',
+            'store_key' => 'a-coruna',
+            'store_name' => 'A Coruña',
+            'delivery_target' => 10,
+            'purchase_target' => 10,
+            'source_sha256' => hash('sha256', 'fixture'),
+            'source_label' => 'fixture',
+        ]);
+        $this->writeCsv("month,delegation_name,salesforce_user_id,member_name,coverage_from,coverage_to,source,evidence_reference,recorded_by,history_verified\n2026-10,A Coruña,005000000000001,Persona fixture,2026-10-01 00:00:00,2026-11-01 00:00:00,direction_confirmation,fixture-roster,fixture-actor,true\n");
+
+        $this->artisan('commissions:import-store-manager-roster', [
+            'file' => $this->relativePath,
+            '--apply' => true,
+            '--imported-by' => $actor,
+        ])->assertExitCode(1);
+
+        $this->assertDatabaseCount('store_manager_commission_roster_members', 0);
+    }
+
+    public function test_roster_import_rejects_an_invalid_import_actor_without_writes(): void
+    {
+        $this->seedSalesforceIdentity();
+        StoreManagerCommissionTarget::query()->create([
+            'month' => '2026-10',
+            'zone' => 'Norte',
+            'store_key' => 'a-coruna',
+            'store_name' => 'A Coruña',
+            'delivery_target' => 10,
+            'purchase_target' => 10,
+            'source_sha256' => hash('sha256', 'fixture'),
+            'source_label' => 'fixture',
+        ]);
+        $this->writeCsv("month,delegation_name,salesforce_user_id,member_name,coverage_from,coverage_to,source,evidence_reference,recorded_by,history_verified\n2026-10,A Coruña,005000000000001,Persona fixture,2026-10-01 00:00:00,2026-11-01 00:00:00,direction_confirmation,fixture-roster,fixture-actor,true\n");
+
+        $this->artisan('commissions:import-store-manager-roster', [
+            'file' => $this->relativePath,
+            '--apply' => true,
+            '--imported-by' => 'report-user:999999',
+        ])->assertExitCode(1);
+
+        $this->assertDatabaseCount('store_manager_commission_roster_members', 0);
     }
 
     public function test_roster_import_rejects_overlapping_assignments_across_stores_atomically(): void
     {
+        $this->seedSalesforceIdentity();
+        $actor = $this->seedImportActor();
         foreach ([['a-coruna', 'A Coruña'], ['madrid', 'Madrid']] as [$storeKey, $storeName]) {
             StoreManagerCommissionTarget::query()->create([
                 'month' => '2026-10',
@@ -80,7 +134,7 @@ class StoreManagerTeamRosterEvidenceImportTest extends TestCase
         $this->artisan('commissions:import-store-manager-roster', [
             'file' => $this->relativePath,
             '--apply' => true,
-            '--imported-by' => 'report-user:fixture',
+            '--imported-by' => $actor,
         ])->assertExitCode(1);
 
         $this->assertDatabaseCount('store_manager_commission_roster_members', 0);
@@ -88,6 +142,8 @@ class StoreManagerTeamRosterEvidenceImportTest extends TestCase
 
     public function test_roster_import_cannot_change_a_definitive_delegation_period(): void
     {
+        $this->seedSalesforceIdentity();
+        $actor = $this->seedImportActor();
         StoreManagerCommissionTarget::query()->create([
             'month' => '2026-10',
             'zone' => 'Norte',
@@ -112,11 +168,33 @@ class StoreManagerTeamRosterEvidenceImportTest extends TestCase
         $this->artisan('commissions:import-store-manager-roster', [
             'file' => $this->relativePath,
             '--apply' => true,
-            '--imported-by' => 'report-user:fixture',
+            '--imported-by' => $actor,
         ])
             ->assertExitCode(1);
 
         $this->assertDatabaseCount('store_manager_commission_roster_members', 0);
+    }
+
+    private function seedSalesforceIdentity(): void
+    {
+        SalesforceUser::query()->create([
+            'salesforce_id' => '005000000000001',
+            'name' => 'Persona fixture',
+            'is_active' => true,
+        ]);
+    }
+
+    private function seedImportActor(): string
+    {
+        $actor = ReportUser::query()->create([
+            'name' => 'Roster import admin',
+            'email' => 'roster-import-admin@example.test',
+            'password' => 'secret',
+            'role' => ReportUser::ROLE_ADMIN,
+            'is_active' => true,
+        ]);
+
+        return 'report-user:'.$actor->id;
     }
 
     private function writeCsv(string $contents): void

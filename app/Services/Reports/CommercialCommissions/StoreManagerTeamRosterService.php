@@ -3,9 +3,11 @@
 namespace App\Services\Reports\CommercialCommissions;
 
 use App\Models\CommercialCommissionRosterMember;
+use App\Models\SalesforceUser;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class StoreManagerTeamRosterService
 {
@@ -67,9 +69,39 @@ class StoreManagerTeamRosterService
             }
         });
 
-        return $keys->mapWithKeys(function (string $key) use ($rows, $conflictsByDelegation, $conflictingUserIdsByDelegation): array {
+        $identityIssuesByUser = [];
+        $identitiesByUser = Schema::hasTable('salesforce_users')
+            ? SalesforceUser::query()
+                ->whereIn('salesforce_id', $evidenceRows->pluck('salesforce_user_id')->filter()->unique()->values()->all())
+                ->get(['salesforce_id', 'name'])
+                ->groupBy('salesforce_id')
+            : collect();
+        $evidenceRows->groupBy('salesforce_user_id')->each(function ($userRows, string $userId) use ($identitiesByUser, &$identityIssuesByUser): void {
+            $identities = $identitiesByUser->get($userId, collect())->values();
+            $issues = [];
+            if ($identities->isEmpty()) {
+                $issues[] = 'El usuario Salesforce '.$userId.' no tiene una identidad local verificable.';
+            } elseif ($identities->count() > 1) {
+                $issues[] = 'El usuario Salesforce '.$userId.' tiene varias identidades locales y es ambiguo.';
+            } elseif (blank($identities->first()->name)) {
+                $issues[] = 'El usuario Salesforce '.$userId.' no tiene un nombre local verificable.';
+            } else {
+                $localName = $this->normalizeName((string) $identities->first()->name);
+                if ($userRows->contains(fn (CommercialCommissionRosterMember $row): bool => $this->normalizeName((string) $row->member_name) !== $localName)) {
+                    $issues[] = 'El nombre del roster no coincide con la identidad local del usuario Salesforce '.$userId.'.';
+                }
+            }
+            if ($issues !== []) {
+                $identityIssuesByUser[$userId] = $issues;
+            }
+        });
+
+        return $keys->mapWithKeys(function (string $key) use ($rows, $conflictsByDelegation, $conflictingUserIdsByDelegation, $identityIssuesByUser): array {
             $evidence = $rows->get($key, collect());
-            $issues = $conflictsByDelegation[$key] ?? [];
+            $issues = [
+                ...($conflictsByDelegation[$key] ?? []),
+                ...$evidence->flatMap(fn (CommercialCommissionRosterMember $row): array => $identityIssuesByUser[(string) $row->salesforce_user_id] ?? [])->all(),
+            ];
             if ($evidence->isEmpty()) {
                 return [$key => $this->pendingResult('Adscripción histórica del equipo no verificada para el periodo.')];
             }
@@ -87,7 +119,8 @@ class StoreManagerTeamRosterService
             )));
             $members = $evidence
                 ->filter(fn (CommercialCommissionRosterMember $row): bool => $row->history_verified
-                    && filled($row->salesforce_user_id))
+                    && filled($row->salesforce_user_id)
+                    && ! isset($identityIssuesByUser[(string) $row->salesforce_user_id]))
                 ->groupBy(fn (CommercialCommissionRosterMember $row): string => (string) $row->salesforce_user_id)
                 ->mapWithKeys(function ($memberRows, string $userId) use ($conflictingUserIds): array {
                     /** @var Collection<int, CommercialCommissionRosterMember> $memberRows */
@@ -116,6 +149,11 @@ class StoreManagerTeamRosterService
                 'issues' => array_values(array_unique($issues)),
             ]];
         })->all();
+    }
+
+    private function normalizeName(string $value): string
+    {
+        return Str::of($value)->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', ' ')->trim()->value();
     }
 
     /** @return array{status: string, members: array<string, array<string, mixed>>, evidence_count: int, issues: array<int, string>} */

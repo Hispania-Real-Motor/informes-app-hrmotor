@@ -52,13 +52,17 @@ class StoreManagerTeamRosterEvidenceService
         if (! $this->validSalesforceId($salesforceUserId)) {
             $errors[] = 'salesforce_user_id no es un ID Salesforce valido.';
         }
-        if ($salesforceUserId !== '' && Schema::hasTable('salesforce_users')) {
+        if ($salesforceUserId !== '' && ! Schema::hasTable('salesforce_users')) {
+            $errors[] = 'No existe el registro local de usuarios Salesforce necesario para verificar la identidad.';
+        } elseif ($salesforceUserId !== '') {
             $identityMatches = $this->localIdentities($salesforceUserId);
-            if (count($identityMatches) > 1) {
+            if ($identityMatches === []) {
+                $errors[] = 'salesforce_user_id no tiene una identidad local verificable; no se acepta solo por su formato.';
+            } elseif (count($identityMatches) > 1) {
                 $errors[] = 'salesforce_user_id tiene varias identidades locales y es ambiguo.';
-            } elseif (count($identityMatches) === 1
-                && filled($identityMatches[0]['name'] ?? null)
-                && $this->normalizeName((string) $identityMatches[0]['name']) !== $this->normalizeName($memberName)) {
+            } elseif (blank($identityMatches[0]['name'] ?? null)) {
+                $errors[] = 'La identidad local del usuario Salesforce no tiene un nombre verificable.';
+            } elseif ($this->normalizeName((string) $identityMatches[0]['name']) !== $this->normalizeName($memberName)) {
                 $errors[] = 'member_name no coincide con la identidad local del usuario Salesforce.';
             }
         }

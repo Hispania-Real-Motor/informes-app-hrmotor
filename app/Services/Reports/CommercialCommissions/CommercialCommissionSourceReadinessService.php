@@ -249,7 +249,7 @@ class CommercialCommissionSourceReadinessService
         if ($count === 0) {
             return $this->state('Objetivos de jefes de tienda', 'pending', true, null, 'No hay objetivos persistidos para el mes seleccionado.');
         }
-        if ($count !== 34) {
+        if ($month === '2026-10' && $count !== 34) {
             return $this->state('Objetivos de jefes de tienda', 'error', true, null, 'La configuración debe contener exactamente 34 objetivos por tienda.');
         }
 

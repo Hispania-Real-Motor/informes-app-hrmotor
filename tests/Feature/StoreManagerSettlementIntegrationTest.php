@@ -9,11 +9,13 @@ use App\Models\HrEmploymentDate;
 use App\Models\ReportUser;
 use App\Models\SalesforceDelegationManagerHistory;
 use App\Models\SalesforceOpportunity;
+use App\Models\SalesforceUser;
 use App\Models\StoreManagerCommissionTarget;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionClosureService;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionDashboardService;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionDelegationReviewsService;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfigService;
+use App\Services\Reports\CommercialCommissions\StoreManagerCommissionTargetService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
@@ -92,7 +94,7 @@ class StoreManagerSettlementIntegrationTest extends TestCase
             'delegation_key' => 'norte-test',
             'delegation_name' => 'Norte Test',
             'salesforce_user_id' => 'TEAM-2',
-            'member_name' => 'Comercial sin entregas',
+            'member_name' => 'Comercial compartido',
             'coverage_from' => '2026-10-01 00:00:00',
             'coverage_to' => '2026-11-01 00:00:00',
             'source' => 'fixture',
@@ -380,6 +382,95 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         $this->assertStringContainsString('propietario Salesforce', implode(' ', $row['store_manager_issues']));
     }
 
+    public function test_unknown_delivery_store_is_blocking_and_is_not_attributed_to_the_owner_store(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        SalesforceOpportunity::query()->create([
+            'salesforce_id' => 'DELIVERY-UNKNOWN-STORE',
+            'name' => 'Entrega con tienda desconocida',
+            'stage_name' => 'Cerrada ganada',
+            'record_type_name' => 'Venta',
+            'owner_id' => 'TEAM-1',
+            'owner_name' => 'Comercial fixture',
+            'owner_is_active' => true,
+            'delivery_store' => 'HR Motor Tienda Fantasma',
+            'garantia_total' => 350.0,
+            'financial_commission' => 900.0,
+            'cv_signed' => true,
+            'cv_signed_date' => '2026-10-29',
+        ]);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertSame(10, $row['deliveries_count']);
+        $this->assertSame('pending_source', $row['store_manager_status']);
+        $this->assertNull($row['total_commission']);
+        $this->assertStringContainsString('DELIVERY-UNKNOWN-STORE', implode(' ', $row['store_manager_issues']));
+        $this->assertStringContainsString('desconocida', implode(' ', $row['store_manager_issues']));
+    }
+
+    public function test_ambiguous_delivery_store_is_blocking_and_is_not_attributed_to_either_target(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        StoreManagerCommissionTarget::query()->create([
+            'month' => '2026-10',
+            'zone' => 'Norte',
+            'store_key' => 'norte-test-duplicate',
+            'store_name' => 'Norte Test',
+            'delivery_target' => 10,
+            'purchase_target' => 10,
+            'source_sha256' => hash('sha256', 'fixture-duplicate'),
+            'source_label' => 'fixture de integración',
+        ]);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $rows = collect($payload['delegation_rows'])->filter(fn (array $row): bool => str_starts_with($row['store_manager_target_key'], 'norte-test'));
+
+        $this->assertCount(2, $rows);
+        $this->assertTrue($rows->every(fn (array $row): bool => $row['deliveries_count'] === 0
+            && $row['store_manager_status'] === 'pending_source'
+            && str_contains(implode(' ', $row['store_manager_issues']), 'ambigua')));
+    }
+
+    public function test_intraday_roster_start_does_not_cover_the_boundary_date_but_covers_the_next_date(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        CommercialCommissionRosterMember::query()
+            ->where('salesforce_user_id', 'TEAM-1')
+            ->update(['coverage_from' => '2026-10-20 18:00:00']);
+        foreach ([
+            ['id' => 'DELIVERY-INTRADAY-20', 'date' => '2026-10-20'],
+            ['id' => 'DELIVERY-INTRADAY-21', 'date' => '2026-10-21'],
+        ] as $delivery) {
+            SalesforceOpportunity::query()->create([
+                'salesforce_id' => $delivery['id'],
+                'name' => 'Entrega '.$delivery['date'],
+                'stage_name' => 'Cerrada ganada',
+                'record_type_name' => 'Venta',
+                'owner_id' => 'TEAM-1',
+                'owner_name' => 'Comercial fixture',
+                'owner_is_active' => true,
+                'delivery_store' => 'HR Motor Norte Test',
+                'garantia_total' => 350.0,
+                'financial_commission' => 900.0,
+                'cv_signed' => true,
+                'cv_signed_date' => $delivery['date'],
+            ]);
+        }
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertSame('pending_source', $row['store_manager_status']);
+        $this->assertSame(1, data_get($row, 'team_components.TEAM-1.primary_deliveries'));
+        $this->assertStringContainsString('DELIVERY-INTRADAY-20', implode(' ', $row['store_manager_issues']));
+        $this->assertStringNotContainsString('DELIVERY-INTRADAY-21 queda fuera', implode(' ', $row['store_manager_issues']));
+    }
+
     public function test_unknown_store_zone_blocks_the_economic_total_without_default_minimums(): void
     {
         CarbonImmutable::setTestNow('2026-11-19 12:00:00');
@@ -446,6 +537,37 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         $this->assertSame('pending_source', $row['store_manager_status']);
         $this->assertStringContainsString('más de un mes', implode(' ', $row['store_manager_issues']));
         $this->assertNull($row['total_commission']);
+    }
+
+    public function test_correct_october_candidate_passes_target_authorization_validation_without_approving(): void
+    {
+        $reference = $this->seedApprovedOctoberTargets();
+        $dashboard = $this->storeManagerCandidateDashboard($reference['targets']);
+
+        $this->invokeStoreManagerCandidateValidation($dashboard);
+        $this->assertTrue(true);
+    }
+
+    public function test_tampered_snapshot_replacing_an_authorized_store_is_rejected(): void
+    {
+        $reference = $this->seedApprovedOctoberTargets();
+        $targets = $reference['targets'];
+        $targets[0]['store_key'] = 'fake-authorized-store';
+        $targets[0]['store_name'] = 'Tienda no autorizada';
+
+        $this->expectException(ValidationException::class);
+        $this->invokeStoreManagerCandidateValidation($this->storeManagerCandidateDashboard($targets));
+    }
+
+    public function test_tampered_snapshot_with_altered_targets_is_rejected_even_when_rows_are_recalculated(): void
+    {
+        $reference = $this->seedApprovedOctoberTargets();
+        $targets = $reference['targets'];
+        $targets[0]['target_deliveries']++;
+        $targets[0]['target_purchases']++;
+
+        $this->expectException(ValidationException::class);
+        $this->invokeStoreManagerCandidateValidation($this->storeManagerCandidateDashboard($targets));
     }
 
     public function test_closure_rejects_a_snapshot_with_a_contradictory_total(): void
@@ -573,6 +695,16 @@ class StoreManagerSettlementIntegrationTest extends TestCase
 
     private function seedStoreManagerFixture(): void
     {
+        SalesforceUser::query()->create([
+            'salesforce_id' => 'TEAM-1',
+            'name' => 'Comercial fixture',
+            'is_active' => true,
+        ]);
+        SalesforceUser::query()->create([
+            'salesforce_id' => 'TEAM-2',
+            'name' => 'Comercial compartido',
+            'is_active' => true,
+        ]);
         StoreManagerCommissionTarget::query()->create([
             'month' => '2026-10',
             'zone' => 'Norte',
@@ -684,5 +816,77 @@ class StoreManagerSettlementIntegrationTest extends TestCase
             'source_label' => 'fixture',
             'source_reference' => 'fixture-hr-two',
         ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function seedApprovedOctoberTargets(): array
+    {
+        $reference = app(StoreManagerCommissionTargetService::class)->approvedReferenceForMonth('2026-10');
+        $this->assertNotNull($reference);
+
+        foreach ($reference['targets'] as $target) {
+            StoreManagerCommissionTarget::query()->create([
+                'month' => '2026-10',
+                'zone' => $target['zone'],
+                'store_key' => $target['store_key'],
+                'store_name' => $target['store_name'],
+                'delivery_target' => $target['target_deliveries'],
+                'purchase_target' => $target['target_purchases'],
+                'source_sha256' => $target['target_source']['sha256'],
+                'source_label' => $target['target_source']['label'],
+            ]);
+        }
+
+        return $reference;
+    }
+
+    /** @param array<int, array<string, mixed>> $targets
+     *  @return array<string, mixed>
+     */
+    private function storeManagerCandidateDashboard(array $targets): array
+    {
+        $rows = array_map(fn (array $target): array => [
+            'delegation_name' => $target['store_name'],
+            'store_manager_target_key' => $target['store_key'],
+            'store_manager_plan' => 'october_2026',
+            'store_manager_status' => 'calculated',
+            'store_manager_issues' => [],
+            'reviews_technical_status' => 'available',
+            'reviews_fetched_at' => now()->toIso8601String(),
+            'store_manager_history_status' => 'verified',
+            'team_roster_status' => 'verified',
+            'team_member_count' => 0,
+            'target_deliveries' => $target['target_deliveries'],
+            'target_purchases' => $target['target_purchases'],
+            'deliveries_count' => 0,
+            'individual_deliveries_count' => 0,
+            'shared_deliveries_count' => 0,
+            'purchases_count' => 0,
+            'store_deliveries_incentive' => 0.0,
+            'store_purchases_incentive' => 0.0,
+            'store_reviews_adjustment' => 0.0,
+            'team_components' => [],
+            'team_subtotals' => [],
+            'total_commission' => 0.0,
+        ], $targets);
+
+        return [
+            'delegation_rows' => $rows,
+            'store_manager_targets' => $targets,
+            'store_manager_target_keys' => array_column($targets, 'store_key'),
+        ];
+    }
+
+    /** @param array<string, mixed> $dashboard */
+    private function invokeStoreManagerCandidateValidation(array $dashboard): void
+    {
+        $method = new \ReflectionMethod(CommercialCommissionClosureService::class, 'assertStoreManagerDashboardEconomicIntegrity');
+        $method->setAccessible(true);
+        $method->invoke(
+            app(CommercialCommissionClosureService::class),
+            $dashboard,
+            '2026-10',
+            CommercialCommissionFormulaConfigService::VERSION,
+        );
     }
 }

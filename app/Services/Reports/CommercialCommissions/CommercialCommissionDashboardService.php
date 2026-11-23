@@ -152,6 +152,11 @@ class CommercialCommissionDashboardService
             }
         }
 
+        $storeManagerPlanActive = $selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM));
+        $storeManagerTargets = $storeManagerPlanActive
+            ? $this->storeManagerTargets->forMonth($selectedMonth)
+            : [];
+
         return [
             'ready' => $blockingIssues === [],
             'month' => $selectedMonth->format('Y-m'),
@@ -164,12 +169,11 @@ class CommercialCommissionDashboardService
             'diagnostics' => $diagnostics,
             'summary_rows' => $summaryRows,
             'delegation_rows' => $delegationRows,
-            'store_manager_plan' => $selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+            'store_manager_plan' => $storeManagerPlanActive
                 ? 'october_2026'
                 : null,
-            'store_manager_target_keys' => $selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
-                ? collect($delegationRows)->pluck('store_manager_target_key')->filter()->values()->all()
-                : [],
+            'store_manager_targets' => $storeManagerTargets,
+            'store_manager_target_keys' => collect($storeManagerTargets)->pluck('store_key')->filter()->values()->all(),
         ];
     }
 
@@ -185,15 +189,7 @@ class CommercialCommissionDashboardService
         $opportunities = $this->monthlyDelegationDeliveryOpportunities($periodStart, $periodStart->addMonth())
             ->get()
             ->filter(fn (SalesforceOpportunity $row): bool => $this->countsAsDelegationDelivery($row));
-        $deliverySourceIssues = $opportunities
-            ->filter(fn (SalesforceOpportunity $row): bool => blank($row->delivery_store))
-            ->map(fn (SalesforceOpportunity $row): string => sprintf(
-                'Entrega física pendiente: %s (%s) carece de tienda de entrega verificable.',
-                (string) ($row->salesforce_id ?: 'sin Salesforce ID'),
-                (string) ($row->name ?: 'sin nombre'),
-            ))
-            ->values()
-            ->all();
+        $deliverySourceIssues = [];
         $purchases = $this->monthlyStoreManagerPurchaseOpportunities($periodStart, $periodStart->addMonth())
             ->get()
             ->values();
@@ -207,9 +203,50 @@ class CommercialCommissionDashboardService
             ->values()
             ->all();
         $purchases = $purchases->filter(fn (SalesforceOpportunity $row): bool => filled($row->purchase_appraisal_id) && filled($row->purchase_delegation_id) && filled($row->purchase_delegation_name));
-        $deliveriesByStore = $opportunities
-            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->delivery_store))
-            ->groupBy(fn (SalesforceOpportunity $row): string => $this->storeManagerTargets->normalizeKey((string) $row->delivery_store));
+        $deliveriesByStore = collect();
+        foreach ($opportunities as $row) {
+            $salesforceId = (string) ($row->salesforce_id ?: 'sin Salesforce ID');
+            $originalStore = trim((string) $row->delivery_store);
+            if ($originalStore === '') {
+                $deliverySourceIssues[] = sprintf(
+                    'Entrega física pendiente: %s (%s) carece de tienda de entrega verificable.',
+                    $salesforceId,
+                    (string) ($row->name ?: 'sin nombre'),
+                );
+
+                continue;
+            }
+
+            $normalizedStore = $this->storeManagerTargets->normalizeKey($originalStore);
+            $matches = collect($targets)->filter(fn (array $target): bool => $normalizedStore === (string) $target['store_key']
+                || $normalizedStore === $this->storeManagerTargets->normalizeKey((string) $target['store_name']))->values();
+            if ($matches->isEmpty()) {
+                $deliverySourceIssues[] = sprintf(
+                    'Entrega física pendiente: %s contiene una tienda desconocida "%s"; no se ha atribuido a ningún objetivo.',
+                    $salesforceId,
+                    $originalStore,
+                );
+
+                continue;
+            }
+            if ($matches->count() > 1) {
+                $deliverySourceIssues[] = sprintf(
+                    'Entrega física pendiente: %s contiene una tienda ambigua "%s"; coincide con %s.',
+                    $salesforceId,
+                    $originalStore,
+                    $matches->pluck('store_name')->implode(', '),
+                );
+
+                continue;
+            }
+
+            $storeKey = (string) $matches->first()['store_key'];
+            $deliveriesByStore->put(
+                $storeKey,
+                $deliveriesByStore->get($storeKey, collect())->push($row),
+            );
+        }
+        $deliverySourceIssues = array_values(array_unique($deliverySourceIssues));
         $purchaseAttributions = [];
         $purchaseConflicts = [];
         foreach ($purchases as $row) {
@@ -589,20 +626,21 @@ class CommercialCommissionDashboardService
             return false;
         }
 
-        $operationDate = CarbonImmutable::parse($operation->cv_signed_date->toDateString())->startOfDay();
+        $operationStart = CarbonImmutable::parse($operation->cv_signed_date->toDateString())->startOfDay();
+        $operationEnd = $operationStart->addDay();
 
         foreach ($member['coverage_intervals'] ?? [] as $interval) {
             try {
-                $coverageFrom = CarbonImmutable::parse((string) ($interval['from'] ?? ''))->startOfDay();
+                $coverageFrom = CarbonImmutable::parse((string) ($interval['from'] ?? ''));
                 $coverageTo = blank($interval['to'] ?? null)
                     ? null
-                    : CarbonImmutable::parse((string) $interval['to'])->startOfDay();
+                    : CarbonImmutable::parse((string) $interval['to']);
             } catch (\Throwable) {
                 continue;
             }
 
-            if ($operationDate->greaterThanOrEqualTo($coverageFrom)
-                && ($coverageTo === null || $operationDate->lessThan($coverageTo))) {
+            if ($coverageFrom->lessThanOrEqualTo($operationStart)
+                && ($coverageTo === null || $operationEnd->lessThanOrEqualTo($coverageTo))) {
                 return true;
             }
         }

@@ -50,6 +50,7 @@ class CommercialCommissionClosureService
         private readonly CommercialCommissionFormulaConfigService $formulaConfig,
         private readonly CommercialCommissionSourceReadinessService $sourceReadiness,
         private readonly StoreManagerCommissionPlanCalculator $storeManagerCalculator,
+        private readonly StoreManagerCommissionTargetService $storeManagerTargets,
     ) {}
 
     /** @return array<string, mixed> */
@@ -550,16 +551,44 @@ class CommercialCommissionClosureService
         }
 
         $rows = $dashboard['delegation_rows'] ?? [];
-        $targetKeys = $dashboard['store_manager_target_keys']
-            ?? collect($rows)->pluck('store_manager_target_key')->filter()->values()->all();
-        $targetKeys = is_array($targetKeys) ? array_values(array_map('strval', $targetKeys)) : [];
+        $frozenTargets = $dashboard['store_manager_targets'] ?? null;
+        $authorizedTargets = $this->storeManagerTargets->forMonth($month);
+        $reference = $this->storeManagerTargets->approvedReferenceForMonth($month);
+        $frozenTargets = is_array($frozenTargets) ? $this->canonicalTargetDefinitions($frozenTargets) : [];
+        $authorizedTargets = $this->canonicalTargetDefinitions($authorizedTargets);
+        $referenceTargets = $reference === null ? [] : $this->canonicalTargetDefinitions($reference['targets']);
+        if ($reference !== null) {
+            $referenceIsComplete = count($referenceTargets) === 34
+                && $reference['delivery_total'] === 907
+                && $reference['purchase_total'] === 499;
+            if (! $referenceIsComplete || $authorizedTargets !== $referenceTargets || $frozenTargets !== $referenceTargets) {
+                throw ValidationException::withMessages([
+                    'snapshot' => 'Los objetivos congelados no coinciden con la referencia autorizada e inmutable del periodo.',
+                ]);
+            }
+        } elseif ($authorizedTargets === [] || $frozenTargets !== $authorizedTargets) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'Los objetivos congelados no coinciden con los objetivos autorizados persistidos del periodo.',
+            ]);
+        }
+
+        $targetKeys = array_map('strval', array_column($frozenTargets, 'store_key'));
+        $dashboardTargetKeys = $dashboard['store_manager_target_keys'] ?? null;
+        $dashboardTargetKeys = is_array($dashboardTargetKeys) ? array_values(array_map('strval', $dashboardTargetKeys)) : [];
+        $expectedTargetKeys = $targetKeys;
+        sort($expectedTargetKeys);
+        $actualDashboardTargetKeys = $dashboardTargetKeys;
+        sort($actualDashboardTargetKeys);
         $isOctober = $month === '2026-10';
-        $expectedTargetCount = $isOctober ? 34 : count($targetKeys);
+        $expectedTargetCount = count($frozenTargets);
+        $targetByKey = collect($frozenTargets)->keyBy('store_key')->all();
 
         if (! is_array($rows)
             || $rows === []
+            || $frozenTargets === []
             || $targetKeys === []
             || count($targetKeys) !== count(array_unique($targetKeys))
+            || $actualDashboardTargetKeys !== $expectedTargetKeys
             || count($rows) !== count($targetKeys)
             || ($isOctober && count($targetKeys) !== 34)) {
             throw ValidationException::withMessages([
@@ -569,7 +598,7 @@ class CommercialCommissionClosureService
             ]);
         }
 
-        $invalidRow = collect($rows)->first(function (mixed $rawRow) use ($targetKeys): bool {
+        $invalidRow = collect($rows)->first(function (mixed $rawRow) use ($targetKeys, $targetByKey): bool {
             if (! is_array($rawRow)) {
                 return true;
             }
@@ -590,6 +619,7 @@ class CommercialCommissionClosureService
                 $row['total_commission'] ?? null,
             ];
             $targetKey = (string) ($row['store_manager_target_key'] ?? '');
+            $targetDefinition = $targetByKey[$targetKey] ?? null;
             $componentKeys = is_array($components) ? array_map('strval', array_keys($components)) : [];
             $subtotalKeys = is_array($subtotals) ? array_map('strval', array_keys($subtotals)) : [];
             $countsCoherent = is_numeric($row['deliveries_count'] ?? null)
@@ -603,7 +633,7 @@ class CommercialCommissionClosureService
                 ? $this->storeManagerCalculator->storeKpiIncentive((int) $row['purchases_count'], (int) $row['target_purchases'])['incentive']
                 : null;
 
-            if (($row['store_manager_plan'] ?? null) !== 'october_2026'
+            if (! is_string($row['store_manager_plan'] ?? null) || trim((string) $row['store_manager_plan']) === ''
                 || ($row['store_manager_status'] ?? null) !== 'calculated'
                 || ($row['reviews_technical_status'] ?? null) !== 'available'
                 || blank($row['reviews_fetched_at'] ?? null)
@@ -612,6 +642,10 @@ class CommercialCommissionClosureService
                 || filled($row['store_manager_issues'] ?? [])
                 || blank($row['delegation_name'] ?? null)
                 || ! in_array($targetKey, $targetKeys, true)
+                || ! is_array($targetDefinition)
+                || (string) ($row['delegation_name'] ?? '') !== (string) $targetDefinition['store_name']
+                || (int) ($row['target_deliveries'] ?? -1) !== (int) $targetDefinition['target_deliveries']
+                || (int) ($row['target_purchases'] ?? -1) !== (int) $targetDefinition['target_purchases']
                 || ! is_array($subtotals)
                 || ! is_array($components)
                 || ! is_numeric($row['team_member_count'] ?? null)
@@ -662,6 +696,29 @@ class CommercialCommissionClosureService
                 'snapshot' => 'El candidato de jefes de tienda no contiene liquidaciones íntegras y conciliables para todas las tiendas objetivo congeladas.',
             ]);
         }
+    }
+
+    /** @param array<int, mixed> $targets
+     *  @return array<int, array{zone: string, store_key: string, store_name: string, target_deliveries: int, target_purchases: int, target_source: array{sha256: string, label: string}}>
+     */
+    private function canonicalTargetDefinitions(array $targets): array
+    {
+        return collect($targets)
+            ->filter(fn (mixed $target): bool => is_array($target))
+            ->map(fn (array $target): array => [
+                'zone' => (string) ($target['zone'] ?? ''),
+                'store_key' => (string) ($target['store_key'] ?? ''),
+                'store_name' => (string) ($target['store_name'] ?? ''),
+                'target_deliveries' => (int) ($target['target_deliveries'] ?? -1),
+                'target_purchases' => (int) ($target['target_purchases'] ?? -1),
+                'target_source' => [
+                    'sha256' => (string) data_get($target, 'target_source.sha256', ''),
+                    'label' => (string) data_get($target, 'target_source.label', ''),
+                ],
+            ])
+            ->sortBy('store_key')
+            ->values()
+            ->all();
     }
 
     private function isContactCenterRosterPlan(array $dashboard): bool

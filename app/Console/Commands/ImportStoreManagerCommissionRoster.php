@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\ReportUser;
 use App\Services\Reports\CommercialCommissions\StoreManagerTeamRosterEvidenceService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -78,9 +79,12 @@ class ImportStoreManagerCommissionRoster extends Command
             return self::SUCCESS;
         }
 
-        $importedBy = trim((string) $this->option('imported-by'));
-        if ($importedBy === '' || mb_strlen($importedBy) > 255) {
-            $this->error('Debe indicarse --imported-by con un actor o servicio identificable de hasta 255 caracteres.');
+        try {
+            $importedBy = $this->resolveImporter((string) $this->option('imported-by'));
+        } catch (ValidationException $exception) {
+            foreach ($exception->errors()['imported_by'] ?? ['El actor de importación no está autorizado.'] as $error) {
+                $this->error($error);
+            }
 
             return self::FAILURE;
         }
@@ -108,6 +112,34 @@ class ImportStoreManagerCommissionRoster extends Command
         $this->info('Import completado: '.count($validated).' filas de roster registradas.');
 
         return self::SUCCESS;
+    }
+
+    private function resolveImporter(string $value): string
+    {
+        $value = trim($value);
+        if (! preg_match('/^report-user:(\d+)$/', $value, $matches)) {
+            throw ValidationException::withMessages([
+                'imported_by' => ['--imported-by debe identificar un ReportUser activo mediante report-user:<id>; no se acepta texto libre.'],
+            ]);
+        }
+
+        $id = (int) $matches[1];
+        $authorized = ReportUser::query()
+            ->whereKey($id)
+            ->where('is_active', true)
+            ->whereIn('role', [
+                ReportUser::ROLE_ADMIN,
+                ReportUser::ROLE_DIRECTOR,
+                ReportUser::ROLE_COMMISSION_AUDITOR,
+            ])
+            ->exists();
+        if (! $authorized) {
+            throw ValidationException::withMessages([
+                'imported_by' => ['El ReportUser indicado no existe, está inactivo o no tiene un rol autorizado para importar evidencia.'],
+            ]);
+        }
+
+        return 'report-user:'.$id;
     }
 
     /** @return array<int, array<string, string>> */
