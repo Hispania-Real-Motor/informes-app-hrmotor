@@ -20,6 +20,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class StoreManagerSettlementIntegrationTest extends TestCase
@@ -548,6 +549,62 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function test_october_candidate_is_rejected_when_the_approved_reference_is_unavailable(): void
+    {
+        $reference = $this->seedApprovedOctoberTargets();
+        $targetService = Mockery::mock(StoreManagerCommissionTargetService::class);
+        $targetService->shouldReceive('forMonth')->once()->with('2026-10')->andReturn($reference['targets']);
+        $targetService->shouldReceive('approvedReferenceForMonth')->once()->with('2026-10')->andReturn(null);
+        $this->app->instance(StoreManagerCommissionTargetService::class, $targetService);
+
+        $this->expectException(ValidationException::class);
+        $this->invokeStoreManagerCandidateValidation($this->storeManagerCandidateDashboard($reference['targets']));
+    }
+
+    public function test_candidate_with_available_reviews_but_missing_frozen_metrics_is_rejected(): void
+    {
+        $reference = $this->seedApprovedOctoberTargets();
+
+        $this->expectException(ValidationException::class);
+        $this->invokeStoreManagerCandidateValidation(
+            $this->storeManagerCandidateDashboard($reference['targets'], null, null, 0.0),
+        );
+    }
+
+    public function test_candidate_does_not_round_the_review_average_before_applying_the_threshold(): void
+    {
+        $reference = $this->seedApprovedOctoberTargets();
+
+        $this->expectException(ValidationException::class);
+        $this->invokeStoreManagerCandidateValidation(
+            $this->storeManagerCandidateDashboard($reference['targets'], 1, 3.995, 150.0),
+        );
+    }
+
+    #[DataProvider('validStoreManagerReviewSnapshots')]
+    public function test_valid_frozen_review_snapshots_are_accepted(
+        int $reviewsCount,
+        ?float $averageRating,
+        float $reviewAdjustment,
+    ): void {
+        $reference = $this->seedApprovedOctoberTargets();
+
+        $this->invokeStoreManagerCandidateValidation(
+            $this->storeManagerCandidateDashboard($reference['targets'], $reviewsCount, $averageRating, $reviewAdjustment),
+        );
+        $this->assertTrue(true);
+    }
+
+    /** @return array<string, array{int, ?float, float}> */
+    public static function validStoreManagerReviewSnapshots(): array
+    {
+        return [
+            'high rating' => [1, 4.2, 150.0],
+            'below threshold without rounding' => [1, 3.995, -150.0],
+            'verified zero reviews' => [0, null, -150.0],
+        ];
+    }
+
     public function test_tampered_snapshot_replacing_an_authorized_store_is_rejected(): void
     {
         $reference = $this->seedApprovedOctoberTargets();
@@ -843,7 +900,12 @@ class StoreManagerSettlementIntegrationTest extends TestCase
     /** @param array<int, array<string, mixed>> $targets
      * @return array<string, mixed>
      */
-    private function storeManagerCandidateDashboard(array $targets): array
+    private function storeManagerCandidateDashboard(
+        array $targets,
+        ?int $reviewsCount = 1,
+        ?float $averageRating = 4.2,
+        float $reviewAdjustment = 150.0,
+    ): array
     {
         $rows = array_map(fn (array $target): array => [
             'delegation_name' => $target['store_name'],
@@ -858,16 +920,18 @@ class StoreManagerSettlementIntegrationTest extends TestCase
             'team_member_count' => 0,
             'target_deliveries' => $target['target_deliveries'],
             'target_purchases' => $target['target_purchases'],
+            'reviews_count' => $reviewsCount,
+            'reviews_average_rating' => $averageRating,
             'deliveries_count' => 0,
             'individual_deliveries_count' => 0,
             'shared_deliveries_count' => 0,
             'purchases_count' => 0,
             'store_deliveries_incentive' => 0.0,
             'store_purchases_incentive' => 0.0,
-            'store_reviews_adjustment' => 0.0,
+            'store_reviews_adjustment' => $reviewAdjustment,
             'team_components' => [],
             'team_subtotals' => [],
-            'total_commission' => 0.0,
+            'total_commission' => max(0.0, $reviewAdjustment),
         ], $targets);
 
         return [
