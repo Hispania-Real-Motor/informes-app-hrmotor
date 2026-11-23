@@ -601,8 +601,7 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         int $reviewsCount,
         ?float $averageRating,
         float $reviewAdjustment,
-    ): void
-    {
+    ): void {
         $reference = $this->seedApprovedOctoberTargets();
 
         $this->invokeStoreManagerCandidateValidation(
@@ -921,8 +920,7 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         ?int $reviewsCount = 1,
         ?float $averageRating = 4.2,
         float $reviewAdjustment = 150.0,
-    ): array
-    {
+    ): array {
         $rows = array_map(fn (array $target): array => [
             'delegation_name' => $target['store_name'],
             'store_manager_target_key' => $target['store_key'],
