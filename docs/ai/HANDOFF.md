@@ -8980,3 +8980,21 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pendiente explícito: ejecutar la suite Feature de atribución con fixtures de
   históricos fuera de período, UTM sin campaña acreditada, relación contradictoria
   y duplicidad. No se declara esa cobertura de pruebas como verificada localmente.
+
+## 2026-11-23 — PR #159: revisión del contrato de agregación
+
+- Revisión del HEAD `5280a210`: `mergeRows()` no conserva `opportunity_key`,
+  porque su contrato es una fila agregada por campaña. La detección anterior
+  basada en ese campo podía clasificar una respuesta parcial válida como no
+  disponible.
+- Corrección mínima: la disponibilidad parcial se determina solo mediante
+  contadores comerciales materializados por relaciones verificadas
+  (`opportunities`, `reservations`, `sales`, `purchases` o
+  `appraisals_generated` positivos). No se usan UTM ni la mera existencia de
+  una fila.
+- El aviso público distingue ahora resultados confirmados con cobertura
+  incompleta de ausencia total de relaciones confirmadas; no se combinan los
+  mensajes de “disponible” y “todo bloqueado”.
+- Tests JS ejecutados: 52/52. No hay `vendor`, `node_modules`, PHP, Composer ni
+  npm disponibles en este worktree; PHPUnit, Pint y build quedan sin ejecutar y
+  se mantienen como pendientes verificables de CI.

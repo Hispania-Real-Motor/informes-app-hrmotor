@@ -524,8 +524,16 @@ class CampaignDashboardDatasetService
                 ->contains(static fn (string $field): bool => filled($renderFilters[$field] ?? null)), 422,
                 'La evidencia de Opportunity no admite ese filtro.');
             $allRows = $this->applyOperationalClassifications($this->mergeRows($metricRows, $attributions, $renderFilters));
+            // mergeRows() deliberately exposes campaign aggregates, not
+            // individual opportunity identities. Use only materialized,
+            // relationship-derived counters; never infer confirmation from
+            // UTM fields or from the presence of an aggregate row.
             $confirmedOpportunityEvidence = collect($allRows)->contains(
-                static fn (array $row): bool => filled($row['opportunity_key'] ?? null)
+                static fn (array $row): bool => collect([
+                    $row['opportunities'] ?? 0, $row['reservations'] ?? 0,
+                    $row['sales'] ?? 0, $row['purchases'] ?? 0,
+                    $row['appraisals_generated'] ?? 0,
+                ])->contains(static fn ($value): bool => (int) $value > 0)
             );
             if (! $opportunityComplete) {
                 $allRows = array_map(static function (array $row): array {
@@ -604,7 +612,9 @@ class CampaignDashboardDatasetService
             $base['dataset_freshness_reason'] = 'Intereses operativos provisionales; cierre económico y fuentes comerciales versionados por separado.';
             $base['warnings'] = [
                 'Atribución operativa provisional de '.$month.'; no constituye certificación histórica ni sustituye el informe publicado.',
-                ...($opportunityComplete ? [] : ['Opportunity, reservas, ventas e importes no disponibles hasta acreditar snapshots compatibles.']),
+                ...($opportunityComplete ? [] : [$confirmedOpportunityEvidence
+                    ? 'Resultados comerciales confirmados con cobertura incompleta; las relaciones pendientes no se presentan como válidas.'
+                    : 'Resultados comerciales no disponibles: no hay relaciones confirmadas en el universo atribuible.']),
             ];
             $base['public_warnings'] = $base['warnings'];
             $base['filters']['lead_types'] = [
