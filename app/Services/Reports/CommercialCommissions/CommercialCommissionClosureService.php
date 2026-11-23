@@ -51,8 +51,7 @@ class CommercialCommissionClosureService
         private readonly CommercialCommissionSourceReadinessService $sourceReadiness,
         private readonly StoreManagerCommissionPlanCalculator $storeManagerCalculator,
         private readonly StoreManagerCommissionTargetService $storeManagerTargets,
-    ) {
-    }
+    ) {}
 
     /** @return array<string, mixed> */
     public function status(?string $month, string $scope = CommercialCommissionClosure::SCOPE_COMMERCIALS): array
