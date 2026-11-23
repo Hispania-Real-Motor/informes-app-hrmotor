@@ -8957,3 +8957,26 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pendiente: ejecutar en CI la suite Laravel/Pint/build y validar con el dataset
   operativo autorizado que la cobertura parcial y los costes confirmados llegan
   a las tarjetas y comparativas. No se declara esa verificación como realizada.
+
+## 2026-11-23 — PR #159: delimitación del universo comercial operativo
+
+- Se volvió a verificar el HEAD antes del cambio: `a1f4567`.
+- `CampaignOperationalAttributionBuilder` conserva el lote completo para las
+  filas de auditoría, pero ahora construye primero el subconjunto que tiene
+  evidencia de adquisición, matching inequívoco y campaña de plataforma elegible
+  (`google_ads` o `meta`). Solo ese subconjunto se envía a
+  `opportunitiesForBatch`; por tanto, históricos, no atribuibles y campañas
+  excluidas no contaminan `unresolvedRelationships` ni la cobertura comercial.
+- No se alteran sincronizadores, matching oficial, atribuciones persistidas,
+  permisos, cierres ni runs activos. El caso de las 1.965/46/seis relaciones
+  comunicado externamente no se ha asumido como dato local ni como regla.
+- La cobertura continúa siendo completa únicamente cuando la evidencia de
+  Opportunity está disponible y no quedan relaciones sin resolver dentro del
+  universo elegible. Fuera de ese universo no se convierten ausencias normales
+  en incidencias Salesforce.
+- Verificaciones: revisión de HEAD y diff; tests JS 52/52, `node --check` y
+  `git diff --check` deberán mantenerse en CI junto con PHPUnit/Pint/build.
+  PHPUnit, Pint y build no se ejecutaron localmente por ausencia de PHP/npm.
+- Pendiente explícito: ejecutar la suite Feature de atribución con fixtures de
+  históricos fuera de período, UTM sin campaña acreditada, relación contradictoria
+  y duplicidad. No se declara esa cobertura de pruebas como verificada localmente.

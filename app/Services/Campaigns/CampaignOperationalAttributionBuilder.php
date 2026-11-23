@@ -103,8 +103,25 @@ final class CampaignOperationalAttributionBuilder
             $this->interests->eachBatch($source, function (array $batch) use ($runId, $monthKey, $endDate, $token, $source, $opportunity, $lookup, &$count, &$processed, &$incidents, &$unresolvedRelationships): void {
                 $batch = array_values(array_filter($batch, static fn (array $interest): bool => CarbonImmutable::parse($interest['functional_created_at'], 'UTC')
                     ->setTimezone('Europe/Madrid')->toDateString() <= $endDate));
+                // Keep the full batch for audit rows, but scope commercial
+                // relationship coverage to interests that the existing matcher
+                // proves are attributable to an eligible ad campaign.
+                $eligibleInterests = [];
+                $campaignsByInterest = [];
+                foreach ($batch as $candidate) {
+                    $candidateLead = $this->asMatchingInterest($candidate);
+                    if (! $this->hasAcquisitionEvidence($candidateLead)) {
+                        continue;
+                    }
+                    $candidateCampaign = $this->matching->resolveOperationalCampaign($candidateLead, $lookup);
+                    $campaignsByInterest[$candidate['salesforce_id']] = $candidateCampaign;
+                    if ($candidateCampaign['campaign_source_type'] === 'platform_campaign'
+                        && in_array($candidateCampaign['platform'], ['google_ads', 'meta'], true)) {
+                        $eligibleInterests[] = $candidate;
+                    }
+                }
                 $relationshipEvidence = $opportunity['available']
-                    ? $this->opportunitiesForBatch($batch, $opportunity['direct_run_id'], $source['run_id'])
+                    ? $this->opportunitiesForBatch($eligibleInterests, $opportunity['direct_run_id'], $source['run_id'])
                     : ['resolved' => [], 'unresolved' => 0];
                 $opportunities = $relationshipEvidence['resolved'];
                 $unresolvedRelationships += $relationshipEvidence['unresolved'];
@@ -115,7 +132,8 @@ final class CampaignOperationalAttributionBuilder
                     if (! $this->hasAcquisitionEvidence($lead)) {
                         continue;
                     }
-                    $campaign = $this->matching->resolveOperationalCampaign($lead, $lookup);
+                    $campaign = $campaignsByInterest[$interest['salesforce_id']]
+                        ?? $this->matching->resolveOperationalCampaign($lead, $lookup);
                     $relationship = $opportunities[$interest['salesforce_id']] ?? null;
                     $flags = $opportunity['available']
                         ? $this->matching->operationalOpportunityFlags($lead, $relationship)
