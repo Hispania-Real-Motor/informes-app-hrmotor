@@ -841,7 +841,7 @@ class StoreManagerSettlementIntegrationTest extends TestCase
     }
 
     /** @param array<int, array<string, mixed>> $targets
-     *  @return array<string, mixed>
+     * @return array<string, mixed>
      */
     private function storeManagerCandidateDashboard(array $targets): array
     {

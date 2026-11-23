@@ -51,7 +51,8 @@ class CommercialCommissionClosureService
         private readonly CommercialCommissionSourceReadinessService $sourceReadiness,
         private readonly StoreManagerCommissionPlanCalculator $storeManagerCalculator,
         private readonly StoreManagerCommissionTargetService $storeManagerTargets,
-    ) {}
+    ) {
+    }
 
     /** @return array<string, mixed> */
     public function status(?string $month, string $scope = CommercialCommissionClosure::SCOPE_COMMERCIALS): array
@@ -699,7 +700,7 @@ class CommercialCommissionClosureService
     }
 
     /** @param array<int, mixed> $targets
-     *  @return array<int, array{zone: string, store_key: string, store_name: string, target_deliveries: int, target_purchases: int, target_source: array{sha256: string, label: string}}>
+     * @return array<int, array{zone: string, store_key: string, store_name: string, target_deliveries: int, target_purchases: int, target_source: array{sha256: string, label: string}}>
      */
     private function canonicalTargetDefinitions(array $targets): array
     {
