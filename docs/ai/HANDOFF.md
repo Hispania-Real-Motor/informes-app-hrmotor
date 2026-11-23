@@ -9353,7 +9353,9 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Reproducción: en `941de10` se reprodujeron los tres defectos con cuatro
   fallos esperados y 1.830 pruebas pasadas. La corrección funcional en
   `2791d1f` pasó `CI / test`, `CI / october-provisional-mariadb` y
-  `Documentation integrity / docs-integrity` en el run `45145172467`.
+  `Documentation integrity / docs-integrity` en el run `45145172467`. La
+  documentación quedó publicada en `38ad1eb`; sus checks finales pasaron en
+  `CI` run `45148009607` y `Documentation integrity` run `45148009604`.
   Localmente `git diff --check` es correcto; no hay PHP, Composer,
   `vendor/autoload.php` ni un runtime Python utilizable, por lo que PHPUnit,
   Pint, lint PHP y el validador documental no se ejecutaron localmente.
@@ -9363,8 +9365,9 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   validador; el agente principal revisó el diff y completó este registro como
   fallback, sin atribuirle la validación final.
 - Contrato de PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
-  `Docs-Scope: commissions`. La documentación queda pendiente de su commit y
-  de la nueva ejecución de CI sobre el SHA final.
+  `Docs-Scope: commissions`. El commit documental `38ad1eb8d4dc5c3b33165686807b9e38a1493b6e`
+  está publicado en las dos ramas remotas de Comisiones y sus tres checks
+  finales están verdes.
 - Acciones manuales: revisar el diff completo antes de fusionar, mantener la
   PR en draft y aportar la procedencia empresarial del CSV, la evidencia
   autorizada del roster, la conciliación Salesforce/RR. HH. y cualquier
