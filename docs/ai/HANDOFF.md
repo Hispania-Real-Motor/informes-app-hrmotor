@@ -9237,3 +9237,72 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   suite completa, ejecutar el validador documental, revisar el diff final y
   solo después decidir sobre commit/PR. En esta sesión no se hizo commit, push,
   merge, sincronización, despliegue ni importación real.
+
+## Correcciones residuales de integridad económica PR 158 (2026-11-23)
+
+- Alcance: se mantuvo exclusivamente el worktree
+  `C:\Users\Usuario\Herd\informes-app-hrmotor-comisiones`, en la rama local
+  `work/comisiones-20261120`. El commit funcional `1abb3aa` se publicó por
+  fast-forward en el head `codex/store-manager-commissions-october-2026` del
+  PR 158; el PR continúa abierto, en draft y sin conflictos. No se tocó el
+  worktree padre, Campañas, otra rama, migraciones ejecutadas, sincronizaciones,
+  despliegues ni datos reales.
+- Cambios funcionales: `CommercialCommissionDashboardService` ahora conserva
+  incidencias con ID Salesforce y valor original para tiendas de entrega
+  desconocidas o ambiguas, sin atribuirlas por propietario ni incluirlas en
+  incentivos. La cobertura del roster exige que el intervalo semiabierto
+  contenga el día completo representado por un `cv_signed_date` DATE-only;
+  una entrada intradía no cubre su propio día sin hora de firma exacta.
+- Identidad y auditoría: la evidencia de roster exige exactamente una
+  identidad local `SalesforceUser` con nombre verificable y coincidente. La
+  resolución del dashboard vuelve a marcar como pendiente cualquier evidencia
+  histórica que carezca de esa identidad. `--imported-by` ya no acepta texto
+  libre: para `--apply` debe ser `report-user:<id>` de un `ReportUser` activo
+  con rol admin, director o auditor de comisiones; `recorded_by` sigue siendo
+  el actor consignado en la evidencia original.
+- Objetivos y snapshot: el dashboard congela objetivos, claves, nombres,
+  zonas, valores y procedencia. La aprobación contrasta el contenido con la
+  tabla autorizada del mes y, para octubre, con el CSV versionado y su SHA-256,
+  exigiendo 34 tiendas y totales 907/499. Los meses futuros usan el conjunto
+  persistido específico del periodo sin imponer 34 tiendas; la readiness de
+  octubre conserva el contrato 34.
+- Archivos modificados: `app/Console/Commands/ImportStoreManagerCommissionRoster.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionClosureService.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionDashboardService.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionSourceReadinessService.php`,
+  `app/Services/Reports/CommercialCommissions/StoreManagerCommissionTargetService.php`,
+  `app/Services/Reports/CommercialCommissions/StoreManagerTeamRosterEvidenceService.php`,
+  `app/Services/Reports/CommercialCommissions/StoreManagerTeamRosterService.php`,
+  `tests/Feature/StoreManagerSettlementIntegrationTest.php` y
+  `tests/Feature/StoreManagerTeamRosterEvidenceImportTest.php`. Este bloque
+  documental añade únicamente esta entrada; los siete documentos modificados
+  previamente se conservaron.
+- Base de datos/configuración: no se añadieron tablas, columnas, migraciones ni
+  variables de entorno. No se ejecutaron comandos de migración ni importación.
+- Seguridad: se evita atribución silenciosa de una tienda no autorizada, se
+  bloquean identidades Salesforce ausentes/ambiguas y actores de importación no
+  verificables, y la aprobación no confía en claves o importes auto-declarados
+  por el snapshot.
+- Rendimiento: la resolución de identidades Salesforce se hace en una consulta
+  por lote para el roster mensual; la validación de objetivos trabaja sobre 34
+  filas de referencia y el snapshot ya congelado, sin consultas Salesforce en
+  HTTP ni recalcular la liquidación en aprobación.
+- Verificaciones locales: `git diff --check` correcto. El entorno local no
+  tiene PHP, Composer, `vendor/autoload.php` ni un runtime Python utilizable;
+  por ello no se ejecutaron localmente PHPUnit, Pint, lint PHP ni el validador
+  documental.
+- Verificaciones CI del SHA `1abb3aa`: `CI / test`,
+  `CI / october-provisional-mariadb` y `Documentation integrity / docs-integrity`
+  terminaron correctamente. Incluyen la suite focalizada, regresiones y la
+  comprobación documental. Se añadieron pruebas para tienda desconocida,
+  tienda ambigua, identidad Salesforce ausente, actor inválido, límite
+  intradía, candidato correcto y snapshots manipulados.
+- Riesgos/pendientes: la evidencia externa autorizada del roster y la eventual
+  importación productiva siguen pendientes de aportación humana. Antes de usar
+  datos reales debe revisarse el diff de la PR y ejecutar los comandos de
+  importación solo en modo `--dry-run` en un entorno controlado. No se aprobó
+  ninguna liquidación económica.
+- Mantenimiento documental: se invocó `report_docs_maintainer` con el diff
+  funcional y las referencias exigidas, pero no devolvió un resultado utilizable
+  tras dos esperas y se cerró. El agente principal revisó y mantuvo estos
+  documentos como fallback, sin atribuir al agente cambios que no realizó.

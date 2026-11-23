@@ -1635,3 +1635,31 @@ operaciones individuales; una penalización puede seguir derivándose del
 componente individual no alcanzado, pero no atribuye economía a la operación
 compartida. Esta separación evita duplicar importes económicos y mantiene la
 atribución revisable sin inventar adscripciones.
+
+## 2026-11-23 — integridad residual de objetivos, identidades y vigencias
+
+Las tiendas de entrega se resuelven únicamente contra objetivos autorizados
+del periodo mediante clave canónica y nombre normalizado. Se eligió bloquear y
+conservar la incidencia con el Opportunity ID y el valor original ante valores
+vacíos, desconocidos o ambiguos; no se usa el propietario como fallback porque
+eso convertiría una identidad física no verificada en importe económico.
+
+La fecha `cv_signed_date` es DATE-only, por lo que se decidió exigir la
+contención del día completo en el intervalo semiabierto del roster. Esta
+decisión evita atribuir un día que empieza antes de una cobertura intradía y
+mantiene la semántica `[coverage_from, coverage_to)` sin inventar una hora de
+firma.
+
+La identidad del roster se verifica contra una única fila local nombrada de
+`salesforce_users`; un ID con formato válido no es evidencia suficiente. El
+actor de importación se limita al identificador canónico `report-user:<id>` de
+un usuario activo con rol autorizado, separado de `recorded_by`, porque el
+campo de auditoría no debe aceptar texto libre ni perder el responsable de la
+evidencia.
+
+La aprobación de octubre compara el snapshot congelado y la tabla persistida
+con el CSV de referencia versionado, su SHA-256 y los totales 907/499. Para
+meses posteriores se conserva la misma validación de contenido congelado, pero
+se usa el conjunto autorizado específico del mes y no una cardinalidad 34.
+Así se evita que un snapshot internamente coherente pueda autorizar una tienda,
+objetivo o procedencia que no pertenecen al periodo.
