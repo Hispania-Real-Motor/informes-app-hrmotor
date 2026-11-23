@@ -19,13 +19,7 @@
     @endif
     <section class="filters card campaigns-filter-bar">
         @if ($reportUserCanViewOperationalCampaigns ?? false)
-            <div class="filter-group" id="campaignDataSourceGroup" hidden>
-                <label for="campaignDataSource">Origen comercial</label>
-                <select id="campaignDataSource">
-                    <option value="official">Oficial publicado</option>
-                    <option value="operational">Operativo provisional</option>
-                </select>
-            </div>
+            <input type="hidden" id="campaignDataSource" value="official">
         @endif
         <div class="filter-group">
             <label for="periodPreset">Periodo</label>
@@ -68,8 +62,8 @@
         <div class="filter-group">
             <label for="campaignStatus">Estado</label>
             <select id="campaignStatus">
-                <option value="">Todas</option>
-                <option value="active" selected>Activas según criterio histórico</option>
+                <option value="" selected>Todas</option>
+                <option value="active">Activas según criterio histórico</option>
                 <option value="inactive">Inactivas según criterio histórico</option>
             </select>
         </div>

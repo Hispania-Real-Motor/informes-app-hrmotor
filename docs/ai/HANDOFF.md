@@ -8933,3 +8933,27 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (52/52), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos.
 - Build: `npm run build` no ejecutable porque Vite no está instalado en el entorno. No se ejecutaron migraciones, sincronizaciones, backfills ni procesos de producción.
 - Riesgos pendientes: falta validar visualmente con Herd compilado en un entorno con dependencias frontend instaladas; el fallback textual del logo conserva accesibilidad si la imagen falla.
+
+## 2026-11-23 — PR #159: certificación parcial y filtros de Campañas
+
+- Se mantuvo el trabajo exclusivamente en la PR #159 y en su rama remota; no se
+  crearon ramas nuevas, no hubo merge, despliegue, migración, backfill ni
+  sincronización.
+- La cobertura operativa incompleta ya no elimina globalmente las evidencias de
+  Opportunity confirmadas. Las filas acreditadas conservan oportunidades,
+  reservas, ventas, importes y costes calculados por los resolvers existentes;
+  las filas sin relación válida siguen sin inventar resultados. La disponibilidad
+  comercial distingue `available`, `partial` y `unavailable`.
+- Se retiró el selector visible de `Origen comercial`; se conserva únicamente el
+  estado interno compatible para enlaces operativos autorizados y no se alteran
+  las reglas de autorización ni la selección backend. El filtro `Estado` parte
+  de `Todas` y su valor vacío no aplica el criterio `active`.
+- No se cambiaron atribuciones persistidas, fórmulas económicas, permisos,
+  sincronizadores ni cierres.
+- Pruebas ejecutadas: `node tests/js/campaign-presentation.test.mjs` (52/52),
+  `node --check resources/js/reports/campaigns-dashboard.js` y
+  `git diff --check` correctos. PHP/PHPUnit/Pint y el build no pudieron
+  ejecutarse en este entorno porque no hay runtime PHP/npm disponible.
+- Pendiente: ejecutar en CI la suite Laravel/Pint/build y validar con el dataset
+  operativo autorizado que la cobertura parcial y los costes confirmados llegan
+  a las tarjetas y comparativas. No se declara esa verificación como realizada.

@@ -270,10 +270,7 @@ function bindResetFilters() {
         });
 
         document.getElementById('periodPreset').value = 'last_30_days';
-        document.getElementById('campaignStatus').value = 'active';
-        if (document.getElementById('campaignDataSource')) {
-            document.getElementById('campaignDataSource').value = 'official';
-        }
+        document.getElementById('campaignStatus').value = '';
         const saleSubcategory = document.getElementById('saleSubcategory');
         if (saleSubcategory) {
             saleSubcategory.value = 'venta';
@@ -315,14 +312,6 @@ function bindFilters() {
         syncCampaignPeriodUrl();
         await reloadAllData();
     });
-    document.getElementById('campaignDataSource')?.addEventListener('change', async () => {
-        if (document.getElementById('campaignDataSource')?.value === 'operational') {
-            document.getElementById('campaignStatus').value = '';
-        }
-        syncCampaignPeriodUrl();
-        await reloadAllData();
-    });
-
     ['startDate', 'endDate'].forEach((id) => {
         document.getElementById(id)?.addEventListener('change', () => {
             const preset = document.getElementById('periodPreset');
@@ -873,11 +862,12 @@ function applyCampaignAvailability(availability = {}, periodMode = null) {
     const officialComplete = mode === 'official_complete' || periodMode === 'interest_pivot';
     const operational = mode === 'operational_provisional';
     operationalMetricsMode = operational;
+    const usable = (state) => ['available', 'partial'].includes(state?.status);
     interestMetricsAvailable = operational
-        ? availability.interest_dependent?.status === 'available' && availability.attribution?.status === 'available'
+        ? usable(availability.interest_dependent) && usable(availability.attribution)
         : officialComplete;
     opportunityMetricsAvailable = operational
-        ? interestMetricsAvailable && availability.opportunity_dependent?.status === 'available'
+        ? interestMetricsAvailable && usable(availability.opportunity_dependent)
         : officialComplete;
     platformOnlyMode = !interestMetricsAvailable;
 }

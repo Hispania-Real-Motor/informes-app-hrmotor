@@ -344,7 +344,8 @@ test('real charts split at gaps while preserving zero, negatives and terminal nu
 test('state selector has compact label while retaining historical option values', () => {
     const blade = fs.readFileSync(new URL('../../resources/views/reports/campaigns/index.blade.php', import.meta.url), 'utf8');
     assert.ok(blade.includes('<label for="campaignStatus">Estado</label>'));
-    assert.ok(blade.includes('value="active" selected>Activas según criterio histórico'));
+    assert.ok(blade.includes('value="" selected>Todas'));
+    assert.ok(blade.includes('value="active">Activas según criterio histórico'));
     assert.ok(blade.includes('value="inactive">Inactivas según criterio histórico'));
     assert.ok(!blade.includes('id="campaignStatusHelp"'));
 });

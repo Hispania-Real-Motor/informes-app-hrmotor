@@ -524,9 +524,11 @@ class CampaignDashboardDatasetService
                 ->contains(static fn (string $field): bool => filled($renderFilters[$field] ?? null)), 422,
                 'La evidencia de Opportunity no admite ese filtro.');
             $allRows = $this->applyOperationalClassifications($this->mergeRows($metricRows, $attributions, $renderFilters));
+            $confirmedOpportunityEvidence = collect($allRows)->contains(
+                static fn (array $row): bool => filled($row['opportunity_key'] ?? null)
+            );
             if (! $opportunityComplete) {
-                $allRows = array_map(function (array $row): array {
-                    $row = $this->withoutOpportunityMetrics($row);
+                $allRows = array_map(static function (array $row): array {
                     $row['classification'] = 'Sin datos suficientes';
 
                     return $row;
@@ -549,30 +551,29 @@ class CampaignDashboardDatasetService
                     ? array_sum(array_map(static fn (array $row): int => (int) ($row['platform_leads'] ?? 0), $rows)) : null,
                 'platform_conversions' => array_sum(array_column($rows, 'platform_conversions')),
                 'leads_salesforce' => array_sum(array_column($rows, 'leads_salesforce')),
-                'opportunities' => $opportunityComplete ? array_sum(array_column($rows, 'opportunities')) : null,
-                'reservations' => $opportunityComplete ? array_sum(array_column($rows, 'reservations')) : null,
-                'live_reservations' => $opportunityComplete ? array_sum(array_column($rows, 'live_reservations')) : null,
-                'fallen_reservations' => $opportunityComplete ? array_sum(array_column($rows, 'fallen_reservations')) : null,
-                'sales' => $opportunityComplete ? array_sum(array_column($rows, 'sales')) : null,
-                'sale_amount' => $opportunityComplete && collect($rows)->contains(static fn (array $row): bool => $row['sale_amount'] !== null)
+                'opportunities' => $confirmedOpportunityEvidence ? array_sum(array_column($rows, 'opportunities')) : null,
+                'reservations' => $confirmedOpportunityEvidence ? array_sum(array_column($rows, 'reservations')) : null,
+                'live_reservations' => $confirmedOpportunityEvidence ? array_sum(array_column($rows, 'live_reservations')) : null,
+                'fallen_reservations' => $confirmedOpportunityEvidence ? array_sum(array_column($rows, 'fallen_reservations')) : null,
+                'sales' => $confirmedOpportunityEvidence ? array_sum(array_column($rows, 'sales')) : null,
+                'sale_amount' => $confirmedOpportunityEvidence && collect($rows)->contains(static fn (array $row): bool => $row['sale_amount'] !== null)
                     ? array_sum(array_map(static fn (array $row): float => (float) ($row['sale_amount'] ?? 0), $rows)) : null,
-                'appraisals_generated' => $opportunityComplete ? array_sum(array_column($rows, 'appraisals_generated')) : null,
-                'purchases' => $opportunityComplete ? array_sum(array_column($rows, 'purchases')) : null,
+                'appraisals_generated' => $confirmedOpportunityEvidence ? array_sum(array_column($rows, 'appraisals_generated')) : null,
+                'purchases' => $confirmedOpportunityEvidence ? array_sum(array_column($rows, 'purchases')) : null,
             ]));
             $totals['interests_salesforce'] = $totals['leads_salesforce'];
-            $totals['result_count'] = $opportunityComplete ? $this->resultCountForTotals($totals, $renderFilters['context']) : null;
-            $totals['cost_per_result'] = $opportunityComplete ? $this->divide($totals['spend'], $totals['result_count']) : null;
-            if (! $opportunityComplete) {
-                $totals = $this->withoutOpportunityMetrics($totals);
-            }
+            $totals['result_count'] = $confirmedOpportunityEvidence ? $this->resultCountForTotals($totals, $renderFilters['context']) : null;
+            $totals['cost_per_result'] = $confirmedOpportunityEvidence ? $this->divide($totals['spend'], $totals['result_count']) : null;
             $base['period_mode'] = 'operational_provisional';
             $base['periodo_actual']['fin'] = $endDate;
             $base['availability']['mode'] = 'operational_provisional';
             $base['availability']['interest_dependent'] = ['status' => 'available', 'source' => 'operational_provisional'];
             $base['availability']['attribution'] = ['status' => 'available', 'run_id' => (int) $run->id];
             $base['availability']['opportunity_dependent'] = [
-                'status' => $opportunityComplete ? 'available' : 'blocked',
-                'reason' => $opportunityComplete ? null : 'Snapshots de Opportunity y relación directa incompletos, obsoletos o contradictorios.',
+                'status' => $opportunityComplete ? 'available' : ($confirmedOpportunityEvidence ? 'partial' : 'unavailable'),
+                'reason' => $opportunityComplete ? null : ($confirmedOpportunityEvidence
+                    ? 'Se muestran únicamente oportunidades confirmadas; la cobertura restante sigue pendiente.'
+                    : 'No hay oportunidades confirmadas para este período.'),
             ];
             $base['operational_evidence'] = [
                 'month' => $month, 'economic_state' => $evidence['closure_status'],
@@ -588,11 +589,11 @@ class CampaignDashboardDatasetService
             // economic evidence and deliberately has no Salesforce attribution.
             $base['platform_comparison'] = $this->operationalPlatformBars(
                 $rows,
-                $opportunityComplete,
+                $opportunityComplete || $confirmedOpportunityEvidence,
                 $renderFilters['context'],
             );
             $base['rankings'] = $this->rankingsFromRows($campaigns, $renderFilters);
-            if (! $opportunityComplete) {
+            if (! $opportunityComplete && ! $confirmedOpportunityEvidence) {
                 foreach (['top_opportunities', 'top_reservations', 'top_sales', 'top_purchases', 'top_sale_amount', 'best_roas', 'best_cost_per_sale', 'best_cost_per_purchase'] as $key) {
                     $base['rankings'][$key] = [];
                 }
