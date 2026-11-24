@@ -8841,7 +8841,7 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   aserciones.
 - Pest `SalesforceLeadContactCenterAppointmentIndexMigrationTest`: 3 pruebas,
   5 aserciones.
-- PHP lint de los cuatro servicios, la migración y los dos tests PHP modificados:
+- PHP lint de los cuatro servicios, la migración y los tres tests PHP modificados:
   sin errores de sintaxis.
 - Laravel Pint en modo `--test` sobre los PHP modificados: correcto.
 - `git diff --check`: correcto en el diff final.
