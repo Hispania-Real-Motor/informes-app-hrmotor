@@ -38,7 +38,7 @@ return new class extends Migration
         if (in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {
             DB::statement(
                 'ALTER TABLE `salesforce_leads` ADD INDEX `sf_leads_contact_center_appointment_idx` '.
-                '(`appointment_setter_id`, `is_deleted`, `salesforce_master_record_id`, `appointment_capture_date`) '.
+                '(`appointment_setter_id`, `is_deleted`, `salesforce_master_record_id`, `appointment_capture_date`), '.
                 'ALGORITHM=INPLACE, LOCK=NONE',
             );
 

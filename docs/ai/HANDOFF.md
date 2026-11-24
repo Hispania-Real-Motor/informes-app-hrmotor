@@ -8808,6 +8808,8 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   este diff: la metadata de citas y el índice son de Comisiones/Contact Center;
   el modelo general `SalesforceLead` conserva sus dominios de Intereses y
   Campañas. No se modifican documentos ajenos sin impacto funcional.
+- Corrección posterior del PR #160: la sentencia MariaDB separa `ADD INDEX`
+  de `ALGORITHM=INPLACE, LOCK=NONE` mediante la coma requerida por `ALTER TABLE`.
 - La réplica manual de evidencias de citas se conserva para auditoría histórica,
   pero deja de ser la fuente de readiness/cálculo del plan roster desde
   septiembre.
@@ -8841,6 +8843,8 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   aserciones.
 - Pest `SalesforceLeadContactCenterAppointmentIndexMigrationTest`: 3 pruebas,
   5 aserciones.
+- `php artisan migrate:fresh --force --no-interaction` con SQLite en memoria:
+  correcto, incluida la migración del índice.
 - PHP lint de los cuatro servicios, la migración y los tres tests PHP modificados:
   sin errores de sintaxis.
 - Laravel Pint en modo `--test` sobre los PHP modificados: correcto.
@@ -8848,6 +8852,9 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - El validador y las pruebas documentales no se pudieron ejecutar localmente:
   Windows solo expone el alias de Microsoft Store y no hay intérprete Python
   disponible; el cambio de mapeo y su prueba quedan para CI.
+- MariaDB 11 no se pudo ejecutar localmente porque Docker Desktop no tenía el
+  daemon disponible; la comprobación equivalente queda en el workflow
+  `october-provisional-mariadb`.
 
 ## Acciones manuales necesarias
 
