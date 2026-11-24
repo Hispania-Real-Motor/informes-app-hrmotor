@@ -74,6 +74,10 @@ SOURCE_PREFIXES = (
     ("resources/views/reports/summary/", ALL),
 )
 EXACT = {
+    # These changes are scoped to Contact Center commission certification even
+    # though the sync service lives in the shared MonthlyCommercial namespace.
+    "app/Services/Reports/MonthlyCommercial/Sync/SalesforceMonthlyLeadsSyncService.php": {"commissions"},
+    "database/migrations/2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php": {"commissions"},
     "app/Services/Salesforce/OperationalInterestMonthlySync.php": {"interests"},
     "app/Services/Salesforce/OperationalInterestActivitySync.php": {"interests"},
     "app/Services/Salesforce/InterestMonthlyDifferenceClassifier.php": {"interests"},

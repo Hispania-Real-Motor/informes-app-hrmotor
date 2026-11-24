@@ -44,6 +44,7 @@ class SalesforceMonthlyLeadsSyncService
     {
         $soql = $this->leadSoql($periodStart, $periodEnd, true, $campaignOnly);
         $warnings = [];
+        $appointmentFieldsAvailable = true;
 
         $syncedAt = CarbonImmutable::now()->startOfSecond();
 
@@ -55,6 +56,7 @@ class SalesforceMonthlyLeadsSyncService
             }
 
             $warnings[] = 'La query de Lead con campos opcionales fallo. Revisa API names de dashboard/campanas. Error: '.$exception->getMessage();
+            $appointmentFieldsAvailable = false;
             $soql = $this->leadSoql($periodStart, $periodEnd, false, $campaignOnly);
             $result = $this->persistPages($this->client->queryPages($soql), $syncedAt, false);
         }
@@ -90,6 +92,7 @@ class SalesforceMonthlyLeadsSyncService
             'deleted_merged_changed' => $deletedChanged,
             'deleted_merged_unchanged' => $deleted['unchanged'],
             'synced_at' => $syncedAt->toIso8601String(),
+            'appointment_fields_available' => $appointmentFieldsAvailable,
             'warnings' => $warnings,
         ];
     }

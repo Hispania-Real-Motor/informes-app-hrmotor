@@ -22,6 +22,15 @@ siempre el diff real y declarar `Docs-Impact: updated` y
 dashboard provisional. La documentación de dependencias de otros informes
 puede describir su aislamiento sin tratarlos como consumidores de la fuente.
 
+Cuando un archivo compartido contenga un cambio acotado a un informe, el mapa
+puede usar una entrada exacta en `EXACT`, acompañada de una prueba documental.
+La entrada debe reflejar el comportamiento del diff, no solo el directorio del
+archivo. En particular, la metadata `appointment_fields_available` del
+sincronizador mensual y el índice de citas añadido el 24/11/2026 son evidencia
+técnica de certificación de Comisiones/Contact Center; no cambian los contratos
+de Intereses, Campañas ni Reservas/Ventas. El modelo general `SalesforceLead`
+mantiene sus dominios existentes.
+
 ## Instalación y reconocimiento
 
 El agente de proyecto está en `.codex/agents/report_docs_maintainer.toml`,
