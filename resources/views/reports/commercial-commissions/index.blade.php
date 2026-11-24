@@ -19,6 +19,7 @@
     $activeCommissionTab = $activeCommissionTab ?? 'summary';
     $summaryRows = collect($dashboard['summary_rows'] ?? []);
     $delegationRows = collect($dashboard['delegation_rows'] ?? []);
+    $isNewStoreManagerPlan = $delegationRows->contains(fn (array $row): bool => ($row['store_manager_plan'] ?? null) === 'october_2026');
     $callCenterSummaryRows = collect($callCenterDashboard['summary_rows'] ?? []);
     $contactCenterSummaryRows = collect($contactCenterDashboard['summary_rows'] ?? []);
     $areaManagerSummaryRows = collect($areaManagerDashboard['summary_rows'] ?? []);
@@ -49,6 +50,20 @@
     $totalDelegationPrimaFinal = (float) $delegationRows->sum('prima_final');
     $totalDelegationCommissions = (float) $delegationRows->sum('total_commission');
     $delegationGoalsConfigured = (int) $delegationRows->filter(fn (array $row) => ($row['target_deliveries'] ?? 0) > 0)->count();
+    $pendingSafeSum = static function (string $field) use ($delegationRows): ?float {
+        if ($delegationRows->contains(fn (array $row): bool => ! is_numeric($row[$field] ?? null))) {
+            return null;
+        }
+
+        return round((float) $delegationRows->sum($field), 2);
+    };
+    $formatPending = static fn (mixed $value, int $decimals = 2): string => $value === null
+        ? 'Pendiente'
+        : number_format((float) $value, $decimals, ',', '.');
+    $newStoreDeliveriesIncentive = $pendingSafeSum('store_deliveries_incentive');
+    $newStorePurchasesIncentive = $pendingSafeSum('store_purchases_incentive');
+    $newStoreReviewsAdjustment = $pendingSafeSum('store_reviews_adjustment');
+    $newStoreTotal = $pendingSafeSum('total_commission');
     $callCenterTotalAutomatic = (float) $callCenterSummaryRows->sum('automatic_total');
     $callCenterTotalPurchases = (float) $callCenterSummaryRows->sum('purchase_commission');
     $callCenterTotalSales = (float) $callCenterSummaryRows->sum('sales_commission');
@@ -89,7 +104,7 @@
     $closureStatus = $commissionClosure['status'] ?? 'provisional';
     $visibleDashboardWarnings = $activeCommissionTab === 'delegations'
         ? $delegationRows
-            ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) > 2)
+            ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) >= 2)
             ->pluck('store_manager_alert')->filter()->unique()->values()
         : collect($dashboard['warnings'] ?? []);
 @endphp
@@ -516,16 +531,28 @@
                                 <strong>{{ number_format($delegationGoalsConfigured, 0, ',', '.') }}</strong>
                             </article>
                             <article class="card campaign-context-card">
-                                <span>Prima final delegaciones</span>
-                                <strong>{{ number_format($totalDelegationPrimaFinal, 2, ',', '.') }} EUR</strong>
+                                <span>{{ $isNewStoreManagerPlan ? 'Incentivos entregas tienda' : 'Prima final delegaciones' }}</span>
+                                <strong>{{ $isNewStoreManagerPlan ? $formatPending($newStoreDeliveriesIncentive).' EUR' : number_format($totalDelegationPrimaFinal, 2, ',', '.').' EUR' }}</strong>
                             </article>
                             <article class="card campaign-context-card">
-                                <span>Comisiones delegaciones</span>
-                                <strong>{{ number_format($totalDelegationCommissions, 2, ',', '.') }} EUR</strong>
+                                <span>{{ $isNewStoreManagerPlan ? 'Incentivos compras tienda' : 'Comisiones delegaciones' }}</span>
+                                <strong>{{ $isNewStoreManagerPlan ? $formatPending($newStorePurchasesIncentive).' EUR' : number_format($totalDelegationCommissions, 2, ',', '.').' EUR' }}</strong>
                             </article>
                         </section>
 
                         <section class="platform-comparison-grid commission-overview-grid">
+                            @if ($isNewStoreManagerPlan)
+                                <article class="card platform-comparison-card">
+                                    <div class="platform-comparison-head">
+                                        <strong>Liquidación económica provisional</strong>
+                                        <span>Los importes pendientes no se convierten en cero.</span>
+                                    </div>
+                                    <div class="platform-comparison-metrics">
+                                        <div class="platform-metric-item"><span>Reseñas</span><strong>{{ $formatPending($newStoreReviewsAdjustment) }} EUR</strong></div>
+                                        <div class="platform-metric-item"><span>Total final</span><strong>{{ $formatPending($newStoreTotal) }} EUR</strong></div>
+                                    </div>
+                                </article>
+                            @else
                             <article class="card platform-comparison-card">
                                 <div class="platform-comparison-head">
                                     <strong>Volumen por delegacion</strong>
@@ -538,6 +565,7 @@
                                     <div class="platform-metric-item"><span>Bonus rentabilidad</span><strong>{{ number_format($delegationRows->sum('profitability_bonus_amount'), 2, ',', '.') }} EUR</strong></div>
                                 </div>
                             </article>
+                            @endif
                         </section>
 
                         <div class="small commission-delegation-note">
@@ -556,6 +584,48 @@
                             </div>
 
                             <div class="table-shell commission-delegation-table-shell" id="commissionDelegationTableShell">
+                            @if ($isNewStoreManagerPlan)
+                            <table data-sortable-table="commission-delegations" id="commissionDelegationTable">
+                                <thead><tr>
+                                    <th>Tienda</th><th>Jefe</th><th>Meta entregas</th><th>Entregas físicas</th><th>Entregas individuales</th><th>Compartidas</th><th>Meta compras</th><th>Compras</th>
+                                    <th>Incentivo entregas</th><th>Incentivo compras</th><th>Reseñas</th><th>Equipo</th><th>Estado</th><th>Total</th><th>Incidencias</th>
+                                </tr></thead>
+                                <tbody data-sort-body="commission-delegations">
+                                @foreach ($delegationRows as $row)
+                                    <tr>
+                                        <td>{{ $row['delegation_name'] }}</td>
+                                        <td>{{ $row['store_manager_name'] ?? 'Pendiente' }}</td>
+                                        <td class="num">{{ number_format($row['target_deliveries'], 0, ',', '.') }}</td>
+                                        <td class="num">{{ number_format($row['deliveries_count'], 0, ',', '.') }}</td>
+                                        <td class="num">{{ number_format($row['individual_deliveries_count'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="num">{{ number_format($row['shared_deliveries_count'] ?? 0, 0, ',', '.') }}</td>
+                                        <td class="num">{{ number_format($row['target_purchases'], 0, ',', '.') }}</td>
+                                        <td class="num">{{ number_format($row['purchases_count'], 0, ',', '.') }}</td>
+                                        <td class="num">{{ $row['store_deliveries_incentive'] === null ? 'Pendiente' : number_format($row['store_deliveries_incentive'], 2, ',', '.').' €' }}</td>
+                                        <td class="num">{{ $row['store_purchases_incentive'] === null ? 'Pendiente' : number_format($row['store_purchases_incentive'], 2, ',', '.').' €' }}</td>
+                                         <td class="num">
+                                             {{ $row['store_reviews_adjustment'] === null ? 'Pendiente' : number_format($row['store_reviews_adjustment'], 2, ',', '.').' €' }}
+                                             <small>{{ $row['reviews_count'] === null ? 'reseñas pendientes' : $row['reviews_count'].' reseñas · '.($row['reviews_average_rating'] === null ? 'sin media' : number_format($row['reviews_average_rating'], 3, ',', '.')) }}</small>
+                                         </td>
+                                         <td class="num">
+                                             {{ $row['team_roster_status'] !== 'verified' ? 'Pendiente' : count($row['team_components'] ?? []) }}
+                                             @if (! empty($row['team_components']))
+                                                 <details>
+                                                     <summary>Desglose</summary>
+                                                     @foreach ($row['team_components'] as $memberId => $component)
+                                                          <div>{{ $component['member_name'] ?? $memberId }}: {{ $formatPending($component['subtotal'] ?? null) }} € · individuales {{ $component['individual_deliveries'] ?? $component['deliveries'] ?? 0 }} · compartidas {{ $component['shared_deliveries'] ?? 0 }}</div>
+                                                     @endforeach
+                                                 </details>
+                                             @endif
+                                         </td>
+                                        <td>{{ $row['store_manager_status'] === 'calculated' ? 'Calculada' : 'Pendiente' }}</td>
+                                        <td class="num">{{ $row['total_commission'] === null ? 'Pendiente' : number_format($row['total_commission'], 2, ',', '.').' €' }}</td>
+                                        <td>{{ empty($row['store_manager_issues']) ? '—' : implode(' ', $row['store_manager_issues']) }}</td>
+                                    </tr>
+                                @endforeach
+                                </tbody>
+                            </table>
+                            @else
                             <table data-sortable-table="commission-delegations" id="commissionDelegationTable">
                                 <thead>
                                 <tr>
@@ -584,7 +654,7 @@
                                         <td>{{ $row['delegation_name'] }}</td>
                                         <td>
                                             {{ $row['store_manager_name'] ?? 'Sin datos suficientes' }}
-                                            @if ((int) ($row['store_manager_distinct_count'] ?? 0) > 2 && filled($row['store_manager_alert'] ?? null))
+                                            @if ((int) ($row['store_manager_distinct_count'] ?? 0) >= 2 && filled($row['store_manager_alert'] ?? null))
                                                 <span class="type-pill pending" title="{{ $row['store_manager_alert'] }}">Revisar</span>
                                             @endif
                                         </td>
@@ -639,6 +709,7 @@
                                 @endforeach
                                 </tbody>
                             </table>
+                            @endif
                             </div>
                         </div>
                     </div>

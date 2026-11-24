@@ -78,6 +78,34 @@ class StoreManagerCommissionPlanCalculator
         return 200.0 + (max(0, $actual - 12) * 20.0);
     }
 
+    public function storeReviewAdjustment(mixed $reviewsCount, mixed $averageRating): ?float
+    {
+        $count = is_int($reviewsCount)
+            ? $reviewsCount
+            : (is_string($reviewsCount) && preg_match('/^\d+$/D', $reviewsCount) === 1 ? (int) $reviewsCount : null);
+        if ($count === null || $count < 0) {
+            return null;
+        }
+
+        if ($count === 0) {
+            return $averageRating === null ? -150.0 : null;
+        }
+
+        if (! is_int($averageRating) && ! is_float($averageRating) && ! is_string($averageRating)) {
+            return null;
+        }
+        if (! is_numeric($averageRating)) {
+            return null;
+        }
+
+        $average = (float) $averageRating;
+        if (! is_finite($average) || $average < 0.0 || $average > 5.0) {
+            return null;
+        }
+
+        return $average >= 4.0 ? 150.0 : -150.0;
+    }
+
     public function thresholdIncentive(float|int|null $accumulated, ?float $minimum, float $atMinimum): ?float
     {
         if ($accumulated === null || $minimum === null) {

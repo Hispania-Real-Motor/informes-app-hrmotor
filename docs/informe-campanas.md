@@ -1043,3 +1043,6 @@ evidencia persistida cubre el cutoff del Interest operacional seleccionado.
 - El contexto `Todos` muestra un único H2 «Detalle de campañas»; no se renderiza un subtítulo idéntico. Los contextos con descripciones específicas conservan sus subtítulos útiles.
 - `campaign_end_date` permanece en backend, métricas y contratos, pero se elimina de la configuración visual, del selector y de la migración de preferencias antiguas.
 - La comparativa por plataforma usa el PNG facilitado para Google Ads en `/brand/google-ads-logo.png`, manteniendo `alt="Google Ads"`, dimensiones explícitas y fallback textual si la imagen falla.
+### Alcance de la PR 158
+
+La PR 158 no modifica las reglas, fuentes, atribución ni exportaciones de Campañas. Sus cambios de comisiones de jefes de tienda permanecen aislados del universo de campañas y no alteran sus snapshots ni sus KPIs.

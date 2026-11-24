@@ -58,7 +58,8 @@ class DelegationManagerHistoryResolver
                 && ($row->coverage_to === null || $row->coverage_to->gt($month)))->values();
             $closingInstant = $monthEnd->subSecond();
             $closing = $effective
-                ->filter(fn ($row): bool => filled($row->manager_salesforce_user_id)
+                ->filter(fn ($row): bool => $row->history_verified
+                    && filled($row->manager_salesforce_user_id)
                     && $row->coverage_from->lte($closingInstant)
                     && ($row->coverage_to === null || $row->coverage_to->gt($closingInstant)))
                 ->sortByDesc('effective_at')
@@ -67,7 +68,8 @@ class DelegationManagerHistoryResolver
             $rotationVerified = $this->coversWholePeriod($effective, $month, $monthEnd);
             $distinct = $effective->pluck('manager_salesforce_user_id')->filter()->unique()->count();
             $label = $closing?->delegation_name ?? $effective->last()?->delegation_name ?? $key;
-            $alert = $distinct > 2
+            $newPlan = $month->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM));
+            $alert = ($newPlan ? $distinct >= 2 : $distinct > 2)
                 ? sprintf(
                     '%s ha tenido %d jefes de tienda demostrados durante %s. Revisar la asignación de la comisión.',
                     $label,
@@ -87,6 +89,30 @@ class DelegationManagerHistoryResolver
                 'store_manager_evidence_count' => $effective->count(),
             ]];
         })->all();
+    }
+
+    /**
+     * Returns every verified manager covering any part of the month. This is
+     * deliberately independent from opportunity owners: a manager with no
+     * operation in the period must still receive the correct exemption.
+     */
+    public function verifiedManagerIds(CarbonImmutable $month): array
+    {
+        if ($month->lt(CarbonImmutable::parse('2026-10-01')) || $this->schemaIssue() !== null) {
+            return [];
+        }
+
+        return SalesforceDelegationManagerHistory::query()
+            ->where('history_verified', true)
+            ->whereNotNull('manager_salesforce_user_id')
+            ->where('coverage_from', '<', $month->addMonth())
+            ->where(fn ($query) => $query->whereNull('coverage_to')->orWhere('coverage_to', '>', $month))
+            ->distinct()
+            ->pluck('manager_salesforce_user_id')
+            ->filter()
+            ->map(fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all();
     }
 
     private function schemaIssue(): ?string

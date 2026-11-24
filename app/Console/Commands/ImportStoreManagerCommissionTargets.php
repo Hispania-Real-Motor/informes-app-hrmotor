@@ -80,6 +80,7 @@ class ImportStoreManagerCommissionTargets extends Command
         $this->info(sprintf('Validated %d rows, totals %d/%d, source %s.', count($rows), $deliveryTotal, $purchaseTotal, $source));
         if (! $this->option('write')) {
             $this->comment('Dry-run: no database writes performed.');
+
             return self::SUCCESS;
         }
 
@@ -97,6 +98,7 @@ class ImportStoreManagerCommissionTargets extends Command
         });
 
         $this->info('Targets imported idempotently.');
+
         return self::SUCCESS;
     }
 }

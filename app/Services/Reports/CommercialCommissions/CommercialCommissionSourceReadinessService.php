@@ -60,8 +60,25 @@ class CommercialCommissionSourceReadinessService
                 ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) >= 2)
                 ->pluck('store_manager_alert')
                 ->filter();
+            $effectiveManagerAlerts = $period->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                ? $validManagerAlerts
+                : $delegationRows
+                    ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) > 2)
+                    ->pluck('store_manager_alert')
+                    ->filter();
 
-            $pendingRows = $delegationRows->filter(fn (array $row): bool => isset($row['store_manager_status']) && $row['store_manager_status'] !== 'ready');
+            $pendingRows = $delegationRows->filter(function (array $row) use ($period): bool {
+                if (! isset($row['store_manager_status'])) {
+                    return false;
+                }
+
+                $expectedStatus = $period->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                    && ($row['store_manager_plan'] ?? null) === 'october_2026'
+                    ? 'calculated'
+                    : 'ready';
+
+                return $row['store_manager_status'] !== $expectedStatus;
+            });
             $blocking = collect($blocking)->merge($pendingRows->map(fn (array $row): string => 'La tienda '.($row['delegation_name'] ?? 'desconocida').' tiene componentes económicos pendientes.'));
             if ($period->greaterThanOrEqualTo(CarbonImmutable::parse('2026-10-01'))) {
                 $blocking = $blocking->merge($validManagerAlerts);
@@ -71,7 +88,7 @@ class CommercialCommissionSourceReadinessService
             // alerts explicitly linked to manager rows, preserving source warnings.
             $warnings = $warnings
                 ->reject(fn (string $warning): bool => $managerAlerts->contains($warning))
-                ->merge($validManagerAlerts);
+                ->merge($effectiveManagerAlerts);
         }
 
         $blocking = collect($blocking)->unique()->values()->all();
@@ -232,7 +249,7 @@ class CommercialCommissionSourceReadinessService
         if ($count === 0) {
             return $this->state('Objetivos de jefes de tienda', 'pending', true, null, 'No hay objetivos persistidos para el mes seleccionado.');
         }
-        if ($count !== 34) {
+        if ($month === '2026-10' && $count !== 34) {
             return $this->state('Objetivos de jefes de tienda', 'error', true, null, 'La configuración debe contener exactamente 34 objetivos por tienda.');
         }
 

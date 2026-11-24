@@ -301,3 +301,6 @@ La recuperación diagnóstica por períodos de Interests no modifica cálculos,
 filtros, antigüedad, universo ni resultados oficiales de Stock. Sus diferencias
 y vista provisional permanecen aisladas; una fuente no certificada continúa
 bloqueada y no puede sustituir la generación Interest publicada.
+### Alcance de la PR 158
+
+La PR 158 no cambia los cálculos, filtros, atribución, snapshots ni exportaciones de Stock. Las columnas de procedencia física añadidas a Oportunidades solo sirven para trazabilidad de comisiones y no modifican los resultados publicados de este informe.

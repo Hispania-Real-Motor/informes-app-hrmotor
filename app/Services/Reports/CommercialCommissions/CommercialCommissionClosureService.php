@@ -49,6 +49,8 @@ class CommercialCommissionClosureService
         private readonly FinancialCommissionDashboardService $financials,
         private readonly CommercialCommissionFormulaConfigService $formulaConfig,
         private readonly CommercialCommissionSourceReadinessService $sourceReadiness,
+        private readonly StoreManagerCommissionPlanCalculator $storeManagerCalculator,
+        private readonly StoreManagerCommissionTargetService $storeManagerTargets,
     ) {}
 
     /** @return array<string, mixed> */
@@ -110,6 +112,14 @@ class CommercialCommissionClosureService
             throw ValidationException::withMessages([
                 'sources' => $candidate['readiness']['blocking'],
             ]);
+        }
+        if ($scope === CommercialCommissionClosure::SCOPE_DELEGATIONS
+            && $selected->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
+            $this->assertStoreManagerDashboardEconomicIntegrity(
+                $this->dashboardFromSnapshot($candidate['dashboard'], $scope),
+                $selected->format('Y-m'),
+                CommercialCommissionFormulaConfigService::VERSION,
+            );
         }
         $components = collect($candidate['readiness']['components'])
             ->map(fn (array $component): bool => ! $component['blocking'])
@@ -179,7 +189,7 @@ class CommercialCommissionClosureService
             if ($candidate === null) {
                 throw ValidationException::withMessages(['snapshot' => 'No existe el candidato preparado. Administración debe preparar de nuevo el bloque.']);
             }
-            $this->assertCandidateEconomicIntegrity($candidate->payload, $monthKey, $scope);
+            $this->assertCandidateEconomicIntegrity($candidate, $monthKey, $scope);
             $from = $closure->status;
             $closure->update([
                 'status' => CommercialCommissionClosure::STATUS_DEFINITIVE,
@@ -304,7 +314,7 @@ class CommercialCommissionClosureService
                 'final_total' => $dashboard === null ? null : $this->finalTotal($dashboard, $scope),
                 'status' => $status,
                 'alerts' => $scope === CommercialCommissionClosure::SCOPE_DELEGATIONS && $dashboard !== null
-                    ? $this->delegationManagerAlerts($dashboard)
+                    ? $this->delegationManagerAlerts($dashboard, $monthKey)
                     : [],
             ];
         })->values()->all();
@@ -440,10 +450,14 @@ class CommercialCommissionClosureService
     }
 
     /** @return array<int, string> */
-    private function delegationManagerAlerts(array $dashboard): array
+    private function delegationManagerAlerts(array $dashboard, string $month): array
     {
+        if (CarbonImmutable::parse($month.'-01')->lt(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
+            return [];
+        }
+
         return collect($dashboard['delegation_rows'] ?? [])
-            ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) > 2)
+            ->filter(fn (array $row): bool => (int) ($row['store_manager_distinct_count'] ?? 0) >= 2)
             ->pluck('store_manager_alert')
             ->filter()
             ->unique()
@@ -456,6 +470,11 @@ class CommercialCommissionClosureService
         if ($scope === CommercialCommissionClosure::SCOPE_CONTACT_CENTER
             && $this->isContactCenterRosterPlan($dashboard)
             && ! $this->hasCertifiableContactCenterTotals($dashboard)) {
+            return null;
+        }
+
+        if ($scope === CommercialCommissionClosure::SCOPE_DELEGATIONS
+            && collect($dashboard['delegation_rows'] ?? [])->contains(fn (array $row): bool => ($row['store_manager_plan'] ?? null) === 'october_2026' && ! is_numeric($row['total_commission'] ?? null))) {
             return null;
         }
 
@@ -482,21 +501,30 @@ class CommercialCommissionClosureService
         ];
     }
 
-    private function assertCandidateEconomicIntegrity(array $payload, string $month, string $scope): void
+    private function assertCandidateEconomicIntegrity(CommercialCommissionSnapshot $candidate, string $month, string $scope): void
     {
+        if ($scope === CommercialCommissionClosure::SCOPE_DELEGATIONS
+            && CarbonImmutable::parse($month.'-01')->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))) {
+            $this->assertStoreManagerDashboardEconomicIntegrity(
+                $this->dashboardFromSnapshot($candidate->payload, $scope),
+                $month,
+                $candidate->formula_version,
+            );
+        }
+
         if ($scope !== CommercialCommissionClosure::SCOPE_CONTACT_CENTER
             || CarbonImmutable::parse($month.'-01')->lt(CarbonImmutable::parse('2026-09-01'))) {
             return;
         }
 
-        $dashboard = $this->dashboardFromSnapshot($payload, $scope);
+        $dashboard = $this->dashboardFromSnapshot($candidate->payload, $scope);
         if (! $this->isContactCenterRosterPlan($dashboard) || ! $this->hasCertifiableContactCenterTotals($dashboard)) {
             throw ValidationException::withMessages([
                 'snapshot' => 'El candidato Contact Center no contiene un cálculo económico certificable. Debe prepararse de nuevo.',
             ]);
         }
 
-        $target = data_get($payload, 'formula_settings.company_delivery_target');
+        $target = data_get($candidate->payload, 'formula_settings.company_delivery_target');
         if (! is_int($target) || $target <= 0) {
             throw ValidationException::withMessages([
                 'snapshot' => 'El candidato Contact Center no contiene un objetivo de compañía congelado válido.',
@@ -511,6 +539,205 @@ class CommercialCommissionClosureService
                 'snapshot' => 'El objetivo congelado no coincide con los importes del candidato Contact Center.',
             ]);
         }
+    }
+
+    /** @param array<string, mixed> $dashboard */
+    private function assertStoreManagerDashboardEconomicIntegrity(array $dashboard, string $month, string $formulaVersion): void
+    {
+        if ($formulaVersion !== CommercialCommissionFormulaConfigService::VERSION) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'El candidato no pertenece a la versión vigente del plan de jefes de tienda.',
+            ]);
+        }
+
+        $rows = $dashboard['delegation_rows'] ?? [];
+        $frozenTargets = $dashboard['store_manager_targets'] ?? null;
+        $authorizedTargets = $this->storeManagerTargets->forMonth($month);
+        $reference = $this->storeManagerTargets->approvedReferenceForMonth($month);
+        $frozenTargets = is_array($frozenTargets) ? $this->canonicalTargetDefinitions($frozenTargets) : [];
+        $authorizedTargets = $this->canonicalTargetDefinitions($authorizedTargets);
+        $referenceTargets = $reference === null ? [] : $this->canonicalTargetDefinitions($reference['targets']);
+        $isOctober = $month === '2026-10';
+        if ($isOctober && $reference === null) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'La referencia aprobada de objetivos de octubre no está disponible o no es válida.',
+            ]);
+        }
+        if ($reference !== null) {
+            $referenceIsComplete = count($referenceTargets) === 34
+                && $reference['delivery_total'] === 907
+                && $reference['purchase_total'] === 499
+                && filled($reference['source_sha256'])
+                && filled($reference['source_label'])
+                && collect($referenceTargets)->every(fn (array $target): bool => data_get($target, 'target_source.sha256') === $reference['source_sha256']
+                    && data_get($target, 'target_source.label') === $reference['source_label']);
+            if (! $referenceIsComplete || $authorizedTargets !== $referenceTargets || $frozenTargets !== $referenceTargets) {
+                throw ValidationException::withMessages([
+                    'snapshot' => 'Los objetivos congelados no coinciden con la referencia autorizada e inmutable del periodo.',
+                ]);
+            }
+        } elseif ($authorizedTargets === [] || $frozenTargets !== $authorizedTargets) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'Los objetivos congelados no coinciden con los objetivos autorizados persistidos del periodo.',
+            ]);
+        }
+
+        $targetKeys = array_map('strval', array_column($frozenTargets, 'store_key'));
+        $dashboardTargetKeys = $dashboard['store_manager_target_keys'] ?? null;
+        $dashboardTargetKeys = is_array($dashboardTargetKeys) ? array_values(array_map('strval', $dashboardTargetKeys)) : [];
+        $expectedTargetKeys = $targetKeys;
+        sort($expectedTargetKeys);
+        $actualDashboardTargetKeys = $dashboardTargetKeys;
+        sort($actualDashboardTargetKeys);
+        $expectedTargetCount = count($frozenTargets);
+        $targetByKey = collect($frozenTargets)->keyBy('store_key')->all();
+        $expectedStoreManagerPlan = 'october_2026';
+
+        if (! is_array($rows)
+            || $rows === []
+            || $frozenTargets === []
+            || $targetKeys === []
+            || count($targetKeys) !== count(array_unique($targetKeys))
+            || $actualDashboardTargetKeys !== $expectedTargetKeys
+            || count($rows) !== count($targetKeys)
+            || ($isOctober && count($targetKeys) !== 34)) {
+            throw ValidationException::withMessages([
+                'snapshot' => $isOctober
+                    ? 'El candidato de jefes de tienda no contiene las 34 tiendas objetivo del plan vigente.'
+                    : 'El candidato de jefes de tienda no contiene un conjunto íntegro de tiendas objetivo congelado.',
+            ]);
+        }
+
+        $invalidRow = collect($rows)->first(function (mixed $rawRow) use ($targetKeys, $targetByKey, $expectedStoreManagerPlan): bool {
+            if (! is_array($rawRow)) {
+                return true;
+            }
+
+            $row = $rawRow;
+            $subtotals = $row['team_subtotals'] ?? null;
+            $components = $row['team_components'] ?? null;
+            $required = [
+                $row['target_deliveries'] ?? null,
+                $row['target_purchases'] ?? null,
+                $row['deliveries_count'] ?? null,
+                $row['individual_deliveries_count'] ?? null,
+                $row['shared_deliveries_count'] ?? null,
+                $row['purchases_count'] ?? null,
+                $row['store_deliveries_incentive'] ?? null,
+                $row['store_purchases_incentive'] ?? null,
+                $row['store_reviews_adjustment'] ?? null,
+                $row['total_commission'] ?? null,
+            ];
+            $targetKey = (string) ($row['store_manager_target_key'] ?? '');
+            $targetDefinition = $targetByKey[$targetKey] ?? null;
+            $expectedReviewAdjustment = $this->storeManagerCalculator->storeReviewAdjustment(
+                $row['reviews_count'] ?? null,
+                $row['reviews_average_rating'] ?? null,
+            );
+            $componentKeys = is_array($components) ? array_map('strval', array_keys($components)) : [];
+            $subtotalKeys = is_array($subtotals) ? array_map('strval', array_keys($subtotals)) : [];
+            $countsCoherent = is_numeric($row['deliveries_count'] ?? null)
+                && is_numeric($row['individual_deliveries_count'] ?? null)
+                && is_numeric($row['shared_deliveries_count'] ?? null)
+                && (int) $row['deliveries_count'] === (int) $row['individual_deliveries_count'] + (int) $row['shared_deliveries_count'];
+            $expectedDelivery = is_numeric($row['deliveries_count'] ?? null) && is_numeric($row['target_deliveries'] ?? null)
+                ? $this->storeManagerCalculator->storeKpiIncentive((int) $row['deliveries_count'], (int) $row['target_deliveries'])['incentive']
+                : null;
+            $expectedPurchase = is_numeric($row['purchases_count'] ?? null) && is_numeric($row['target_purchases'] ?? null)
+                ? $this->storeManagerCalculator->storeKpiIncentive((int) $row['purchases_count'], (int) $row['target_purchases'])['incentive']
+                : null;
+
+            if (($row['store_manager_plan'] ?? null) !== $expectedStoreManagerPlan
+                || ($row['store_manager_status'] ?? null) !== 'calculated'
+                || ($row['reviews_technical_status'] ?? null) !== 'available'
+                || blank($row['reviews_fetched_at'] ?? null)
+                || ($row['store_manager_history_status'] ?? null) !== 'verified'
+                || ($row['team_roster_status'] ?? null) !== 'verified'
+                || filled($row['store_manager_issues'] ?? [])
+                || blank($row['delegation_name'] ?? null)
+                || ! in_array($targetKey, $targetKeys, true)
+                || ! is_array($targetDefinition)
+                || (string) ($row['delegation_name'] ?? '') !== (string) $targetDefinition['store_name']
+                || (int) ($row['target_deliveries'] ?? -1) !== (int) $targetDefinition['target_deliveries']
+                || (int) ($row['target_purchases'] ?? -1) !== (int) $targetDefinition['target_purchases']
+                || ! is_array($subtotals)
+                || ! is_array($components)
+                || ! is_numeric($row['team_member_count'] ?? null)
+                || (int) ($row['team_member_count'] ?? -1) !== count($components)
+                || count($componentKeys) !== count(array_unique($componentKeys))
+                || count($componentKeys) !== count($subtotalKeys)
+                || array_diff($componentKeys, $subtotalKeys) !== []
+                || array_diff($subtotalKeys, $componentKeys) !== []
+                || ! $countsCoherent
+                || $expectedDelivery === null
+                || $expectedPurchase === null
+                || ! is_numeric($row['store_deliveries_incentive'] ?? null)
+                || ! is_numeric($row['store_purchases_incentive'] ?? null)
+                || ! array_key_exists('reviews_count', $row)
+                || ! array_key_exists('reviews_average_rating', $row)
+                || $expectedReviewAdjustment === null
+                || ! is_numeric($row['store_reviews_adjustment'] ?? null)
+                || abs((float) $expectedReviewAdjustment - (float) $row['store_reviews_adjustment']) > 0.009
+                || abs((float) $expectedDelivery - (float) $row['store_deliveries_incentive']) > 0.009
+                || abs((float) $expectedPurchase - (float) $row['store_purchases_incentive']) > 0.009
+                || collect($required)->contains(fn (mixed $value): bool => ! is_numeric($value))
+                || collect($components)->contains(fn (mixed $component, string|int $userId): bool => ! is_array($component)
+                    || ! array_key_exists((string) $userId, $subtotals)
+                    || collect(['delivery_incentive', 'financing', 'guarantee', 'penalty', 'subtotal'])
+                        ->contains(fn (string $field): bool => ! is_numeric($component[$field] ?? null))
+                    || ! is_numeric($subtotals[(string) $userId] ?? null)
+                    || abs(round(
+                        (float) $component['delivery_incentive']
+                        + (float) $component['financing']
+                        + (float) $component['guarantee']
+                        - (float) $component['penalty'],
+                        2,
+                    ) - (float) $component['subtotal']) > 0.009
+                    || abs((float) $component['subtotal'] - (float) $subtotals[(string) $userId]) > 0.009)) {
+                return true;
+            }
+
+            $expected = max(0.0, round(
+                (float) $row['store_deliveries_incentive']
+                + (float) $row['store_purchases_incentive']
+                + (float) $row['store_reviews_adjustment']
+                + (float) collect($subtotals)->sum(),
+                2,
+            ));
+
+            return abs($expected - (float) $row['total_commission']) > 0.009;
+        });
+
+        if ($invalidRow !== null
+            || collect($rows)->pluck('delegation_name')->filter()->unique()->count() !== $expectedTargetCount
+            || collect($rows)->pluck('store_manager_target_key')->filter()->unique()->count() !== $expectedTargetCount) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'El candidato de jefes de tienda no contiene liquidaciones íntegras y conciliables para todas las tiendas objetivo congeladas.',
+            ]);
+        }
+    }
+
+    /** @param array<int, mixed> $targets
+     * @return array<int, array{zone: string, store_key: string, store_name: string, target_deliveries: int, target_purchases: int, target_source: array{sha256: string, label: string}}>
+     */
+    private function canonicalTargetDefinitions(array $targets): array
+    {
+        return collect($targets)
+            ->filter(fn (mixed $target): bool => is_array($target))
+            ->map(fn (array $target): array => [
+                'zone' => (string) ($target['zone'] ?? ''),
+                'store_key' => (string) ($target['store_key'] ?? ''),
+                'store_name' => (string) ($target['store_name'] ?? ''),
+                'target_deliveries' => (int) ($target['target_deliveries'] ?? -1),
+                'target_purchases' => (int) ($target['target_purchases'] ?? -1),
+                'target_source' => [
+                    'sha256' => (string) data_get($target, 'target_source.sha256', ''),
+                    'label' => (string) data_get($target, 'target_source.label', ''),
+                ],
+            ])
+            ->sortBy('store_key')
+            ->values()
+            ->all();
     }
 
     private function isContactCenterRosterPlan(array $dashboard): bool

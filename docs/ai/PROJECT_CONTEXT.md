@@ -956,3 +956,52 @@ F2/F2M/F5 al servir el dashboard. Es un módulo administrativo aislado y no
 extiende `InterestGenerationReader`: una generación publicada conserva
 precedencia, y la proyección no se convierte en publicación ni en fuente de
 otros informes.
+
+## Plan provisional de jefes de tienda (octubre de 2026)
+
+El plan `october_2026` se construye en
+`CommercialCommissionDashboardService` sobre objetivos persistidos, entregas,
+compras físicas elegibles y deduplicadas por `purchase_appraisal_id`, reseñas
+del endpoint interno, histórico local de responsables, fechas RR. HH. y roster
+histórico de equipo. Las entregas compartidas se cuentan una vez en el volumen
+físico de tienda y se exponen como contadores individual/compartido; quedan
+fuera de los incentivos económicos individuales. La adscripción del equipo se
+separa de la actividad y se guarda en
+`store_manager_commission_roster_members`; cada operación debe caer dentro de
+la cobertura `[coverage_from, coverage_to)` y los solapamientos contradictorios
+del mismo usuario bloquean el componente.
+
+`commissions:import-store-manager-roster` valida evidencia auditable por defecto
+sin escribir; `--apply` exige y persiste `--imported-by`, rechaza conflictos y
+protege periodos definitivos. No se ha acreditado la fuente externa autorizada
+ni una ejecución productiva. Sin evidencia verificada el dashboard puede
+mostrar componentes observados, pero el total y la certificación fallan
+cerrados. La financiación individual usa `financial_commission`, y la
+aprobación valida un snapshot congelado con objetivos/fuentes, 34 identidades
+de tienda en octubre, subtotales por usuario, contadores coherentes,
+componentes y conciliación matemática. El plan permanece provisional por falta
+de evidencia externa autorizada; el código conserva el flujo de aprobación
+para un snapshot íntegro, pero esta revisión no importó datos ni aprobó
+octubre.
+
+### Integridad residual del plan y procedencia congelada (2026-11-23)
+
+Las entregas físicas se resuelven contra el conjunto autorizado del mes por
+clave canónica y nombre normalizado. Un valor vacío, desconocido o ambiguo se
+conserva como incidencia bloqueante con su Salesforce Opportunity ID y no se
+redirige al propietario ni a otra tienda. Como `cv_signed_date` solo contiene
+fecha, una operación se atribuye al roster únicamente si el día completo
+`[00:00, 00:00 del día siguiente)` queda contenido en `[coverage_from,
+coverage_to)`.
+
+La evidencia de roster requiere una identidad local única y nombrada en
+`salesforce_users`; la ausencia, ambigüedad o discrepancia deja el componente
+pendiente incluso si el ID tiene formato Salesforce válido. El actor que
+ejecuta la importación se identifica mediante `report-user:<id>` verificable,
+separado del `recorded_by` que documenta quién registró la evidencia.
+
+El snapshot de Delegaciones conserva el conjunto completo de objetivos y su
+procedencia. La aprobación valida ese contenido contra los objetivos
+autorizados del periodo y, para octubre de 2026, contra el CSV de referencia
+versionado con SHA-256, 34 tiendas y totales 907/499. No se fija 34 para meses
+posteriores: cada mes debe usar su propio conjunto persistido y congelado.
