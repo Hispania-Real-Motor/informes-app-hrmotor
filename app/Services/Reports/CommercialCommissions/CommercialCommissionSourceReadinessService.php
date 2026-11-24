@@ -184,12 +184,20 @@ class CommercialCommissionSourceReadinessService
         return $this->state($label, 'ready', false, $coveredUntil->toIso8601String(), 'Datos disponibles para el mes seleccionado.');
     }
 
+    /**
+     * Solo una sincronización nueva que informe true explícitamente es
+     * certificable; los runs históricos sin el indicador quedan bloqueados.
+     */
     private function leadAppointmentSyncIssue(ReportSyncRun $run): ?string
     {
         $appointmentFieldsAvailable = data_get($run->stats, 'leads.appointment_fields_available');
 
-        if ($appointmentFieldsAvailable === false) {
-            return 'La sincronización de Leads no contiene todos los campos de citas requeridos.';
+        if ($appointmentFieldsAvailable !== true) {
+            if ($appointmentFieldsAvailable === false) {
+                return 'La sincronización de Leads no contiene todos los campos de citas requeridos.';
+            }
+
+            return 'La sincronización de Leads no certifica los campos de citas requeridos; debe ejecutarse una nueva sincronización.';
         }
 
         return null;

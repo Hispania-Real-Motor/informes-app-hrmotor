@@ -8776,6 +8776,7 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - `resources/views/reports/commercial-commissions/partials/contact-center-tab.blade.php`
 - `tests/Feature/ContactCenterCommissionDashboardTest.php`
 - `tests/Unit/SalesforceMonthlyLeadsSyncServiceTest.php`
+- `database/migrations/2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php`
 - `docs/informe-comisiones.md`
 - `docs/matriz-trazabilidad-kpi.md`
 - Este handoff.
@@ -8784,10 +8785,15 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 
 - Se reutiliza `salesforce:sync-monthly-commercial`; no se crea una
   sincronización paralela ni se cambia el periodo económico.
-- No se modifican migraciones, tablas, datos productivos, comisiones históricas
-  cerradas ni estados de certificación. Los índices ya existentes de Leads para
-  captador y fecha se aprovechan; las consultas usan filtros SQL, selección de
-  columnas acotada y no hidratan la tabla completa.
+- Se añade la migración
+  `2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php`,
+  que crea un índice compuesto por captador, eliminación, fusión y fecha de cita
+  para evitar planes de consulta amplios sobre el volumen de Leads. El índice de
+  fecha existente sigue cubriendo la consulta de incidencias sin roster. No se
+  ejecuta la migración en producción desde esta tarea; tampoco se modifican
+  datos productivos, comisiones históricas cerradas ni estados de certificación.
+  Las consultas usan filtros SQL, selección de columnas acotada y no hidratan la
+  tabla completa.
 - La réplica manual de evidencias de citas se conserva para auditoría histórica,
   pero deja de ser la fuente de readiness/cálculo del plan roster desde
   septiembre.
@@ -8811,23 +8817,29 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 
 ## Pruebas y verificaciones
 
-- Pest `ContactCenterCommissionDashboardTest`: 15 pruebas, 128 aserciones,
+- Pest `ContactCenterCommissionDashboardTest`: 16 pruebas, 135 aserciones,
   incluyendo octubre, eliminados/fusionados, cero verificado, sincronización
   incompleta, regresión de meses anteriores y exportación XLSX de octubre.
 - Pest `CommercialCommissionSourceReadinessTest|CommercialCommissionDashboardTest`:
   88 pruebas, 589 aserciones.
 - Pest `SalesforceMonthlyLeadsSyncServiceTest`: 7 pruebas, 73 aserciones.
-- PHP lint de los cuatro servicios PHP modificados y del test funcional: sin
-  errores de sintaxis.
+- Pest conjunto relevante de Comisiones/Contact Center: 139 pruebas, 1.023
+  aserciones.
+- PHP lint de los cuatro servicios, la migración y los dos tests PHP modificados:
+  sin errores de sintaxis.
 - Laravel Pint en modo `--test` sobre los PHP modificados: correcto.
-- Pendiente al cerrar: `git diff --check`, validador documental y pruebas
-  documentales; se ejecutarán con el diff final y la descripción de PR.
+- `git diff --check`: correcto en el diff final.
+- El validador y las pruebas documentales no se pudieron ejecutar localmente:
+  Windows solo expone el alias de Microsoft Store y no hay intérprete Python
+  disponible; quedan para CI.
 
 ## Acciones manuales necesarias
 
 - Tras aprobar la PR, desplegar el código y ejecutar, con autorización y fuera
   de esta sesión, `salesforce:sync-monthly-commercial
   --from=2026-10-01 --to=2026-11-01`.
+- Ejecutar la migración del índice compuesto antes de validar tiempos de
+  consulta; no se incluye ninguna ejecución productiva en esta tarea.
 - Verificar el run `leads_dashboard` y el run de Opportunities como
   `completed`, cobertura exacta del intervalo y campos de cita completos.
 - Revisar el recuento por captador, eliminados/fusionados, incidencias,
@@ -8840,6 +8852,9 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - La diferencia entre la consulta directa a Salesforce y el espejo local debe
   conciliarse mediante el run sincronizado; este cambio no fabrica ni corrige
   filas productivas.
+- Un run histórico sin `leads.appointment_fields_available = true` queda
+  bloqueado de forma deliberada y exige una nueva sincronización; no se acepta
+  por compatibilidad implícita.
 - El exportador XLSX expone el resumen económico; el detalle por Lead queda en
   pantalla y snapshot. La documentación se ha corregido para reflejarlo.
 - Fallback documental aplicado por el agente principal: se invocó

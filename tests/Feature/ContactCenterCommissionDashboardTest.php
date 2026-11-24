@@ -436,6 +436,46 @@ class ContactCenterCommissionDashboardTest extends TestCase
         $this->assertFalse($row['certifiable']);
     }
 
+    public function test_legacy_leads_sync_without_appointment_indicator_requires_a_new_sync(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-24 10:00:00');
+        $userId = '005-missing-leads-indicator';
+        ContactCenterCommissionRosterMember::query()->delete();
+        ContactCenterCommissionRosterMember::query()->create([
+            'salesforce_user_id' => $userId,
+            'display_name' => 'Indicador ausente',
+            'effective_from' => '2026-09-01',
+            'effective_until' => null,
+        ]);
+        SalesforceUser::query()->create([
+            'salesforce_id' => $userId,
+            'name' => 'Indicador ausente',
+            'created_date' => '2026-01-01 10:00:00',
+            'is_active' => true,
+            'commission_appraiser' => false,
+        ]);
+        app(CommercialCommissionFormulaConfigService::class)->saveForMonth('2026-10', ['company_delivery_target' => 100]);
+        $this->completeLeadDashboardCoverage('2026-10-01', '2026-11-01', [], false);
+        $this->completeOpportunityCoverage('2026-10-01', '2026-11-01');
+        $this->createLead([
+            'salesforce_id' => '00Q-missing-leads-indicator',
+            'appointment_setter_id' => $userId,
+            'appointment_capture_date' => '2026-10-15',
+            'appointment_call' => true,
+        ]);
+
+        $payload = app(ContactCenterCommissionDashboardService::class)->build('2026-10');
+        $row = collect($payload['summary_rows'])->firstWhere('salesforce_user_id', $userId);
+
+        $this->assertFalse($payload['ready']);
+        $this->assertTrue($payload['diagnostics']['source_readiness']['appointments']['blocking']);
+        $this->assertSame('error', $payload['diagnostics']['source_readiness']['appointments']['status']);
+        $this->assertStringContainsString('nueva sincronización', $payload['issues'][0]);
+        $this->assertSame(1, $row['appointment_count']);
+        $this->assertNull($row['final_total']);
+        $this->assertFalse($row['certifiable']);
+    }
+
     public function test_october_xlsx_export_is_allowed_only_with_complete_lead_and_opportunity_evidence(): void
     {
         CarbonImmutable::setTestNow('2026-11-24 10:00:00');
@@ -763,16 +803,18 @@ class ContactCenterCommissionDashboardTest extends TestCase
         ]);
     }
 
-    private function completeLeadDashboardCoverage(string $from, string $to, array $leadStats = []): void
+    private function completeLeadDashboardCoverage(string $from, string $to, array $leadStats = [], bool $includeAppointmentFieldsAvailable = true): void
     {
+        $stats = ['warnings' => []];
+        if ($includeAppointmentFieldsAvailable) {
+            $stats['appointment_fields_available'] = true;
+        }
+
         ReportSyncRun::query()->create([
             'dataset' => 'leads_dashboard', 'source' => 'salesforce', 'status' => 'completed',
             'period_start_at' => $from, 'period_end_at' => $to, 'started_at' => now()->subMinute(),
             'completed_at' => now(), 'timezone' => config('app.timezone'),
-            'stats' => ['leads' => array_replace([
-                'appointment_fields_available' => true,
-                'warnings' => [],
-            ], $leadStats)],
+            'stats' => ['leads' => array_replace($stats, $leadStats)],
         ]);
     }
 

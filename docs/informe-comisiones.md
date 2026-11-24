@@ -355,9 +355,10 @@ se filtran por `appointment_setter_id`, `appointment_capture_date` dentro de
 `appointment_store`. Solo cuentan Leads con `is_deleted = false` y sin
 `salesforce_master_record_id`; se deduplican por `salesforce_id`, por lo que un
 Lead marcado simultáneamente como cita telefónica y de tienda no duplica el
-hecho. La sincronización debe conservar todos los campos de cita; si la query
-ha tenido que degradarse por campos opcionales, la evidencia económica queda
-bloqueada aunque existan filas locales. Un Lead sin marca de cita es una
+hecho. La sincronización debe conservar todos los campos de cita y registrar
+explícitamente `appointment_fields_available = true`; los runs históricos sin
+ese indicador y las queries degradadas quedan bloqueados hasta ejecutar una
+nueva sincronización, aunque existan filas locales. Un Lead sin marca de cita es una
 ausencia verificada y produce cero, no un importe ficticio. Reservas y entregas
 proceden de `salesforce_opportunities` por el mismo User ID y,
 respectivamente, `reservation_date` y `cv_signed_date`. Cada hecho usa el mes
