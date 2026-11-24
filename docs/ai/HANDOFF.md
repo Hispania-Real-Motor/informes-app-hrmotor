@@ -9031,3 +9031,16 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - JavaScript ejecutado: 52/52; `node --check` y `git diff --check` correctos.
 - PHPUnit, Pint y build siguen pendientes por falta de PHP/npm accesibles en
   este entorno; no se declaran como ejecutados.
+
+## 2026-11-24 — PR #159: aserciones visuales finales
+
+- Se verificó el HEAD `68e526f3f4235bb0565cb2d71b1137b50931963c` antes de editar.
+- `campaign-detail-toggle` no existe en el JavaScript vigente y no representa
+  una funcionalidad perdida. La prueba deja de exigirlo y comprueba el contrato
+  actual `data-table-type`, manteniendo las aserciones reales de gráficos,
+  etiquetas de línea, icono de puntos, filtros y rankings.
+- No se restauraron controles antiguos ni se modificaron sincronizadores,
+  cierres, atribuciones ni disponibilidad comercial.
+- Validación local disponible: `node --check`, tests JavaScript y
+  `git diff --check`. PHPUnit, Pint y build deben repetirse en Herd/Codex con
+  las dependencias accesibles; no se declaran aquí como ejecutados.

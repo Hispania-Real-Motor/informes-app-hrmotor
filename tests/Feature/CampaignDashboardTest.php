@@ -567,7 +567,8 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringContainsString('campaigns.dailyChart.chartType', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('data-series', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('data-chart-type', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
-        $this->assertStringContainsString('campaign-detail-toggle', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
+        $this->assertStringNotContainsString('campaign-detail-toggle', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
+        $this->assertStringContainsString('data-table-type', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('line-label-layer', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('campaignPointIcon', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString("{ value: 'current_year', label: 'Año actual' }", file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
