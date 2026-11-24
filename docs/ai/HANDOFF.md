@@ -8998,3 +8998,21 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Tests JS ejecutados: 52/52. No hay `vendor`, `node_modules`, PHP, Composer ni
   npm disponibles en este worktree; PHPUnit, Pint y build quedan sin ejecutar y
   se mantienen como pendientes verificables de CI.
+
+## 2026-11-24 — PR #159: regresiones PHP de CampaignDashboardTest
+
+- Se verificó el HEAD `0034b5e898a84ee81c3a2c90be9aa1723cfbfd1b` antes de editar.
+- La expectativa del drawer avanzado y la selección `active` eran contratos
+  visuales obsoletos. La prueba ahora verifica que el drawer no se restaura,
+  que `Todas` es la opción seleccionada y que el origen permanece como input
+  interno no visible.
+- La causa de los dos `operations:run` con exit code 1 era la allowlist
+  `operations.scheduled_task_keys`: `OperationalTaskService` reclama con origen
+  `scheduler`, pero los tests solo activaban `campaign_current_status.enabled`.
+  El fixture declara explícitamente la tarea `campaigns-sync-current-status`;
+  no se relajan controles ni se cambia la configuración productiva. Los
+  `Http::fake` siguen interceptando Meta y no se añade Google al escenario.
+- Pendiente de ejecución en Herd/Codex con dependencias: los tres tests, toda
+  `CampaignDashboardTest`, `CampaignOperationalAttributionTest`, PHPUnit,
+  Pint y build. Este worktree no contiene PHP, Composer, `vendor`, npm ni
+  `node_modules`, por lo que no se declaran esos resultados como ejecutados.

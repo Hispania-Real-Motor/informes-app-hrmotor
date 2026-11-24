@@ -547,7 +547,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('id="campaignStatusHelp"', $html);
         $this->assertStringContainsString('<label for="campaignStatus">Estado</label>', $html);
         $this->assertStringNotContainsString('id="salesforceReconciliation"', $html);
-        $this->assertLessThan(strpos($html, 'id="advancedFiltersDrawer"'), strpos($html, 'id="platformComparisonPanel"'));
+        $this->assertStringNotContainsString('id="advancedFiltersDrawer"', $html);
         $this->assertLessThan(strpos($html, 'id="summaryKpis"'), strpos($html, 'id="platformComparisonPanel"'));
         $this->assertStringContainsString('id="saleSubcategory"', $html);
         $this->assertStringContainsString('data-context="venta"', $html);
@@ -555,7 +555,8 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('data-context="exposicion"', $html);
         $this->assertStringNotContainsString('data-context="branding"', $html);
         $this->assertStringNotContainsString('data-context="otros"', $html);
-        $this->assertStringContainsString('option value="active" selected', $html);
+        $this->assertStringContainsString('option value="" selected>Todas', $html);
+        $this->assertStringContainsString('<input type="hidden" id="campaignDataSource"', $html);
         $this->assertStringContainsString('id="rankingsToggle"', $html);
         $this->assertStringContainsString('id="rankingsPopover"', $html);
         $this->assertStringContainsString('id="campaignNameChecklist"', $html);
@@ -3307,7 +3308,9 @@ class CampaignDashboardTest extends TestCase
         foreach ($tables as $table) {
             $databaseBefore[$table] = DB::table($table)->orderBy('id')->get()->toJson();
         }
-        config(['campaign_current_status.enabled' => true, 'services.meta_ads.access_token' => 'synthetic',
+        config(['campaign_current_status.enabled' => true,
+            'operations.scheduled_task_keys' => CampaignCurrentStatusService::TASK,
+            'services.meta_ads.access_token' => 'synthetic',
             'services.meta_ads.ad_account_ids' => ['act_1'], 'services.google_ads.customer_ids' => []]);
         Http::fake(['graph.facebook.com/*' => Http::response(['data' => [[
             'id' => '12345', 'account_id' => '1', 'status' => 'PAUSED', 'effective_status' => 'PAUSED',
@@ -3346,7 +3349,9 @@ class CampaignDashboardTest extends TestCase
         $metricsBefore = DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson();
         $this->assertCount(1, $before['campaigns']);
         $this->assertEquals(350, $before['campaigns'][0]['spend']);
-        config(['campaign_current_status.enabled' => true, 'services.meta_ads.access_token' => 'synthetic',
+        config(['campaign_current_status.enabled' => true,
+            'operations.scheduled_task_keys' => CampaignCurrentStatusService::TASK,
+            'services.meta_ads.access_token' => 'synthetic',
             'services.meta_ads.ad_account_ids' => ['act_1', 'act_2'], 'services.google_ads.customer_ids' => []]);
         Http::fake([
             '*act_1/campaigns*' => Http::response(['data' => [['id' => '12345', 'account_id' => '1', 'status' => 'ACTIVE', 'effective_status' => 'ACTIVE']]]),
