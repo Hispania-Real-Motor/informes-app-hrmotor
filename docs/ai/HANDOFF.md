@@ -8811,7 +8811,7 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 
 ## Pruebas y verificaciones
 
-- Pest `ContactCenterCommissionDashboardTest`: 15 pruebas, 126 aserciones,
+- Pest `ContactCenterCommissionDashboardTest`: 15 pruebas, 128 aserciones,
   incluyendo octubre, eliminados/fusionados, cero verificado, sincronización
   incompleta, regresión de meses anteriores y exportación XLSX de octubre.
 - Pest `CommercialCommissionSourceReadinessTest|CommercialCommissionDashboardTest`:

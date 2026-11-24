@@ -491,6 +491,20 @@ class ContactCenterCommissionDashboardTest extends TestCase
 
         $export->assertOk();
         $this->assertSame('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $export->headers->get('content-type'));
+
+        ReportSyncRun::query()
+            ->where('dataset', 'leads_dashboard')
+            ->firstOrFail()
+            ->update(['stats' => ['leads' => ['appointment_fields_available' => false, 'warnings' => ['fallback']]]]);
+
+        $this->withSession([
+            'informes_authenticated' => true,
+            'report_user_id' => $admin->id,
+            'report_user_role' => $admin->role,
+            'report_user_email' => $admin->email,
+        ])->get('/informes/comisiones-comerciales/export/comisiones.xlsx?month='.$month)
+            ->assertStatus(409)
+            ->assertSee('no dispone de un cálculo económico certificable');
     }
 
     public function test_missing_company_target_is_never_presented_as_a_zero_bonus(): void
