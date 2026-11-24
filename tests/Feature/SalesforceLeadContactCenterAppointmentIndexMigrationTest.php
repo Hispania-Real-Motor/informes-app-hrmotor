@@ -62,4 +62,18 @@ class SalesforceLeadContactCenterAppointmentIndexMigrationTest extends TestCase
         $this->assertTrue(Schema::hasIndex('salesforce_leads', 'existing_equivalent_contact_center_idx'));
         $this->assertFalse(Schema::hasIndex('salesforce_leads', 'sf_leads_contact_center_appointment_idx'));
     }
+
+    public function test_migration_rejects_the_expected_name_with_incompatible_columns(): void
+    {
+        $migration = require database_path('migrations/2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php');
+        $migration->down();
+
+        Schema::table('salesforce_leads', function (Blueprint $table): void {
+            $table->index(['appointment_setter_id'], 'sf_leads_contact_center_appointment_idx');
+        });
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('columnas incompatibles');
+        $migration->up();
+    }
 }

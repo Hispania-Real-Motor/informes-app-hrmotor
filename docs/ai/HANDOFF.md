@@ -8839,10 +8839,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pest `CommercialCommissionSourceReadinessTest|CommercialCommissionDashboardTest`:
   88 pruebas, 589 aserciones.
 - Pest `SalesforceMonthlyLeadsSyncServiceTest`: 7 pruebas, 73 aserciones.
-- Pest conjunto relevante de Comisiones/Contact Center: 142 pruebas, 1.028
+- Pest conjunto relevante de Comisiones/Contact Center: 143 pruebas, 1.030
   aserciones.
-- Pest `SalesforceLeadContactCenterAppointmentIndexMigrationTest`: 3 pruebas,
-  5 aserciones.
+- Pest `SalesforceLeadContactCenterAppointmentIndexMigrationTest`: 4 pruebas,
+  7 aserciones.
 - `php artisan migrate:fresh --force --no-interaction` con SQLite en memoria:
   correcto, incluida la migración del índice.
 - PHP lint de los cuatro servicios, la migración y los tres tests PHP modificados:
