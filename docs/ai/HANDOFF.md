@@ -8777,6 +8777,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - `tests/Feature/ContactCenterCommissionDashboardTest.php`
 - `tests/Unit/SalesforceMonthlyLeadsSyncServiceTest.php`
 - `database/migrations/2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php`
+- `scripts/check_documentation_integrity.py`
+- `tests/documentation/test_check_documentation_integrity.py`
+- `docs/guia-mantenimiento-documental.md`
+- `tests/Feature/SalesforceLeadContactCenterAppointmentIndexMigrationTest.php`
 - `docs/informe-comisiones.md`
 - `docs/matriz-trazabilidad-kpi.md`
 - Este handoff.
@@ -8788,12 +8792,22 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Se añade la migración
   `2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php`,
   que crea un índice compuesto por captador, eliminación, fusión y fecha de cita
-  para evitar planes de consulta amplios sobre el volumen de Leads. El índice de
-  fecha existente sigue cubriendo la consulta de incidencias sin roster. No se
-  ejecuta la migración en producción desde esta tarea; tampoco se modifican
-  datos productivos, comisiones históricas cerradas ni estados de certificación.
-  Las consultas usan filtros SQL, selección de columnas acotada y no hidratan la
+  para evitar planes de consulta amplios sobre el volumen de Leads. No es
+  redundante con los índices individuales existentes. La migración reutiliza un
+  índice equivalente, tolera que su índice nombrado exista tras una ejecución
+  parcial y omite de forma segura una creación duplicada; un índice con el mismo
+  nombre pero columnas incompatibles produce error. El índice de fecha existente
+  sigue cubriendo la consulta de incidencias sin roster. No se ejecuta la
+  migración en producción desde esta tarea; tampoco se modifican datos
+  productivos, comisiones históricas cerradas ni estados de certificación. Las
+  consultas usan filtros SQL, selección de columnas acotada y no hidratan la
   tabla completa.
+- El workflow documental exigía Campañas, Intereses y Reservas/Ventas porque el
+  prefijo del sincronizador compartido y el token `lead` de la migración
+  sobreestimaban sus consumidores. Se añaden entradas exactas en `EXACT` para
+  este diff: la metadata de citas y el índice son de Comisiones/Contact Center;
+  el modelo general `SalesforceLead` conserva sus dominios de Intereses y
+  Campañas. No se modifican documentos ajenos sin impacto funcional.
 - La réplica manual de evidencias de citas se conserva para auditoría histórica,
   pero deja de ser la fuente de readiness/cálculo del plan roster desde
   septiembre.
@@ -8823,23 +8837,37 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Pest `CommercialCommissionSourceReadinessTest|CommercialCommissionDashboardTest`:
   88 pruebas, 589 aserciones.
 - Pest `SalesforceMonthlyLeadsSyncServiceTest`: 7 pruebas, 73 aserciones.
-- Pest conjunto relevante de Comisiones/Contact Center: 139 pruebas, 1.023
+- Pest conjunto relevante de Comisiones/Contact Center: 142 pruebas, 1.028
   aserciones.
+- Pest `SalesforceLeadContactCenterAppointmentIndexMigrationTest`: 3 pruebas,
+  5 aserciones.
 - PHP lint de los cuatro servicios, la migración y los dos tests PHP modificados:
   sin errores de sintaxis.
 - Laravel Pint en modo `--test` sobre los PHP modificados: correcto.
 - `git diff --check`: correcto en el diff final.
 - El validador y las pruebas documentales no se pudieron ejecutar localmente:
   Windows solo expone el alias de Microsoft Store y no hay intérprete Python
-  disponible; quedan para CI.
+  disponible; el cambio de mapeo y su prueba quedan para CI.
 
 ## Acciones manuales necesarias
 
 - Tras aprobar la PR, desplegar el código y ejecutar, con autorización y fuera
   de esta sesión, `salesforce:sync-monthly-commercial
   --from=2026-10-01 --to=2026-11-01`.
-- Ejecutar la migración del índice compuesto antes de validar tiempos de
-  consulta; no se incluye ninguna ejecución productiva en esta tarea.
+- Antes de migrar, confirmar en solo lectura `SELECT VERSION()`, que
+  `salesforce_leads` usa InnoDB, el tamaño de la tabla y los índices en
+  `information_schema.statistics`; si ya existe un índice equivalente, la
+  migración debe quedar como no-op. Si existe el nombre esperado con columnas
+  distintas, detenerse y corregir mediante revisión, sin borrarlo.
+- En MariaDB 11, aplicar la migración únicamente con backup restaurable,
+  ventana aprobada y monitorización de metadata locks, espacio, I/O, réplicas y
+  latencia. La adición de un índice InnoDB admite `ALGORITHM=INPLACE,
+  LOCK=NONE`, pero conserva breves locks de metadata al inicio/final; validar
+  previamente ese plan en staging o una réplica equivalente y no continuar si
+  requiere `COPY` o `SHARED`. Ejecutar `php artisan migrate --force
+  --no-interaction`, comprobar `migrate:status` y el índice, y revertir solo el
+  release de código si la validación falla; no usar rollback destructivo.
+- No se incluye ninguna ejecución productiva en esta tarea.
 - Verificar el run `leads_dashboard` y el run de Opportunities como
   `completed`, cobertura exacta del intervalo y campos de cita completos.
 - Revisar el recuento por captador, eliminados/fusionados, incidencias,
