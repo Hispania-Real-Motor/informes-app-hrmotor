@@ -583,10 +583,10 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('id="campaignAcquired"', $html);
         $this->assertStringNotContainsString('id="campaignId"', $html);
         $this->assertStringNotContainsString('id="campaignName"', $html);
-        $this->assertStringContainsString('id="hasOpportunity"', $html);
-        $this->assertStringContainsString('id="hasReservation"', $html);
-        $this->assertStringContainsString('id="hasSale"', $html);
-        $this->assertStringContainsString('id="classification"', $html);
+        $this->assertStringNotContainsString('id="hasOpportunity"', $html);
+        $this->assertStringNotContainsString('id="hasReservation"', $html);
+        $this->assertStringNotContainsString('id="hasSale"', $html);
+        $this->assertStringNotContainsString('id="classification"', $html);
 
         $this->assertStringNotContainsString('id="sourceAcquired"', $html);
         $this->assertStringNotContainsString('id="commercialUser"', $html);

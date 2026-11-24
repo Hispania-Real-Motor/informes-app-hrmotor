@@ -255,10 +255,6 @@ function bindResetFilters() {
             'platform',
             'campaignSearch',
             'campaignStatus',
-            'hasOpportunity',
-            'hasReservation',
-            'hasSale',
-            'classification',
         ].forEach((id) => {
             const element = document.getElementById(id);
 
@@ -295,10 +291,6 @@ function bindFilters() {
         'endDate',
         'platform',
         'campaignStatus',
-        'hasOpportunity',
-        'hasReservation',
-        'hasSale',
-        'classification',
         'leadType',
     ].forEach((id) => {
         document.getElementById(id)?.addEventListener('change', reloadAllData);
@@ -874,10 +866,6 @@ function applyAvailabilityControls() {
     ['leadType'].forEach((id) => {
         const control = document.getElementById(id);
         if (control) control.disabled = !interestMetricsAvailable;
-    });
-    ['hasOpportunity', 'hasReservation', 'hasSale', 'classification'].forEach((id) => {
-        const control = document.getElementById(id);
-        if (control) control.disabled = !opportunityMetricsAvailable;
     });
     ['exportCsv', 'exportAttributionAudit'].forEach((id) => {
         const exportLink = document.getElementById(id);
@@ -2230,10 +2218,6 @@ function currentFilters() {
     setParam(params, 'lead_type', document.getElementById('leadType')?.value);
     setParam(params, 'campaign_status', document.getElementById('campaignStatus')?.value);
     setParam(params, 'search', document.getElementById('campaignSearch')?.value);
-    setParam(params, 'has_opportunity', document.getElementById('hasOpportunity')?.value);
-    setParam(params, 'has_reservation', document.getElementById('hasReservation')?.value);
-    setParam(params, 'has_sale', document.getElementById('hasSale')?.value);
-    setParam(params, 'classification', document.getElementById('classification')?.value);
 
     return params.toString();
 }

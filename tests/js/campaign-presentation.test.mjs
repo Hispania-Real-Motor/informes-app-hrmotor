@@ -644,7 +644,6 @@ test('operational availability unlocks only metrics supported by the current res
     isolated.availability = { ...available, opportunity_dependent: { status: 'blocked' } };
     vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls(); renderColumnsPopover();', isolated);
     assert.equal(controls.leadType.disabled, false);
-    assert.equal(controls.hasOpportunity.disabled, true);
     assert.doesNotMatch(popover.innerHTML.match(/<input[^>]+data-column-toggle="leads_salesforce"[^>]*>/)?.[0] || '', /disabled/);
     assert.match(popover.innerHTML.match(/<input[^>]+data-column-toggle="sales"[^>]*>/)?.[0] || '', /disabled/);
     const partialTable = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [{platform:'meta', campaign_name:'Synthetic', spend:10, leads_salesforce:2, opportunities:null, sales:null}])", isolated);
@@ -655,13 +654,11 @@ test('operational availability unlocks only metrics supported by the current res
     isolated.availability = { mode: 'platform_independent_only' };
     vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls(); renderColumnsPopover();', isolated);
     assert.equal(controls.leadType.disabled, true);
-    assert.equal(controls.hasOpportunity.disabled, true);
     assert.match(popover.innerHTML.match(/<input[^>]+data-column-toggle="leads_salesforce"[^>]*>/)?.[0] || '', /disabled/);
 
     isolated.availability = { mode: 'official_complete' };
     vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls(); renderColumnsPopover();', isolated);
     assert.equal(controls.leadType.disabled, false);
-    assert.equal(controls.hasOpportunity.disabled, false);
     assert.doesNotMatch(popover.innerHTML.match(/<input[^>]+data-column-toggle="sales"[^>]*>/)?.[0] || '', /disabled/);
 
     isolated.availability = {};
@@ -702,7 +699,6 @@ test('a definitive load failure fails closed without discarding column preferenc
     vm.runInContext('renderWarnings = () => {}; renderKpisState = () => {}; renderCharts = () => {}; renderPlatformComparison = () => {}; renderReviewCampaigns = () => {}; renderDiagnostics = () => {}; renderRankings = () => {}; renderCampaignTables = () => {}; showStatusMessage = () => {};', isolated);
     vm.runInContext("renderLoadFailure(new Error('network unavailable'));", isolated);
     assert.equal(controls.leadType.disabled, true);
-    assert.equal(controls.hasOpportunity.disabled, true);
     assert.equal(notice.hidden, true);
     assert.equal(notice.textContent, '');
     assert.match(popover.innerHTML.match(/<input[^>]+data-column-toggle="sales"[^>]*>/)?.[0] || '', /disabled/);
