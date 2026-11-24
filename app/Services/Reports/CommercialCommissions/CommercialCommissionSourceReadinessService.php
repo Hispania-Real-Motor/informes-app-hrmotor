@@ -38,7 +38,12 @@ class CommercialCommissionSourceReadinessService
                 'tasaciones' => $this->syncRunState('salesforce_tasaciones', 'Tasaciones', $period),
             ],
             'contact_center' => $period->greaterThanOrEqualTo(CarbonImmutable::parse('2026-09-01')) ? [
-                'appointments' => $this->syncRunState('commercial_commission_appointment_evidence', 'Evidencia de citas Contact Center', $period),
+                'appointments' => $this->syncRunState(
+                    'leads_dashboard',
+                    'Leads y citas',
+                    $period,
+                    fn (ReportSyncRun $run): ?string => $this->leadAppointmentSyncIssue($run),
+                ),
                 'sales' => $this->syncRunState('salesforce_opportunities', 'Oportunidades', $period),
             ] : [
                 'leads' => $this->syncRunState('leads_dashboard', 'Leads y citas', $period),
@@ -79,15 +84,15 @@ class CommercialCommissionSourceReadinessService
         ];
     }
 
-    private function syncRunState(string $dataset, string $label, CarbonImmutable $month): array
+    private function syncRunState(string $dataset, string $label, CarbonImmutable $month, ?callable $runValidator = null): array
     {
         if (! Schema::hasTable('report_sync_runs')) {
             return $this->state($label, 'error', true, null, 'No existe metadata de sincronización.');
         }
 
         return $month->isCurrentMonth()
-            ? $this->currentMonthSyncRunState($dataset, $label, $month)
-            : $this->completedFullMonthState($dataset, $label, $month, true);
+            ? $this->currentMonthSyncRunState($dataset, $label, $month, $runValidator)
+            : $this->completedFullMonthState($dataset, $label, $month, true, $runValidator);
     }
 
     /**
@@ -104,7 +109,7 @@ class CommercialCommissionSourceReadinessService
         return $this->completedFullMonthState($dataset, $label, $month, false);
     }
 
-    private function completedFullMonthState(string $dataset, string $label, CarbonImmutable $month, bool $requireFresh): array
+    private function completedFullMonthState(string $dataset, string $label, CarbonImmutable $month, bool $requireFresh, ?callable $runValidator = null): array
     {
         $monthEnd = $month->addMonth();
         $run = ReportSyncRun::query()
@@ -125,10 +130,14 @@ class CommercialCommissionSourceReadinessService
             return $this->state($label, 'stale', true, $run->completed_at->toIso8601String(), 'La sincronización está desactualizada.');
         }
 
+        if ($runValidator !== null && ($message = $runValidator($run)) !== null) {
+            return $this->state($label, 'error', true, $run->completed_at->toIso8601String(), $message);
+        }
+
         return $this->state($label, 'ready', false, $run->completed_at->toIso8601String(), 'Fuente sincronizada correctamente.');
     }
 
-    private function currentMonthSyncRunState(string $dataset, string $label, CarbonImmutable $month): array
+    private function currentMonthSyncRunState(string $dataset, string $label, CarbonImmutable $month, ?callable $runValidator = null): array
     {
         $now = CarbonImmutable::now($month->getTimezone())->min($month->addMonth());
         $runs = ReportSyncRun::query()
@@ -139,7 +148,7 @@ class CommercialCommissionSourceReadinessService
             ->where('period_start_at', '<', $now)
             ->orderBy('period_start_at')
             ->orderBy('period_end_at')
-            ->get(['period_start_at', 'period_end_at', 'completed_at']);
+            ->get(['period_start_at', 'period_end_at', 'completed_at', 'stats']);
 
         if ($runs->isEmpty()) {
             return $this->state($label, 'error', true, null, 'No hay datos completos para el mes seleccionado.');
@@ -164,7 +173,26 @@ class CommercialCommissionSourceReadinessService
             return $this->state($label, 'stale', true, $coveredUntil->toIso8601String(), 'Datos pendientes de actualización.');
         }
 
+        if ($runValidator !== null) {
+            foreach ($runs as $run) {
+                if (($message = $runValidator($run)) !== null) {
+                    return $this->state($label, 'error', true, $run->completed_at->toIso8601String(), $message);
+                }
+            }
+        }
+
         return $this->state($label, 'ready', false, $coveredUntil->toIso8601String(), 'Datos disponibles para el mes seleccionado.');
+    }
+
+    private function leadAppointmentSyncIssue(ReportSyncRun $run): ?string
+    {
+        $appointmentFieldsAvailable = data_get($run->stats, 'leads.appointment_fields_available');
+
+        if ($appointmentFieldsAvailable === false) {
+            return 'La sincronización de Leads no contiene todos los campos de citas requeridos.';
+        }
+
+        return null;
     }
 
     private function localTableState(string $table, string $label, ?string $month = null): array

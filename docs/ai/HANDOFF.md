@@ -8747,3 +8747,103 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `python.exe` disponible; queda pendiente ejecutarlo con base, HEAD y cuerpo
   de PR. `git diff --check` y la revisión del diff documental quedan por cerrar.
 - Docs-Impact: updated. Docs-Matrix-Impact: updated.
+
+# Corrección Contact Center — certificación octubre de 2026
+
+## Resumen de la tarea
+
+- Rama aislada: `codex/fix-contact-center-october-2026-prod`, basada en
+  `origin/main` / `d12a592f66e63b3b5776aed0fd949c48acda9512`.
+- Causa raíz: desde septiembre el plan roster de Contact Center consultaba la
+  réplica `commercial_commission_appointment_evidences` y su readiness exigía
+  `commercial_commission_appointment_evidence`, mientras que la sincronización
+  verificada de octubre del dataset `leads_dashboard` persiste la evidencia de
+  citas en `salesforce_leads`. Por eso las filas existentes no llegaban al
+  cálculo y aparecían como evidencia pendiente/sin citas.
+- Solución: el plan roster usa el pipeline existente de Leads, con fecha de
+  captación en intervalo semiabierto, captador por Salesforce User ID, marca
+  telefónica o de tienda, exclusión de eliminados/fusionados y deduplicación por
+  Lead Salesforce. La readiness valida que la sincronización no haya degradado
+  los campos de cita. Las fórmulas económicas, ventanas, objetivos, cierres y
+  snapshots no se han modificado.
+
+## Archivos modificados
+
+- `app/Services/Reports/ContactCenterCommissions/ContactCenterCommissionRosterDashboardService.php`
+- `app/Services/Reports/CommercialCommissions/CommercialCommissionSourceReadinessService.php`
+- `app/Services/Reports/CommercialCommissions/CommercialCommissionClosureService.php`
+- `app/Services/Reports/MonthlyCommercial/Sync/SalesforceMonthlyLeadsSyncService.php`
+- `resources/views/reports/commercial-commissions/partials/contact-center-tab.blade.php`
+- `tests/Feature/ContactCenterCommissionDashboardTest.php`
+- `tests/Unit/SalesforceMonthlyLeadsSyncServiceTest.php`
+- `docs/informe-comisiones.md`
+- `docs/matriz-trazabilidad-kpi.md`
+- Este handoff.
+
+## Decisiones y base de datos
+
+- Se reutiliza `salesforce:sync-monthly-commercial`; no se crea una
+  sincronización paralela ni se cambia el periodo económico.
+- No se modifican migraciones, tablas, datos productivos, comisiones históricas
+  cerradas ni estados de certificación. Los índices ya existentes de Leads para
+  captador y fecha se aprovechan; las consultas usan filtros SQL, selección de
+  columnas acotada y no hidratan la tabla completa.
+- La réplica manual de evidencias de citas se conserva para auditoría histórica,
+  pero deja de ser la fuente de readiness/cálculo del plan roster desde
+  septiembre.
+- No cambia la arquitectura general ni se adopta una decisión arquitectónica
+  nueva; no se modifican `PROJECT_CONTEXT.md` ni `DECISIONS.md`.
+
+## Seguridad, rendimiento y fiabilidad
+
+- No se alteran autorizaciones, políticas, controles de cierre, aprobación,
+  reapertura ni validación de objetivos.
+- Se filtran `is_deleted = false` y `salesforce_master_record_id IS NULL`; se
+  mantienen las identidades por Salesforce User ID/Lead ID y no se añaden logs
+  con PII o payloads.
+- La pantalla, snapshot y XLSX siguen usando el mismo payload económico; el XLSX
+  resume filas certificables y no se permite si la readiness o los controles
+  económicos fallan. Un Lead sin marca es ausencia verificada y produce cero,
+  no un importe ficticio; una sincronización degradada bloquea.
+- La consulta de citas es única por construcción del dataset, acotada por
+  captadores y fechas, y la consulta de incidencias selecciona solo columnas
+  necesarias. No se usan `get()` sin filtros sobre `salesforce_leads`.
+
+## Pruebas y verificaciones
+
+- Pest `ContactCenterCommissionDashboardTest`: 15 pruebas, 126 aserciones,
+  incluyendo octubre, eliminados/fusionados, cero verificado, sincronización
+  incompleta, regresión de meses anteriores y exportación XLSX de octubre.
+- Pest `CommercialCommissionSourceReadinessTest|CommercialCommissionDashboardTest`:
+  88 pruebas, 589 aserciones.
+- Pest `SalesforceMonthlyLeadsSyncServiceTest`: 7 pruebas, 73 aserciones.
+- PHP lint de los cuatro servicios PHP modificados y del test funcional: sin
+  errores de sintaxis.
+- Laravel Pint en modo `--test` sobre los PHP modificados: correcto.
+- Pendiente al cerrar: `git diff --check`, validador documental y pruebas
+  documentales; se ejecutarán con el diff final y la descripción de PR.
+
+## Acciones manuales necesarias
+
+- Tras aprobar la PR, desplegar el código y ejecutar, con autorización y fuera
+  de esta sesión, `salesforce:sync-monthly-commercial
+  --from=2026-10-01 --to=2026-11-01`.
+- Verificar el run `leads_dashboard` y el run de Opportunities como
+  `completed`, cobertura exacta del intervalo y campos de cita completos.
+- Revisar el recuento por captador, eliminados/fusionados, incidencias,
+  objetivo mensual y Responsable. Solo después preparar/aprobar/exportar con
+  el rol autorizado. No se debe forzar ningún estado ni consultar/escribir
+  producción desde esta tarea.
+
+## Riesgos y pendientes
+
+- La diferencia entre la consulta directa a Salesforce y el espejo local debe
+  conciliarse mediante el run sincronizado; este cambio no fabrica ni corrige
+  filas productivas.
+- El exportador XLSX expone el resumen económico; el detalle por Lead queda en
+  pantalla y snapshot. La documentación se ha corregido para reflejarlo.
+- Fallback documental aplicado por el agente principal: se invocó
+  `report_docs_maintainer`, que revisó el alcance pero fue detenido antes de
+  editar; los cambios documentales se realizaron manualmente y se validarán
+  con el procedimiento de `docs/guia-mantenimiento-documental.md`.
+- Docs-Impact: updated. Docs-Matrix-Impact: updated.

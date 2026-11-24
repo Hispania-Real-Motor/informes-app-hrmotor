@@ -2,10 +2,10 @@
 
 namespace App\Services\Reports\ContactCenterCommissions;
 
-use App\Models\CommercialCommissionAppointmentEvidence;
 use App\Models\CommercialCommissionDeliveryReconciliation;
 use App\Models\ContactCenterCommissionRosterMember;
 use App\Models\ReportSyncRun;
+use App\Models\SalesforceLead;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceUser;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfigService;
@@ -103,6 +103,8 @@ class ContactCenterCommissionRosterDashboardService
             'diagnostics' => [
                 'roster_members' => $membersByUserId->count(),
                 'appointments_count' => $appointments->count(),
+                'appointments_source_dataset' => 'leads_dashboard',
+                'appointments_source_table' => 'salesforce_leads',
                 'reservations_count' => $reservations->count(),
                 'deliveries_count' => $deliveries->count(),
                 'company_deliveries' => $companyCount,
@@ -121,15 +123,26 @@ class ContactCenterCommissionRosterDashboardService
         ];
     }
 
-    /** @return Collection<int, CommercialCommissionAppointmentEvidence> */
+    /** @return Collection<int, SalesforceLead> */
     private function appointments(CarbonImmutable $start, CarbonImmutable $end, array $memberIds): Collection
     {
-        return CommercialCommissionAppointmentEvidence::query()
+        return SalesforceLead::query()
+            ->where('is_deleted', false)
+            ->whereNull('salesforce_master_record_id')
             ->whereIn('appointment_setter_id', $memberIds)
-            ->whereDate('appointment_capture_date', '>=', $start->toDateString())
-            ->whereDate('appointment_capture_date', '<', $end->toDateString())
-            ->get(['salesforce_interest_id', 'appointment_setter_id', 'appointment_setter_name', 'appointment_capture_date'])
-            ->unique('salesforce_interest_id')
+            ->whereNotNull('appointment_capture_date')
+            ->where('appointment_capture_date', '>=', $start->toDateString())
+            ->where('appointment_capture_date', '<', $end->toDateString())
+            ->where(function ($query): void {
+                $query->where('appointment_call', true)->orWhere('appointment_store', true);
+            })
+            ->get([
+                'salesforce_id', 'name', 'appointment_setter_id', 'appointment_setter_name',
+                'appointment_capture_date', 'appointment_call', 'appointment_store',
+                'appointment_attended_status', 'owner_name', 'store_commercial_name',
+                'candidate_status_formula', 'phone', 'mobile_phone', 'portal_text',
+            ])
+            ->unique('salesforce_id')
             ->values();
     }
 
@@ -190,7 +203,7 @@ class ContactCenterCommissionRosterDashboardService
         $presentationMember = $memberPeriods->sortByDesc('effective_from')->firstOrFail();
         $userId = $presentationMember->salesforce_user_id;
         $user = $users->get($userId);
-        $rowAppointments = $appointments->where('appointment_setter_id', $userId)->filter(fn (CommercialCommissionAppointmentEvidence $event): bool => $this->isEffectiveInAnyPeriod($memberPeriods, $event->appointment_capture_date))->values();
+        $rowAppointments = $appointments->where('appointment_setter_id', $userId)->filter(fn (SalesforceLead $event): bool => $this->isEffectiveInAnyPeriod($memberPeriods, $event->appointment_capture_date))->values();
         $rowReservations = $reservations->where('appointment_setter_id', $userId)->filter(fn (SalesforceOpportunity $event): bool => $this->isEffectiveInAnyPeriod($memberPeriods, $event->reservation_date))->values();
         $rowDeliveries = $deliveries->where('appointment_setter_id', $userId)->filter(fn (SalesforceOpportunity $event): bool => $this->isEffectiveInAnyPeriod($memberPeriods, $event->cv_signed_date))->values();
         $rowIssues = [];
@@ -242,8 +255,19 @@ class ContactCenterCommissionRosterDashboardService
             'observations' => $rowIssues === [] ? 'Sin incidencias' : implode(' ', $rowIssues),
             'issues' => $rowIssues,
             'details' => $includeDetails ? [
-                'appointments' => $rowAppointments->map(fn (CommercialCommissionAppointmentEvidence $event): array => [
-                    'interest_id' => $event->salesforce_interest_id,
+                'appointments' => $rowAppointments->map(fn (SalesforceLead $event): array => [
+                    'lead_id' => $event->salesforce_id,
+                    // Keep the historical key so previously stored snapshots
+                    // and consumers can continue to render the identifier.
+                    'interest_id' => $event->salesforce_id,
+                    'lead_name' => (string) ($event->name ?? ''),
+                    'appointment_call' => (bool) $event->appointment_call,
+                    'appointment_store' => (bool) $event->appointment_store,
+                    'attended_status' => (string) ($event->appointment_attended_status ?? ''),
+                    'candidate_status' => (string) ($event->candidate_status_formula ?? ''),
+                    'owner_name' => (string) ($event->owner_name ?? ''),
+                    'store_commercial_name' => (string) ($event->store_commercial_name ?? ''),
+                    'portal' => (string) ($event->portal_text ?? ''),
                     'capture_date' => $event->appointment_capture_date?->toDateString(),
                     'appointment_setter_id' => $event->appointment_setter_id,
                     'appointment_setter_name' => $event->appointment_setter_name,
@@ -318,10 +342,23 @@ class ContactCenterCommissionRosterDashboardService
     {
         $memberIds = $membersByUserId->keys()->all();
         $events = collect([
-            ...$appointments->map(fn (CommercialCommissionAppointmentEvidence $event): array => $this->incidentEvent('appointments', $event->appointment_setter_id, $event->salesforce_interest_id, $event->appointment_capture_date))->all(),
+            ...$appointments->map(fn (SalesforceLead $event): array => $this->incidentEvent('appointments', $event->appointment_setter_id, $event->salesforce_id, $event->appointment_capture_date))->all(),
             ...$reservations->map(fn (SalesforceOpportunity $event): array => $this->incidentEvent('reservations', $event->appointment_setter_id, $event->salesforce_id, $event->reservation_date))->all(),
             ...$deliveries->map(fn (SalesforceOpportunity $event): array => $this->incidentEvent('deliveries', $event->appointment_setter_id, $event->salesforce_id, $event->cv_signed_date))->all(),
-            ...CommercialCommissionAppointmentEvidence::query()->whereNotNull('appointment_setter_id')->whereNotIn('appointment_setter_id', $memberIds)->whereDate('appointment_capture_date', '>=', $start->toDateString())->whereDate('appointment_capture_date', '<', $end->toDateString())->get(['salesforce_interest_id', 'appointment_setter_id', 'appointment_capture_date'])->map(fn (CommercialCommissionAppointmentEvidence $event): array => $this->incidentEvent('appointments', $event->appointment_setter_id, $event->salesforce_interest_id, $event->appointment_capture_date))->all(),
+            ...SalesforceLead::query()
+                ->where('is_deleted', false)
+                ->whereNull('salesforce_master_record_id')
+                ->whereNotNull('appointment_setter_id')
+                ->whereNotIn('appointment_setter_id', $memberIds)
+                ->whereNotNull('appointment_capture_date')
+                ->where('appointment_capture_date', '>=', $start->toDateString())
+                ->where('appointment_capture_date', '<', $end->toDateString())
+                ->where(function ($query): void {
+                    $query->where('appointment_call', true)->orWhere('appointment_store', true);
+                })
+                ->get(['salesforce_id', 'appointment_setter_id', 'appointment_capture_date'])
+                ->map(fn (SalesforceLead $event): array => $this->incidentEvent('appointments', $event->appointment_setter_id, $event->salesforce_id, $event->appointment_capture_date))
+                ->all(),
             ...SalesforceOpportunity::query()->whereNotNull('appointment_setter_id')->whereNotIn('appointment_setter_id', $memberIds)->where('reservation', true)->whereDate('reservation_date', '>=', $start->toDateString())->whereDate('reservation_date', '<', $end->toDateString())->get(['salesforce_id', 'appointment_setter_id', 'reservation_date'])->map(fn (SalesforceOpportunity $event): array => $this->incidentEvent('reservations', $event->appointment_setter_id, $event->salesforce_id, $event->reservation_date))->all(),
             ...SalesforceOpportunity::query()->whereNotNull('appointment_setter_id')->whereNotIn('appointment_setter_id', $memberIds)->where('cv_signed', true)->whereDate('cv_signed_date', '>=', $start->toDateString())->whereDate('cv_signed_date', '<', $end->toDateString())->get(['salesforce_id', 'appointment_setter_id', 'cv_signed_date'])->map(fn (SalesforceOpportunity $event): array => $this->incidentEvent('deliveries', $event->appointment_setter_id, $event->salesforce_id, $event->cv_signed_date))->all(),
         ]);
@@ -387,7 +424,7 @@ class ContactCenterCommissionRosterDashboardService
         $requirements = [
             'contact_center_commission_roster_members' => ['salesforce_user_id', 'effective_from', 'effective_until'],
             'salesforce_users' => ['salesforce_id', 'created_date'],
-            'commercial_commission_appointment_evidences' => ['salesforce_interest_id', 'appointment_setter_id', 'appointment_capture_date'],
+            'salesforce_leads' => ['salesforce_id', 'is_deleted', 'salesforce_master_record_id', 'appointment_setter_id', 'appointment_capture_date', 'appointment_call', 'appointment_store'],
             'salesforce_opportunities' => ['salesforce_id', 'appointment_setter_id', 'reservation', 'reservation_date', 'cv_signed', 'cv_signed_date'],
         ];
         $issues = [];

@@ -348,14 +348,22 @@ completar toda la lectura Salesforce; un fallo parcial conserva la evidencia
 anterior. Un Product2 enlazado por más de una Opportunity se marca como
 `DUPLICATE_PRODUCT2_LINK`, con prioridad sobre fecha y estado.
 
-Para un miembro vigente del roster, las citas proceden de
-`commercial_commission_appointment_evidences` por
-`appointment_setter_id` y `appointment_capture_date`; reservas y entregas
-proceden de `salesforce_opportunities` por el mismo User ID y, respectivamente,
-`reservation_date` y `cv_signed_date`. Cada hecho usa el mes natural de su
-propia fecha de evento, se deduplica por su ID Salesforce y debe caer en el
-alguno de los tramos vigentes del roster. El detalle conserva IDs, fechas y la
-colección de vigencias reales; no reduce un mes a un único tramo ficticio.
+Para un miembro vigente del roster, las citas proceden de `salesforce_leads`,
+alimentado por la ejecución `report_sync_runs.dataset = leads_dashboard`, y
+se filtran por `appointment_setter_id`, `appointment_capture_date` dentro de
+`[from, to)`, y al menos una de las marcas `appointment_call` o
+`appointment_store`. Solo cuentan Leads con `is_deleted = false` y sin
+`salesforce_master_record_id`; se deduplican por `salesforce_id`, por lo que un
+Lead marcado simultáneamente como cita telefónica y de tienda no duplica el
+hecho. La sincronización debe conservar todos los campos de cita; si la query
+ha tenido que degradarse por campos opcionales, la evidencia económica queda
+bloqueada aunque existan filas locales. Un Lead sin marca de cita es una
+ausencia verificada y produce cero, no un importe ficticio. Reservas y entregas
+proceden de `salesforce_opportunities` por el mismo User ID y,
+respectivamente, `reservation_date` y `cv_signed_date`. Cada hecho usa el mes
+natural de su propia fecha de evento y debe caer en alguno de los tramos
+vigentes del roster. El detalle de pantalla y snapshot conserva IDs, fechas y
+la colección de vigencias reales; no reduce un mes a un único tramo ficticio.
 Los eventos se auditan como `USER_NOT_IN_ROSTER` o
 `EVENT_OUTSIDE_ROSTER_EFFECTIVE_RANGE`, con tipo, User ID, referencia y fecha.
 `Product2` y sus
@@ -403,21 +411,29 @@ Un definitivo reutiliza exclusivamente su snapshot tanto en el dashboard como
 en el XLSX. La reapertura conserva la versión definitiva anterior y permite
 preparar/aprobar una versión posterior con sus propios datos y settings; no
 reescribe snapshots históricos. Desde septiembre, el XLSX incorpora una hoja
-detallada de Contact Center (identidad Salesforce, CreatedDate, umbral, hechos,
+resumen de Contact Center (identidad Salesforce, CreatedDate, citas, reservas, entregas, umbral, hechos,
 tramos, objetivo, importes, certificación e incidencias) y una hoja de
 Responsable basada en el objetivo mensual, sin columnas de referencia anual.
+El detalle por Lead queda en la pantalla y en el snapshot, no en una hoja XLSX
+separada.
 Sin definitivo, la exportación exige cálculo live certificable y devuelve HTTP
 409 con un mensaje controlado si no lo hay. Un snapshot definitivo malformado
 o económicamente no certificable también devuelve ese 409; nunca se sustituye
 silenciosamente por datos vivos. Julio y agosto mantienen el dashboard,
 componentes, snapshots y formato XLSX legacy.
-La migración `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`
-crea tres réplicas locales separadas de los hechos del informe:
+El plan roster desde septiembre no consume la réplica manual de citas creada
+por `2026_10_30_150000_create_commercial_commission_delivery_evidence_tables.php`;
+consume `salesforce_leads` y el run `leads_dashboard` descritos arriba. La
+réplica manual sigue disponible para auditoría histórica y para los comandos
+acotados de evidencia, pero no demuestra por sí sola la readiness económica del
+plan roster. La migración crea tres réplicas locales separadas de hechos de
+auditoría:
 
 - `commercial_commission_appointment_evidences` conserva, por `Interes__c.Id`,
   el captador de cita, su nombre, `IN_Fecha_Captador_de_Cita__c`, la última
   modificación Salesforce, payload y corte de sincronización. Su consulta se
-  acota por la fecha de captación con intervalo `[from, to)`.
+  acota por la fecha de captación con intervalo `[from, to)` y no sustituye la
+  fuente `salesforce_leads` del plan roster.
 - `commercial_commission_product_delivery_evidences` conserva, por `Product2.Id`,
   estado, `Fecha_entregado__c`, matrícula, última modificación, payload y corte.
   La carga incluye tanto Product2 con fecha de entrega en `[from, to)` como los
@@ -450,21 +466,24 @@ php artisan salesforce:sync-commercial-commission-product-deliveries --from=YYYY
 Ambas registran su ejecución en `report_sync_runs`; no hay scheduler, escritura
 en Salesforce, publicación/recuperación de generaciones de Interests ni cambio
 en snapshots o XLSX. Desde `2026-09`, el dashboard requiere una ejecución
-completada que cubra el mes seleccionado tanto para esta evidencia de citas como
-para `salesforce_opportunities`. La falta de cobertura bloquea la certificación;
-un resultado de cero con cobertura válida se conserva como cero. Las
-conciliaciones son evidencia de revisión y no certifican ni recalculan una
-comisión por sí solas.
+completada de `leads_dashboard` que cubra el mes seleccionado y conserve los
+campos de cita, además de una ejecución completada de
+`salesforce_opportunities`. La falta de cobertura o una query de Leads
+degradada bloquea la certificación; un resultado de cero con cobertura válida
+se conserva como cero. Las conciliaciones son evidencia de revisión y no
+certifican ni recalculan una comisión por sí solas.
 
-Procedimiento posterior al despliegue para septiembre: tras autorización, usar
-el intervalo `[2026-09-01, 2026-10-01)` en los comandos de Opportunities,
-evidencia de citas y Product2/conciliación aplicables; comprobar en
-`report_sync_runs` que `commercial_commission_appointment_evidence` y
-`salesforce_opportunities` tienen un run `completed` que cubre el intervalo;
-configurar el objetivo mensual positivo; revisar filas de agentes, incidencias y
-Responsable; y solo entonces preparar y aprobar con un rol autorizado. Ninguno
-de estos pasos acredita por sí mismo nóminas ni comisiones pagadas: requieren
-conciliación externa.
+Procedimiento posterior al despliegue para octubre: tras autorización, ejecutar
+`salesforce:sync-monthly-commercial --from=2026-10-01 --to=2026-11-01` y
+comprobar en `report_sync_runs` que
+`leads_dashboard` y `salesforce_opportunities` tienen runs `completed` que
+cubren el intervalo. Confirmar en los stats de Leads que los campos de cita no
+se degradaron, revisar filas, exclusiones de eliminados/fusionados, incidencias
+y Responsable, configurar el objetivo mensual positivo, y solo entonces
+preparar y aprobar con un rol autorizado. La réplica manual de
+`commercial_commission_appointment_evidence` no sustituye esta comprobación.
+Ninguno de estos pasos acredita por sí mismo nóminas ni comisiones pagadas:
+requieren conciliación externa.
 
 Archivos principales:
 

@@ -37,7 +37,7 @@ class CommercialCommissionClosureService
         'incentives' => 'Tramos de incentivos',
         'tasaciones' => 'Tasaciones',
         'leads' => 'Leads/citas',
-        'appointments' => 'Evidencia de citas Contact Center',
+        'appointments' => 'Leads y citas',
     ];
 
     public function __construct(
