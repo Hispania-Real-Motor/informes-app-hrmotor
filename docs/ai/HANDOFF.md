@@ -9016,3 +9016,18 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `CampaignDashboardTest`, `CampaignOperationalAttributionTest`, PHPUnit,
   Pint y build. Este worktree no contiene PHP, Composer, `vendor`, npm ni
   `node_modules`, por lo que no se declaran esos resultados como ejecutados.
+
+## 2026-11-24 — PR #159: alineación final del contrato visual
+
+- Se verificó el HEAD `fd8d43e4b875eda72b8afd6b70d02a4a82e4552d` antes del cambio.
+- `campaignNameChecklist`, `campaignNamesSelectAll`, `campaignNamesClear` y
+  `advancedFiltersApply` no existen en la vista vigente. Las expectativas PHP
+  ahora comprueban explícitamente su ausencia y mantienen las comprobaciones de
+  búsqueda, filtros visibles, rankings y comparativa.
+- Se retiró de la inicialización activa la carga y serialización de selecciones
+  antiguas de nombres de campaña. Así, una preferencia persistida de una UI
+  eliminada no introduce un filtro invisible; no se modifican los filtros
+  visibles ni el contrato backend de datos.
+- JavaScript ejecutado: 52/52; `node --check` y `git diff --check` correctos.
+- PHPUnit, Pint y build siguen pendientes por falta de PHP/npm accesibles en
+  este entorno; no se declaran como ejecutados.

@@ -559,10 +559,10 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringContainsString('<input type="hidden" id="campaignDataSource"', $html);
         $this->assertStringContainsString('id="rankingsToggle"', $html);
         $this->assertStringContainsString('id="rankingsPopover"', $html);
-        $this->assertStringContainsString('id="campaignNameChecklist"', $html);
-        $this->assertStringContainsString('id="campaignNamesSelectAll"', $html);
-        $this->assertStringContainsString('id="campaignNamesClear"', $html);
-        $this->assertStringContainsString('id="advancedFiltersApply"', $html);
+        $this->assertStringNotContainsString('id="campaignNameChecklist"', $html);
+        $this->assertStringNotContainsString('id="campaignNamesSelectAll"', $html);
+        $this->assertStringNotContainsString('id="campaignNamesClear"', $html);
+        $this->assertStringNotContainsString('id="advancedFiltersApply"', $html);
         $this->assertStringContainsString('campaigns.dailyChart.visibleSeries', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('campaigns.dailyChart.chartType', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('data-series', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));

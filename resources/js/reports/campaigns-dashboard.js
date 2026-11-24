@@ -168,7 +168,6 @@ const columnDefinitions = [
 currentContext = loadCampaignContext();
 dailyVisibleSeries = loadDailyVisibleSeries();
 dailyChartType = loadDailyChartType();
-campaignNameSelections = loadCampaignNameSelections();
 monthlyVisibleMetrics = loadMonthlyVisibleMetrics();
 monthlyCompareMode = loadMonthlyCompareMode();
 
@@ -186,7 +185,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindResetFilters();
     bindSorting();
     bindDiagnosticsModal();
-    bindCampaignNameActions();
     bindColumns();
     bindRankingSettings();
     bindMonthlyChartControls();
@@ -2232,7 +2230,6 @@ function currentFilters() {
     setParam(params, 'lead_type', document.getElementById('leadType')?.value);
     setParam(params, 'campaign_status', document.getElementById('campaignStatus')?.value);
     setParam(params, 'search', document.getElementById('campaignSearch')?.value);
-    appendArrayParam(params, 'campaign_name', campaignNameSelections);
     setParam(params, 'has_opportunity', document.getElementById('hasOpportunity')?.value);
     setParam(params, 'has_reservation', document.getElementById('hasReservation')?.value);
     setParam(params, 'has_sale', document.getElementById('hasSale')?.value);
