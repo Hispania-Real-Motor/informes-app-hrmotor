@@ -16,6 +16,7 @@ use Throwable;
 final class CampaignOperationalAttributionBuilder
 {
     private const LEASE_MINUTES = 5;
+
     private const ATTRIBUTION_ALGORITHM_VERSION = 'operational-2026-11.1';
 
     public function __construct(
@@ -57,7 +58,9 @@ final class CampaignOperationalAttributionBuilder
         }
         $economic = $this->dashboard->operationalEconomicContext($monthKey, $endDate);
         if ($economic['closure_status'] === 'closed' && $economic['snapshot_rows'] === []) {
-            throw new RuntimeException('Falta el snapshot económico cerrado del período.');
+            throw new RuntimeException($monthKey === '2026-10'
+                ? 'Falta el snapshot económico cerrado de octubre.'
+                : 'Falta el snapshot económico cerrado del período.');
         }
         $economicPlatforms = array_filter($economic['availability']['platforms'] ?? [], static fn (array $state): bool => ($state['status'] ?? null) === 'available');
         if ($economic['closure_status'] !== 'closed' && $economicPlatforms === []) {

@@ -9553,6 +9553,24 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   una referencia, reseña, responsable o cobertura incompleta debe permanecer
   pendiente y no convertirse en cero o en importe económico.
 
+## 2026-11-25 — PR #159: validación de automatización operativa
+
+- Se confirmó el HEAD `1422ef5f35828c8e1c799d837fa0481bd06c1a40` antes de la
+  validación.
+- Corrección aplicada: el lector operativo del dashboard recibe el año derivado
+  del período solicitado, no `2026` fijo.
+- `CampaignDailyOperationalAutomationTest`: 4/4 pasados.
+- `CampaignOperationalAttributionTest`: 13/13 pasados (110 assertions).
+- JavaScript: 52/52; `node --check` y `git diff --check` correctos.
+- Pint ejecutado sobre `CampaignOperationalAttributionBuilder.php` y aplicado
+  sin errores.
+- Build pendiente: `npm run build` falló porque Vite no está disponible en
+  `node_modules` después de que `npm ci` quedara bloqueado. No se declara el
+  build como válido.
+- No se ejecutaron sincronizaciones externas, migraciones, runs ni flags de
+  producción. La automatización no debe considerarse lista para despliegue
+  hasta completar el build y la suite PHP completa en Herd.
+
 ## 2026-11-25 — PR #159: cierre adicional de bloqueos P0
 
 - Se verificó el HEAD remoto `a129f0bdebb31b14da995538e9122593080086ec`.
