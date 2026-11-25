@@ -9770,3 +9770,32 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   editar; los cambios documentales se realizaron manualmente y se validarán
   con el procedimiento de `docs/guia-mantenimiento-documental.md`.
 - Docs-Impact: updated. Docs-Matrix-Impact: updated.
+
+## Integración de `main` para PR #158 (2026-11-25)
+
+- Alcance: se trabajó exclusivamente en
+  `C:\Users\Usuario\Herd\informes-app-hrmotor-comisiones`, rama
+  `work/comisiones-20261120`. El árbol estaba limpio, la rama de la PR no
+  estaba asociada a otro worktree y el worktree principal no fue modificado.
+- Referencias: la rama local se actualizó por fast-forward desde `3151259` a
+  `4dda436`, y se integró `origin/main` (`c1dbda9`) mediante merge normal, sin
+  rebase ni reescritura. El merge commit publicado es `f48deb3` en
+  `codex/store-manager-commissions-october-2026`.
+- Conflictos resueltos: `docs/ai/HANDOFF.md` conserva las secciones históricas
+  de Comisiones y Contact Center; `docs/guia-mantenimiento-documental.md`
+  conserva el mapeo de empleo y las reglas `EXACT` de Contact Center; y
+  `tests/documentation/test_check_documentation_integrity.py` conserva ambas
+  pruebas de dominio. No quedan rutas sin fusionar ni marcadores de conflicto.
+- Integración funcional: los cambios PHP/Blade y la migración que ya estaban en
+  `origin/main` se conservaron por auto-merge; no se editó lógica de Campañas
+  ni de Comisiones durante la resolución y no se modificó ningún JavaScript.
+  La migración de Contact Center solo se integró en el árbol; no se ejecutó.
+- Verificaciones: `git diff --cached --check` y la búsqueda global de
+  marcadores terminaron correctamente. El test documental local no pudo
+  iniciarse porque el entorno no dispone de `python.exe`; debe validarse en
+  CI. No se ejecutaron migraciones, sincronizaciones, imports ni despliegues.
+- Documentación: se conservaron las reglas de ambas ramas y este registro se
+  añade para cumplir el protocolo de entrega. No cambia la arquitectura ni
+  `PROJECT_CONTEXT.md`. La PR permanece abierta y no se fusiona con `main`.
+- Contrato PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
+  `Docs-Scope: commissions`.
