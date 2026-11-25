@@ -9621,3 +9621,152 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Verificaciones ejecutadas: `node --check`, JavaScript 52/52 y
   `git diff --check`. PHPUnit, Pint y build siguen pendientes por falta de
   runtime/dependencias accesibles. No se activaron flags ni runs.
+# Corrección Contact Center — certificación octubre de 2026
+
+## Resumen de la tarea
+
+- Rama aislada: `codex/fix-contact-center-october-2026-prod`, basada en
+  `origin/main` / `d12a592f66e63b3b5776aed0fd949c48acda9512`.
+- Causa raíz: desde septiembre el plan roster de Contact Center consultaba la
+  réplica `commercial_commission_appointment_evidences` y su readiness exigía
+  `commercial_commission_appointment_evidence`, mientras que la sincronización
+  verificada de octubre del dataset `leads_dashboard` persiste la evidencia de
+  citas en `salesforce_leads`. Por eso las filas existentes no llegaban al
+  cálculo y aparecían como evidencia pendiente/sin citas.
+- Solución: el plan roster usa el pipeline existente de Leads, con fecha de
+  captación en intervalo semiabierto, captador por Salesforce User ID, marca
+  telefónica o de tienda, exclusión de eliminados/fusionados y deduplicación por
+  Lead Salesforce. La readiness valida que la sincronización no haya degradado
+  los campos de cita. Las fórmulas económicas, ventanas, objetivos, cierres y
+  snapshots no se han modificado.
+
+## Archivos modificados
+
+- `app/Services/Reports/ContactCenterCommissions/ContactCenterCommissionRosterDashboardService.php`
+- `app/Services/Reports/CommercialCommissions/CommercialCommissionSourceReadinessService.php`
+- `app/Services/Reports/CommercialCommissions/CommercialCommissionClosureService.php`
+- `app/Services/Reports/MonthlyCommercial/Sync/SalesforceMonthlyLeadsSyncService.php`
+- `resources/views/reports/commercial-commissions/partials/contact-center-tab.blade.php`
+- `tests/Feature/ContactCenterCommissionDashboardTest.php`
+- `tests/Unit/SalesforceMonthlyLeadsSyncServiceTest.php`
+- `database/migrations/2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php`
+- `scripts/check_documentation_integrity.py`
+- `tests/documentation/test_check_documentation_integrity.py`
+- `docs/guia-mantenimiento-documental.md`
+- `tests/Feature/SalesforceLeadContactCenterAppointmentIndexMigrationTest.php`
+- `docs/informe-comisiones.md`
+- `docs/matriz-trazabilidad-kpi.md`
+- Este handoff.
+
+## Decisiones y base de datos
+
+- Se reutiliza `salesforce:sync-monthly-commercial`; no se crea una
+  sincronización paralela ni se cambia el periodo económico.
+- Se añade la migración
+  `2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php`,
+  que crea un índice compuesto por captador, eliminación, fusión y fecha de cita
+  para evitar planes de consulta amplios sobre el volumen de Leads. No es
+  redundante con los índices individuales existentes. La migración reutiliza un
+  índice equivalente, tolera que su índice nombrado exista tras una ejecución
+  parcial y omite de forma segura una creación duplicada; un índice con el mismo
+  nombre pero columnas incompatibles produce error. El índice de fecha existente
+  sigue cubriendo la consulta de incidencias sin roster. No se ejecuta la
+  migración en producción desde esta tarea; tampoco se modifican datos
+  productivos, comisiones históricas cerradas ni estados de certificación. Las
+  consultas usan filtros SQL, selección de columnas acotada y no hidratan la
+  tabla completa.
+- El workflow documental exigía Campañas, Intereses y Reservas/Ventas porque el
+  prefijo del sincronizador compartido y el token `lead` de la migración
+  sobreestimaban sus consumidores. Se añaden entradas exactas en `EXACT` para
+  este diff: la metadata de citas y el índice son de Comisiones/Contact Center;
+  el modelo general `SalesforceLead` conserva sus dominios de Intereses y
+  Campañas. No se modifican documentos ajenos sin impacto funcional.
+- Corrección posterior del PR #160: la sentencia MariaDB separa `ADD INDEX`
+  de `ALGORITHM=INPLACE, LOCK=NONE` mediante la coma requerida por `ALTER TABLE`.
+- La réplica manual de evidencias de citas se conserva para auditoría histórica,
+  pero deja de ser la fuente de readiness/cálculo del plan roster desde
+  septiembre.
+- No cambia la arquitectura general ni se adopta una decisión arquitectónica
+  nueva; no se modifican `PROJECT_CONTEXT.md` ni `DECISIONS.md`.
+
+## Seguridad, rendimiento y fiabilidad
+
+- No se alteran autorizaciones, políticas, controles de cierre, aprobación,
+  reapertura ni validación de objetivos.
+- Se filtran `is_deleted = false` y `salesforce_master_record_id IS NULL`; se
+  mantienen las identidades por Salesforce User ID/Lead ID y no se añaden logs
+  con PII o payloads.
+- La pantalla, snapshot y XLSX siguen usando el mismo payload económico; el XLSX
+  resume filas certificables y no se permite si la readiness o los controles
+  económicos fallan. Un Lead sin marca es ausencia verificada y produce cero,
+  no un importe ficticio; una sincronización degradada bloquea.
+- La consulta de citas es única por construcción del dataset, acotada por
+  captadores y fechas, y la consulta de incidencias selecciona solo columnas
+  necesarias. No se usan `get()` sin filtros sobre `salesforce_leads`.
+
+## Pruebas y verificaciones
+
+- Pest `ContactCenterCommissionDashboardTest`: 16 pruebas, 135 aserciones,
+  incluyendo octubre, eliminados/fusionados, cero verificado, sincronización
+  incompleta, regresión de meses anteriores y exportación XLSX de octubre.
+- Pest `CommercialCommissionSourceReadinessTest|CommercialCommissionDashboardTest`:
+  88 pruebas, 589 aserciones.
+- Pest `SalesforceMonthlyLeadsSyncServiceTest`: 7 pruebas, 73 aserciones.
+- Pest conjunto relevante de Comisiones/Contact Center: 143 pruebas, 1.030
+  aserciones.
+- Pest `SalesforceLeadContactCenterAppointmentIndexMigrationTest`: 4 pruebas,
+  7 aserciones.
+- `php artisan migrate:fresh --force --no-interaction` con SQLite en memoria:
+  correcto, incluida la migración del índice.
+- PHP lint de los cuatro servicios, la migración y los tres tests PHP modificados:
+  sin errores de sintaxis.
+- Laravel Pint en modo `--test` sobre los PHP modificados: correcto.
+- `git diff --check`: correcto en el diff final.
+- El validador y las pruebas documentales no se pudieron ejecutar localmente:
+  Windows solo expone el alias de Microsoft Store y no hay intérprete Python
+  disponible; el cambio de mapeo y su prueba quedan para CI.
+- MariaDB 11 no se pudo ejecutar localmente porque Docker Desktop no tenía el
+  daemon disponible; la comprobación equivalente queda en el workflow
+  `october-provisional-mariadb`.
+
+## Acciones manuales necesarias
+
+- Tras aprobar la PR, desplegar el código y ejecutar, con autorización y fuera
+  de esta sesión, `salesforce:sync-monthly-commercial
+  --from=2026-10-01 --to=2026-11-01`.
+- Antes de migrar, confirmar en solo lectura `SELECT VERSION()`, que
+  `salesforce_leads` usa InnoDB, el tamaño de la tabla y los índices en
+  `information_schema.statistics`; si ya existe un índice equivalente, la
+  migración debe quedar como no-op. Si existe el nombre esperado con columnas
+  distintas, detenerse y corregir mediante revisión, sin borrarlo.
+- En MariaDB 11, aplicar la migración únicamente con backup restaurable,
+  ventana aprobada y monitorización de metadata locks, espacio, I/O, réplicas y
+  latencia. La adición de un índice InnoDB admite `ALGORITHM=INPLACE,
+  LOCK=NONE`, pero conserva breves locks de metadata al inicio/final; validar
+  previamente ese plan en staging o una réplica equivalente y no continuar si
+  requiere `COPY` o `SHARED`. Ejecutar `php artisan migrate --force
+  --no-interaction`, comprobar `migrate:status` y el índice, y revertir solo el
+  release de código si la validación falla; no usar rollback destructivo.
+- No se incluye ninguna ejecución productiva en esta tarea.
+- Verificar el run `leads_dashboard` y el run de Opportunities como
+  `completed`, cobertura exacta del intervalo y campos de cita completos.
+- Revisar el recuento por captador, eliminados/fusionados, incidencias,
+  objetivo mensual y Responsable. Solo después preparar/aprobar/exportar con
+  el rol autorizado. No se debe forzar ningún estado ni consultar/escribir
+  producción desde esta tarea.
+
+## Riesgos y pendientes
+
+- La diferencia entre la consulta directa a Salesforce y el espejo local debe
+  conciliarse mediante el run sincronizado; este cambio no fabrica ni corrige
+  filas productivas.
+- Un run histórico sin `leads.appointment_fields_available = true` queda
+  bloqueado de forma deliberada y exige una nueva sincronización; no se acepta
+  por compatibilidad implícita.
+- El exportador XLSX expone el resumen económico; el detalle por Lead queda en
+  pantalla y snapshot. La documentación se ha corregido para reflejarlo.
+- Fallback documental aplicado por el agente principal: se invocó
+  `report_docs_maintainer`, que revisó el alcance pero fue detenido antes de
+  editar; los cambios documentales se realizaron manualmente y se validarán
+  con el procedimiento de `docs/guia-mantenimiento-documental.md`.
+- Docs-Impact: updated. Docs-Matrix-Impact: updated.

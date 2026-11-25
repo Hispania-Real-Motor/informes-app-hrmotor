@@ -8,7 +8,7 @@
 
     <section class="platform-comparison-grid commission-overview-grid contact-center-overview-grid">
         <article class="card platform-comparison-card"><div class="platform-comparison-head"><strong>Objetivo compañía</strong><span>Configuración mensual compartida por agentes y Responsable.</span></div><div class="platform-comparison-metrics"><div class="platform-metric-item"><span>Objetivo</span><strong>{{ $diagnostics['company_delivery_target'] ?? 'Pendiente' }}</strong></div><div class="platform-metric-item"><span>Entregas reales</span><strong>{{ $diagnostics['company_deliveries'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Cumplimiento</span><strong>{{ ($diagnostics['company_compliance_percent'] ?? null) === null ? 'No calculable' : number_format((float) $diagnostics['company_compliance_percent'], 2, ',', '.').'%' }}</strong></div></div></article>
-        <article class="card platform-comparison-card"><div class="platform-comparison-head"><strong>Plan Contact Center desde septiembre de 2026</strong><span>Identidad económica exclusiva por Salesforce UserId; citas desde Interes__c y reservas/entregas desde Opportunity.</span></div><div class="platform-comparison-metrics"><div class="platform-metric-item"><span>Roster</span><strong>{{ $diagnostics['roster_members'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Citas</span><strong>{{ $diagnostics['appointments_count'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Reservas</span><strong>{{ $diagnostics['reservations_count'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Entregas</span><strong>{{ $diagnostics['deliveries_count'] ?? 0 }}</strong></div></div></article>
+        <article class="card platform-comparison-card"><div class="platform-comparison-head"><strong>Plan Contact Center desde septiembre de 2026</strong><span>Identidad económica exclusiva por Salesforce UserId; citas desde Leads sincronizados y reservas/entregas desde Opportunity.</span></div><div class="platform-comparison-metrics"><div class="platform-metric-item"><span>Roster</span><strong>{{ $diagnostics['roster_members'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Citas</span><strong>{{ $diagnostics['appointments_count'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Reservas</span><strong>{{ $diagnostics['reservations_count'] ?? 0 }}</strong></div><div class="platform-metric-item"><span>Entregas</span><strong>{{ $diagnostics['deliveries_count'] ?? 0 }}</strong></div></div></article>
     </section>
 
     @if (is_array($responsible))
@@ -115,7 +115,7 @@
                         </section>
 
                         <section class="commission-detail-grid">
-                            @foreach (['appointments' => ['Citas', ['interest_id', 'capture_date', 'appointment_setter_id', 'appointment_setter_name']], 'reservations' => ['Reservas', ['opportunity_id', 'opportunity_name', 'reservation_date', 'appointment_setter_id', 'vehicle_interest_id']], 'deliveries' => ['Entregas', ['opportunity_id', 'opportunity_name', 'cv_signed_date', 'appointment_setter_id', 'vehicle_interest_id', 'plate', 'product2_statuses']]] as $key => [$title, $columns])
+                            @foreach (['appointments' => ['Citas', ['lead_id', 'capture_date', 'appointment_setter_id', 'appointment_setter_name']], 'reservations' => ['Reservas', ['opportunity_id', 'opportunity_name', 'reservation_date', 'appointment_setter_id', 'vehicle_interest_id']], 'deliveries' => ['Entregas', ['opportunity_id', 'opportunity_name', 'cv_signed_date', 'appointment_setter_id', 'vehicle_interest_id', 'plate', 'product2_statuses']]] as $key => [$title, $columns])
                                 <div @class(['table-shell', 'is-hidden' => $key !== 'appointments']) data-commercial-detail-tab-panel="{{ $key }}">
                                     <table data-sortable-table="contact-center-{{ $key }}-{{ $row['agent_key'] }}">
                                         <thead>
@@ -124,7 +124,7 @@
                                         </thead>
                                         <tbody data-sort-body="contact-center-{{ $key }}-{{ $row['agent_key'] }}">
                                             @forelse (($row['details'][$key] ?? []) as $detail)
-                                                <tr>@foreach ($columns as $column)<td>{{ is_array($detail[$column] ?? null) ? implode(', ', $detail[$column]) : ($detail[$column] ?? '-') }}</td>@endforeach</tr>
+                                                <tr>@foreach ($columns as $column)<td>{{ is_array($detail[$column] ?? null) ? implode(', ', $detail[$column]) : (($column === 'lead_id' ? ($detail['lead_id'] ?? $detail['interest_id'] ?? null) : ($detail[$column] ?? null)) ?? '-') }}</td>@endforeach</tr>
                                             @empty
                                                 <tr><td colspan="{{ count($columns) }}">Sin {{ strtolower($title) }} imputables.</td></tr>
                                             @endforelse

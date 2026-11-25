@@ -165,6 +165,7 @@ class SalesforceMonthlyLeadsSyncServiceTest extends TestCase
         );
 
         $this->assertCount(1, $result['warnings']);
+        $this->assertFalse($result['appointment_fields_available']);
         $this->assertDatabaseHas('salesforce_leads', [
             'salesforce_id' => '00Q-optional-fallback',
             'name' => 'Updated through reduced query',
@@ -316,6 +317,7 @@ class SalesforceMonthlyLeadsSyncServiceTest extends TestCase
         );
 
         $this->assertSame(2, $result['queried']);
+        $this->assertTrue($result['appointment_fields_available']);
         $this->assertSame(2, $result['saved']);
         $this->assertStringContainsString('RecordType.Name', $result['soql']);
         $this->assertStringContainsString('Captador_de_cita__c', $result['soql']);

@@ -112,6 +112,16 @@ class IntegrityTests(unittest.TestCase):
             checker.domains_for("app/Console/Commands/ImportHrEmploymentDates.php"),
         )
 
+    def test_contact_center_lead_sync_metadata_and_index_map_only_to_commissions(self) -> None:
+        for path in (
+            "app/Services/Reports/MonthlyCommercial/Sync/SalesforceMonthlyLeadsSyncService.php",
+            "database/migrations/2026_11_24_120000_add_contact_center_appointment_certification_index_to_salesforce_leads.php",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual({"commissions"}, checker.domains_for(path))
+
+        self.assertEqual({"interests", "campaigns"}, checker.domains_for("app/Models/SalesforceLead.php"))
+
     def test_current_campaign_status_configuration_maps_only_to_campaigns(self) -> None:
         self.assertEqual({"campaigns"}, checker.domains_for("config/campaign_current_status.php"))
 
