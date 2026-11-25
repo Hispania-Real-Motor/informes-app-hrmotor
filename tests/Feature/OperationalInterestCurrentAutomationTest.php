@@ -15,6 +15,9 @@ class OperationalInterestCurrentAutomationTest extends TestCase
 
     public function test_operational_automation_is_disabled_by_default_and_requires_explicit_read_authorization(): void
     {
+        // The assertion describes the safe application default, independent
+        // of a developer's Herd .env overrides.
+        config()->set('operations.operational_interest_current_sync_enabled', false);
         $task = app(OperationalTaskCatalog::class)->get('salesforce-sync-interest-operational-current');
 
         $this->assertFalse($task['enabled']);
