@@ -547,7 +547,7 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('id="campaignStatusHelp"', $html);
         $this->assertStringContainsString('<label for="campaignStatus">Estado</label>', $html);
         $this->assertStringNotContainsString('id="salesforceReconciliation"', $html);
-        $this->assertLessThan(strpos($html, 'id="advancedFiltersDrawer"'), strpos($html, 'id="platformComparisonPanel"'));
+        $this->assertStringNotContainsString('id="advancedFiltersDrawer"', $html);
         $this->assertLessThan(strpos($html, 'id="summaryKpis"'), strpos($html, 'id="platformComparisonPanel"'));
         $this->assertStringContainsString('id="saleSubcategory"', $html);
         $this->assertStringContainsString('data-context="venta"', $html);
@@ -555,18 +555,20 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('data-context="exposicion"', $html);
         $this->assertStringNotContainsString('data-context="branding"', $html);
         $this->assertStringNotContainsString('data-context="otros"', $html);
-        $this->assertStringContainsString('option value="active" selected', $html);
+        $this->assertStringContainsString('option value="" selected>Todas', $html);
+        $this->assertStringContainsString('<input type="hidden" id="campaignDataSource"', $html);
         $this->assertStringContainsString('id="rankingsToggle"', $html);
         $this->assertStringContainsString('id="rankingsPopover"', $html);
-        $this->assertStringContainsString('id="campaignNameChecklist"', $html);
-        $this->assertStringContainsString('id="campaignNamesSelectAll"', $html);
-        $this->assertStringContainsString('id="campaignNamesClear"', $html);
-        $this->assertStringContainsString('id="advancedFiltersApply"', $html);
+        $this->assertStringNotContainsString('id="campaignNameChecklist"', $html);
+        $this->assertStringNotContainsString('id="campaignNamesSelectAll"', $html);
+        $this->assertStringNotContainsString('id="campaignNamesClear"', $html);
+        $this->assertStringNotContainsString('id="advancedFiltersApply"', $html);
         $this->assertStringContainsString('campaigns.dailyChart.visibleSeries', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('campaigns.dailyChart.chartType', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('data-series', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('data-chart-type', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
-        $this->assertStringContainsString('campaign-detail-toggle', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
+        $this->assertStringNotContainsString('campaign-detail-toggle', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
+        $this->assertStringContainsString('data-table-type', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('line-label-layer', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString('campaignPointIcon', file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
         $this->assertStringContainsString("{ value: 'current_year', label: 'Año actual' }", file_get_contents(resource_path('js/reports/campaigns-dashboard.js')));
@@ -581,10 +583,10 @@ class CampaignDashboardTest extends TestCase
         $this->assertStringNotContainsString('id="campaignAcquired"', $html);
         $this->assertStringNotContainsString('id="campaignId"', $html);
         $this->assertStringNotContainsString('id="campaignName"', $html);
-        $this->assertStringContainsString('id="hasOpportunity"', $html);
-        $this->assertStringContainsString('id="hasReservation"', $html);
-        $this->assertStringContainsString('id="hasSale"', $html);
-        $this->assertStringContainsString('id="classification"', $html);
+        $this->assertStringNotContainsString('id="hasOpportunity"', $html);
+        $this->assertStringNotContainsString('id="hasReservation"', $html);
+        $this->assertStringNotContainsString('id="hasSale"', $html);
+        $this->assertStringNotContainsString('id="classification"', $html);
 
         $this->assertStringNotContainsString('id="sourceAcquired"', $html);
         $this->assertStringNotContainsString('id="commercialUser"', $html);
@@ -3307,7 +3309,9 @@ class CampaignDashboardTest extends TestCase
         foreach ($tables as $table) {
             $databaseBefore[$table] = DB::table($table)->orderBy('id')->get()->toJson();
         }
-        config(['campaign_current_status.enabled' => true, 'services.meta_ads.access_token' => 'synthetic',
+        config(['campaign_current_status.enabled' => true,
+            'operations.scheduled_task_keys' => CampaignCurrentStatusService::TASK,
+            'services.meta_ads.access_token' => 'synthetic',
             'services.meta_ads.ad_account_ids' => ['act_1'], 'services.google_ads.customer_ids' => []]);
         Http::fake(['graph.facebook.com/*' => Http::response(['data' => [[
             'id' => '12345', 'account_id' => '1', 'status' => 'PAUSED', 'effective_status' => 'PAUSED',
@@ -3346,7 +3350,9 @@ class CampaignDashboardTest extends TestCase
         $metricsBefore = DB::table('campaign_platform_daily_metrics')->orderBy('id')->get()->toJson();
         $this->assertCount(1, $before['campaigns']);
         $this->assertEquals(350, $before['campaigns'][0]['spend']);
-        config(['campaign_current_status.enabled' => true, 'services.meta_ads.access_token' => 'synthetic',
+        config(['campaign_current_status.enabled' => true,
+            'operations.scheduled_task_keys' => CampaignCurrentStatusService::TASK,
+            'services.meta_ads.access_token' => 'synthetic',
             'services.meta_ads.ad_account_ids' => ['act_1', 'act_2'], 'services.google_ads.customer_ids' => []]);
         Http::fake([
             '*act_1/campaigns*' => Http::response(['data' => [['id' => '12345', 'account_id' => '1', 'status' => 'ACTIVE', 'effective_status' => 'ACTIVE']]]),

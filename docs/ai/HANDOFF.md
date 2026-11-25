@@ -1,5 +1,46 @@
 # Handoff para agentes
 
+## 2026-11-19 — Campañas: UX de filtros, tabla y rankings
+
+### Revisión documental — report_docs_maintainer
+
+- Se contrastó el diff completo frente a `dd30757f8966dc2cf33c276efd8e9dc982b33418`.
+  El impacto real queda limitado a la presentación de la pestaña Campañas y a
+  los rankings; no hay cambio de fuente, tabla, columna, sincronizador,
+  fórmula económica, permisos, API, CSV, auditoría ni base de datos.
+- Se actualizaron `docs/informe-campanas.md` y
+  `docs/matriz-trazabilidad-kpi.md` con los seis rankings visibles, sus
+  ordenaciones y nulos, el formato de porcentajes, la retirada visual de
+  Estado actual/Filtros avanzados y los límites de auditoría. No se promovieron
+  fichas KPI a verificadas.
+- No se consultaron Salesforce ni bases de datos ni se ejecutaron
+  sincronizaciones. El validador documental requiere una descripción de PR;
+  queda pendiente ejecutarlo con `--pr-body-file` y los SHA disponibles.
+
+- Rama: `feature/campanas-ux-rankings-filtros-20261119`. SHA base:
+  `dd30757f8966dc2cf33c276efd8e9dc982b33418`.
+- La revisión mantiene la atribución, los cierres económicos, permisos y fuentes
+  locales. No hay migraciones, cambios de `.env`, sincronizaciones ni despliegue.
+- La tabla de campañas queda siempre visible con scroll interno, elimina «Estado
+  actual» del selector y de la vista, conserva Campaign ID oculto por defecto,
+  renombra «Columnas» a «Filtro» y presenta CTR con dos decimales. Los filtros
+  avanzados se desactivan retirando su interfaz y listeners exclusivos.
+- Los rankings obligatorios (mejor/peor CTR, mejor/peor CPC y mayor/menor
+  porcentaje de oportunidades) se normalizan frente a localStorage y se muestran
+  por defecto. El backend ordena valores válidos y no convierte `null` en cero;
+  el porcentaje usa el campo canónico `lead_to_opportunity` de las atribuciones.
+- Se retiró el texto de integración pendiente y la etiqueta de vista general.
+  Las tarjetas de ranking usan `h3`, estructura vertical común, Instrument Sans y
+  barras rojas sólidas. El diagnóstico conserva su flujo autorizado y ahora
+  gestiona payload vacío sin lanzar una excepción.
+- Verificación: `node --check resources/js/reports/campaigns-dashboard.js`,
+  `node --test tests/js/campaign-presentation.test.mjs` (44/44) y `git diff --check`
+  correctos. PHP, Composer y npm no están disponibles en esta sesión; lint PHP,
+  suite Laravel y build quedan pendientes de CI/Herd.
+- Riesgo pendiente: validar visualmente la altura de tabla, el orden de los seis
+  rankings y la presencia de intereses/costes con datos reales en Venta y
+  Tasación. El SHA final se añadirá tras el commit de revisión.
+
 ## 2026-11-18 — Normalización de meses en guía de periodos cerrados
 
 - Se normalizan estrictamente los meses públicos de `period_advice` aceptando
@@ -8867,6 +8908,142 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   que no tienen mapa automático, junto con razón y evidencias. La descripción
   de PR debe actualizarse antes de declarar el check documental verde; no se
   modifica el validador para ocultar esa obligación.
+## 2026-11-19 — PR #159: revisión sénior de filtros, rankings y métricas
+
+- Rama: `feature/campanas-ux-rankings-filtros-20261119`; se continuó sobre la PR existente, sin crear rama, PR, merge ni despliegue.
+- Correcciones: el control de rankings se etiqueta `Filtro`; los seis rankings obligatorios se reinyectan al leer preferencias persistidas y no pueden desmarcarse; los rankings porcentuales descartan valores `null`; `formatDate(null|undefined|'')` devuelve `-`; el aviso `periodGuidance` queda inmediatamente encima de la comparativa por plataforma; se retira `bindDrawer()` de la inicialización activa; las preferencias antiguas fuerzan `cost_per_lead` y `cost_per_opportunity`, y Venta muestra ambas tarjetas de coste.
+- Diagnóstico: cuando la respuesta no aporta datos útiles, `renderDiagnostics` oculta `diagnosticsOpen`; no se fabrican fechas. La fecha fin de campaña sigue procediendo del campo `campaign_end_date` de las métricas de plataforma y la última fecha con inversión se calcula como el máximo `metric_date` con gasto positivo en el backend existente.
+- Intereses: se conserva la separación de disponibilidad; cuando la respuesta acredita atribución/Interests, el frontend mantiene la KPI y los costes; en modo solo plataforma siguen bloqueados para no presentar una inferencia como dato.
+- Base de datos, atribuciones persistidas, sincronizadores, reglas económicas, permisos y configuración: sin cambios.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (47/47), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos. PHP/Composer/npm no están disponibles en el entorno local; el build y PHPUnit quedan pendientes de CI.
+- Riesgo pendiente: no fue posible ejecutar localmente Laravel/PHP ni confirmar el check remoto hasta publicar el commit; la validación de datos reales de producción sigue fuera de alcance.
+## 2026-11-19 — PR #159: validación final de diagnóstico, Interests, rankings y fechas
+
+- Rama/PR: se continuó exclusivamente en `feature/campanas-ux-rankings-filtros-20261119` / PR #159. No se creó rama, no hubo merge, despliegue, backfill ni sincronización masiva.
+- Cambios: fondo `#ffffff` opaco para el panel de diagnóstico; nueva detección de evidencia útil (fechas reales, contadores positivos o estado/fecha de ejecución), ocultando el botón cuando solo hay propiedades nulas/cero; fechas `null`, `undefined`, vacías, `0` y `'0'` muestran `-`; pruebas para fecha válida; pruebas de los seis rankings con valores completos y descarte de porcentajes nulos.
+- Interests: se verificaron los tres contratos del payload. `platform_independent_only` mantiene `platformOnlyMode` y guiones; `period_mode=interest_pivot` habilita la KPI acreditada; `operational_provisional` requiere simultáneamente `interest_dependent.available` y `attribution.available`. No se alteran atribuciones, conversiones Ads, persistencia ni reglas económicas.
+- Procedencia: `last_spend_date` continúa siendo `MAX(metric_date)` con gasto positivo; `campaign_end_date` continúa procediendo del campo homónimo de `campaign_platform_daily_metrics`. No se añadió fallback temporal ni fecha inventada.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (50/50), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos.
+- Validación no ejecutable: `npm ci` falló porque `npm` no existe; el build no puede ejecutarse sin Vite; PHP/Composer no están disponibles para PHPUnit/Pint. La URL local `https://informes-app-hrmotor.test/informes/campanas` rechazó la conexión, por lo que no se declara verificación visual real de apertura/cierre, responsive ni permisos.
+- Riesgos pendientes: CI debe ejecutar build, PHPUnit y Pint; la inspección con datos reales de producción sigue pendiente y no se sustituyó por datos sintéticos.
+## 2026-11-20 — PR #159: ajustes visuales finales de Campañas
+
+- Se trabajó en un worktree aislado desde `origin/feature/campanas-ux-rankings-filtros-20261119`; no se tocaron los artefactos Vite ni el worktree de Comisiones.
+- Cambios: se eliminó la presentación de `investmentClosureStatus` y su listener/render innecesario; el cierre económico, bloqueos y advertencias no se modifican. El contexto `all` ya no genera subtítulo redundante. `campaign_end_date` se retiró de `platformColumns` y `columnDefinitions`, por lo que preferencias antiguas la descartan sin alterar el dato de backend. Se sustituyó `public/brand/google-ads-logo.png` por el PNG adjunto del usuario.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (52/52), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos.
+- Build: `npm run build` no ejecutable porque Vite no está instalado en el entorno. No se ejecutaron migraciones, sincronizaciones, backfills ni procesos de producción.
+- Riesgos pendientes: falta validar visualmente con Herd compilado en un entorno con dependencias frontend instaladas; el fallback textual del logo conserva accesibilidad si la imagen falla.
+
+## 2026-11-23 — PR #159: certificación parcial y filtros de Campañas
+
+- Se mantuvo el trabajo exclusivamente en la PR #159 y en su rama remota; no se
+  crearon ramas nuevas, no hubo merge, despliegue, migración, backfill ni
+  sincronización.
+- La cobertura operativa incompleta ya no elimina globalmente las evidencias de
+  Opportunity confirmadas. Las filas acreditadas conservan oportunidades,
+  reservas, ventas, importes y costes calculados por los resolvers existentes;
+  las filas sin relación válida siguen sin inventar resultados. La disponibilidad
+  comercial distingue `available`, `partial` y `unavailable`.
+- Se retiró el selector visible de `Origen comercial`; se conserva únicamente el
+  estado interno compatible para enlaces operativos autorizados y no se alteran
+  las reglas de autorización ni la selección backend. El filtro `Estado` parte
+  de `Todas` y su valor vacío no aplica el criterio `active`.
+- No se cambiaron atribuciones persistidas, fórmulas económicas, permisos,
+  sincronizadores ni cierres.
+- Pruebas ejecutadas: `node tests/js/campaign-presentation.test.mjs` (52/52),
+  `node --check resources/js/reports/campaigns-dashboard.js` y
+  `git diff --check` correctos. PHP/PHPUnit/Pint y el build no pudieron
+  ejecutarse en este entorno porque no hay runtime PHP/npm disponible.
+- Pendiente: ejecutar en CI la suite Laravel/Pint/build y validar con el dataset
+  operativo autorizado que la cobertura parcial y los costes confirmados llegan
+  a las tarjetas y comparativas. No se declara esa verificación como realizada.
+
+## 2026-11-23 — PR #159: delimitación del universo comercial operativo
+
+- Se volvió a verificar el HEAD antes del cambio: `a1f4567`.
+- `CampaignOperationalAttributionBuilder` conserva el lote completo para las
+  filas de auditoría, pero ahora construye primero el subconjunto que tiene
+  evidencia de adquisición, matching inequívoco y campaña de plataforma elegible
+  (`google_ads` o `meta`). Solo ese subconjunto se envía a
+  `opportunitiesForBatch`; por tanto, históricos, no atribuibles y campañas
+  excluidas no contaminan `unresolvedRelationships` ni la cobertura comercial.
+- No se alteran sincronizadores, matching oficial, atribuciones persistidas,
+  permisos, cierres ni runs activos. El caso de las 1.965/46/seis relaciones
+  comunicado externamente no se ha asumido como dato local ni como regla.
+- La cobertura continúa siendo completa únicamente cuando la evidencia de
+  Opportunity está disponible y no quedan relaciones sin resolver dentro del
+  universo elegible. Fuera de ese universo no se convierten ausencias normales
+  en incidencias Salesforce.
+- Verificaciones: revisión de HEAD y diff; tests JS 52/52, `node --check` y
+  `git diff --check` deberán mantenerse en CI junto con PHPUnit/Pint/build.
+  PHPUnit, Pint y build no se ejecutaron localmente por ausencia de PHP/npm.
+- Pendiente explícito: ejecutar la suite Feature de atribución con fixtures de
+  históricos fuera de período, UTM sin campaña acreditada, relación contradictoria
+  y duplicidad. No se declara esa cobertura de pruebas como verificada localmente.
+
+## 2026-11-23 — PR #159: revisión del contrato de agregación
+
+- Revisión del HEAD `5280a210`: `mergeRows()` no conserva `opportunity_key`,
+  porque su contrato es una fila agregada por campaña. La detección anterior
+  basada en ese campo podía clasificar una respuesta parcial válida como no
+  disponible.
+- Corrección mínima: la disponibilidad parcial se determina solo mediante
+  contadores comerciales materializados por relaciones verificadas
+  (`opportunities`, `reservations`, `sales`, `purchases` o
+  `appraisals_generated` positivos). No se usan UTM ni la mera existencia de
+  una fila.
+- El aviso público distingue ahora resultados confirmados con cobertura
+  incompleta de ausencia total de relaciones confirmadas; no se combinan los
+  mensajes de “disponible” y “todo bloqueado”.
+- Tests JS ejecutados: 52/52. No hay `vendor`, `node_modules`, PHP, Composer ni
+  npm disponibles en este worktree; PHPUnit, Pint y build quedan sin ejecutar y
+  se mantienen como pendientes verificables de CI.
+
+## 2026-11-24 — PR #159: regresiones PHP de CampaignDashboardTest
+
+- Se verificó el HEAD `0034b5e898a84ee81c3a2c90be9aa1723cfbfd1b` antes de editar.
+- La expectativa del drawer avanzado y la selección `active` eran contratos
+  visuales obsoletos. La prueba ahora verifica que el drawer no se restaura,
+  que `Todas` es la opción seleccionada y que el origen permanece como input
+  interno no visible.
+- La causa de los dos `operations:run` con exit code 1 era la allowlist
+  `operations.scheduled_task_keys`: `OperationalTaskService` reclama con origen
+  `scheduler`, pero los tests solo activaban `campaign_current_status.enabled`.
+  El fixture declara explícitamente la tarea `campaigns-sync-current-status`;
+  no se relajan controles ni se cambia la configuración productiva. Los
+  `Http::fake` siguen interceptando Meta y no se añade Google al escenario.
+- Pendiente de ejecución en Herd/Codex con dependencias: los tres tests, toda
+  `CampaignDashboardTest`, `CampaignOperationalAttributionTest`, PHPUnit,
+  Pint y build. Este worktree no contiene PHP, Composer, `vendor`, npm ni
+  `node_modules`, por lo que no se declaran esos resultados como ejecutados.
+
+## 2026-11-24 — PR #159: alineación final del contrato visual
+
+- Se verificó el HEAD `fd8d43e4b875eda72b8afd6b70d02a4a82e4552d` antes del cambio.
+- `campaignNameChecklist`, `campaignNamesSelectAll`, `campaignNamesClear` y
+  `advancedFiltersApply` no existen en la vista vigente. Las expectativas PHP
+  ahora comprueban explícitamente su ausencia y mantienen las comprobaciones de
+  búsqueda, filtros visibles, rankings y comparativa.
+- Se retiró de la inicialización activa la carga y serialización de selecciones
+  antiguas de nombres de campaña. Así, una preferencia persistida de una UI
+  eliminada no introduce un filtro invisible; no se modifican los filtros
+  visibles ni el contrato backend de datos.
+- JavaScript ejecutado: 52/52; `node --check` y `git diff --check` correctos.
+- PHPUnit, Pint y build siguen pendientes por falta de PHP/npm accesibles en
+  este entorno; no se declaran como ejecutados.
+
+## 2026-11-24 — PR #159: aserciones visuales finales
+
+- Se verificó el HEAD `68e526f3f4235bb0565cb2d71b1137b50931963c` antes de editar.
+- `campaign-detail-toggle` no existe en el JavaScript vigente y no representa
+  una funcionalidad perdida. La prueba deja de exigirlo y comprueba el contrato
+  actual `data-table-type`, manteniendo las aserciones reales de gráficos,
+  etiquetas de línea, icono de puntos, filtros y rankings.
+- No se restauraron controles antiguos ni se modificaron sincronizadores,
+  cierres, atribuciones ni disponibilidad comercial.
+- Validación local disponible: `node --check`, tests JavaScript y
+  `git diff --check`. PHPUnit, Pint y build deben repetirse en Herd/Codex con
+  las dependencias accesibles; no se declaran aquí como ejecutados.
 
 ## Fuentes confirmadas de compra física (2026-11-19)
 
@@ -9375,3 +9552,72 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Riesgos pendientes: sin esas fuentes externas el plan continúa provisional;
   una referencia, reseña, responsable o cobertura incompleta debe permanecer
   pendiente y no convertirse en cero o en importe económico.
+
+## 2026-11-25 — PR #159: validación de automatización operativa
+
+- Se confirmó el HEAD `1422ef5f35828c8e1c799d837fa0481bd06c1a40` antes de la
+  validación.
+- Corrección aplicada: el lector operativo del dashboard recibe el año derivado
+  del período solicitado, no `2026` fijo.
+- `CampaignDailyOperationalAutomationTest`: 4/4 pasados.
+- `CampaignOperationalAttributionTest`: 13/13 pasados (110 assertions).
+- JavaScript: 52/52; `node --check` y `git diff --check` correctos.
+- Pint ejecutado sobre `CampaignOperationalAttributionBuilder.php` y aplicado
+  sin errores.
+- Build pendiente: `npm run build` falló porque Vite no está disponible en
+  `node_modules` después de que `npm ci` quedara bloqueado. No se declara el
+  build como válido.
+- No se ejecutaron sincronizaciones externas, migraciones, runs ni flags de
+  producción. La automatización no debe considerarse lista para despliegue
+  hasta completar el build y la suite PHP completa en Herd.
+
+## 2026-11-25 — PR #159: cierre adicional de bloqueos P0
+
+- Se verificó el HEAD remoto `a129f0bdebb31b14da995538e9122593080086ec`.
+- La selección económica del builder y del dashboard usa el estado real del
+  cierre: los meses cerrados requieren snapshot válido y los abiertos requieren
+  al menos una plataforma con cobertura disponible. Noviembre cerrado ya no se
+  rechaza por una regla especial.
+- El frontend genera presets hasta el mes visible actual y admite años
+  posteriores; la allowlist operativa sigue siendo la única autorización para
+  deep-links operativos. Se eliminó la restricción de año fijo en la lectura de
+  fechas.
+- El rollback de la migración de versionado es deliberadamente no destructivo:
+  no elimina la columna de identidad de runs ni su evidencia histórica.
+- JavaScript: 52/52, `node --check` y `git diff --check` correctos. PHPUnit,
+  Pint y build siguen pendientes por falta de runtime/dependencias accesibles.
+
+## 2026-11-25 — PR #159: generalización inicial del ciclo operativo mensual
+
+- Se verificó el HEAD remoto `03724cb51fe4826f2b0d11a825d79f16de38c957` antes
+  de modificar la automatización.
+- Se añadió `CAMPAIGN_OPERATIONAL_ENABLED_MONTHS` como allowlist explícita de
+  meses operativos, conservando las banderas históricas de octubre/noviembre y
+  el valor por defecto deshabilitado.
+- El constructor, la automatización diaria, el proyector de Interests y el
+  dashboard aceptan meses configurados; el límite de fecha se calcula por
+  calendario y se conserva la regla de no usar el día actual incompleto.
+- La publicación automática con cobertura parcial queda protegida por
+  `CAMPAIGN_OPERATIONAL_DAILY_ALLOW_PARTIAL_PUBLICATION_ENABLED=false` por
+  defecto. No se activa ninguna bandera ni run.
+- Frontend: los presets y deep-links operativos aceptan períodos configurados
+  sin eliminar la compatibilidad con octubre/noviembre.
+- JavaScript: 52/52, `node --check` y `git diff --check` correctos. PHPUnit,
+  Pint y build no se ejecutaron por falta de runtime/dependencias accesibles;
+  esta entrega no declara producción lista.
+
+## 2026-11-25 — PR #159: calendario económico y versionado de runs
+
+- Se revisó de nuevo el HEAD remoto `5ff0de9421b7d0bc6bc3d7ab4740ec5c3c705686`.
+- La selección de plataformas económicas del builder y del dashboard ya no usa
+  el número de mes; utiliza el estado real `closed` para leer snapshots y la
+  ruta abierta para cobertura diaria acreditada.
+- Se añadió la migración aditiva
+  `2026_11_25_120000_add_attribution_algorithm_version_to_campaign_operational_runs.php`.
+  Los runs nuevos guardan `operational-2026-11.1` y los runs preparados/activos
+  solo se reutilizan si coinciden con esa versión. No se ejecutó la migración.
+- El calendario frontend acepta años posteriores y períodos autorizados sin
+  ampliar la allowlist operativa.
+- Verificaciones ejecutadas: `node --check`, JavaScript 52/52 y
+  `git diff --check`. PHPUnit, Pint y build siguen pendientes por falta de
+  runtime/dependencias accesibles. No se activaron flags ni runs.

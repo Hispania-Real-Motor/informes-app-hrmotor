@@ -24,7 +24,13 @@ class OperationalInterestCurrentAutomation
     public function run(): array
     {
         $month = CarbonImmutable::now('Europe/Madrid')->format('Y-m');
-        if (! in_array($month, ['2026-10', '2026-11'], true)) {
+        $legacyEnabled = match ($month) {
+            '2026-10' => config('campaign_operational.october_2026_enabled', false),
+            '2026-11' => config('campaign_operational.november_2026_enabled', false),
+            default => false,
+        };
+        if (! preg_match('/\A\d{4}-(0[1-9]|1[0-2])\z/D', $month)
+            || (! in_array($month, config('campaign_operational.enabled_months', []), true) && ! $legacyEnabled)) {
             throw new RuntimeException('Operational KPI contract is not enabled for the current month.');
         }
 
