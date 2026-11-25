@@ -18,11 +18,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (Schema::hasColumn('campaign_operational_runs', 'attribution_algorithm_version')) {
-            Schema::table('campaign_operational_runs', function (Blueprint $table): void {
-                $table->dropIndex('camp_op_runs_algorithm_idx');
-                $table->dropColumn('attribution_algorithm_version');
-            });
-        }
+        // Operational runs are audit evidence. Do not remove their algorithm
+        // identity during a code rollback; a forward migration is required for
+        // any future schema change.
     }
 };

@@ -9553,6 +9553,22 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   una referencia, reseña, responsable o cobertura incompleta debe permanecer
   pendiente y no convertirse en cero o en importe económico.
 
+## 2026-11-25 — PR #159: cierre adicional de bloqueos P0
+
+- Se verificó el HEAD remoto `a129f0bdebb31b14da995538e9122593080086ec`.
+- La selección económica del builder y del dashboard usa el estado real del
+  cierre: los meses cerrados requieren snapshot válido y los abiertos requieren
+  al menos una plataforma con cobertura disponible. Noviembre cerrado ya no se
+  rechaza por una regla especial.
+- El frontend genera presets hasta el mes visible actual y admite años
+  posteriores; la allowlist operativa sigue siendo la única autorización para
+  deep-links operativos. Se eliminó la restricción de año fijo en la lectura de
+  fechas.
+- El rollback de la migración de versionado es deliberadamente no destructivo:
+  no elimina la columna de identidad de runs ni su evidencia histórica.
+- JavaScript: 52/52, `node --check` y `git diff --check` correctos. PHPUnit,
+  Pint y build siguen pendientes por falta de runtime/dependencias accesibles.
+
 ## 2026-11-25 — PR #159: generalización inicial del ciclo operativo mensual
 
 - Se verificó el HEAD remoto `03724cb51fe4826f2b0d11a825d79f16de38c957` antes

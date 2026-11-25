@@ -56,11 +56,12 @@ final class CampaignOperationalAttributionBuilder
             throw new RuntimeException('No hay un día completo disponible para la atribución operativa.');
         }
         $economic = $this->dashboard->operationalEconomicContext($monthKey, $endDate);
-        if ($monthKey === '2026-10' && ($economic['closure_status'] !== 'closed' || $economic['snapshot_rows'] === [])) {
-            throw new RuntimeException('Falta el snapshot económico cerrado de octubre.');
+        if ($economic['closure_status'] === 'closed' && $economic['snapshot_rows'] === []) {
+            throw new RuntimeException('Falta el snapshot económico cerrado del período.');
         }
-        if ($monthKey === '2026-11' && $economic['closure_status'] !== 'open') {
-            throw new RuntimeException('Noviembre ya no admite la fuente económica abierta.');
+        $economicPlatforms = array_filter($economic['availability']['platforms'] ?? [], static fn (array $state): bool => ($state['status'] ?? null) === 'available');
+        if ($economic['closure_status'] !== 'closed' && $economicPlatforms === []) {
+            throw new RuntimeException('No existe cobertura económica válida para el período abierto.');
         }
         $opportunity = $this->opportunityEvidence($source);
         $active = DB::table('campaign_operational_months as m')

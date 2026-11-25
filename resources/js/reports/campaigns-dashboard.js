@@ -2714,8 +2714,9 @@ function monthPresetOptions() {
     const lastVisibleMonth = campaignLastVisibleMonth();
     const months = [];
 
-    for (let monthIndex = lastVisibleMonth.getMonth(); monthIndex >= 0; monthIndex -= 1) {
-        const month = new Date(2026, monthIndex, 1);
+    const firstVisibleMonth = new Date(2026, 0, 1);
+    for (let cursor = new Date(lastVisibleMonth); cursor >= firstVisibleMonth; cursor.setMonth(cursor.getMonth() - 1)) {
+        const month = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
         const end = new Date(month.getFullYear(), month.getMonth() + 1, 0);
         const label = formatter.format(month).replace(/^./, (letter) => letter.toUpperCase());
 
@@ -2784,15 +2785,7 @@ function applyCampaignDateBounds() {
 function campaignLastVisibleMonth() {
     const today = lastCompleteDay();
 
-    if (today.getFullYear() < 2026) {
-        return new Date(2026, 0, 1);
-    }
-
-    if (today.getFullYear() > 2026) {
-        return new Date(2026, 11, 1);
-    }
-
-    return new Date(2026, today.getMonth(), 1);
+    return today < new Date(2026, 0, 1) ? new Date(2026, 0, 1) : new Date(today.getFullYear(), today.getMonth(), 1);
 }
 
 function clampCampaignDate(date) {
