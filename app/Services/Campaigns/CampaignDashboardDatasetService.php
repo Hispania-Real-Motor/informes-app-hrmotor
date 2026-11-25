@@ -498,7 +498,7 @@ class CampaignDashboardDatasetService
             return $this->operationalBlockedPayload($request, 'El rango solicitado no coincide con la cobertura de la atribución operativa.');
         }
         try {
-            $source = app(OperationalInterestSourceReader::class)->open(2026, (int) substr($month, 5, 2), true);
+            $source = app(OperationalInterestSourceReader::class)->open((int) substr($month, 0, 4), (int) substr($month, 5, 2), true);
             $economic = $this->operationalEconomicContext($month, $endDate);
             if ($source['run_id'] !== (int) $run->interest_run_id || $source['projection_key'] !== $run->projection_key
                 || $source['utm_contract_version'] !== (int) $run->utm_contract_version
