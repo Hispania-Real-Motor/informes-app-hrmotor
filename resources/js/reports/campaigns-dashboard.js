@@ -2628,8 +2628,10 @@ function populatePeriodPreset() {
 function applyInitialCampaignPeriod() {
     const query = new URLSearchParams(window.location.search);
     const period = query.get('period');
-    const month = period === 'october_2026' ? 'month_2026_10'
-        : (period === 'november_2026' ? 'month_2026_11' : null);
+    const monthMatch = period?.match(/^(\d{4})_(0[1-9]|1[0-2])$/);
+    const month = monthMatch ? `month_${monthMatch[1]}_${monthMatch[2]}`
+        : (period === 'october_2026' ? 'month_2026_10'
+            : (period === 'november_2026' ? 'month_2026_11' : null));
     const select = document.getElementById('periodPreset');
     if (!select) {
         return;
@@ -2656,8 +2658,9 @@ function applyInitialCampaignPeriod() {
 function syncCampaignPeriodUrl() {
     const url = new URL(window.location.href);
     const selected = document.getElementById('periodPreset')?.value;
-    if (selected === 'month_2026_10' || selected === 'month_2026_11') {
-        url.searchParams.set('period', selected === 'month_2026_10' ? 'october_2026' : 'november_2026');
+    if (/^month_\d{4}_\d{2}$/.test(selected || '')) {
+        const [, year, month] = selected.match(/^month_(\d{4})_(\d{2})$/);
+        url.searchParams.set('period', `${year}_${month}`);
         url.searchParams.delete('start_date');
         url.searchParams.delete('end_date');
     } else {
@@ -2695,9 +2698,11 @@ function operationalMonthForSelection() {
     const start = document.getElementById('startDate')?.value || '';
     const end = document.getElementById('endDate')?.value || '';
     const month = start.slice(0, 7);
-    const validDates = /^2026-(10|11)-01$/.test(start) && end.startsWith(month + '-')
-        && /^2026-\d{2}-\d{2}$/.test(end) && end >= start;
+    const validDates = /^\d{4}-(0[1-9]|1[0-2])-01$/.test(start) && end.startsWith(month + '-')
+        && /^\d{4}-\d{2}-\d{2}$/.test(end) && end >= start;
     if (!validDates || !['custom', `month_${month.replace('-', '_')}`].includes(selected)) return null;
+    const enabledMonths = window.campaignOperationalEnabledMonths || [];
+    if (enabledMonths.includes(month)) return month;
     if (month === '2026-10' && window.campaignOperationalOctoberEnabled) return month;
     if (month === '2026-11' && window.campaignOperationalNovemberEnabled) return month;
     return null;

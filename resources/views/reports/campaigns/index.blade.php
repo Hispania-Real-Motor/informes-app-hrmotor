@@ -11,6 +11,7 @@
         window.reportUserCanViewOperationalCampaigns = @json($reportUserCanViewOperationalCampaigns ?? false);
         window.campaignOperationalOctoberEnabled = @json($campaignOperationalOctoberEnabled ?? false);
         window.campaignOperationalNovemberEnabled = @json($campaignOperationalNovemberEnabled ?? false);
+        window.campaignOperationalEnabledMonths = @json($campaignOperationalEnabledMonths ?? []);
     </script>
     </x-slot:head>
 <div class="wrap">

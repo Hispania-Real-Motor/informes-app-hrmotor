@@ -475,9 +475,13 @@ class CampaignDashboardDatasetService
         abort_unless(ReportUserAccess::isAdmin($request), 403);
         $filters = $this->filters($request);
         $month = substr($filters['start_date'], 0, 7);
-        abort_unless(in_array($month, ['2026-10', '2026-11'], true)
-            && $filters['start_date'] === $month.'-01'
-            && config($month === '2026-10' ? 'campaign_operational.october_2026_enabled' : 'campaign_operational.november_2026_enabled') === true, 404);
+        $legacyEnabled = match ($month) {
+            '2026-10' => config('campaign_operational.october_2026_enabled', false),
+            '2026-11' => config('campaign_operational.november_2026_enabled', false),
+            default => false,
+        };
+        abort_unless($filters['start_date'] === $month.'-01'
+            && (in_array($month, config('campaign_operational.enabled_months', []), true) || $legacyEnabled), 404);
 
         $run = DB::table('campaign_operational_months as m')
             ->join('campaign_operational_runs as r', 'r.id', '=', 'm.active_run_id')
@@ -488,7 +492,8 @@ class CampaignDashboardDatasetService
         }
         $evidence = json_decode($run->economic_evidence, true);
         $endDate = $evidence['end_date'] ?? null;
-        if (! is_string($endDate) || $endDate < $month.'-01' || $endDate > ($month === '2026-10' ? '2026-10-31' : '2026-11-30')
+        $monthEnd = CarbonImmutable::createFromFormat('Y-m-d', $month.'-01', 'Europe/Madrid')->endOfMonth()->toDateString();
+        if (! is_string($endDate) || $endDate < $month.'-01' || $endDate > $monthEnd
             || ($filters['end_date'] !== '' && $filters['end_date'] < $endDate)) {
             return $this->operationalBlockedPayload($request, 'El rango solicitado no coincide con la cobertura de la atribución operativa.');
         }

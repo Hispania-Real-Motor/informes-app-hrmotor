@@ -9552,3 +9552,22 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Riesgos pendientes: sin esas fuentes externas el plan continúa provisional;
   una referencia, reseña, responsable o cobertura incompleta debe permanecer
   pendiente y no convertirse en cero o en importe económico.
+
+## 2026-11-25 — PR #159: generalización inicial del ciclo operativo mensual
+
+- Se verificó el HEAD remoto `03724cb51fe4826f2b0d11a825d79f16de38c957` antes
+  de modificar la automatización.
+- Se añadió `CAMPAIGN_OPERATIONAL_ENABLED_MONTHS` como allowlist explícita de
+  meses operativos, conservando las banderas históricas de octubre/noviembre y
+  el valor por defecto deshabilitado.
+- El constructor, la automatización diaria, el proyector de Interests y el
+  dashboard aceptan meses configurados; el límite de fecha se calcula por
+  calendario y se conserva la regla de no usar el día actual incompleto.
+- La publicación automática con cobertura parcial queda protegida por
+  `CAMPAIGN_OPERATIONAL_DAILY_ALLOW_PARTIAL_PUBLICATION_ENABLED=false` por
+  defecto. No se activa ninguna bandera ni run.
+- Frontend: los presets y deep-links operativos aceptan períodos configurados
+  sin eliminar la compatibilidad con octubre/noviembre.
+- JavaScript: 52/52, `node --check` y `git diff --check` correctos. PHPUnit,
+  Pint y build no se ejecutaron por falta de runtime/dependencias accesibles;
+  esta entrega no declara producción lista.

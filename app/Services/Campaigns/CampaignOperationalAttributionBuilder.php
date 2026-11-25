@@ -31,7 +31,14 @@ final class CampaignOperationalAttributionBuilder
 
     public function build(int $year, int $month): array
     {
-        if ($year !== 2026 || ! in_array($month, [10, 11], true)) {
+        $monthKey = sprintf('%04d-%02d', $year, $month);
+        $legacyEnabled = match ($monthKey) {
+            '2026-10' => config('campaign_operational.october_2026_enabled', false),
+            '2026-11' => config('campaign_operational.november_2026_enabled', false),
+            default => false,
+        };
+        if ($year < 2026 || $month < 1 || $month > 12
+            || (! in_array($monthKey, config('campaign_operational.enabled_months', []), true) && ! $legacyEnabled)) {
             throw new RuntimeException('Período operativo no habilitado.');
         }
 
@@ -39,21 +46,19 @@ final class CampaignOperationalAttributionBuilder
         $monthKey = $source['month'];
         $start = CarbonImmutable::create($year, $month, 1, 0, 0, 0, 'Europe/Madrid');
         $endExclusive = $start->addMonth();
-        $endDate = $month === 10
-            ? $endExclusive->subDay()->toDateString()
-            : min(
-                $endExclusive->subDay()->toDateString(),
-                CarbonImmutable::parse($source['effective_cutoff_at'], 'UTC')->setTimezone('Europe/Madrid')->toDateString(),
-                CarbonImmutable::now('Europe/Madrid')->subDay()->toDateString()
-            );
+        $endDate = min(
+            $endExclusive->subDay()->toDateString(),
+            CarbonImmutable::parse($source['effective_cutoff_at'], 'UTC')->setTimezone('Europe/Madrid')->toDateString(),
+            CarbonImmutable::now('Europe/Madrid')->subDay()->toDateString()
+        );
         if ($endDate < $start->toDateString()) {
             throw new RuntimeException('No hay un día completo disponible para la atribución operativa.');
         }
         $economic = $this->dashboard->operationalEconomicContext($monthKey, $endDate);
-        if ($month === 10 && ($economic['closure_status'] !== 'closed' || $economic['snapshot_rows'] === [])) {
+        if ($monthKey === '2026-10' && ($economic['closure_status'] !== 'closed' || $economic['snapshot_rows'] === [])) {
             throw new RuntimeException('Falta el snapshot económico cerrado de octubre.');
         }
-        if ($month === 11 && $economic['closure_status'] !== 'open') {
+        if ($monthKey === '2026-11' && $economic['closure_status'] !== 'open') {
             throw new RuntimeException('Noviembre ya no admite la fuente económica abierta.');
         }
         $opportunity = $this->opportunityEvidence($source);
@@ -243,7 +248,7 @@ final class CampaignOperationalAttributionBuilder
     /** Explicit administrative activation after reviewing a prepared run. */
     public function activate(int $year, int $month, int $runId): array
     {
-        if ($year !== 2026 || ! in_array($month, [10, 11], true) || $runId < 1) {
+        if ($year < 2026 || $month < 1 || $month > 12 || $runId < 1) {
             throw new RuntimeException('Período o run no habilitado.');
         }
         $monthKey = sprintf('%04d-%02d', $year, $month);
@@ -255,7 +260,7 @@ final class CampaignOperationalAttributionBuilder
         $evidence = json_decode($candidate->economic_evidence, true, 512, JSON_THROW_ON_ERROR);
         $endDate = $evidence['end_date'] ?? null;
         if (! is_string($endDate) || $endDate < $monthKey.'-01'
-            || $endDate > ($month === 10 ? '2026-10-31' : '2026-11-30')) {
+            || $endDate > CarbonImmutable::create($year, $month, 1, 0, 0, 0, 'Europe/Madrid')->endOfMonth()->toDateString()) {
             throw new RuntimeException('La cobertura económica preparada no es válida.');
         }
         $source = $this->interests->open($year, $month, true);
