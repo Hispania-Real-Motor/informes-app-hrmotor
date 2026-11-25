@@ -516,7 +516,7 @@ class CampaignDashboardDatasetService
             }
             $base = $this->platformOnlySummary($renderRequest);
             $period = $this->period($renderFilters);
-            $availablePlatforms = $month === '2026-10'
+            $availablePlatforms = $economic['closure_status'] === 'closed'
                 ? array_values(array_unique(array_column($economic['snapshot_rows'], 'platform')))
                 : array_keys(array_filter($base['availability']['platforms'], static fn (array $state): bool => $state['status'] === 'available'));
             $metricRows = array_values(array_filter(

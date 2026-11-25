@@ -18,7 +18,7 @@ const metricChartsVisibilityStorageKey = 'campaigns.metricCharts.visible.v1';
 const campaignPointIcon = '/brand/campaign-point.svg';
 const monthlyChartEnabled = false;
 const campaignPeriodMinDate = '2026-01-01';
-const campaignPeriodMaxDate = '2026-12-31';
+const campaignPeriodMaxDate = '2099-12-31';
 const platformColumns = new Set(['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'last_spend_date']);
 const interestColumns = new Set(['leads_salesforce', 'cost_per_lead']);
 const officialOnlyColumns = new Set(['source_acquired', 'medium_acquired', 'acquired_id', 'content_acquired']);
@@ -2639,8 +2639,8 @@ function applyInitialCampaignPeriod() {
     if (month && [...select.options].some((option) => option.value === month)) {
         select.value = month;
         applyPeriodPreset(select.value);
-    } else if (/^2026-\d{2}-\d{2}$/.test(query.get('start_date') || '')
-        && /^2026-\d{2}-\d{2}$/.test(query.get('end_date') || '')) {
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(query.get('start_date') || '')
+        && /^\d{4}-\d{2}-\d{2}$/.test(query.get('end_date') || '')) {
         select.value = 'custom';
         document.getElementById('startDate').value = query.get('start_date');
         document.getElementById('endDate').value = query.get('end_date');
@@ -2703,6 +2703,7 @@ function operationalMonthForSelection() {
     if (!validDates || !['custom', `month_${month.replace('-', '_')}`].includes(selected)) return null;
     const enabledMonths = window.campaignOperationalEnabledMonths || [];
     if (enabledMonths.includes(month)) return month;
+    if (window.campaignOperationalEnabledMonths?.includes(month)) return month;
     if (month === '2026-10' && window.campaignOperationalOctoberEnabled) return month;
     if (month === '2026-11' && window.campaignOperationalNovemberEnabled) return month;
     return null;

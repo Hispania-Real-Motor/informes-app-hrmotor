@@ -16,6 +16,7 @@ use Throwable;
 final class CampaignOperationalAttributionBuilder
 {
     private const LEASE_MINUTES = 5;
+    private const ATTRIBUTION_ALGORITHM_VERSION = 'operational-2026-11.1';
 
     public function __construct(
         private readonly OperationalInterestSourceReader $interests,
@@ -64,12 +65,13 @@ final class CampaignOperationalAttributionBuilder
         $opportunity = $this->opportunityEvidence($source);
         $active = DB::table('campaign_operational_months as m')
             ->join('campaign_operational_runs as r', 'r.id', '=', 'm.active_run_id')
-            ->where('m.month_key', $monthKey)->first(['r.id', 'r.interest_run_id', 'r.projection_key', 'r.economic_fingerprint',
+            ->where('m.month_key', $monthKey)->first(['r.id', 'r.interest_run_id', 'r.projection_key', 'r.attribution_algorithm_version', 'r.economic_fingerprint',
                 'r.opportunity_sync_run_id', 'r.opportunity_sync_cutoff_at', 'r.direct_relationship_run_id',
                 'r.direct_relationship_cutoff_at', 'r.relationship_fingerprint', 'r.status']);
         if ($active !== null && $active->status === 'completed'
             && (int) $active->interest_run_id === $source['run_id']
             && $active->projection_key === $source['projection_key']
+            && $active->attribution_algorithm_version === self::ATTRIBUTION_ALGORITHM_VERSION
             && $active->economic_fingerprint === $economic['fingerprint']
             && (int) $active->opportunity_sync_run_id === (int) $opportunity['opportunity_run_id']
             && (string) $active->opportunity_sync_cutoff_at === (string) $opportunity['opportunity_cutoff_at']
@@ -82,6 +84,7 @@ final class CampaignOperationalAttributionBuilder
             ->where('status', 'prepared')->orderByDesc('id')->first();
         if ($prepared !== null && (int) $prepared->interest_run_id === $source['run_id']
             && $prepared->projection_key === $source['projection_key']
+            && $prepared->attribution_algorithm_version === self::ATTRIBUTION_ALGORITHM_VERSION
             && $prepared->economic_fingerprint === $economic['fingerprint']
             && $prepared->relationship_fingerprint === $opportunity['fingerprint']) {
             return ['run_id' => (int) $prepared->id, 'month' => $monthKey, 'reused' => true, 'status' => 'prepared'];
@@ -96,13 +99,13 @@ final class CampaignOperationalAttributionBuilder
         $unresolvedRelationships = 0;
 
         try {
-            $availablePlatforms = $month === 10
+            $availablePlatforms = $economic['closure_status'] === 'closed'
                 ? array_values(array_unique(array_column($economic['snapshot_rows'], 'platform')))
                 : array_keys(array_filter($economic['availability']['platforms'],
                     static fn (array $state): bool => $state['status'] === 'available'));
             $lookup = $this->matching->operationalMetricLookup(
                 $start, CarbonImmutable::parse($endDate, 'Europe/Madrid')->addDay()->startOfDay(),
-                $month === 10 ? $economic['snapshot_rows'] : null, $availablePlatforms,
+                $economic['closure_status'] === 'closed' ? $economic['snapshot_rows'] : null, $availablePlatforms,
                 $economic['summary']['campaigns']
             );
             $this->interests->eachBatch($source, function (array $batch) use ($runId, $monthKey, $endDate, $token, $source, $opportunity, $lookup, &$count, &$processed, &$incidents, &$unresolvedRelationships): void {
@@ -252,6 +255,14 @@ final class CampaignOperationalAttributionBuilder
             throw new RuntimeException('Período o run no habilitado.');
         }
         $monthKey = sprintf('%04d-%02d', $year, $month);
+        $legacyEnabled = match ($monthKey) {
+            '2026-10' => config('campaign_operational.october_2026_enabled', false),
+            '2026-11' => config('campaign_operational.november_2026_enabled', false),
+            default => false,
+        };
+        if (! in_array($monthKey, config('campaign_operational.enabled_months', []), true) && ! $legacyEnabled) {
+            throw new RuntimeException('Período operativo no habilitado.');
+        }
         $candidate = DB::table('campaign_operational_runs')->where('id', $runId)
             ->where('month_key', $monthKey)->first();
         if ($candidate === null || ! in_array($candidate->status, ['prepared', 'completed'], true)) {
@@ -266,7 +277,8 @@ final class CampaignOperationalAttributionBuilder
         $source = $this->interests->open($year, $month, true);
         $economic = $this->dashboard->operationalEconomicContext($monthKey, $endDate);
         $opportunity = $this->opportunityEvidence($source);
-        if ((int) $candidate->interest_run_id !== $source['run_id']
+        if ($candidate->attribution_algorithm_version !== self::ATTRIBUTION_ALGORITHM_VERSION
+            || (int) $candidate->interest_run_id !== $source['run_id']
             || $candidate->projection_key !== $source['projection_key']
             || (int) $candidate->utm_contract_version !== $source['utm_contract_version']
             || $candidate->economic_fingerprint !== $economic['fingerprint']
@@ -328,6 +340,7 @@ final class CampaignOperationalAttributionBuilder
             $runId = DB::table('campaign_operational_runs')->insertGetId([
                 'month_key' => $month, 'interest_run_id' => $source['run_id'],
                 'projection_key' => $source['projection_key'], 'utm_contract_version' => $source['utm_contract_version'],
+                'attribution_algorithm_version' => self::ATTRIBUTION_ALGORITHM_VERSION,
                 'interest_cutoff_at' => $source['effective_cutoff_at'], 'interest_observed_at' => $source['observed_at'],
                 'economic_fingerprint' => $economic['fingerprint'],
                 'economic_evidence' => json_encode([

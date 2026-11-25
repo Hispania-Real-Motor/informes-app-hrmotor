@@ -9571,3 +9571,19 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - JavaScript: 52/52, `node --check` y `git diff --check` correctos. PHPUnit,
   Pint y build no se ejecutaron por falta de runtime/dependencias accesibles;
   esta entrega no declara producción lista.
+
+## 2026-11-25 — PR #159: calendario económico y versionado de runs
+
+- Se revisó de nuevo el HEAD remoto `5ff0de9421b7d0bc6bc3d7ab4740ec5c3c705686`.
+- La selección de plataformas económicas del builder y del dashboard ya no usa
+  el número de mes; utiliza el estado real `closed` para leer snapshots y la
+  ruta abierta para cobertura diaria acreditada.
+- Se añadió la migración aditiva
+  `2026_11_25_120000_add_attribution_algorithm_version_to_campaign_operational_runs.php`.
+  Los runs nuevos guardan `operational-2026-11.1` y los runs preparados/activos
+  solo se reutilizan si coinciden con esa versión. No se ejecutó la migración.
+- El calendario frontend acepta años posteriores y períodos autorizados sin
+  ampliar la allowlist operativa.
+- Verificaciones ejecutadas: `node --check`, JavaScript 52/52 y
+  `git diff --check`. PHPUnit, Pint y build siguen pendientes por falta de
+  runtime/dependencias accesibles. No se activaron flags ni runs.
