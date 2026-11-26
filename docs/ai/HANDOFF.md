@@ -9845,3 +9845,65 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - No cambia la arquitectura ni el comportamiento de los informes, por lo que
   no se actualizan `PROJECT_CONTEXT.md` ni `DECISIONS.md` y no se requiere
   mantenimiento adicional de documentación de informes.
+
+## Revisión documental del importador de objetivos de Delegaciones (2026-11-26)
+
+- Alcance contrastado: diff completo de
+  `8ae9cf6998343a73d077f5f2ace02a4b18e955a2` hasta el árbol de trabajo,
+  incluyendo la adición no rastreada
+  `tests/Feature/StoreManagerCommissionTargetImportTest.php`. El cambio
+  funcional queda limitado a
+  `app/Console/Commands/ImportStoreManagerCommissionTargets.php` y su suite
+  feature; no se editaron configuración, migraciones ni datos.
+- Informe y superficie afectada: **Comisiones**, pestaña **Delegaciones**, plan
+  `october_2026`. La modificación afecta al gobierno de escritura de objetivos,
+  no a las seis pestañas restantes, fórmulas, universos, filtros, fechas
+  pivote, deduplicación, presentación o exportación.
+- Evidencia revisada: el importador valida 34 filas y totales 907/499, calcula
+  SHA-256 y etiqueta de fuente, y persiste por `upsert` idempotente. En
+  `--write` bloquea el cierre de Delegaciones en la transacción: un cierre
+  `definitive` rechaza; un `pending_approval` exige snapshot de la versión del
+  cierre y coincidencia exacta de los objetivos congelados, incluida clave
+  normalizada, zona, nombre, cantidades y procedencia; otros estados no
+  definitivos permiten escribir. El dry-run solo valida y sigue permitido con
+  cierre definitivo. El cierre financiero no participa en la guarda.
+- Documentación modificada focalmente: `docs/informe-comisiones.md`,
+  `docs/matriz-trazabilidad-kpi.md` y este `docs/ai/HANDOFF.md`. No cambian
+  `docs/decisiones-negocio-pendientes.md`, `docs/ai/PROJECT_CONTEXT.md` ni
+  `docs/ai/DECISIONS.md`: no se adopta una decisión de negocio nueva ni cambia
+  la arquitectura, los módulos o las convenciones generales; la regla de
+  aprobación pendiente ya estaba vigente y ahora se documenta su enforcement
+  en este importador.
+- Decisión documental: conservar como pendiente la procedencia empresarial del
+  CSV y cualquier ejecución productiva. El test nuevo acredita límites de
+  cierre, snapshot y auditoría en fixtures; no acredita datos reales.
+- Base de datos/configuración: no hay migraciones, columnas, variables de
+  entorno, dependencias ni cambios de datos. No se ejecutaron migraciones sobre
+  una base persistente, sincronizaciones, importaciones productivas ni
+  consultas Salesforce; las pruebas usaron únicamente una SQLite efímera de
+  testing.
+- Seguridad, fiabilidad y rendimiento: la escritura queda serializada con el
+  cierre bloqueado y se evita invalidar silenciosamente un candidato pendiente;
+  el `upsert` mantiene idempotencia y los campos de hash/etiqueta. El control
+  trabaja sobre la fila de cierre y el snapshot local dentro de una única
+  transacción, sin llamadas remotas ni lecturas adicionales en HTTP.
+- Validaciones: `php -l` de los dos PHP modificados, la suite focalizada del
+  importador (5 tests, 20 assertions), `CommissionMonthClosureTest` (23/23,
+  197 assertions), `StoreManagerSettlementIntegrationTest` (30/30, 123
+  assertions), `CommercialCommissionSourceReadinessTest` (29/29, 81
+  assertions), Pint de los PHP modificados y `git diff --check` correctos. La
+  primera ejecución de la suite completa falló por falta de `APP_KEY` en el
+  worktree; la repetición con la clave sintética de CI superó el límite
+  práctico de ejecución en Windows y fue detenida sin resultado final. No se
+  ejecutó `scripts/check_documentation_integrity.py`: no se dispone de
+  descripción real de PR y el contrato de la guía exige base, HEAD y cuerpo de
+  PR; inventar ese cuerpo no sería válido. `report_docs_maintainer` fue
+  invocado, terminó la revisión y sus cambios documentales fueron revisados
+  por el agente principal.
+- Riesgos y pendientes: sigue sin acreditarse la fuente empresarial autorizada
+  del CSV, una carga productiva o la conciliación real de octubre. Un cambio de
+  objetivos con un candidato `pending_approval` requiere preparar de nuevo el
+  snapshot; no debe forzarse mediante escritura directa. El importador de
+  objetivos continúa sin actor `imported_by`, a diferencia del roster.
+- Contrato de PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
+  `Docs-Scope: commissions`.
