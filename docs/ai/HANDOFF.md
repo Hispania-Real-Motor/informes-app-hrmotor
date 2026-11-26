@@ -9817,8 +9817,10 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   convenciones generales; no se actualizan `PROJECT_CONTEXT.md` ni
   `DECISIONS.md`.
 - Verificaciones: `git diff --check` correcto. El test PHP afectado no pudo
-  ejecutarse localmente porque el entorno no dispone de PHP; queda pendiente
-  de validación en CI sobre el nuevo HEAD.
+  ejecutarse localmente porque el entorno no dispone de PHP. En CI,
+  `docs-integrity` y `october-provisional-mariadb` pasan; el job `test` se
+  detiene antes de los tests PHP en `Audit runtime dependencies` por avisos de
+  seguridad de `symfony/routing`, por lo que el test PHP sigue sin ejecutarse.
 - No se requiere mantenimiento documental de informes: el cambio modifica
   exclusivamente tests y metadatos de la PR, sin cambiar el comportamiento,
   origen, cálculo, presentación o auditoría de ningún informe.
