@@ -616,6 +616,21 @@ siendo evidencia administrativa; el comando persiste hash y etiqueta de fuente,
 pero no recibe ni guarda un actor de importación. Esta revisión tampoco realizó
 una consulta productiva.
 
+El dry-run continúa limitado a validar el fichero y no se bloquea por un cierre
+de Delegaciones definitivo, porque no escribe objetivos ni modifica el cierre.
+Con `--write`, el importador toma el cierre de Delegaciones del mes bajo bloqueo
+dentro de la misma transacción: un estado `definitive` rechaza la operación;
+`reopened`, `provisional`, la ausencia de fila y los demás estados no definitivos
+permiten el `upsert` idempotente. Si el estado es `pending_approval`, debe existir
+el snapshot de la versión indicada por el cierre y sus objetivos congelados deben
+coincidir exactamente con la entrada entrante, incluida la clave normalizada,
+zona, nombre, cantidades, SHA-256 y etiqueta de fuente; si falta el snapshot o
+hay cualquier diferencia, se rechaza la escritura para no dejar obsoleto el
+candidato. El cierre financiero es independiente de esta guarda de Delegaciones.
+`StoreManagerCommissionTargetImportTest` cubre dry-run con cierre definitivo,
+reapertura con financieros definitivos, rechazo definitivo, rechazo de candidato
+incompatible e idempotencia conservando los campos de auditoría.
+
 ### Trazabilidad de fuentes y universo
 
 La réplica local de `Opportunity` se alimenta mediante

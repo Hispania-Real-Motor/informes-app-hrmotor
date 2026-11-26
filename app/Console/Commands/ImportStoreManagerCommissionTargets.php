@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Models\CommercialCommissionClosure;
+use App\Models\CommercialCommissionSnapshot;
 use App\Models\StoreManagerCommissionTarget;
 use App\Services\Reports\CommercialCommissions\StoreManagerCommissionTargetService;
 use Illuminate\Console\Command;
@@ -10,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class ImportStoreManagerCommissionTargets extends Command
 {
+    private const TARGET_SOURCE_LABEL = 'Detalle por tienda — OBJETIVOS OCTUBRE ULTIMOS(1).xlsx';
+
     protected $signature = 'commissions:import-store-manager-targets
         {file=database/seeders/StoreManagerCommissionTargetsOctober2026.csv}
         {--month=2026-10}
@@ -67,15 +71,6 @@ class ImportStoreManagerCommissionTargets extends Command
         }
 
         $month = (string) $this->option('month');
-        if (Schema::hasTable('commercial_commission_closures')) {
-            $approved = DB::table('commercial_commission_closures')
-                ->where('month', $month)->where('status', 'definitive')->exists();
-            if ($approved) {
-                $this->error('Approved delegation period cannot be modified.');
-
-                return self::FAILURE;
-            }
-        }
         $source = hash_file('sha256', $path);
         $this->info(sprintf('Validated %d rows, totals %d/%d, source %s.', count($rows), $deliveryTotal, $purchaseTotal, $source));
         if (! $this->option('write')) {
@@ -84,21 +79,110 @@ class ImportStoreManagerCommissionTargets extends Command
             return self::SUCCESS;
         }
 
-        DB::transaction(function () use ($rows, $month, $source, $keys): void {
-            foreach ($rows as $row) {
-                StoreManagerCommissionTarget::query()->updateOrCreate(
-                    ['month' => $month, 'store_key' => $keys->normalizeKey($row['store'])],
-                    [
-                        'zone' => $row['zone'], 'store_name' => $row['store'],
-                        'delivery_target' => (int) $row['deliveries'], 'purchase_target' => (int) $row['purchases'],
-                        'source_sha256' => $source, 'source_label' => 'Detalle por tienda — OBJETIVOS OCTUBRE ULTIMOS(1).xlsx',
-                    ]
+        try {
+            DB::transaction(function () use ($rows, $month, $source, $keys): void {
+                $this->assertWriteAllowed($month, $rows, $source, $keys);
+
+                $now = now();
+                $targets = array_map(fn (array $row): array => [
+                    'month' => $month,
+                    'zone' => $row['zone'],
+                    'store_key' => $keys->normalizeKey($row['store']),
+                    'store_name' => $row['store'],
+                    'delivery_target' => (int) $row['deliveries'],
+                    'purchase_target' => (int) $row['purchases'],
+                    'source_sha256' => $source,
+                    'source_label' => self::TARGET_SOURCE_LABEL,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ], $rows);
+
+                StoreManagerCommissionTarget::query()->upsert(
+                    $targets,
+                    ['month', 'store_key'],
+                    ['zone', 'store_name', 'delivery_target', 'purchase_target', 'source_sha256', 'source_label', 'updated_at'],
                 );
-            }
-        });
+            });
+        } catch (\RuntimeException $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         $this->info('Targets imported idempotently.');
 
         return self::SUCCESS;
+    }
+
+    /** @param array<int, array<string, string>> $rows */
+    private function assertWriteAllowed(string $month, array $rows, string $source, StoreManagerCommissionTargetService $keys): void
+    {
+        if (! Schema::hasTable('commercial_commission_closures')) {
+            return;
+        }
+
+        $closure = CommercialCommissionClosure::query()
+            ->where([
+                'month' => $month,
+                'closure_scope' => CommercialCommissionClosure::SCOPE_DELEGATIONS,
+            ])
+            ->lockForUpdate()
+            ->first();
+
+        if ($closure?->status === CommercialCommissionClosure::STATUS_DEFINITIVE) {
+            throw new \RuntimeException('Approved delegation period cannot be modified.');
+        }
+
+        if ($closure?->status !== CommercialCommissionClosure::STATUS_PENDING_APPROVAL) {
+            return;
+        }
+
+        $snapshot = Schema::hasTable('commercial_commission_snapshots')
+            ? CommercialCommissionSnapshot::query()
+                ->where('closure_id', $closure->id)
+                ->where('version', (int) $closure->snapshot_version)
+                ->lockForUpdate()
+                ->first()
+            : null;
+
+        $frozenTargets = $snapshot === null
+            ? null
+            : data_get($snapshot->payload, 'delegations.store_manager_targets');
+        $incomingTargets = $this->canonicalTargetDefinitions($rows, $source, $keys);
+        $candidateTargets = is_array($frozenTargets)
+            ? $this->canonicalTargetDefinitions($frozenTargets, null, $keys)
+            : [];
+
+        if ($snapshot === null || $incomingTargets !== $candidateTargets) {
+            throw new \RuntimeException('Pending delegation candidate would become obsolete; prepare it again before changing targets.');
+        }
+    }
+
+    /** @param array<int, array<string, mixed>> $targets */
+    private function canonicalTargetDefinitions(array $targets, ?string $source, StoreManagerCommissionTargetService $keys): array
+    {
+        return collect($targets)
+            ->filter(fn (mixed $target): bool => is_array($target))
+            ->map(function (array $target) use ($source, $keys): array {
+                $storeKey = (string) ($target['store_key'] ?? $target['storeKey'] ?? '');
+                $storeName = (string) ($target['store_name'] ?? $target['store'] ?? '');
+
+                return [
+                    'zone' => (string) ($target['zone'] ?? ''),
+                    'store_key' => $source === null ? $storeKey : $keys->normalizeKey($storeKey),
+                    'store_name' => $storeName,
+                    'target_deliveries' => (int) ($target['target_deliveries'] ?? $target['deliveries'] ?? -1),
+                    'target_purchases' => (int) ($target['target_purchases'] ?? $target['purchases'] ?? -1),
+                    'target_source' => [
+                        'sha256' => $source ?? (string) data_get($target, 'target_source.sha256', ''),
+                        'label' => $source === null
+                            ? (string) data_get($target, 'target_source.label', '')
+                            : self::TARGET_SOURCE_LABEL,
+                    ],
+                ];
+            })
+            ->sortBy('store_key')
+            ->values()
+            ->all();
     }
 }
