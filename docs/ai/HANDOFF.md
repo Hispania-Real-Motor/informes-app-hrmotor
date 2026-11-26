@@ -9799,3 +9799,26 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `PROJECT_CONTEXT.md`. La PR permanece abierta y no se fusiona con `main`.
 - Contrato PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
   `Docs-Scope: commissions`.
+
+## Corrección final de checks de PR #158 (2026-11-26)
+
+- Se ajustó únicamente `tests/Feature/CampaignDashboardTest.php`: el test de
+  contrato de UI habilita la autenticación y octubre como período operacional
+  para un administrador, que son las condiciones reales para mostrar el
+  selector; el test de acceso verifica que el selector aparece para Admin y
+  permanece oculto para Director. No se modificó la vista ni el control de
+  acceso del dashboard.
+- La descripción de la PR actualizó `Docs-Outside-Paths` y
+  `Docs-Outside-Evidence` para enumerar exactamente las cinco rutas
+  funcionales sin mapeo documental detectadas contra `main`, incluida
+  `app/Services/Salesforce/OperationalInterestCurrentAutomation.php`.
+- No hay cambios de aplicación, consultas, sincronizadores, migraciones,
+  flags ni configuración productiva. No cambian la arquitectura ni las
+  convenciones generales; no se actualizan `PROJECT_CONTEXT.md` ni
+  `DECISIONS.md`.
+- Verificaciones: `git diff --check` correcto. El test PHP afectado no pudo
+  ejecutarse localmente porque el entorno no dispone de PHP; queda pendiente
+  de validación en CI sobre el nuevo HEAD.
+- No se requiere mantenimiento documental de informes: el cambio modifica
+  exclusivamente tests y metadatos de la PR, sin cambiar el comportamiento,
+  origen, cálculo, presentación o auditoría de ningún informe.

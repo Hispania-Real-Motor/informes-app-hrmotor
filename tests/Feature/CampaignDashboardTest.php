@@ -535,7 +535,15 @@ class CampaignDashboardTest extends TestCase
 
     public function test_ui_drawer_and_columns_follow_platform_campaign_v1_contract(): void
     {
-        $html = $this->get('/informes/campanas')->assertOk()->getContent();
+        config()->set([
+            'services.informes_auth.enabled' => true,
+            'campaign_operational.october_2026_enabled' => true,
+        ]);
+
+        $html = $this->withSession($this->authenticatedSession(ReportUser::ROLE_ADMIN))
+            ->get('/informes/campanas')
+            ->assertOk()
+            ->getContent();
 
         $this->assertStringContainsString('id="campaignCharts"', $html);
         $this->assertStringContainsString('id="platformComparison"', $html);
@@ -739,7 +747,10 @@ class CampaignDashboardTest extends TestCase
 
     public function test_admin_ve_diagnostico_y_puede_exportar_pero_viewer_no(): void
     {
-        config()->set('services.informes_auth.enabled', true);
+        config()->set([
+            'services.informes_auth.enabled' => true,
+            'campaign_operational.october_2026_enabled' => true,
+        ]);
 
         CampaignPlatformDailyMetric::query()->create($this->metricRow([
             'platform' => 'meta',
@@ -759,7 +770,8 @@ class CampaignDashboardTest extends TestCase
             ->assertSee('diagnosticsOpen', false)
             ->assertSee('campaignDiagnosticsModal', false)
             ->assertSee('window.reportUserCanExport = true', false)
-            ->assertSee('window.reportUserCanAudit = true', false);
+            ->assertSee('window.reportUserCanAudit = true', false)
+            ->assertSee('<input type="hidden" id="campaignDataSource"', false);
 
         $this->withSession($adminSession)
             ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
@@ -810,7 +822,8 @@ class CampaignDashboardTest extends TestCase
             ->assertDontSee('diagnosticsOpen', false)
             ->assertDontSee('campaignDiagnosticsModal', false)
             ->assertSee('window.reportUserCanExport = true', false)
-            ->assertSee('window.reportUserCanAudit = true', false);
+            ->assertSee('window.reportUserCanAudit = true', false)
+            ->assertDontSee('id="campaignDataSource"', false);
 
         $this->withSession($directorSession)
             ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
