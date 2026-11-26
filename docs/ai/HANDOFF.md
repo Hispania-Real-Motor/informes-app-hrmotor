@@ -9824,3 +9824,24 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - No se requiere mantenimiento documental de informes: el cambio modifica
   exclusivamente tests y metadatos de la PR, sin cambiar el comportamiento,
   origen, cálculo, presentación o auditoría de ningún informe.
+
+## Corrección de vulnerabilidades Symfony de PR #158 (2026-11-26)
+
+- Se actualizó exclusivamente `composer.lock`; `composer.json` permanece sin
+  cambios y no se modificaron código de negocio, workflows, consultas,
+  sincronizadores, migraciones ni configuración productiva.
+- Versiones corregidas: `symfony/http-foundation` `8.1.11` a `8.1.12`,
+  `symfony/http-kernel` `8.1.11` a `8.1.12`, `symfony/mailer` `8.0.15` a
+  `8.1.12` y `symfony/routing` `8.1.11` a `8.1.12`. La resolución se generó
+  con Composer partiendo del lock original y sin actualizar Laravel ni Pest.
+- Las versiones `8.1.12` son las releases parcheadas de la rama compatible
+  con PHP 8.4 y corrigen los cinco avisos de auditoría; no se introdujeron
+  excepciones ni exclusiones de CVE.
+- Verificaciones locales: `composer validate --no-check-publish --strict`,
+  `composer validate --check-lock --no-check-publish --strict`,
+  `composer audit --locked --no-dev` y `git diff --check`, todas correctas.
+  PHPUnit completo, MariaDB y `docs-integrity` quedan para GitHub Actions;
+  no se ejecutaron migraciones ni procesos de datos.
+- No cambia la arquitectura ni el comportamiento de los informes, por lo que
+  no se actualizan `PROJECT_CONTEXT.md` ni `DECISIONS.md` y no se requiere
+  mantenimiento adicional de documentación de informes.
