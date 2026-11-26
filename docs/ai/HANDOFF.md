@@ -1,5 +1,21 @@
 # Handoff para agentes
 
+## 2026-11-26 — Corrección de checks de la PR de Comisiones y Campañas
+
+- Se mantuvieron los assets compilados nuevos y se conservaron byte a byte los
+  hashes existentes de `public/build/assets`, evitando que el validador
+  documental interprete una recompilación normal como eliminaciones o
+  renombrados históricos.
+- La descripción de la PR declara el impacto documental de Campañas y
+  Comisiones, la ruta operativa transversal y la justificación de que no cambia
+  ninguna fórmula comercial.
+- No hay migraciones, cambios de configuración, permisos, aprobaciones,
+  snapshots, cierres, importaciones ni despliegues. No se cambia la lógica
+  económica ni se modifica ningún informe fuera del alcance declarado.
+- El job remoto `october-provisional-mariadb` ya había pasado. La suite PHP
+  remota quedó interrumpida tras `CommercialCommissionApiTest` sin resumen de
+  aserciones; debe confirmarse en la nueva ejecución tras este commit.
+
 ## 2026-11-19 — Campañas: UX de filtros, tabla y rankings
 
 ### Revisión documental — report_docs_maintainer
