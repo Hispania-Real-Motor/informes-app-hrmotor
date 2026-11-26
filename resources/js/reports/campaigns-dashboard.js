@@ -1,4 +1,4 @@
-import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
+import { advertisingEligibility, advertisingDetailRows, commercialResultDetailRows, detailMoneyPresentation, currentStatusPresentation, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from './campaign-presentation.js';
 
 const numberFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true });
 const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', useGrouping: true });
@@ -15,6 +15,7 @@ const monthlyMetricsStorageKey = 'campaigns.monthlyChart.metrics.v2';
 const monthlyCompareStorageKey = 'campaigns.monthlyChart.compare';
 const campaignNameSelectionStorageKey = 'campaigns.campaignNames.selected';
 const metricChartsVisibilityStorageKey = 'campaigns.metricCharts.visible.v1';
+const campaignDetailFilterStorageKey = 'campaigns.detailFilter.v1';
 const campaignPointIcon = '/brand/campaign-point.svg';
 const monthlyChartEnabled = false;
 const campaignPeriodMinDate = '2026-01-01';
@@ -46,6 +47,7 @@ let campaignOperationalFallbackNotice = '';
 let currentRankings = {};
 let currentContext = 'all';
 let campaignNameSelections = [];
+let campaignDetailFilter = loadCampaignDetailFilter();
 let monthlySelectedMonths = [];
 let monthlyVisibleMetrics = [];
 let monthlyCompareMode = 'none';
@@ -3419,7 +3421,19 @@ function renderCampaignTables(rows, emptyMessage = null) {
     const [title, subtitle] = titleMap[context] || titleMap.all;
 
     const detail = advertisingDetailRows(rows || []);
-    root.innerHTML = renderCampaignTable(context, title, subtitle, detail.rows, emptyMessage);
+    const visibleRows = campaignDetailFilter === 'all'
+        ? detail.rows
+        : commercialResultDetailRows(detail.rows);
+    const exportHref = root.querySelector?.('#exportCsv')?.getAttribute('href') || null;
+    const attributionAuditHref = root.querySelector?.('#exportAttributionAudit')?.getAttribute('href') || null;
+    root.innerHTML = renderCampaignTable(context, title, subtitle, visibleRows, emptyMessage);
+    if (exportHref) {
+        root.querySelector?.('#exportCsv')?.setAttribute('href', exportHref);
+    }
+    if (attributionAuditHref) {
+        root.querySelector?.('#exportAttributionAudit')?.setAttribute('href', attributionAuditHref);
+    }
+    bindCampaignDetailFilter();
     scheduleCurrentStatusExpiry();
     renderColumnsPopover();
     applyColumnVisibility();
@@ -3471,6 +3485,13 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
                     ${subtitle ? `<div class="small">${escapeHtml(subtitle)}</div>` : ''}
                 </div>
                 <div class="campaign-table-actions">
+                    <label class="main-tab campaign-detail-filter">
+                        <span>Detalle</span>
+                        <select id="campaignDetailFilter" aria-label="Filtrar detalle por resultados comerciales">
+                            <option value="with_results" ${campaignDetailFilter === 'with_results' ? 'selected' : ''}>Con resultados comerciales</option>
+                            <option value="all" ${campaignDetailFilter === 'all' ? 'selected' : ''}>Todas las campañas</option>
+                        </select>
+                    </label>
                     <div class="columns-menu">
                         <button type="button" class="main-tab" id="columnsToggle">Filtro</button>
                         <div class="columns-popover card is-hidden" id="columnsPopover"></div>
@@ -3493,6 +3514,30 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
             </div>
         </article>
     `;
+}
+
+function bindCampaignDetailFilter() {
+    document.getElementById('campaignDetailFilter')?.addEventListener('change', (event) => {
+        campaignDetailFilter = event.target.value === 'all' ? 'all' : 'with_results';
+        persistCampaignDetailFilter();
+        renderCampaignTables(campaignRows);
+    });
+}
+
+function loadCampaignDetailFilter() {
+    try {
+        return localStorage.getItem(campaignDetailFilterStorageKey) === 'all' ? 'all' : 'with_results';
+    } catch {
+        return 'with_results';
+    }
+}
+
+function persistCampaignDetailFilter() {
+    try {
+        localStorage.setItem(campaignDetailFilterStorageKey, campaignDetailFilter);
+    } catch {
+        // Storage may be unavailable.
+    }
 }
 
 function loadVisibleColumns() {

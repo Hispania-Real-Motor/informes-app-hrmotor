@@ -1,5 +1,29 @@
 # Handoff para agentes
 
+## 2026-11-26 — Ajustes finales de revisión de Campañas
+
+- La tabla de detalle de Campañas conserva el dataset compartido y las
+  exportaciones, pero muestra inicialmente solo campañas con un resultado
+  comercial confirmado positivo; el selector permite volver a todas las
+  campañas y conserva la elección entre recargas y cambios de periodo.
+- Dirección recupera la clasificación operativa que ya tenía; las operaciones
+  administrativas de construcción y activación siguen protegidas para Admin.
+- Se documenta la activación explícita de
+  `commercial-commissions-refresh-internal-reviews` mediante
+  `OPERATIONS_SCHEDULED_TASK_KEYS`, sin tocar `.env` de producción, cierres ni
+  snapshots. No hay migraciones ni cambios de base de datos.
+- Seguridad: no se amplían permisos administrativos ni se modifican estados
+  económicos. Rendimiento: el filtro reutiliza las filas ya cargadas y no
+  añade consultas por campaña; los enlaces de exportación conservan su URL al
+  cambiar el filtro.
+- Pruebas ejecutadas: `node --test tests/js/*.test.mjs` (87/87),
+  `node --check` de los módulos de Campañas, `npm run build`, coherencia del
+  manifest con los archivos existentes y `git diff --check`. Los focales PHP
+  `CampaignOperationalAttributionTest` (13/13, 115 aserciones) y
+  `CampaignDashboardTest` (72/72, 767 aserciones), con la clave sintética de
+  CI, y Pint sobre los PHP modificados también pasan; los checks remotos deben
+  confirmar la suite Laravel completa.
+
 ## 2026-11-26 — Corrección de checks de la PR de Comisiones y Campañas
 
 - Se mantuvieron los assets compilados nuevos y se conservaron byte a byte los
@@ -9948,13 +9972,16 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   sincronizador Salesforce legacy como sustituto ni expone endpoint,
   credenciales o cuerpos remotos.
 - Campañas: Administración y Dirección pueden leer el dataset operacional
-  habilitado con los mismos KPI confirmados; la clasificación sigue siendo
-  Admin-only y Dirección recibe evidencia provisional resumida. El origen es
+  habilitado con los mismos KPI confirmados; Dirección conserva la capacidad
+  de clasificar campañas y recibe evidencia provisional resumida. El origen es
   un control interno/URL, no un selector visible. Sin parámetros se prioriza el
   mes actual válido y después el último mes activo; si falla una selección
   implícita, la UI vuelve a oficial con aviso. Con `source=operational`
   explícito, el servicio conserva la petición y entrega el fallback de
-  plataforma con aviso. Rankings y columnas son preferencias de presentación;
+  plataforma con aviso. La tabla de detalle añade un filtro visual persistido
+  (`campaigns.detailFilter.v1`) entre resultados comerciales y todas las
+  campañas, sin cambiar dataset, CSV ni auditoría. Rankings y columnas son
+  preferencias de presentación;
   los rankings sin filas válidas se ocultan y el detalle prioriza campañas con
   métrica comercial positiva confirmada sin eliminar campañas de inversión.
 - Documentación modificada exclusivamente: `docs/informe-comisiones.md`,
@@ -9968,14 +9995,14 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   reseñas, liquidación y catálogo. No se consultaron Salesforce ni bases de
   datos y no se ejecutaron sincronizaciones, imports, cierres ni despliegues.
 - Seguridad y rendimiento: se preservan permisos de cierre, snapshots y
-  aprobación; Dirección no puede mutar clasificaciones; la vista no consulta
-  Salesforce ni sincroniza; el refresco usa el pool existente y la lectura de
-  Campañas reutiliza filas materializadas. No hay migraciones, variables de
-  entorno nuevas ni secretos documentados.
+  aprobación; la clasificación de Campañas sigue limitada a Administración y
+  Dirección; la vista no consulta Salesforce ni sincroniza; el refresco usa el
+  pool existente y la lectura de Campañas reutiliza filas materializadas. No
+  hay migraciones, variables de entorno nuevas ni secretos documentados.
 - Revisión documental: se invocó `report_docs_maintainer` con el diff completo
-  y referencias de base/HEAD. El agente modificó exclusivamente documentación;
-  el agente principal revisó sus cambios, corrigió el estado documentado de la
-  preferencia vacía de rankings y dejó el código fuera de su alcance.
+  y las referencias de base/HEAD. El agente modificó únicamente documentación;
+  el agente principal revisó sus cambios, corrigió el estado documentado del
+  permiso de Dirección y dejó código y assets fuera de alcance documental.
 - Verificaciones documentales: `git diff --check`, enlaces Markdown relativos y
   referencias funcionales documentadas terminaron correctamente
   (`git-diff-check: OK`, `markdown-relative-links: OK`,

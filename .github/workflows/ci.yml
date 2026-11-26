@@ -68,7 +68,7 @@ jobs:
           php artisan migrate --force --no-interaction
 
       - name: PHP tests
-        run: php artisan test tests/Feature/CommercialCommissionDashboardTest.php
+        run: php artisan test
 
       - name: Pint on changed PHP
         shell: bash

@@ -349,6 +349,17 @@ reserva, venta y clasificación siguen siendo contratos de backend/exportación
 cuando se reciben por las vías existentes, pero esta iteración no ofrece sus
 controles avanzados en el DOM. El botón de limpieza general permanece.
 
+La tabla de detalle incorpora además el filtro visual **Detalle**, con las
+opciones **Con resultados comerciales** (predeterminada) y **Todas las
+campañas**. La primera aplica en el navegador `commercialResultDetailRows()`
+después de `advertisingDetailRows()` y conserva solo filas con un valor
+numérico positivo confirmado en alguna métrica comercial (`leads_salesforce`,
+`interests_salesforce`, `opportunities`, `reservations`, `sales` o
+`purchases`); la segunda vuelve a mostrar todas las filas publicitarias
+elegibles. La preferencia se guarda en `localStorage` bajo
+`campaigns.detailFilter.v1`. Es una regla de presentación: no cambia la
+petición PHP, el dataset en memoria, la exportación CSV ni la auditoría.
+
 ### Rankings visibles y formato
 
 Todos los rankings son opcionales: no existe una clave obligatoria y el usuario
@@ -388,8 +399,9 @@ auditada: la trazabilidad completa de fuentes y campos API continúa pendiente.
 
 Administración y Dirección pueden leer el dataset operativo habilitado. La
 clasificación de campañas (`POST /informes/campanas/classifications`) continúa
-siendo una mutación exclusiva de Administración; la ampliación a Dirección es
-de lectura y no cambia activación, publicación, cierres ni snapshots. El
+siendo una mutación permitida a Administración y Dirección; Dirección conserva
+la clasificación, aunque no recibe la evidencia técnica completa. Esto no cambia
+activación, publicación, cierres ni snapshots. El
 payload de Administración conserva `interest_run_id`, `attribution_run_id`,
 cutoffs, cobertura e incidencias técnicas. Dirección recibe los KPI comerciales
 confirmados del mismo run, pero solo la evidencia resumida (`month`,
@@ -410,8 +422,8 @@ Los rankings y las columnas siguen siendo preferencias de presentación. No hay
 rankings obligatorios; las fichas sin filas con valores válidos se ocultan y el
 detalle general prioriza filas con alguna métrica comercial positiva confirmada
 sin eliminar campañas que solo tengan inversión. La prueba
-`CampaignOperationalAttributionTest::test_director_can_read_provisional_attribution_without_technical_evidence_or_admin_mutation`
-contrasta lectura resumida y rechazo de la mutación de Dirección; las pruebas
+`CampaignOperationalAttributionTest::test_director_can_read_provisional_attribution_and_classify_without_technical_evidence`
+contrasta lectura resumida y clasificación permitida de Dirección; las pruebas
 de `CampaignDashboardTest` contrastan vista, permisos y exportación, mientras
 `tests/js/campaign-presentation.test.mjs` contrasta el periodo inicial y la
 selección/ocultamiento de rankings. Son pruebas sintéticas: no acreditan

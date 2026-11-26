@@ -45,7 +45,7 @@ class CampaignDashboardController extends Controller
 
     public function classify(Request $request)
     {
-        abort_unless(ReportUserAccess::isAdmin($request), 403);
+        abort_unless(ReportUserAccess::isAdmin($request) || ReportUserAccess::isDirector($request), 403);
         $data = $request->validate([
             'platform' => ['required', 'in:meta,google_ads'],
             'account_id' => ['nullable', 'string', 'max:255'],

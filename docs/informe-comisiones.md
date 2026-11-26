@@ -742,9 +742,17 @@ caso no se envía petición al endpoint. El comando
 `commissions:refresh-internal-reviews --month=YYYY-MM` fuerza una nueva lectura,
 ignora el valor cacheado y vuelve a poblar la caché mediante el mismo servicio.
 Sin `--month`, refresca los meses actual y anterior (entre 1 y 12 mediante
-`--months`). El catálogo operacional lo registra a las 02:30 Europe/Madrid,
-con ventana y gracia de 30 minutos, reserva persistente y permiso manual; no
-modifica cierres ni snapshots.
+`--months`). El catálogo operacional lo registra como
+`commercial-commissions-refresh-internal-reviews` a las 02:30
+`Europe/Madrid`, con ventana y gracia de 30 minutos, reserva persistente y
+permiso manual. `routes/console.php` lo somete a
+`OperationalTaskCatalog::isScheduled()`, cuya allowlist procede de
+`config/operations.php`/`OPERATIONS_SCHEDULED_TASK_KEYS`: si la variable está
+ausente se conserva el calendario del catálogo; una lista explícita debe
+incluir esta clave y una lista vacía bloquea nuevas reservas. La invocación
+programada usa `operations:run` con los argumentos fijos del catálogo
+(`--months=2`); el permiso manual separado no amplía la allowlist del
+scheduler. El refresco no modifica cierres ni snapshots.
 El payload es válido con cero reseñas y media nula; con reseñas positivas exige
 media numérica, y la ruta económica exige además una media entre 0 y 5. Un
 recuento cero con media informada, una media fuera de rango o un valor no

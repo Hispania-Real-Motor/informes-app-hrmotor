@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
+import { advertisingEligibility, advertisingDetailRows, commercialResultDetailRows, hasConfirmedCommercialResult, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, activityMetrics, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments } from '../../resources/js/reports/campaign-presentation.js';
 
 const money = (value) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
 
@@ -17,6 +17,24 @@ test('only quantitative activity keeps a detail row; null is never coerced to co
     assert.equal(hasDetailActivity({ spend: 0, leads_salesforce: 1 }), true);
     assert.equal(hasDetailActivity({ spend: -1 }), true);
     assert.equal(hasDetailActivity({ spend: 'invalid' }), false);
+});
+
+test('commercial result detail keeps only confirmed positive result metrics', () => {
+    const rows = [
+        { campaign_name: 'Interest', leads_salesforce: 1 },
+        { campaign_name: 'Opportunity', opportunities: '2' },
+        { campaign_name: 'Reservation', reservations: 1 },
+        { campaign_name: 'Sale', sales: 1 },
+        { campaign_name: 'Purchase', purchases: 1 },
+        { campaign_name: 'Zero', sales: 0, purchases: null },
+        { campaign_name: 'Unknown', sales: 'pending', purchases: undefined },
+    ];
+
+    assert.equal(hasConfirmedCommercialResult(rows[0]), true);
+    assert.equal(hasConfirmedCommercialResult(rows.at(-2)), false);
+    assert.deepEqual(commercialResultDetailRows(rows).map((row) => row.campaign_name), [
+        'Interest', 'Opportunity', 'Reservation', 'Sale', 'Purchase',
+    ]);
 });
 
 test('platform-only recovery never renders Interest-dependent columns or platform comparison values', () => {
@@ -46,7 +64,7 @@ test('costs distinguish zero, positive, zero denominator, unknown source and not
 const source = fs.readFileSync(new URL('../../resources/js/reports/campaigns-dashboard.js', import.meta.url), 'utf8');
 const root = { innerHTML: '' };
 const sandbox = {
-    Intl, URLSearchParams, advertisingEligibility, advertisingDetailRows, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
+    Intl, URLSearchParams, advertisingEligibility, advertisingDetailRows, commercialResultDetailRows, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
     localStorage: { getItem: () => null },
     document: { addEventListener() {}, getElementById: () => null, querySelectorAll: () => [] },
     window: { reportUserCanExport: true, reportUserCanAudit: true, clearTimeout() {}, setTimeout: () => 0 },
@@ -138,7 +156,7 @@ test('real detail rendering preserves shared rows, hides empty rows and escapes 
     vm.runInContext('renderColumnsPopover = () => {}; applyColumnVisibility = () => {};', sandbox);
     sandbox.rows = [
         { platform: 'meta', campaign_name: 'EMPTY', spend: 0 },
-        { platform: 'meta', campaign_name: '<script>paused</script>', campaign_status_label: 'Inactiva', spend: 100, cost_per_result: null, result_count: 0 },
+        { platform: 'meta', campaign_name: '<script>paused</script>', campaign_status_label: 'Inactiva', spend: 100, leads_salesforce: 1, cost_per_result: null, result_count: 0 },
         { platform: 'google_ads', campaign_name: 'ZERO-COST', spend: 0.001, purchases: 100, cost_per_purchase: 0 },
     ];
     const before = JSON.stringify(sandbox.rows);
@@ -155,7 +173,7 @@ test('real detail rendering preserves shared rows, hides empty rows and escapes 
 test('activating a column rerenders its header and cells from the in-memory rows', () => {
     const isolatedRoot = { innerHTML: '' };
     const isolated = createDashboardSandbox({ getElementById: (id) => id === 'campaignTables' ? isolatedRoot : null, addEventListener() {}, querySelectorAll: () => [] });
-    isolated.detailRows = [{ platform: 'meta', campaign_name: 'VISIBLE', spend: 20, impressions: 4 }];
+    isolated.detailRows = [{ platform: 'meta', campaign_name: 'VISIBLE', spend: 20, sales: 1, impressions: 4 }];
 
     vm.runInContext("visibleColumns = ['campaign']; renderCampaignTables(detailRows);", isolated);
     assert.equal((isolatedRoot.innerHTML.match(/data-column=\"spend\"/g) || []).length, 0);
@@ -452,7 +470,7 @@ test('real advertising detail keeps positive spend without displaying exclusion 
         {platform: 'google_ads', campaign_name: 'UNKNOWN', spend: null},
     ];
     const before = JSON.stringify(sandbox.detailRows);
-    vm.runInContext('renderCampaignTables(detailRows)', sandbox);
+    vm.runInContext("campaignDetailFilter = 'all'; renderCampaignTables(detailRows)", sandbox);
     for (const name of ['SPEND-NO-CONVERSIONS', 'PARTIAL']) assert.ok(detailRoot.innerHTML.includes(name));
     for (const name of ['SF-HIDDEN', 'COMMERCIAL-WITHOUT-SPEND', 'NEGATIVE', 'UNKNOWN']) assert.ok(!detailRoot.innerHTML.includes(name));
     assert.ok(!detailRoot.innerHTML.includes('Filas excluidas del detalle publicitario'));
@@ -462,6 +480,28 @@ test('real advertising detail keeps positive spend without displaying exclusion 
     for (const value of [true, '0x10', [], {}]) {
         assert.equal(detailMoneyPresentation(value, {spend: 10, purchases: 2}, 'cost_per_purchase', money).text, '—');
     }
+});
+
+test('detail filter defaults to commercial results and can show all without changing the dataset', () => {
+    const detailRoot = {innerHTML: ''};
+    const isolated = createDashboardSandbox({
+        getElementById: (id) => id === 'campaignTables' ? detailRoot : null,
+        addEventListener() {},
+        querySelectorAll: () => [],
+    });
+    isolated.detailRows = [
+        {platform: 'meta', campaign_name: 'RESULT', spend: 10, sales: 1},
+        {platform: 'meta', campaign_name: 'NO-RESULT', spend: 10, sales: 0},
+    ];
+    vm.runInContext('renderCampaignTables(detailRows)', isolated);
+    assert.ok(detailRoot.innerHTML.includes('RESULT'));
+    assert.ok(!detailRoot.innerHTML.includes('NO-RESULT'));
+    assert.match(detailRoot.innerHTML, /Con resultados comerciales/);
+
+    vm.runInContext("campaignDetailFilter = 'all'; renderCampaignTables(detailRows)", isolated);
+    assert.ok(detailRoot.innerHTML.includes('RESULT'));
+    assert.ok(detailRoot.innerHTML.includes('NO-RESULT'));
+    assert.match(detailRoot.innerHTML, /Todas las campañas/);
 });
 
 
