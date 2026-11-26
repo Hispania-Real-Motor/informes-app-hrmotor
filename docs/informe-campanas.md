@@ -2,32 +2,48 @@
 
 ## Octubre y noviembre de 2026: atribución operativa provisional
 
-El informe original admite una **selección explícita** de origen comercial
-«Operativo provisional» para administradores, limitada a octubre y noviembre
-de 2026 y condicionada al flag propio de Campañas del mes
-(`CAMPAIGN_OPERATIONAL_OCTOBER_2026_ENABLED` o
-`CAMPAIGN_OPERATIONAL_NOVEMBER_2026_ENABLED`, ambos desactivados por
-defecto). Los flags de Interests no habilitan Campañas. El parámetro
-`source=operational` no cambia la fuente oficial predeterminada ni
-`CampaignPublicationReadiness`. La vista y el JSON muestran mes, cierre
-económico abierto/cerrado, versión del cierre, run de Interests, run de
-atribución, cutoff, cobertura e incidencias. No constituyen certificación
-histórica. Sin run provisional activo, ante versión obsoleta o ante fallo de
-integridad se conservan solo los indicadores económicos nativos cuya cobertura
-esté acreditada por plataforma (`platform_independent_only`); no se convierte
-la ausencia comercial en cero.
+El informe original admite una **lectura explícita o inicial** de origen comercial
+«Operativo provisional» para administradores y Dirección, condicionada al mes
+presente en `CAMPAIGN_OPERATIONAL_ENABLED_MONTHS` o a los flags heredados
+`CAMPAIGN_OPERATIONAL_OCTOBER_2026_ENABLED`/
+`CAMPAIGN_OPERATIONAL_NOVEMBER_2026_ENABLED` (todos desactivados por defecto).
+Los flags de Interests no habilitan Campañas. Para un usuario
+autorizado, la vista sin periodo explícito prioriza el mes actual si existe una
+atribución activa y completada; si no, usa el último mes habilitado válido. Esto
+evita que «Últimos 30 días» cruce un cierre económico. Una selección explícita
+de URL conserva periodo y origen. El parámetro `source=operational` no cambia
+`CampaignPublicationReadiness`. Dirección recibe los mismos KPI comerciales
+confirmados que Administración, pero no recibe identificadores de runs,
+cutoffs, cobertura o incidencias técnicas. Sin run provisional activo, ante
+versión obsoleta o ante fallo de integridad la selección implícita vuelve al
+dataset oficial con un aviso conciso; una petición explícita puede devolver el
+fallback de plataforma descrito abajo. No se convierte la ausencia comercial
+en cero.
 
 ### Presentación y disponibilidad de la atribución operativa
 
-El selector de origen aparece únicamente con permiso administrativo, flag del
-mes habilitado y rango que empieza el día 1 de octubre o noviembre de 2026 y
-termina dentro del mismo mes. Una URL con `period=october_2026` o
-`period=november_2026` conserva la selección mensual; las fechas personalizadas
-válidas se reflejan en la URL. Fuera del mes admitido la fuente vuelve a
-`official`. El servidor vuelve a comprobar permisos, período y vigencia del
-run; el selector no autoriza por sí solo una lectura provisional. La respuesta
-vigente del summary, no el período por sí solo, determina las capacidades de
-la pantalla. Una respuesta anterior de red no puede sustituir la más reciente.
+El origen no se presenta como un selector visible en el Blade actual:
+`campaignDataSource` es un control interno oculto y la elección se materializa
+por `source=operational` en la URL. Solo Administración o Dirección pueden
+activar esa lectura, siempre que el mes esté habilitado y el rango empiece el
+día 1 y termine dentro del mismo mes. Los alias de octubre/noviembre conservan
+sus flags históricos; los demás meses dependen de la lista configurada.
+Una URL con `period=october_2026` o `period=november_2026` conserva la selección
+mensual; las fechas personalizadas válidas se reflejan en la URL. Fuera del mes
+admitido la fuente vuelve a `official`. El servidor vuelve a comprobar permisos,
+período y vigencia del run; el control interno no autoriza por sí solo una
+lectura provisional. La respuesta vigente del summary, no el período por sí
+solo, determina las capacidades de la pantalla. Una respuesta anterior de red
+no puede sustituir la más reciente.
+
+Si la vista se abre sin `period`, fechas ni `source`, el controlador busca un
+mes habilitado con run activo `completed`: prioriza el mes actual de
+`Europe/Madrid` y, si no existe, el más reciente. Si no encuentra ninguno, la
+interfaz conserva el periodo oficial por defecto. Ante un bloqueo de la lectura
+operativa, la recuperación automática a `official` solo se aplica cuando la
+selección operativa era implícita; con `source=operational` explícito el servicio
+devuelve el payload de fallback de métricas de plataforma y un aviso público,
+sin presentarlo como atribución comercial certificada.
 
 Con `availability.mode=operational_provisional`, las columnas, el filtro de tipo
 y la tarjeta **Intereses generados** se habilitan solo si
@@ -335,14 +351,20 @@ controles avanzados en el DOM. El botón de limpieza general permanece.
 
 ### Rankings visibles y formato
 
-Por defecto, y también al recuperar una preferencia de `localStorage`, la
-interfaz incluye estos seis rankings, siempre que el contexto y la
-disponibilidad de datos permitan representarlos:
+Todos los rankings son opcionales: no existe una clave obligatoria y el usuario
+puede marcar o desmarcar cada ficha. Las selecciones, incluido el estado vacío,
+se conservan en `localStorage`; si no hay una preferencia utilizable, la
+interfaz vuelve a las definiciones con `visible: true`. La vista oculta las fichas cuya
+fuente no aporta datos válidos, sin crear filas nulas. El detalle inicial ordena
+primero las campañas con al menos un interés, oportunidad, reserva, venta o
+compra atribuida y confirmada, pero mantiene todas las campañas consultables
+mediante la vista general.
 
-- Mejor y peor CTR, ordenados por `ctr` descendente y ascendente.
-- Mejor y peor CPC, ordenados por `cpc` ascendente y descendente.
-- Mayor y menor porcentaje de oportunidades, ordenados por
-  `lead_to_opportunity` descendente y ascendente.
+Los títulos de las fichas usan `h3`, son menores que el encabezado principal y
+mantienen separación horizontal/vertical uniforme y comportamiento responsive.
+Las columnas Cuenta, Fecha inicio y Última fecha con inversión comienzan ocultas
+pero siguen disponibles individualmente desde el filtro de columnas. Limpiar
+filtros permanece alineado a la derecha en escritorio, tablet y móvil.
 
 Cada ranking toma como máximo cinco filas y excluye valores `null` cuando el
 backend exige valor. `lead_to_opportunity` es la razón existente de
@@ -361,6 +383,39 @@ Salesforce ni producción. Evidencia funcional: `CampaignDashboardDatasetService
 evidencia de presentación: `campaigns-dashboard.js`, la vista Blade y
 `tests/js/campaign-presentation.test.mjs`. No se promueve ninguna ficha KPI a
 auditada: la trazabilidad completa de fuentes y campos API continúa pendiente.
+
+## Lectura operativa para Dirección y fallback — 2026-11-26
+
+Administración y Dirección pueden leer el dataset operativo habilitado. La
+clasificación de campañas (`POST /informes/campanas/classifications`) continúa
+siendo una mutación exclusiva de Administración; la ampliación a Dirección es
+de lectura y no cambia activación, publicación, cierres ni snapshots. El
+payload de Administración conserva `interest_run_id`, `attribution_run_id`,
+cutoffs, cobertura e incidencias técnicas. Dirección recibe los KPI comerciales
+confirmados del mismo run, pero solo la evidencia resumida (`month`,
+`economic_state`, `provisional`) y un aviso público no técnico.
+
+El periodo inicial y el fallback no cambian el universo ni las fórmulas. La
+selección inicial se resuelve con `CampaignDashboardController::operationalDefaultMonth()`
+y el estado local de `campaign_operational_months`/`campaign_operational_runs`;
+la UI fija el periodo mensual y solicita el origen operativo solo para un mes
+habilitado. Si la lectura implícita queda obsoleta o falla la integridad, el
+cliente cambia a `official` y recarga con un aviso. Una URL que pidió
+`source=operational` de forma explícita conserva la petición, pero el servicio
+devuelve el fallback de plataforma y su advertencia, no una atribución parcial
+presentada como certificada. No se ejecuta Salesforce ni una sincronización
+desde la vista.
+
+Los rankings y las columnas siguen siendo preferencias de presentación. No hay
+rankings obligatorios; las fichas sin filas con valores válidos se ocultan y el
+detalle general prioriza filas con alguna métrica comercial positiva confirmada
+sin eliminar campañas que solo tengan inversión. La prueba
+`CampaignOperationalAttributionTest::test_director_can_read_provisional_attribution_without_technical_evidence_or_admin_mutation`
+contrasta lectura resumida y rechazo de la mutación de Dirección; las pruebas
+de `CampaignDashboardTest` contrastan vista, permisos y exportación, mientras
+`tests/js/campaign-presentation.test.mjs` contrasta el periodo inicial y la
+selección/ocultamiento de rankings. Son pruebas sintéticas: no acreditan
+cobertura productiva ni cifras reales.
 
 ## Contrato funcional ROT-4
 

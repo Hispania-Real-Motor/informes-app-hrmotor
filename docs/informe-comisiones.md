@@ -666,9 +666,10 @@ retiran esa compra del conteo. No se usa `delivery_store` como fallback.
 
 El equipo se separa de las operaciones. La adscripción mensual acreditada se
 lee de `store_manager_commission_roster_members`, con identidad Salesforce,
-periodo, procedencia, referencia y verificación. Si no existe evidencia, los
-propietarios observados pueden mostrarse como desglose provisional, pero el
-total y el cierre permanecen nulos/pedientes. Un miembro acreditado sin
+periodo, procedencia, referencia y verificación. Si no existe evidencia, el
+payload puede conservar componentes observados para diagnóstico, pero la tabla
+no muestra subtotales ni miembros no acreditados: muestra el equipo como
+pendiente y mantiene nulos el total y el cierre. Un miembro acreditado sin
 entregas conserva su fila con incentivos de volumen cero.
 
 Una entrega compartida se cuenta una sola vez en el volumen físico de la
@@ -735,6 +736,15 @@ Para este plan las reseñas proceden del endpoint interno configurado en
 por otros contratos de Comisiones. `CommercialCommissionDelegationReviewsService`
 solicita mes `m-y` y ubicación, conserva `reviews_count`, `average_rating`,
 `technical_status` y `fetched_at`, y cachea según la configuración vigente.
+Una delegación sin ubicación configurada queda en `not_mapped`, diferenciada de
+un cero confirmado (`available` con recuento cero y media nula); en el primer
+caso no se envía petición al endpoint. El comando
+`commissions:refresh-internal-reviews --month=YYYY-MM` fuerza una nueva lectura,
+ignora el valor cacheado y vuelve a poblar la caché mediante el mismo servicio.
+Sin `--month`, refresca los meses actual y anterior (entre 1 y 12 mediante
+`--months`). El catálogo operacional lo registra a las 02:30 Europe/Madrid,
+con ventana y gracia de 30 minutos, reserva persistente y permiso manual; no
+modifica cierres ni snapshots.
 El payload es válido con cero reseñas y media nula; con reseñas positivas exige
 media numérica, y la ruta económica exige además una media entre 0 y 5. Un
 recuento cero con media informada, una media fuera de rango o un valor no
@@ -764,6 +774,19 @@ mismas columnas, además de roster, miembros, estado e incidencias, y conserva
 `Pendiente` cuando un importe no es numérico; no se encontró una exportación
 CSV específica del plan nuevo.
 
+La tabla nueva muestra los incentivos de entregas y compras cuando su cálculo
+individual está verificado aunque el total de la tienda siga pendiente; los
+importes se marcan como provisionales y no cambian el total ni habilitan un
+cierre. Si el roster no está verificado no se muestran subtotales ni miembros
+no acreditados. Las incidencias se presentan como un contador compacto; el
+botón abre un diálogo accesible con delegación, contador, cierre y mensajes
+completos. Un cero no abre diálogo. La hoja XLSX `Delegaciones` conserva los
+importes y el estado global de la fila, pero no añade columnas separadas para
+`store_deliveries_incentive_status`, `store_purchases_incentive_status` ni la
+marca visual `Provisional`; esta diferencia de auditoría de exportación queda
+pendiente de decisión si el consumidor del XLSX necesita distinguir cada
+incentivo parcial.
+
 Las pruebas de integración cubren el escenario sintético de 630 EUR, el campo
 financiero correcto, la exención del jefe, miembros sin entregas, entregas
 compartidas, zona desconocida, conflictos de atribución física, tasaciones entre
@@ -773,6 +796,11 @@ verificado y que una brecha impida declarar cobertura mensual completa. Las
 pruebas de cierre cubren la ausencia de la referencia aprobada de octubre,
 métricas de reseñas ausentes, el umbral sin redondeo previo y snapshots válidos
 de cero/positivos. El código sí permite preparar y aprobar un candidato cuando
-toda la evidencia resulta verificable. En esta revisión no se importaron datos
-productivos ni se aprobó octubre; la evidencia real de roster, la conciliación
-de las tasaciones y los datos RR. HH. autorizados siguen pendientes.
+toda la evidencia resulta verificable. Las regresiones nuevas de esta iteración
+son `StoreManagerSettlementIntegrationTest::test_verified_store_volume_incentives_remain_visible_while_another_source_is_pending`,
+`CommercialCommissionDelegationReviewsServiceTest` para `not_mapped` y el
+refresco explícito, y `OperationalTasksTest`/`OperationalTaskReviewTest` para
+el catálogo y su conteo de tareas; usan fixtures y `Http::fake`, no evidencia
+productiva. En esta revisión no se importaron datos productivos ni se aprobó
+octubre; la evidencia real de roster, la conciliación de las tasaciones y los
+datos RR. HH. autorizados siguen pendientes.
