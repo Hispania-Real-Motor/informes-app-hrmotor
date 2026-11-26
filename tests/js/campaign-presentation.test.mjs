@@ -931,6 +931,48 @@ test('explicit last-30-days selection does not trigger initial automatic recover
     assert.equal(vm.runInContext("shouldRecoverDefaultPeriod({type: 'partial_closed_month'})", isolated), false);
 });
 
+test('reset filters preserves an operational month, source and compatible dates', async () => {
+    const listeners = {};
+    const elements = {
+        resetFilters: { addEventListener: (_event, handler) => { listeners.click = handler; } },
+        periodPreset: { value: 'month_2026_10', options: [{ value: 'month_2026_10' }] },
+        startDate: { value: '2026-10-01' },
+        endDate: { value: '2026-10-31' },
+        campaignDataSource: { value: 'operational' },
+        campaignType: { value: 'venta' },
+        leadType: { value: 'venta' },
+        platform: { value: 'meta' },
+        campaignSearch: { value: 'october' },
+        campaignStatus: { value: 'ACTIVE' },
+        saleSubcategory: { value: 'tasacion' },
+    };
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => elements[id] || null,
+        querySelectorAll: () => [],
+    });
+    isolated.listeners = listeners;
+    isolated.window.reportUserCanViewOperationalCampaigns = true;
+    isolated.window.campaignOperationalEnabledMonths = ['2026-10'];
+    isolated.localStorage = { getItem: () => null, setItem() {} };
+    vm.runInContext("persistCampaignContext = () => {}; syncCampaignTypeSelect = () => {}; renderRankingsPopover = () => {}; renderCampaignNameChecklist = () => {}; persistCampaignNameSelections = () => {}; syncCampaignPeriodUrl = () => {}; reloadAllData = async () => {}; setDefaultDates = () => { defaultDatesCalled = true; };", isolated);
+    vm.runInContext('bindResetFilters()', isolated);
+
+    await vm.runInContext('listeners.click()', isolated);
+
+    assert.equal(elements.periodPreset.value, 'month_2026_10');
+    assert.equal(elements.startDate.value, '2026-10-01');
+    assert.equal(elements.endDate.value, '2026-10-31');
+    assert.equal(elements.campaignDataSource.value, 'operational');
+    assert.equal(elements.campaignType.value, '');
+    assert.equal(elements.leadType.value, '');
+    assert.equal(elements.platform.value, '');
+    assert.equal(elements.campaignSearch.value, '');
+    assert.equal(elements.campaignStatus.value, '');
+    assert.equal(elements.saleSubcategory.value, 'venta');
+    assert.equal(vm.runInContext('typeof defaultDatesCalled', isolated), 'undefined');
+});
+
 test('an older summary response cannot restore stale availability or campaign rows', async () => {
     const pending = [];
     const rendered = [];

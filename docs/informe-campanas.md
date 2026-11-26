@@ -348,6 +348,11 @@ parámetros ni el filtrado que el servicio PHP admite: nombre, oportunidad,
 reserva, venta y clasificación siguen siendo contratos de backend/exportación
 cuando se reciben por las vías existentes, pero esta iteración no ofrece sus
 controles avanzados en el DOM. El botón de limpieza general permanece.
+Al pulsarlo, solo se limpian esos filtros aplicables: se conserva el período
+que el usuario está consultando, junto con `source` y sus fechas compatibles.
+En particular, un mes operativo válido no vuelve a `last_30_days` ni cruza
+meses económicos cerrados; tampoco cambia el dataset, los KPI ni las
+exportaciones.
 
 La tabla de detalle incorpora además el filtro visual **Detalle**, con las
 opciones **Con resultados comerciales** (predeterminada) y **Todas las

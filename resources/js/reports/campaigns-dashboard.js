@@ -255,6 +255,15 @@ function bindDiagnosticsModal() {
 
 function bindResetFilters() {
     document.getElementById('resetFilters')?.addEventListener('click', async () => {
+        const periodPreset = document.getElementById('periodPreset');
+        const startDate = document.getElementById('startDate');
+        const endDate = document.getElementById('endDate');
+        const campaignDataSource = document.getElementById('campaignDataSource');
+        const selectedPeriod = periodPreset?.value || 'last_30_days';
+        const selectedStartDate = startDate?.value || '';
+        const selectedEndDate = endDate?.value || '';
+        const selectedSource = campaignDataSource?.value || 'official';
+
         [
             'campaignType',
             'leadType',
@@ -269,7 +278,6 @@ function bindResetFilters() {
             }
         });
 
-        document.getElementById('periodPreset').value = 'last_30_days';
         document.getElementById('campaignStatus').value = '';
         const saleSubcategory = document.getElementById('saleSubcategory');
         if (saleSubcategory) {
@@ -285,7 +293,18 @@ function bindResetFilters() {
         campaignNameSelections = [];
         persistCampaignNameSelections();
         renderCampaignNameChecklist(campaignRows);
-        setDefaultDates();
+        if (periodPreset) {
+            periodPreset.value = selectedPeriod;
+        }
+        if (startDate) {
+            startDate.value = selectedStartDate;
+        }
+        if (endDate) {
+            endDate.value = selectedEndDate;
+        }
+        if (campaignDataSource) {
+            campaignDataSource.value = selectedSource;
+        }
         syncCampaignPeriodUrl();
         await reloadAllData();
     });

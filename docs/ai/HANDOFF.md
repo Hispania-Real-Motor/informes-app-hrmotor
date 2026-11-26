@@ -6,6 +6,13 @@
   exportaciones, pero muestra inicialmente solo campañas con un resultado
   comercial confirmado positivo; el selector permite volver a todas las
   campañas y conserva la elección entre recargas y cambios de periodo.
+- «Limpiar filtros» vacía únicamente los filtros aplicables y conserva el
+  período, `source` y fechas seleccionados; en particular, no devuelve un mes
+  operativo válido a `last_30_days` ni cruza cierres económicos.
+- `CommercialCommissionDashboardTest` alinea el stub de reseñas con la firma
+  vigente de `forMonthAndDelegations`, incluido el parámetro opcional
+  `refresh`; es una corrección de compatibilidad del test y no cambia fórmulas,
+  umbrales, cierres ni KPIs de Comisiones.
 - Dirección recupera la clasificación operativa que ya tenía; las operaciones
   administrativas de construcción y activación siguen protegidas para Admin.
 - Se documenta la activación explícita de
@@ -16,13 +23,23 @@
   económicos. Rendimiento: el filtro reutiliza las filas ya cargadas y no
   añade consultas por campaña; los enlaces de exportación conservan su URL al
   cambiar el filtro.
-- Pruebas ejecutadas: `node --test tests/js/*.test.mjs` (87/87),
+- Pruebas ejecutadas: `node --test tests/js/*.test.mjs` (88/88),
   `node --check` de los módulos de Campañas, `npm run build`, coherencia del
   manifest con los archivos existentes y `git diff --check`. Los focales PHP
   `CampaignOperationalAttributionTest` (13/13, 115 aserciones) y
   `CampaignDashboardTest` (72/72, 767 aserciones), con la clave sintética de
   CI, y Pint sobre los PHP modificados también pasan; los checks remotos deben
   confirmar la suite Laravel completa.
+- Validador documental y pruebas de `tests/documentation` pendientes en este
+  entorno: el único `python.exe` disponible es el stub de WindowsApps y no se
+  dispone del cuerpo real de la PR para completar el contrato. No se inventó
+  una descripción ni se consultaron Salesforce o bases de datos.
+- Tras corregir la firma del stub de reseñas, `CommercialCommissionDashboardTest`
+  pasa 60/60 con 509 aserciones. La suite completa pasa 1.853 tests, con un
+  caso omitido y 16.477 aserciones; localmente se ejecutó con
+  `-d max_execution_time=0 -d disable_functions=set_time_limit` porque un
+  controlador existente fija 120 segundos durante la suite Windows. Pint
+  sobre la prueba PHP modificada también pasa.
 
 ## 2026-11-26 — Corrección de checks de la PR de Comisiones y Campañas
 
@@ -9984,9 +10001,16 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   preferencias de presentación;
   los rankings sin filas válidas se ocultan y el detalle prioriza campañas con
   métrica comercial positiva confirmada sin eliminar campañas de inversión.
+- Alcance de artefactos: el diff también contiene bundles generados y cambios
+  de manifest para Llamadas, Intereses/Leads y Reservas/Ventas, pero no cambia
+  sus fuentes JavaScript ni contratos KPI. El CSS compartido añadido está
+  acotado a selectores de Campañas y Comisiones. Estos assets y el código de
+  otros informes se leyeron como parte del diff y no se modificaron durante
+  esta revisión.
 - Documentación modificada exclusivamente: `docs/informe-comisiones.md`,
-  `docs/informe-campanas.md`, `docs/matriz-trazabilidad-kpi.md` y este
-  `HANDOFF.md`. La guía `docs/guia-mantenimiento-documental.md` fue
+  `docs/informe-campanas.md`, `docs/matriz-trazabilidad-kpi.md`,
+  `docs/operaciones-produccion.md` y este `HANDOFF.md`. La guía
+  `docs/guia-mantenimiento-documental.md` fue
   contrastada y ya contiene el mapa de estas rutas, por lo que no se editó.
   No cambian `PROJECT_CONTEXT.md`, `DECISIONS.md` ni decisiones de negocio.
 - Evidencia revisada: controladores y dataset de Campañas, servicio/comando de
@@ -10007,12 +10031,11 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   referencias funcionales documentadas terminaron correctamente
   (`git-diff-check: OK`, `markdown-relative-links: OK`,
   `functional-reference-paths: OK`). La suite
-  `python -B -m unittest discover -s tests/documentation -p "test_*.py"` no
-  pudo iniciarse: el `python.exe` de WindowsApps no tiene acceso en este
-  entorno. El validador `scripts/check_documentation_integrity.py` no se
-  ejecutó porque no hay un `HEAD` funcional distinto de la base ni cuerpo real
-  de PR disponible; ejecutarlo con una descripción inventada habría dado un
-  resultado no representativo.
+  `python -B -m unittest discover -s tests/documentation -p "test_*.py"` y el
+  validador `scripts/check_documentation_integrity.py` no pudieron ejecutarse:
+  el único `python.exe` expuesto es el stub de WindowsApps y no puede iniciarse,
+  y tampoco se dispone del cuerpo real de la PR #162 para completar el contrato
+  del validador. No se inventó una descripción de PR.
 - Verificaciones de código y assets: `node --test tests/js/campaign-presentation.test.mjs`
   pasó con 54/54. Las suites PHP focalizadas con clave sintética válida pasaron
   con 156/156 tests y 1.639 assertions; `CampaignDashboardTest` pasó con 72/72

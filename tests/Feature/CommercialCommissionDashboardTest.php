@@ -2092,7 +2092,7 @@ class CommercialCommissionDashboardTest extends TestCase
             CommercialCommissionDelegationReviewsService::class,
             new class(app(CommercialCommissionFormulaConfigService::class)) extends CommercialCommissionDelegationReviewsService
             {
-                public function forMonthAndDelegations(CarbonImmutable $month, Collection $delegationLabels): array
+                public function forMonthAndDelegations(CarbonImmutable $month, Collection $delegationLabels, bool $refresh = false): array
                 {
                     return [
                         'Zaragoza' => ['reviews_count' => 23, 'average_rating' => 4.6],
