@@ -52,7 +52,19 @@ document.addEventListener('DOMContentLoaded', () => {
     initCommissionDelegationHorizontalScroll();
     initHorizontalScrollRegions();
     bindKpiTooltips();
+    bindCommissionIncidentDialogs();
 });
+
+function bindCommissionIncidentDialogs() {
+    document.querySelectorAll('[data-commission-incident-trigger]').forEach((trigger) => {
+        trigger.addEventListener('click', () => {
+            const dialog = document.getElementById(trigger.dataset.commissionIncidentTrigger);
+            if (dialog && typeof dialog.showModal === 'function') {
+                dialog.showModal();
+            }
+        });
+    });
+}
 
 function bindCommissionExportMonth() {
     const monthInput = document.getElementById('month');

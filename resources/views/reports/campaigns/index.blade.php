@@ -9,6 +9,8 @@
         window.reportUserCanExport = @json($reportUserCanExport ?? false);
         window.reportUserCanAudit = @json($reportUserCanAudit ?? false);
         window.reportUserCanViewOperationalCampaigns = @json($reportUserCanViewOperationalCampaigns ?? false);
+        window.reportUserIsAdmin = @json($reportUserIsAdmin ?? false);
+        window.campaignOperationalDefaultMonth = @json($campaignOperationalDefaultMonth ?? null);
         window.campaignOperationalOctoberEnabled = @json($campaignOperationalOctoberEnabled ?? false);
         window.campaignOperationalNovemberEnabled = @json($campaignOperationalNovemberEnabled ?? false);
         window.campaignOperationalEnabledMonths = @json($campaignOperationalEnabledMonths ?? []);

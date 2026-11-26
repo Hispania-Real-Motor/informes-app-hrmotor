@@ -54,6 +54,32 @@ class StoreManagerSettlementIntegrationTest extends TestCase
         $this->assertSame(630.0, $row['total_commission']);
     }
 
+    public function test_verified_store_volume_incentives_remain_visible_while_another_source_is_pending(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-19 12:00:00');
+        $this->seedStoreManagerFixture();
+        $reviews = Mockery::mock(CommercialCommissionDelegationReviewsService::class);
+        $reviews->shouldReceive('forMonthAndDelegations')->once()->andReturn([
+            'Norte Test' => [
+                'reviews_count' => 0,
+                'average_rating' => null,
+                'technical_status' => 'not_configured',
+                'fetched_at' => null,
+            ],
+        ]);
+        $this->app->instance(CommercialCommissionDelegationReviewsService::class, $reviews);
+
+        $payload = app(CommercialCommissionDashboardService::class)->build('2026-10', false, true, false);
+        $row = collect($payload['delegation_rows'])->firstWhere('delegation_name', 'Norte Test');
+
+        $this->assertSame('pending_source', $row['store_manager_status']);
+        $this->assertSame(100.0, $row['store_deliveries_incentive']);
+        $this->assertSame('calculated', $row['store_deliveries_incentive_status']);
+        $this->assertSame(100.0, $row['store_purchases_incentive']);
+        $this->assertSame('calculated', $row['store_purchases_incentive_status']);
+        $this->assertNull($row['total_commission']);
+    }
+
     public function test_dashboard_uses_financial_commission_instead_of_financed_capital(): void
     {
         CarbonImmutable::setTestNow('2026-11-19 12:00:00');

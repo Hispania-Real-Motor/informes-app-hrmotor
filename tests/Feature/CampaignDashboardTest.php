@@ -823,7 +823,8 @@ class CampaignDashboardTest extends TestCase
             ->assertDontSee('campaignDiagnosticsModal', false)
             ->assertSee('window.reportUserCanExport = true', false)
             ->assertSee('window.reportUserCanAudit = true', false)
-            ->assertDontSee('id="campaignDataSource"', false);
+            ->assertSee('id="campaignDataSource"', false)
+            ->assertSee('window.reportUserIsAdmin = false', false);
 
         $this->withSession($directorSession)
             ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())

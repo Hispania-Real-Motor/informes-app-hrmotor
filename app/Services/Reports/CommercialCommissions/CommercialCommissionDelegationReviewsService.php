@@ -16,7 +16,7 @@ class CommercialCommissionDelegationReviewsService
         private readonly CommercialCommissionFormulaConfigService $formulaConfig,
     ) {}
 
-    public function forMonthAndDelegations(CarbonImmutable $month, Collection $delegationLabels): array
+    public function forMonthAndDelegations(CarbonImmutable $month, Collection $delegationLabels, bool $refresh = false): array
     {
         $normalizedLabels = $delegationLabels
             ->filter()
@@ -47,7 +47,7 @@ class CommercialCommissionDelegationReviewsService
 
         foreach ($normalizedLabels as $delegationLabel) {
             $cacheKey = $this->cacheKey($monthParam, $delegationLabel);
-            $cached = Cache::get($cacheKey);
+            $cached = $refresh ? null : Cache::get($cacheKey);
 
             if (is_array($cached)) {
                 $results[$delegationLabel] = $this->normalizePayload($cached);
@@ -104,7 +104,7 @@ class CommercialCommissionDelegationReviewsService
                 $response = $responses[$delegationLabel] ?? null;
 
                 if (! $response instanceof Response) {
-                    $results[$delegationLabel] = $this->emptyPayload('not_applicable');
+                    $results[$delegationLabel] = $this->emptyPayload('not_mapped');
 
                     continue;
                 }

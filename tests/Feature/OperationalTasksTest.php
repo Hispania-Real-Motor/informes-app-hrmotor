@@ -45,7 +45,7 @@ class OperationalTasksTest extends TestCase
         $this->assertOperationalSchedule();
         $this->artisan('schedule:list', ['--timezone' => 'Europe/Madrid'])->assertSuccessful();
         $tasks = app(OperationalTaskCatalog::class)->all();
-        $this->assertCount(18, array_filter($tasks, fn ($t) => $t['manual_allowed']));
+        $this->assertCount(19, array_filter($tasks, fn ($t) => $t['manual_allowed']));
         foreach ($tasks as $task) {
             foreach (['--fresh', '--all', '--all-history', '--debug-soql', '--to'] as $forbidden) {
                 $this->assertArrayNotHasKey($forbidden, $task['arguments']);

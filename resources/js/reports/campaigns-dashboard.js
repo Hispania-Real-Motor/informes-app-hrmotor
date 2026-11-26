@@ -22,7 +22,10 @@ const campaignPeriodMaxDate = '2099-12-31';
 const platformColumns = new Set(['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'last_spend_date']);
 const interestColumns = new Set(['leads_salesforce', 'cost_per_lead']);
 const officialOnlyColumns = new Set(['source_acquired', 'medium_acquired', 'acquired_id', 'content_acquired']);
-const mandatoryRankingKeys = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
+// All rankings are optional and controlled by the user's saved preferences.
+// Keep the compatibility name empty so old local-storage values are not forced
+// back into the presentation.
+const mandatoryRankingKeys = [];
 const mandatoryColumnKeys = ['cost_per_lead', 'cost_per_opportunity'];
 
 let campaignRows = [];
@@ -39,6 +42,7 @@ let searchTimer = null;
 let dailyVisibleSeries = [];
 let dailyChartType = 'lines';
 let currentCharts = {};
+let campaignOperationalFallbackNotice = '';
 let currentRankings = {};
 let currentContext = 'all';
 let campaignNameSelections = [];
@@ -510,14 +514,8 @@ function bindRankingSettings() {
             if (!visibleRankings.includes(ranking)) {
                 visibleRankings = [...visibleRankings, ranking];
             }
-        } else if (mandatoryRankingKeys.includes(ranking)) {
-            target.checked = true;
-            return;
-        } else if (visibleRankings.length > 1) {
-            visibleRankings = visibleRankings.filter((item) => item !== ranking);
         } else {
-            target.checked = true;
-            return;
+            visibleRankings = visibleRankings.filter((item) => item !== ranking);
         }
 
         persistVisibleRankings();
@@ -666,13 +664,25 @@ async function reloadAllData() {
         }
         setUpdatedBadge(summary?.datos_actualizados, false, summary);
         renderSummary(summary || {});
+        if (summary?.operational_fallback && document.getElementById('campaignDataSource')?.value === 'operational'
+            && !new URLSearchParams(window.location.search).has('source')) {
+            campaignOperationalFallbackNotice = summary.operational_fallback_reason
+                || 'La atribución operativa no está disponible; se muestran los datos oficiales disponibles.';
+            document.getElementById('campaignDataSource').value = 'official';
+            syncCampaignPeriodUrl();
+            await reloadAllData();
+            return;
+        }
         const operationalNotice = document.getElementById('campaignOperationalNotice');
         if (operationalNotice) {
             const evidence = summary?.operational_evidence;
-            operationalNotice.hidden = !evidence;
+            operationalNotice.hidden = !evidence && !campaignOperationalFallbackNotice;
             operationalNotice.textContent = evidence
-                ? `Campañas ${evidence.month}: atribución operativa provisional, no certificada. Economía ${evidence.economic_state}; versión económica ${evidence.economic_version ?? 'no disponible'}; Interest run ${evidence.interest_run_id}; atribución run ${evidence.attribution_run_id}; corte ${evidence.interest_cutoff_at}; universo activo ${evidence.coverage?.eligible_active_matching ?? 'no disponible'}; incidencias ${evidence.incidents_count}.`
-                : '';
+                ? (window.reportUserIsAdmin
+                    ? `Campañas ${evidence.month}: atribución operativa provisional, no certificada. Economía ${evidence.economic_state}; versión económica ${evidence.economic_version ?? 'no disponible'}; Interest run ${evidence.interest_run_id}; atribución run ${evidence.attribution_run_id}; corte ${evidence.interest_cutoff_at}; universo activo ${evidence.coverage?.eligible_active_matching ?? 'no disponible'}; incidencias ${evidence.incidents_count}.`
+                    : `Campañas ${evidence.month}: datos operativos provisionales; no constituyen una certificación histórica.`)
+                : campaignOperationalFallbackNotice;
+            if (evidence) campaignOperationalFallbackNotice = '';
         }
         renderFilterOptions(summary.filters || {}, campaignItems);
         campaignRows = campaignItems;
@@ -1177,14 +1187,11 @@ function syncContextTabs() {
 }
 
 function loadVisibleRankings(context = currentContext) {
-    const mandatory = mandatoryRankingKeys;
     try {
         const saved = JSON.parse(localStorage.getItem(rankingsStorageKey) || 'null');
-        if (Array.isArray(saved) && saved.length) {
+        if (Array.isArray(saved)) {
             const known = saved.filter((key) => rankingDefinitions.some((ranking) => ranking.key === key));
-            if (known.length) {
-                return [...new Set([...mandatory, ...known])].filter((key) => rankingAllowedInContext(key, context));
-            }
+            return [...new Set(known)].filter((key) => rankingAllowedInContext(key, context));
         }
     } catch (error) {
         return defaultRankingKeys(context);
@@ -1194,7 +1201,9 @@ function loadVisibleRankings(context = currentContext) {
 }
 
 function defaultRankingKeys(context = currentContext) {
-    return ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
+    return rankingDefinitions.filter((ranking) => ranking.visible)
+        .map((ranking) => ranking.key)
+        .filter((key) => rankingAllowedInContext(key, context));
 }
 
 function rankingAllowedInContext(key, context = currentContext) {
@@ -2629,9 +2638,15 @@ function applyInitialCampaignPeriod() {
     const query = new URLSearchParams(window.location.search);
     const period = query.get('period');
     const monthMatch = period?.match(/^(\d{4})_(0[1-9]|1[0-2])$/);
-    const month = monthMatch ? `month_${monthMatch[1]}_${monthMatch[2]}`
+    let month = monthMatch ? `month_${monthMatch[1]}_${monthMatch[2]}`
         : (period === 'october_2026' ? 'month_2026_10'
             : (period === 'november_2026' ? 'month_2026_11' : null));
+    const explicitDates = /^\d{4}-\d{2}-\d{2}$/.test(query.get('start_date') || '')
+        && /^\d{4}-\d{2}-\d{2}$/.test(query.get('end_date') || '');
+    if (!month && !explicitDates && !query.has('period') && window.campaignOperationalDefaultMonth) {
+        const defaultMatch = String(window.campaignOperationalDefaultMonth).match(/^(\d{4})-(\d{2})$/);
+        if (defaultMatch) month = `month_${defaultMatch[1]}_${defaultMatch[2]}`;
+    }
     const select = document.getElementById('periodPreset');
     if (!select) {
         return;
@@ -2639,15 +2654,16 @@ function applyInitialCampaignPeriod() {
     if (month && [...select.options].some((option) => option.value === month)) {
         select.value = month;
         applyPeriodPreset(select.value);
-    } else if (/^\d{4}-\d{2}-\d{2}$/.test(query.get('start_date') || '')
-        && /^\d{4}-\d{2}-\d{2}$/.test(query.get('end_date') || '')) {
+    } else if (explicitDates) {
         select.value = 'custom';
         document.getElementById('startDate').value = query.get('start_date');
         document.getElementById('endDate').value = query.get('end_date');
     }
     const source = document.getElementById('campaignDataSource');
     if (source) {
-        source.value = query.get('source') === 'operational' && operationalMonthForSelection() ? 'operational' : 'official';
+        const requestedOperational = query.get('source') === 'operational'
+            || (!query.has('source') && !query.has('period') && !explicitDates && Boolean(month));
+        source.value = requestedOperational && operationalMonthForSelection() ? 'operational' : 'official';
         if (source.value === 'operational' && document.getElementById('campaignStatus')) {
             document.getElementById('campaignStatus').value = '';
         }
@@ -3158,6 +3174,13 @@ function sortedCampaignRows(rows, tableType) {
     const direction = sortState.direction === 'asc' ? 1 : -1;
 
     return [...(rows || [])].sort((a, b) => {
+        if (tableType === 'all' && sortState.key === 'spend') {
+            const hasConfirmedCommercialMetric = (row) => ['leads_salesforce', 'opportunities', 'reservations', 'sales', 'purchases']
+                .some((key) => Number(row?.[key] || 0) > 0);
+            const priority = Number(hasConfirmedCommercialMetric(b)) - Number(hasConfirmedCommercialMetric(a));
+            if (priority !== 0) return priority;
+        }
+
         const left = sortState.key === 'current_status' ? currentStatusPresentation(a).text : a[sortState.key];
         const right = sortState.key === 'current_status' ? currentStatusPresentation(b).text : b[sortState.key];
 
@@ -3241,11 +3264,12 @@ function renderRankings(rankings, emptyMessage = '') {
     const context = presentationCampaignContext(currentContext);
     const platformOnlyRankings = ['top_spend', 'top_impressions', 'best_ctr', 'best_cpc'];
     const interestRankings = ['top_leads_salesforce', 'best_cost_per_lead'];
-    const mandatoryRankings = mandatoryRankingKeys;
     const visible = rankingDefinitions.filter((ranking) => visibleRankings.includes(ranking.key)
         && rankingAllowedInContext(ranking.key, context)
-        && (mandatoryRankings.includes(ranking.key) || opportunityMetricsAvailable || platformOnlyRankings.includes(ranking.key)
-            || (interestMetricsAvailable && interestRankings.includes(ranking.key))));
+        && (opportunityMetricsAvailable || platformOnlyRankings.includes(ranking.key)
+            || (interestMetricsAvailable && interestRankings.includes(ranking.key))))
+        .map((ranking) => ({ ranking, rows: rankingRowsForDisplay(currentRankings[ranking.key] || [], ranking) }))
+        .filter(({ rows }) => rows.length > 0);
 
     if (emptyMessage) {
         root.innerHTML = `<div class="empty-state">${escapeHtml(emptyMessage)}</div>`;
@@ -3253,18 +3277,15 @@ function renderRankings(rankings, emptyMessage = '') {
     }
 
     root.innerHTML = visible.length
-        ? visible.map((ranking) => {
-            const rows = rankingRowsForDisplay(currentRankings[ranking.key] || [], ranking);
+        ? visible.map(({ ranking, rows }) => {
             const max = Math.max(...rows.map((row) => Number(row[ranking.metric] || 0)), 0);
-            const body = rows.length
-                ? rows.map((row) => metricBarHtml(
-                    campaignLabel(row),
-                    row[ranking.metric],
-                    max,
-                    ranking.formatter,
-                    rankingTooltip(row, ranking),
-                )).join('')
-                : '<div class="empty-state">Sin datos</div>';
+            const body = rows.map((row) => metricBarHtml(
+                campaignLabel(row),
+                row[ranking.metric],
+                max,
+                ranking.formatter,
+                rankingTooltip(row, ranking),
+            )).join('');
 
             return `
                 <article class="card panel">

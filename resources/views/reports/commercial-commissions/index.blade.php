@@ -62,6 +62,7 @@
         : number_format((float) $value, $decimals, ',', '.');
     $newStoreDeliveriesIncentive = $pendingSafeSum('store_deliveries_incentive');
     $newStorePurchasesIncentive = $pendingSafeSum('store_purchases_incentive');
+    $newStoreManagerStatus = $delegationRows->first()['store_manager_status'] ?? null;
     $newStoreReviewsAdjustment = $pendingSafeSum('store_reviews_adjustment');
     $newStoreTotal = $pendingSafeSum('total_commission');
     $callCenterTotalAutomatic = (float) $callCenterSummaryRows->sum('automatic_total');
@@ -533,10 +534,12 @@
                             <article class="card campaign-context-card">
                                 <span>{{ $isNewStoreManagerPlan ? 'Incentivos entregas tienda' : 'Prima final delegaciones' }}</span>
                                 <strong>{{ $isNewStoreManagerPlan ? $formatPending($newStoreDeliveriesIncentive).' EUR' : number_format($totalDelegationPrimaFinal, 2, ',', '.').' EUR' }}</strong>
+                                @if ($isNewStoreManagerPlan && $newStoreDeliveriesIncentive !== null && $newStoreManagerStatus !== 'calculated')<small class="commission-provisional-note">Provisional</small>@endif
                             </article>
                             <article class="card campaign-context-card">
                                 <span>{{ $isNewStoreManagerPlan ? 'Incentivos compras tienda' : 'Comisiones delegaciones' }}</span>
                                 <strong>{{ $isNewStoreManagerPlan ? $formatPending($newStorePurchasesIncentive).' EUR' : number_format($totalDelegationCommissions, 2, ',', '.').' EUR' }}</strong>
+                                @if ($isNewStoreManagerPlan && $newStorePurchasesIncentive !== null && $newStoreManagerStatus !== 'calculated')<small class="commission-provisional-note">Provisional</small>@endif
                             </article>
                         </section>
 
@@ -592,6 +595,13 @@
                                 </tr></thead>
                                 <tbody data-sort-body="commission-delegations">
                                 @foreach ($delegationRows as $row)
+                                    @php
+                                        $storeManagerIssues = array_values(array_filter($row['store_manager_issues'] ?? [], static fn ($issue) => filled($issue)));
+                                        $storeManagerIssueCount = count($storeManagerIssues);
+                                        $storeManagerIssueDialogId = 'store-manager-issues-'.\Illuminate\Support\Str::slug(($row['delegation_name'] ?? 'store').'-'.$loop->index);
+                                        $teamRosterVerified = ($row['team_roster_status'] ?? null) === 'verified';
+                                        $teamMemberCount = $row['team_member_count'] ?? null;
+                                    @endphp
                                     <tr>
                                         <td>{{ $row['delegation_name'] }}</td>
                                         <td>{{ $row['store_manager_name'] ?? 'Pendiente' }}</td>
@@ -601,26 +611,54 @@
                                         <td class="num">{{ number_format($row['shared_deliveries_count'] ?? 0, 0, ',', '.') }}</td>
                                         <td class="num">{{ number_format($row['target_purchases'], 0, ',', '.') }}</td>
                                         <td class="num">{{ number_format($row['purchases_count'], 0, ',', '.') }}</td>
-                                        <td class="num">{{ $row['store_deliveries_incentive'] === null ? 'Pendiente' : number_format($row['store_deliveries_incentive'], 2, ',', '.').' €' }}</td>
-                                        <td class="num">{{ $row['store_purchases_incentive'] === null ? 'Pendiente' : number_format($row['store_purchases_incentive'], 2, ',', '.').' €' }}</td>
+                                        <td class="num">
+                                            {{ $row['store_deliveries_incentive'] === null ? 'Pendiente' : number_format($row['store_deliveries_incentive'], 2, ',', '.').' €' }}
+                                            @if ($row['store_deliveries_incentive'] !== null && ($row['store_manager_status'] ?? null) !== 'calculated')<small class="commission-provisional-note">Provisional</small>@endif
+                                        </td>
+                                        <td class="num">
+                                            {{ $row['store_purchases_incentive'] === null ? 'Pendiente' : number_format($row['store_purchases_incentive'], 2, ',', '.').' €' }}
+                                            @if ($row['store_purchases_incentive'] !== null && ($row['store_manager_status'] ?? null) !== 'calculated')<small class="commission-provisional-note">Provisional</small>@endif
+                                        </td>
                                          <td class="num">
                                              {{ $row['store_reviews_adjustment'] === null ? 'Pendiente' : number_format($row['store_reviews_adjustment'], 2, ',', '.').' €' }}
                                              <small>{{ $row['reviews_count'] === null ? 'reseñas pendientes' : $row['reviews_count'].' reseñas · '.($row['reviews_average_rating'] === null ? 'sin media' : number_format($row['reviews_average_rating'], 3, ',', '.')) }}</small>
                                          </td>
                                          <td class="num">
-                                             {{ $row['team_roster_status'] !== 'verified' ? 'Pendiente' : count($row['team_components'] ?? []) }}
-                                             @if (! empty($row['team_components']))
-                                                 <details>
-                                                     <summary>Desglose</summary>
-                                                     @foreach ($row['team_components'] as $memberId => $component)
-                                                          <div>{{ $component['member_name'] ?? $memberId }}: {{ $formatPending($component['subtotal'] ?? null) }} € · individuales {{ $component['individual_deliveries'] ?? $component['deliveries'] ?? 0 }} · compartidas {{ $component['shared_deliveries'] ?? 0 }}</div>
-                                                     @endforeach
-                                                 </details>
+                                             @if (! $teamRosterVerified)
+                                                 <span title="El roster del equipo no está verificado">Pendiente</span>
+                                             @else
+                                                 {{ $teamMemberCount === null ? 'Pendiente' : number_format((int) $teamMemberCount, 0, ',', '.') }} miembros
+                                                 @if (! empty($row['team_components']))
+                                                     <details class="commission-team-details">
+                                                         <summary>Ver desglose</summary>
+                                                         @foreach ($row['team_components'] as $memberId => $component)
+                                                              <div>{{ $component['member_name'] ?? $memberId }}: {{ $formatPending($component['subtotal'] ?? null) }} € · individuales {{ $component['individual_deliveries'] ?? $component['deliveries'] ?? 0 }} · compartidas {{ $component['shared_deliveries'] ?? 0 }}</div>
+                                                         @endforeach
+                                                     </details>
+                                                 @endif
                                              @endif
                                          </td>
                                         <td>{{ $row['store_manager_status'] === 'calculated' ? 'Calculada' : 'Pendiente' }}</td>
                                         <td class="num">{{ $row['total_commission'] === null ? 'Pendiente' : number_format($row['total_commission'], 2, ',', '.').' €' }}</td>
-                                        <td>{{ empty($row['store_manager_issues']) ? '—' : implode(' ', $row['store_manager_issues']) }}</td>
+                                        <td class="num commission-issues-cell">
+                                            @if ($storeManagerIssueCount > 0)
+                                                <button type="button" class="commission-incident-trigger" data-commission-incident-trigger="{{ $storeManagerIssueDialogId }}" aria-haspopup="dialog" aria-controls="{{ $storeManagerIssueDialogId }}" title="Ver {{ $storeManagerIssueCount }} incidencia(s)">{{ $storeManagerIssueCount }}</button>
+                                                <dialog id="{{ $storeManagerIssueDialogId }}" class="commission-incident-dialog" aria-labelledby="{{ $storeManagerIssueDialogId }}-title">
+                                                    <div class="commission-incident-dialog-header">
+                                                        <div>
+                                                            <h2 id="{{ $storeManagerIssueDialogId }}-title">Incidencias · {{ $row['delegation_name'] }}</h2>
+                                                            <p>{{ $storeManagerIssueCount }} incidencia(s) pendiente(s) de revisión.</p>
+                                                        </div>
+                                                        <form method="dialog"><button type="submit" class="filter-reset">Cerrar</button></form>
+                                                    </div>
+                                                    <ul>
+                                                        @foreach ($storeManagerIssues as $issue)<li>{{ $issue }}</li>@endforeach
+                                                    </ul>
+                                                </dialog>
+                                            @else
+                                                0
+                                            @endif
+                                        </td>
                                     </tr>
                                 @endforeach
                                 </tbody>

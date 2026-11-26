@@ -734,11 +734,11 @@ test('interest availability requires the certified mode and preserves attributed
     assert.match(kpis.innerHTML, /Coste por interés[\s\S]*2,86/);
 });
 
-test('all six mandatory rankings remain visible with complete values and no invented null rows', () => {
+test('selected rankings are optional and empty rankings are hidden without invented rows', () => {
     const rankings = { innerHTML: '' };
     const isolated = createDashboardSandbox({ addEventListener() {}, querySelectorAll: () => [],
         getElementById: (id) => id === 'rankingsGrid' ? rankings : null });
-    vm.runInContext("visibleRankings = mandatoryRankingKeys; opportunityMetricsAvailable = true; interestMetricsAvailable = true; currentContext = 'all';", isolated);
+    vm.runInContext("visibleRankings = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity']; opportunityMetricsAvailable = true; interestMetricsAvailable = true; currentContext = 'all';", isolated);
     vm.runInContext(`renderRankings({
         best_ctr: [{campaign_name:'A', ctr:0.2}], worst_ctr: [{campaign_name:'B', ctr:0.01}],
         best_cpc: [{campaign_name:'C', cpc:2}], worst_cpc: [{campaign_name:'D', cpc:20}],
@@ -749,6 +749,27 @@ test('all six mandatory rankings remain visible with complete values and no inve
         assert.ok(rankings.innerHTML.includes(title), title);
     }
     assert.equal((rankings.innerHTML.match(/>N<\/span>/g) || []).length, 0);
+});
+
+test('authorized empty URL defaults to the latest valid operational month', () => {
+    const select = { value: 'last_30_days', options: [{ value: 'month_2026_11', dataset: { start: '2026-11-01', end: '2026-11-30' } }] };
+    const startDate = { value: '' };
+    const endDate = { value: '' };
+    const sourceSelect = { value: 'official' };
+    const isolated = createDashboardSandbox({ addEventListener() {},
+        getElementById: (id) => ({ periodPreset: select, startDate, endDate, campaignDataSource: sourceSelect })[id] || null,
+        querySelectorAll: (selector) => selector === '#periodPreset option' ? select.options : [],
+    });
+    isolated.window.reportUserCanViewOperationalCampaigns = true;
+    isolated.window.campaignOperationalEnabledMonths = ['2026-11'];
+    isolated.window.campaignOperationalDefaultMonth = '2026-11';
+    isolated.window.location = { href: 'https://example.test/informes/campanas', search: '' };
+
+    vm.runInContext('applyInitialCampaignPeriod()', isolated);
+
+    assert.equal(select.value, 'month_2026_11');
+    assert.equal(startDate.value, '2026-11-01');
+    assert.equal(sourceSelect.value, 'operational');
 });
 
 test('platform comparison adds only a visual ChatGPT card after available providers', () => {
@@ -910,10 +931,9 @@ test('a cancelled request and its late response cannot clear the latest valid av
     assert.equal(vm.runInContext('campaignRows[0].campaign_name', isolated), 'Latest');
 });
 
-test('mandatory rankings cannot be hidden and null percentage values are excluded', () => {
+test('rankings can be hidden and null percentage values are excluded', () => {
     const ranking = vm.runInContext("rankingRowsForDisplay([{lead_to_opportunity:null},{lead_to_opportunity:0.25}], {key:'best_lead_to_opportunity', metric:'lead_to_opportunity'})", sandbox);
     assert.deepEqual(Array.from(ranking).map((row) => row.lead_to_opportunity), [0.25]);
-    vm.runInContext("visibleRankings = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];", sandbox);
     const target = { checked: false, dataset: { rankingToggle: 'best_ctr' }, matches: (selector) => selector === '[data-ranking-toggle]' };
     const listeners = [];
     const isolated = createDashboardSandbox({
@@ -921,11 +941,23 @@ test('mandatory rankings cannot be hidden and null percentage values are exclude
         getElementById: () => null,
         querySelectorAll: () => [],
     });
+    vm.runInContext("visibleRankings = ['best_ctr'];", isolated);
     vm.runInContext('bindRankingSettings()', isolated);
     isolated.HTMLInputElement = function HTMLInputElement() {};
     Object.setPrototypeOf(target, isolated.HTMLInputElement.prototype);
     listeners.find(Boolean)({ target });
-    assert.equal(target.checked, true);
+    assert.equal(target.checked, false);
+    assert.deepEqual(Array.from(vm.runInContext('visibleRankings', isolated)), []);
+});
+
+test('an empty saved ranking preference remains empty', () => {
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: () => null,
+        querySelectorAll: () => [],
+    });
+    isolated.localStorage = { getItem: () => '[]' };
+    assert.deepEqual(Array.from(vm.runInContext('loadVisibleRankings()', isolated)), []);
 });
 
 test('formatDate does not turn null into the Unix epoch', () => {
