@@ -2,7 +2,7 @@ import { advertisingEligibility, advertisingDetailRows, detailMoneyPresentation,
 
 const numberFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true });
 const moneyFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', useGrouping: true });
-const percentFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const percentFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const multiplierFormatter = new Intl.NumberFormat('es-ES', { useGrouping: true, minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const columnsStorageKey = 'hrmotor_campaign_columns_v7';
 const legacyColumnsStorageKey = 'hrmotor_campaign_columns_v6';
@@ -18,10 +18,12 @@ const metricChartsVisibilityStorageKey = 'campaigns.metricCharts.visible.v1';
 const campaignPointIcon = '/brand/campaign-point.svg';
 const monthlyChartEnabled = false;
 const campaignPeriodMinDate = '2026-01-01';
-const campaignPeriodMaxDate = '2026-12-31';
-const platformColumns = new Set(['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'campaign_end_date', 'last_spend_date']);
+const campaignPeriodMaxDate = '2099-12-31';
+const platformColumns = new Set(['campaign', 'platform', 'current_status', 'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'account_id', 'campaign_id', 'campaign_start_date', 'last_spend_date']);
 const interestColumns = new Set(['leads_salesforce', 'cost_per_lead']);
 const officialOnlyColumns = new Set(['source_acquired', 'medium_acquired', 'acquired_id', 'content_acquired']);
+const mandatoryRankingKeys = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
+const mandatoryColumnKeys = ['cost_per_lead', 'cost_per_opportunity'];
 
 let campaignRows = [];
 let currentStatusExpiryTimer = null;
@@ -39,7 +41,6 @@ let dailyChartType = 'lines';
 let currentCharts = {};
 let currentRankings = {};
 let currentContext = 'all';
-let campaignDetailsVisible = true;
 let campaignNameSelections = [];
 let monthlySelectedMonths = [];
 let monthlyVisibleMetrics = [];
@@ -95,14 +96,18 @@ const rankingDefinitions = [
     { key: 'top_spend', title: 'Campañas con más inversión', metric: 'spend', formatter: formatMoney, visible: true },
     { key: 'top_impressions', title: 'Campañas con más impresiones', metric: 'impressions', formatter: formatNumber, visible: false },
     { key: 'top_leads_salesforce', title: 'Más intereses Salesforce', metric: 'leads_salesforce', formatter: formatNumber, visible: true },
-    { key: 'top_opportunities', title: 'Mas oportunidades', metric: 'opportunities', formatter: formatNumber, visible: false },
-    { key: 'top_reservations', title: 'Mas reservas', metric: 'reservations', formatter: formatNumber, visible: false },
-    { key: 'top_sales', title: 'Mas ventas', metric: 'sales', formatter: formatNumber, visible: true },
-    { key: 'top_purchases', title: 'Mas compras', metric: 'purchases', formatter: formatNumber, visible: false },
+    { key: 'top_opportunities', title: 'Más oportunidades', metric: 'opportunities', formatter: formatNumber, visible: false },
+    { key: 'top_reservations', title: 'Más reservas', metric: 'reservations', formatter: formatNumber, visible: false },
+    { key: 'top_sales', title: 'Más ventas', metric: 'sales', formatter: formatNumber, visible: true },
+    { key: 'top_purchases', title: 'Más compras', metric: 'purchases', formatter: formatNumber, visible: false },
     { key: 'top_sale_amount', title: 'Mayor importe vendido', metric: 'sale_amount', formatter: formatMoney, visible: false },
     { key: 'best_roas', title: 'Mejor ROAS', metric: 'roas', formatter: formatMultiplier, visible: false },
-    { key: 'best_ctr', title: 'Mejor CTR', metric: 'ctr', formatter: formatPercentRatio, visible: false },
-    { key: 'best_cpc', title: 'Mejor CPC', metric: 'cpc', formatter: formatMoney, visible: false },
+    { key: 'best_ctr', title: 'Mejor CTR', metric: 'ctr', formatter: formatPercentRatio, visible: true },
+    { key: 'worst_ctr', title: 'Peor CTR', metric: 'ctr', formatter: formatPercentRatio, visible: true },
+    { key: 'best_cpc', title: 'Mejor CPC', metric: 'cpc', formatter: formatMoney, visible: true },
+    { key: 'worst_cpc', title: 'Peor CPC', metric: 'cpc', formatter: formatMoney, visible: true },
+    { key: 'best_lead_to_opportunity', title: 'Mayor porcentaje de oportunidades', metric: 'lead_to_opportunity', formatter: formatPercentRatio, visible: true },
+    { key: 'worst_lead_to_opportunity', title: 'Menor porcentaje de oportunidades', metric: 'lead_to_opportunity', formatter: formatPercentRatio, visible: true },
     { key: 'best_cost_per_sale', title: 'Mejor coste por venta', metric: 'cost_per_sale', formatter: formatMoney, visible: true },
     { key: 'best_cost_per_purchase', title: 'Mejor coste por compra', metric: 'cost_per_purchase', formatter: formatMoney, visible: false },
     { key: 'best_cost_per_lead', title: 'Mejor coste por interés', metric: 'cost_per_lead', formatter: formatMoney, visible: false },
@@ -123,7 +128,6 @@ const rankingDefinitions = [
 const columnDefinitions = [
     { key: 'campaign', label: 'Campaña', visible: true, formatter: (_value, row) => campaignLabel(row) },
     { key: 'platform', label: 'Plataforma', visible: true, formatter: formatPlatform },
-    { key: 'current_status', label: 'Estado actual', visible: true },
     { key: 'spend', label: 'Inversión', visible: true, numeric: true, formatter: formatMoney },
     { key: 'impressions', label: 'Impresiones', visible: true, numeric: true, formatter: formatNumber },
     { key: 'clicks', label: 'Clicks', visible: true, numeric: true, formatter: formatNumber },
@@ -150,7 +154,6 @@ const columnDefinitions = [
     { key: 'content_acquired', label: 'Contenido adquirido', visible: false },
     { key: 'classification', label: 'Clasificación', visible: false },
     { key: 'campaign_start_date', label: 'Fecha inicio de campaña', visible: false, formatter: formatDate },
-    { key: 'campaign_end_date', label: 'Fecha fin de campaña', visible: false, formatter: formatDate },
     { key: 'last_spend_date', label: 'Última fecha con inversión', visible: false, formatter: formatDate },
     { key: 'appraisals_generated', label: 'Tasaciones generadas', visible: false, numeric: true, formatter: formatNumber },
     { key: 'cost_per_appraisal', label: 'Coste por tasación', visible: false, numeric: true, formatter: formatMoney },
@@ -165,7 +168,6 @@ const columnDefinitions = [
 currentContext = loadCampaignContext();
 dailyVisibleSeries = loadDailyVisibleSeries();
 dailyChartType = loadDailyChartType();
-campaignNameSelections = loadCampaignNameSelections();
 monthlyVisibleMetrics = loadMonthlyVisibleMetrics();
 monthlyCompareMode = loadMonthlyCompareMode();
 
@@ -182,14 +184,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindFilters();
     bindResetFilters();
     bindSorting();
-    bindDrawer();
     bindDiagnosticsModal();
-    bindCampaignNameActions();
     bindColumns();
     bindRankingSettings();
     bindMonthlyChartControls();
     bindMetricChartsToggle();
-    bindCampaignTableActions();
     syncCampaignTypeSelect();
     syncContextTabs();
     applyColumnVisibility();
@@ -256,10 +255,6 @@ function bindResetFilters() {
             'platform',
             'campaignSearch',
             'campaignStatus',
-            'hasOpportunity',
-            'hasReservation',
-            'hasSale',
-            'classification',
         ].forEach((id) => {
             const element = document.getElementById(id);
 
@@ -269,10 +264,7 @@ function bindResetFilters() {
         });
 
         document.getElementById('periodPreset').value = 'last_30_days';
-        document.getElementById('campaignStatus').value = 'active';
-        if (document.getElementById('campaignDataSource')) {
-            document.getElementById('campaignDataSource').value = 'official';
-        }
+        document.getElementById('campaignStatus').value = '';
         const saleSubcategory = document.getElementById('saleSubcategory');
         if (saleSubcategory) {
             saleSubcategory.value = 'venta';
@@ -299,10 +291,6 @@ function bindFilters() {
         'endDate',
         'platform',
         'campaignStatus',
-        'hasOpportunity',
-        'hasReservation',
-        'hasSale',
-        'classification',
         'leadType',
     ].forEach((id) => {
         document.getElementById(id)?.addEventListener('change', reloadAllData);
@@ -314,14 +302,6 @@ function bindFilters() {
         syncCampaignPeriodUrl();
         await reloadAllData();
     });
-    document.getElementById('campaignDataSource')?.addEventListener('change', async () => {
-        if (document.getElementById('campaignDataSource')?.value === 'operational') {
-            document.getElementById('campaignStatus').value = '';
-        }
-        syncCampaignPeriodUrl();
-        await reloadAllData();
-    });
-
     ['startDate', 'endDate'].forEach((id) => {
         document.getElementById(id)?.addEventListener('change', () => {
             const preset = document.getElementById('periodPreset');
@@ -530,6 +510,9 @@ function bindRankingSettings() {
             if (!visibleRankings.includes(ranking)) {
                 visibleRankings = [...visibleRankings, ranking];
             }
+        } else if (mandatoryRankingKeys.includes(ranking)) {
+            target.checked = true;
+            return;
         } else if (visibleRankings.length > 1) {
             visibleRankings = visibleRankings.filter((item) => item !== ranking);
         } else {
@@ -776,7 +759,6 @@ function renderSummary(data) {
     applyAvailabilityControls();
     renderPeriodGuidance(data?.availability?.period_advice || null);
     renderWarnings(data.warnings || [], data.availability || {});
-    renderInvestmentClosure(data.investment_closure || null);
     currentContext = data.selected_context || currentContext;
     syncCampaignTypeSelect();
     syncContextTabs();
@@ -870,11 +852,12 @@ function applyCampaignAvailability(availability = {}, periodMode = null) {
     const officialComplete = mode === 'official_complete' || periodMode === 'interest_pivot';
     const operational = mode === 'operational_provisional';
     operationalMetricsMode = operational;
+    const usable = (state) => ['available', 'partial'].includes(state?.status);
     interestMetricsAvailable = operational
-        ? availability.interest_dependent?.status === 'available' && availability.attribution?.status === 'available'
+        ? usable(availability.interest_dependent) && usable(availability.attribution)
         : officialComplete;
     opportunityMetricsAvailable = operational
-        ? interestMetricsAvailable && availability.opportunity_dependent?.status === 'available'
+        ? interestMetricsAvailable && usable(availability.opportunity_dependent)
         : officialComplete;
     platformOnlyMode = !interestMetricsAvailable;
 }
@@ -884,27 +867,10 @@ function applyAvailabilityControls() {
         const control = document.getElementById(id);
         if (control) control.disabled = !interestMetricsAvailable;
     });
-    ['hasOpportunity', 'hasReservation', 'hasSale', 'classification'].forEach((id) => {
-        const control = document.getElementById(id);
-        if (control) control.disabled = !opportunityMetricsAvailable;
-    });
     ['exportCsv', 'exportAttributionAudit'].forEach((id) => {
         const exportLink = document.getElementById(id);
         if (exportLink) exportLink.classList.toggle('is-hidden', platformOnlyMode);
     });
-}
-
-function renderInvestmentClosure(closure) {
-    const root = document.getElementById('investmentClosureStatus');
-    if (!root) return;
-
-    if (!closure) {
-        root.textContent = '';
-        return;
-    }
-
-    const investment = closure.investment_status === 'closed' ? 'Cerrada' : 'Abierta';
-    root.textContent = `Inversión: ${investment}. Resultados comerciales: Abiertos.`;
 }
 
 function renderWarnings(warnings, availability = {}) {
@@ -1211,12 +1177,13 @@ function syncContextTabs() {
 }
 
 function loadVisibleRankings(context = currentContext) {
+    const mandatory = mandatoryRankingKeys;
     try {
         const saved = JSON.parse(localStorage.getItem(rankingsStorageKey) || 'null');
         if (Array.isArray(saved) && saved.length) {
             const known = saved.filter((key) => rankingDefinitions.some((ranking) => ranking.key === key));
             if (known.length) {
-                return known.filter((key) => rankingAllowedInContext(key, context));
+                return [...new Set([...mandatory, ...known])].filter((key) => rankingAllowedInContext(key, context));
             }
         }
     } catch (error) {
@@ -1227,20 +1194,7 @@ function loadVisibleRankings(context = currentContext) {
 }
 
 function defaultRankingKeys(context = currentContext) {
-    switch (presentationCampaignContext(context)) {
-        case 'venta':
-            return ['best_cost_per_sale', 'review_campaigns', 'top_spend'];
-        case 'tasacion':
-            return ['best_cost_per_purchase', 'review_campaigns', 'top_spend'];
-        case 'exposicion':
-            return ['best_cost_per_opportunity', 'review_campaigns', 'top_spend'];
-        case 'branding':
-            return ['best_cpc', 'review_campaigns', 'top_spend'];
-        case 'otros':
-        case 'all':
-        default:
-            return ['best_cost_per_sale', 'review_campaigns', 'top_spend'];
-    }
+    return ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];
 }
 
 function rankingAllowedInContext(key, context = currentContext) {
@@ -1952,18 +1906,6 @@ function monthlyCostPerResultForRow(row) {
     return resultCount !== null && resultCount > 0 && spend !== null ? spend / resultCount : null;
 }
 
-function bindCampaignTableActions() {
-    document.getElementById('campaignTables')?.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-toggle-campaign-detail]');
-        if (!button) {
-            return;
-        }
-
-        campaignDetailsVisible = !campaignDetailsVisible;
-        renderCampaignTables(campaignRows);
-    });
-}
-
 function kpiCardsForContext(context, kpis) {
     const normalized = presentationCampaignContext(context);
     const totalResults = formatNumber(kpis.result_count);
@@ -1974,6 +1916,8 @@ function kpiCardsForContext(context, kpis) {
                 { label: 'Inversión', value: formatMoney(kpis.spend), hint: `CPC ${costDisplay(kpis.cpc, kpis, 'cpc', formatMoney)}` },
                 { label: 'Intereses generados', value: formatNumber(kpis.leads_salesforce), hint: `CPL ${costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney)}`, metric: 'leads_salesforce' },
                 { label: 'Oportunidades', value: formatNumber(kpis.opportunities), hint: `CPO ${costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney)}`, metric: 'opportunities' },
+                { label: 'Coste por interés', value: costDisplay(kpis.cost_per_lead, kpis, 'cost_per_lead', formatMoney), hint: `Intereses ${formatNumber(kpis.leads_salesforce)}`, metric: 'leads_salesforce' },
+                { label: 'Coste por oportunidad', value: costDisplay(kpis.cost_per_opportunity, kpis, 'cost_per_opportunity', formatMoney), hint: `Oportunidades ${formatNumber(kpis.opportunities)}`, metric: 'opportunities' },
                 { label: 'Reservas', value: formatNumber(kpis.reservations), hint: `CPR ${costDisplay(kpis.cost_per_reservation, kpis, 'cost_per_reservation', formatMoney)}`, metric: 'reservations' },
                 { label: 'Ventas', value: formatNumber(kpis.sales), hint: `CPV ${costDisplay(kpis.cost_per_sale, kpis, 'cost_per_sale', formatMoney)}`, metric: 'sales' },
                 { label: 'Importe vendido', value: formatMoney(kpis.sale_amount), hint: `ROAS ${formatMultiplier(kpis.roas)} · ROI ${formatPercentRatio(kpis.estimated_roi)}`, metric: 'sales' },
@@ -2274,11 +2218,6 @@ function currentFilters() {
     setParam(params, 'lead_type', document.getElementById('leadType')?.value);
     setParam(params, 'campaign_status', document.getElementById('campaignStatus')?.value);
     setParam(params, 'search', document.getElementById('campaignSearch')?.value);
-    appendArrayParam(params, 'campaign_name', campaignNameSelections);
-    setParam(params, 'has_opportunity', document.getElementById('hasOpportunity')?.value);
-    setParam(params, 'has_reservation', document.getElementById('hasReservation')?.value);
-    setParam(params, 'has_sale', document.getElementById('hasSale')?.value);
-    setParam(params, 'classification', document.getElementById('classification')?.value);
 
     return params.toString();
 }
@@ -2689,8 +2628,10 @@ function populatePeriodPreset() {
 function applyInitialCampaignPeriod() {
     const query = new URLSearchParams(window.location.search);
     const period = query.get('period');
-    const month = period === 'october_2026' ? 'month_2026_10'
-        : (period === 'november_2026' ? 'month_2026_11' : null);
+    const monthMatch = period?.match(/^(\d{4})_(0[1-9]|1[0-2])$/);
+    const month = monthMatch ? `month_${monthMatch[1]}_${monthMatch[2]}`
+        : (period === 'october_2026' ? 'month_2026_10'
+            : (period === 'november_2026' ? 'month_2026_11' : null));
     const select = document.getElementById('periodPreset');
     if (!select) {
         return;
@@ -2698,8 +2639,8 @@ function applyInitialCampaignPeriod() {
     if (month && [...select.options].some((option) => option.value === month)) {
         select.value = month;
         applyPeriodPreset(select.value);
-    } else if (/^2026-\d{2}-\d{2}$/.test(query.get('start_date') || '')
-        && /^2026-\d{2}-\d{2}$/.test(query.get('end_date') || '')) {
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(query.get('start_date') || '')
+        && /^\d{4}-\d{2}-\d{2}$/.test(query.get('end_date') || '')) {
         select.value = 'custom';
         document.getElementById('startDate').value = query.get('start_date');
         document.getElementById('endDate').value = query.get('end_date');
@@ -2717,8 +2658,9 @@ function applyInitialCampaignPeriod() {
 function syncCampaignPeriodUrl() {
     const url = new URL(window.location.href);
     const selected = document.getElementById('periodPreset')?.value;
-    if (selected === 'month_2026_10' || selected === 'month_2026_11') {
-        url.searchParams.set('period', selected === 'month_2026_10' ? 'october_2026' : 'november_2026');
+    if (/^month_\d{4}_\d{2}$/.test(selected || '')) {
+        const [, year, month] = selected.match(/^month_(\d{4})_(\d{2})$/);
+        url.searchParams.set('period', `${year}_${month}`);
         url.searchParams.delete('start_date');
         url.searchParams.delete('end_date');
     } else {
@@ -2756,9 +2698,12 @@ function operationalMonthForSelection() {
     const start = document.getElementById('startDate')?.value || '';
     const end = document.getElementById('endDate')?.value || '';
     const month = start.slice(0, 7);
-    const validDates = /^2026-(10|11)-01$/.test(start) && end.startsWith(month + '-')
-        && /^2026-\d{2}-\d{2}$/.test(end) && end >= start;
+    const validDates = /^\d{4}-(0[1-9]|1[0-2])-01$/.test(start) && end.startsWith(month + '-')
+        && /^\d{4}-\d{2}-\d{2}$/.test(end) && end >= start;
     if (!validDates || !['custom', `month_${month.replace('-', '_')}`].includes(selected)) return null;
+    const enabledMonths = window.campaignOperationalEnabledMonths || [];
+    if (enabledMonths.includes(month)) return month;
+    if (window.campaignOperationalEnabledMonths?.includes(month)) return month;
     if (month === '2026-10' && window.campaignOperationalOctoberEnabled) return month;
     if (month === '2026-11' && window.campaignOperationalNovemberEnabled) return month;
     return null;
@@ -2769,8 +2714,9 @@ function monthPresetOptions() {
     const lastVisibleMonth = campaignLastVisibleMonth();
     const months = [];
 
-    for (let monthIndex = lastVisibleMonth.getMonth(); monthIndex >= 0; monthIndex -= 1) {
-        const month = new Date(2026, monthIndex, 1);
+    const firstVisibleMonth = new Date(2026, 0, 1);
+    for (let cursor = new Date(lastVisibleMonth); cursor >= firstVisibleMonth; cursor.setMonth(cursor.getMonth() - 1)) {
+        const month = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
         const end = new Date(month.getFullYear(), month.getMonth() + 1, 0);
         const label = formatter.format(month).replace(/^./, (letter) => letter.toUpperCase());
 
@@ -2839,15 +2785,7 @@ function applyCampaignDateBounds() {
 function campaignLastVisibleMonth() {
     const today = lastCompleteDay();
 
-    if (today.getFullYear() < 2026) {
-        return new Date(2026, 0, 1);
-    }
-
-    if (today.getFullYear() > 2026) {
-        return new Date(2026, 11, 1);
-    }
-
-    return new Date(2026, today.getMonth(), 1);
+    return today < new Date(2026, 0, 1) ? new Date(2026, 0, 1) : new Date(today.getFullYear(), today.getMonth(), 1);
 }
 
 function clampCampaignDate(date) {
@@ -3094,6 +3032,10 @@ function monthLabel(row) {
 }
 
 function formatDate(value) {
+    if (value === null || value === undefined || value === '' || value === 0 || value === '0') {
+        return '-';
+    }
+
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
         return value || '-';
@@ -3299,9 +3241,10 @@ function renderRankings(rankings, emptyMessage = '') {
     const context = presentationCampaignContext(currentContext);
     const platformOnlyRankings = ['top_spend', 'top_impressions', 'best_ctr', 'best_cpc'];
     const interestRankings = ['top_leads_salesforce', 'best_cost_per_lead'];
+    const mandatoryRankings = mandatoryRankingKeys;
     const visible = rankingDefinitions.filter((ranking) => visibleRankings.includes(ranking.key)
         && rankingAllowedInContext(ranking.key, context)
-        && (opportunityMetricsAvailable || platformOnlyRankings.includes(ranking.key)
+        && (mandatoryRankings.includes(ranking.key) || opportunityMetricsAvailable || platformOnlyRankings.includes(ranking.key)
             || (interestMetricsAvailable && interestRankings.includes(ranking.key))));
 
     if (emptyMessage) {
@@ -3327,7 +3270,7 @@ function renderRankings(rankings, emptyMessage = '') {
                 <article class="card panel">
                     <div class="panel-title compact">
                         <div>
-                            <h2>${escapeHtml(ranking.title)}</h2>
+                    <h3>${escapeHtml(ranking.title)}</h3>
                         </div>
                     </div>
                     <div class="campaign-bar-list">${body}</div>
@@ -3340,6 +3283,13 @@ function renderRankings(rankings, emptyMessage = '') {
 function rankingRowsForDisplay(rows, ranking) {
     if (!Array.isArray(rows)) {
         return [];
+    }
+
+    if (['best_ctr', 'worst_ctr', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'].includes(ranking.key)) {
+        return rows.filter((row) => row[ranking.metric] !== null
+            && row[ranking.metric] !== undefined
+            && row[ranking.metric] !== ''
+            && Number.isFinite(Number(row[ranking.metric])));
     }
 
     if (ranking.key === 'best_cost_per_sale') {
@@ -3369,6 +3319,14 @@ function renderDiagnostics(diagnostics) {
         return;
     }
 
+    if (!hasUsefulDiagnostics(diagnostics)) {
+        root.innerHTML = '<div class="empty-state">Sin diagnóstico disponible</div>';
+        document.getElementById('diagnosticsOpen')?.classList.add('is-hidden');
+        return;
+    }
+
+    document.getElementById('diagnosticsOpen')?.classList.remove('is-hidden');
+
     const meta = syncOperationPresentation(diagnostics.meta_sync_operation, diagnostics.last_meta_sync);
     const google = syncOperationPresentation(diagnostics.google_sync_operation, diagnostics.last_google_sync);
     const entries = [
@@ -3378,11 +3336,6 @@ function renderDiagnostics(diagnostics) {
         ['Filas Google Ads', formatNumber(diagnostics.google_metric_rows)],
     ];
 
-    if (!diagnostics || Object.keys(diagnostics).length === 0) {
-        root.innerHTML = '<div class="empty-state">Sin diagnóstico disponible</div>';
-        return;
-    }
-
     root.innerHTML = entries.map(([label, value, detail]) => `
         <div class="diagnostic-item">
             <span>${escapeHtml(label)}</span>
@@ -3390,6 +3343,25 @@ function renderDiagnostics(diagnostics) {
             ${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
         </div>
     `).join('');
+}
+
+function hasUsefulDiagnostics(diagnostics = {}) {
+    if (!diagnostics || typeof diagnostics !== 'object') {
+        return false;
+    }
+
+    const hasPositiveCount = ['meta_metric_rows', 'google_metric_rows', 'salesforce_leads_with_campaign_period',
+        'valid_candidate_leads', 'built_attributions', 'platform_campaigns', 'crossed_campaigns']
+        .some((key) => Number.isFinite(Number(diagnostics[key])) && Number(diagnostics[key]) > 0);
+    const hasDate = ['last_meta_sync', 'last_google_sync', 'last_attribution_build']
+        .some((key) => diagnostics[key] !== null && diagnostics[key] !== undefined && diagnostics[key] !== '' && diagnostics[key] !== 0 && diagnostics[key] !== '0');
+    const hasOperationEvidence = ['meta_sync_operation', 'google_sync_operation']
+        .some((key) => ['verified_at', 'last_attempt_status'].some((field) => {
+            const value = diagnostics[key]?.[field];
+            return value !== null && value !== undefined && value !== '';
+        }));
+
+    return hasPositiveCount || hasDate || hasOperationEvidence;
 }
 
 function syncOperationPresentation(operation, metricSyncedAt, now = Date.now()) {
@@ -3421,7 +3393,7 @@ function renderCampaignTables(rows, emptyMessage = null) {
         exposicion: ['Detalle de campañas de exposición', 'Vista detallada de campañas orientadas a exposición'],
         branding: ['Detalle de campañas de branding', 'Vista detallada de campañas orientadas a branding'],
         otros: ['Detalle de campañas', 'Vista general de campañas no clasificadas en un tipo principal'],
-        all: ['Detalle de campañas', 'Vista general por tipos de campaña'],
+        all: ['Detalle de campañas', ''],
     };
     const [title, subtitle] = titleMap[context] || titleMap.all;
 
@@ -3475,21 +3447,18 @@ function renderCampaignTable(tableType, title, subtitle, rows, emptyMessage = nu
             <div class="panel-title compact">
                 <div>
                     <h2>${escapeHtml(title)}</h2>
-                    <div class="small">${escapeHtml(subtitle)}</div>
+                    ${subtitle ? `<div class="small">${escapeHtml(subtitle)}</div>` : ''}
                 </div>
                 <div class="campaign-table-actions">
-                    <button type="button" class="main-tab campaign-detail-toggle" data-toggle-campaign-detail>
-                        ${campaignDetailsVisible ? 'Ocultar detalle de campañas' : 'Mostrar detalle de campañas'}
-                    </button>
                     <div class="columns-menu">
-                        <button type="button" class="main-tab" id="columnsToggle">Columnas</button>
+                        <button type="button" class="main-tab" id="columnsToggle">Filtro</button>
                         <div class="columns-popover card is-hidden" id="columnsPopover"></div>
                     </div>
                     ${window.reportUserCanExport ? '<a class="main-tab" id="exportCsv" href="/informes/campanas/export/campaigns.csv">Export CSV</a>' : ''}
                     ${window.reportUserCanAudit ? '<a class="main-tab" id="exportAttributionAudit" href="/informes/campanas/export/attributions.csv">Auditar atribuciones</a>' : ''}
                 </div>
             </div>
-            <div class="${campaignDetailsVisible ? '' : 'is-hidden'}" id="campaignDetailBody">
+            <div id="campaignDetailBody">
                 <div class="table-wrap" data-table-wrap="${escapeHtml(tableType)}">
                     <table data-table-type="${escapeHtml(tableType)}">
                         <thead>
@@ -3514,7 +3483,7 @@ function loadVisibleColumns() {
         if (!Array.isArray(saved) || !saved.length) return defaults;
         const known = [...new Set(saved.map((key) => key === 'campaign_status_label' ? 'current_status' : key).filter((key) => columnDefinitions.some((column) => column.key === key)))];
         if (legacy !== null && localStorage.getItem(legacyColumnsStorageKey) === null && !known.includes('cost_per_purchase')) known.push('cost_per_purchase');
-        const migrated = known.length ? known : defaults;
+        const migrated = [...new Set([...(known.length ? known : defaults), ...mandatoryColumnKeys])];
         if (legacy !== null) {
             try { localStorage.setItem(columnsStorageKey, JSON.stringify(migrated)); } catch { /* Storage may be unavailable. */ }
         }

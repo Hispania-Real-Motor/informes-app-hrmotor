@@ -16,13 +16,18 @@ class CampaignDashboardController extends Controller
             return redirect()->route('reports.leads.index');
         }
 
+        $enabledMonths = array_values(array_unique(array_merge(
+            config('campaign_operational.enabled_months', []),
+            config('campaign_operational.october_2026_enabled') ? ['2026-10'] : [],
+            config('campaign_operational.november_2026_enabled') ? ['2026-11'] : [],
+        )));
         $response = response()->view('reports.campaigns.index', [
             'reportUserRole' => ReportUserAccess::role($request),
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'campaigns'),
             'reportUserCanAudit' => ReportUserAccess::canAuditReport($request, 'campaigns'),
             'reportUserCanViewOperationalCampaigns' => ReportUserAccess::isAdmin($request)
-                && (config('campaign_operational.october_2026_enabled') === true
-                    || config('campaign_operational.november_2026_enabled') === true),
+                && $enabledMonths !== [],
+            'campaignOperationalEnabledMonths' => $enabledMonths,
             'campaignOperationalOctoberEnabled' => config('campaign_operational.october_2026_enabled') === true,
             'campaignOperationalNovemberEnabled' => config('campaign_operational.november_2026_enabled') === true,
         ]);

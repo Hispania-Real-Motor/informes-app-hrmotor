@@ -1611,3 +1611,82 @@ prefiere este contrato local acotado a cambiar `InterestGenerationReader` o
 desplazar fuentes económicas oficiales. Octubre exige activación operativa
 real y conserva el fallback administrativo previo; ninguna migración activa
 la vista o el scheduler.
+
+## 2026-11-19 — roster histórico separado de las operaciones de tienda
+
+El plan provisional de jefes de tienda no infiere la composición mensual del
+equipo a partir de propietarios de oportunidades. Se eligió una tabla de
+evidencia independiente (`store_manager_commission_roster_members`) con
+identidad Salesforce, cobertura temporal, procedencia, referencia y estado de
+verificación. La carga se realiza mediante
+`commissions:import-store-manager-roster`, que por defecto valida sin escribir;
+`--apply` exige y persiste `--imported-by`, valida de forma atómica, es
+idempotente para la misma evidencia y protege periodos definitivos. Las
+coberturas se contrastan por operación y los solapamientos contradictorios del
+mismo usuario y mes se rechazan para evitar una atribución simultánea. La
+fuente externa autorizada y la ejecución productiva siguen pendientes de
+acreditación. Si no existe evidencia, el dashboard conserva el desglose
+observado como provisional y deja el total pendiente.
+
+Las entregas compartidas se reflejan en el volumen físico de la tienda una sola
+vez y en el desglose de los dos participantes acreditados. No aportan
+incentivos económicos individuales: financiación y garantías solo usan
+operaciones individuales; una penalización puede seguir derivándose del
+componente individual no alcanzado, pero no atribuye economía a la operación
+compartida. Esta separación evita duplicar importes económicos y mantiene la
+atribución revisable sin inventar adscripciones.
+
+## 2026-11-23 — integridad residual de objetivos, identidades y vigencias
+
+Las tiendas de entrega se resuelven únicamente contra objetivos autorizados
+del periodo mediante clave canónica y nombre normalizado. Se eligió bloquear y
+conservar la incidencia con el Opportunity ID y el valor original ante valores
+vacíos, desconocidos o ambiguos; no se usa el propietario como fallback porque
+eso convertiría una identidad física no verificada en importe económico.
+
+La fecha `cv_signed_date` es DATE-only, por lo que se decidió exigir la
+contención del día completo en el intervalo semiabierto del roster. Esta
+decisión evita atribuir un día que empieza antes de una cobertura intradía y
+mantiene la semántica `[coverage_from, coverage_to)` sin inventar una hora de
+firma.
+
+La identidad del roster se verifica contra una única fila local nombrada de
+`salesforce_users`; un ID con formato válido no es evidencia suficiente. El
+actor de importación se limita al identificador canónico `report-user:<id>` de
+un usuario activo con rol autorizado, separado de `recorded_by`, porque el
+campo de auditoría no debe aceptar texto libre ni perder el responsable de la
+evidencia.
+
+La aprobación de octubre compara el snapshot congelado y la tabla persistida
+con el CSV de referencia versionado, su SHA-256 y los totales 907/499. Para
+meses posteriores se conserva la misma validación de contenido congelado, pero
+se usa el conjunto autorizado específico del mes y no una cardinalidad 34.
+Así se evita que un snapshot internamente coherente pueda autorizar una tienda,
+objetivo o procedencia que no pertenecen al periodo.
+
+## 2026-11-23 — certificación económica fail-closed de octubre
+
+La referencia aprobada de objetivos de octubre se considera una fuente
+inmutable controlada por el repositorio y separada de la tabla de objetivos
+mutable. La preparación y la aprobación deben acreditar su existencia, formato,
+huella SHA-256, etiqueta, 34 tiendas, totales 907/499 y coincidencia exacta
+con los objetivos congelados y persistidos. Si la referencia falta o es inválida
+se bloquea el flujo; no se usa la tabla persistida como fallback. Los meses
+posteriores mantienen su política explícita de objetivos autorizados sin heredar
+automáticamente el contrato de octubre.
+
+El snapshot de Delegaciones es una entrada no confiable para la certificación:
+`reviews_count` y `reviews_average_rating` son obligatorios, incluso como
+`0`/`null`, y el ajuste se recalcula con el calculador compartido. La precisión
+de la media se conserva hasta comparar el umbral; cero reseñas con media nula y
+media inferior a 4 producen `-150`, mientras una media de al menos 4 produce
+`+150`. Un snapshot ausente, contradictorio o con ajuste declarado distinto se
+rechaza sin llamadas remotas.
+
+La identidad del responsable al cierre y la cobertura de rotaciones son
+evidencias separadas. Una fila sin `history_verified` no puede acreditar el
+cierre; una cobertura con huecos no puede declarar el mes completo. El dashboard
+y el cierre dejan la liquidación pendiente si falla cualquiera de los ejes,
+conservando las alertas históricas de rotación sin convertirlas en exenciones o
+importes no acreditados. Esta decisión mantiene las reglas previas de julio a
+septiembre y la regla de dos responsables desde octubre.

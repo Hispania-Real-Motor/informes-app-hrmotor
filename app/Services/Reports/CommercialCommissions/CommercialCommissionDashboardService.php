@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports\CommercialCommissions;
 
+use App\Models\HrEmploymentDate;
 use App\Models\SalesforceOpportunity;
 use App\Models\SalesforceReview;
 use App\Models\SalesforceUser;
@@ -54,12 +55,16 @@ class CommercialCommissionDashboardService
         'owner_delegation',
         'report_owner_delegation',
         'delivery_store',
+        'purchase_appraisal_id',
+        'purchase_delegation_id',
+        'purchase_delegation_name',
         'account_name',
         'shared_delivery_id',
         'shared_delivery_name',
         'garantia_total',
         'beneficio_financiacion_comercial',
         'importe_financiado',
+        'financial_commission',
         'gestion_de_venta',
         'opo_div_descuento',
         'vehicle_interest_id',
@@ -105,6 +110,9 @@ class CommercialCommissionDashboardService
         private readonly CommissionMonthResolver $monthResolver,
         private readonly DelegationManagerHistoryResolver $delegationManagers,
         private readonly EligibleDeliveryOpportunityQuery $deliveryOpportunities,
+        private readonly StoreManagerCommissionTargetService $storeManagerTargets,
+        private readonly StoreManagerIndividualExemptionService $storeManagerExemption,
+        private readonly StoreManagerTeamRosterService $storeManagerRoster,
     ) {}
 
     public function build(
@@ -134,13 +142,20 @@ class CommercialCommissionDashboardService
             ? $this->buildSummaryRows($periodStart, $periodEnd, $formulaSettings, $financingPenaltyLedger, $includeDetails)
             : [];
         $delegationRows = $blockingIssues === [] && $includeDelegationRows
-            ? $this->buildDelegationRows($periodStart, $periodEnd, $formulaSettings)
+            ? ($selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                ? $this->buildStoreManagerProvisionalRows($selectedMonth)
+                : $this->buildDelegationRows($periodStart, $periodEnd, $formulaSettings))
             : [];
         foreach ($delegationRows as $delegationRow) {
             if (filled($delegationRow['store_manager_alert'] ?? null)) {
                 $warnings[] = $delegationRow['store_manager_alert'];
             }
         }
+
+        $storeManagerPlanActive = $selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM));
+        $storeManagerTargets = $storeManagerPlanActive
+            ? $this->storeManagerTargets->forMonth($selectedMonth)
+            : [];
 
         return [
             'ready' => $blockingIssues === [],
@@ -154,7 +169,472 @@ class CommercialCommissionDashboardService
             'diagnostics' => $diagnostics,
             'summary_rows' => $summaryRows,
             'delegation_rows' => $delegationRows,
+            'store_manager_plan' => $storeManagerPlanActive
+                ? 'october_2026'
+                : null,
+            'store_manager_targets' => $storeManagerTargets,
+            'store_manager_target_keys' => collect($storeManagerTargets)->pluck('store_key')->filter()->values()->all(),
         ];
+    }
+
+    private function buildStoreManagerProvisionalRows(CarbonImmutable $month): array
+    {
+        $targets = $this->storeManagerTargets->forMonth($month);
+
+        if ($targets === []) {
+            return [];
+        }
+
+        $periodStart = $month->startOfMonth();
+        $opportunities = $this->monthlyDelegationDeliveryOpportunities($periodStart, $periodStart->addMonth())
+            ->get()
+            ->filter(fn (SalesforceOpportunity $row): bool => $this->countsAsDelegationDelivery($row));
+        $deliverySourceIssues = [];
+        $purchases = $this->monthlyStoreManagerPurchaseOpportunities($periodStart, $periodStart->addMonth())
+            ->get()
+            ->values();
+        $purchaseSourceIssues = $purchases
+            ->filter(fn (SalesforceOpportunity $row): bool => blank($row->purchase_appraisal_id) || blank($row->purchase_delegation_id) || blank($row->purchase_delegation_name))
+            ->map(fn (SalesforceOpportunity $row): string => sprintf(
+                'Compra física pendiente: %s (%s) carece de identificador de tasación o delegación física verificable.',
+                (string) ($row->salesforce_id ?: 'sin Salesforce ID'),
+                (string) ($row->name ?: 'sin nombre'),
+            ))
+            ->values()
+            ->all();
+        $purchases = $purchases->filter(fn (SalesforceOpportunity $row): bool => filled($row->purchase_appraisal_id) && filled($row->purchase_delegation_id) && filled($row->purchase_delegation_name));
+        $deliveriesByStore = collect();
+        foreach ($opportunities as $row) {
+            $salesforceId = (string) ($row->salesforce_id ?: 'sin Salesforce ID');
+            $originalStore = trim((string) $row->delivery_store);
+            if ($originalStore === '') {
+                $deliverySourceIssues[] = sprintf(
+                    'Entrega física pendiente: %s (%s) carece de tienda de entrega verificable.',
+                    $salesforceId,
+                    (string) ($row->name ?: 'sin nombre'),
+                );
+
+                continue;
+            }
+
+            $normalizedStore = $this->storeManagerTargets->normalizeKey($originalStore);
+            $matches = collect($targets)->filter(fn (array $target): bool => $normalizedStore === (string) $target['store_key']
+                || $normalizedStore === $this->storeManagerTargets->normalizeKey((string) $target['store_name']))->values();
+            if ($matches->isEmpty()) {
+                $deliverySourceIssues[] = sprintf(
+                    'Entrega física pendiente: %s contiene una tienda desconocida "%s"; no se ha atribuido a ningún objetivo.',
+                    $salesforceId,
+                    $originalStore,
+                );
+
+                continue;
+            }
+            if ($matches->count() > 1) {
+                $deliverySourceIssues[] = sprintf(
+                    'Entrega física pendiente: %s contiene una tienda ambigua "%s"; coincide con %s.',
+                    $salesforceId,
+                    $originalStore,
+                    $matches->pluck('store_name')->implode(', '),
+                );
+
+                continue;
+            }
+
+            $storeKey = (string) $matches->first()['store_key'];
+            $deliveriesByStore->put(
+                $storeKey,
+                $deliveriesByStore->get($storeKey, collect())->push($row),
+            );
+        }
+        $deliverySourceIssues = array_values(array_unique($deliverySourceIssues));
+        $purchaseAttributions = [];
+        $purchaseConflicts = [];
+        foreach ($purchases as $row) {
+            $appraisal = trim((string) $row->purchase_appraisal_id);
+            $delegationId = trim((string) $row->purchase_delegation_id);
+            $delegationName = trim((string) $row->purchase_delegation_name);
+            $storeKey = $this->storeManagerTargets->normalizeKey((string) $row->purchase_delegation_name);
+            if (isset($purchaseConflicts[$appraisal])) {
+                $purchaseConflicts[$appraisal] = array_values(array_unique([
+                    ...$purchaseConflicts[$appraisal],
+                    $storeKey,
+                ]));
+
+                continue;
+            }
+
+            $existing = $purchaseAttributions[$appraisal] ?? null;
+            if ($existing !== null
+                && ($existing['delegation_id'] !== $delegationId
+                    || $existing['delegation_name'] !== $delegationName
+                    || $existing['store_key'] !== $storeKey)) {
+                $purchaseConflicts[$appraisal] = array_values(array_unique([
+                    $existing['store_key'],
+                    $storeKey,
+                ]));
+                unset($purchaseAttributions[$appraisal]);
+
+                continue;
+            }
+
+            $purchaseAttributions[$appraisal] = [
+                'delegation_id' => $delegationId,
+                'delegation_name' => $delegationName,
+                'store_key' => $storeKey,
+            ];
+        }
+        $purchaseOwners = collect($purchaseAttributions)
+            ->mapWithKeys(fn (array $attribution, string $appraisal): array => [$appraisal => $attribution['store_key']])
+            ->all();
+        $crossMonthAppraisals = $this->purchaseAppraisalsFoundInMultipleMonths(array_keys($purchaseAttributions));
+        foreach ($crossMonthAppraisals as $appraisal) {
+            $purchaseSourceIssues[] = sprintf(
+                'Compra física pendiente: la tasación %s aparece firmada en más de un mes.',
+                $appraisal,
+            );
+            unset($purchaseOwners[$appraisal]);
+        }
+        $purchasesByStore = collect($purchaseOwners)->countBy();
+        $targetKeys = collect($targets)->pluck('store_key')->map(fn (mixed $key): string => (string) $key)->all();
+        foreach ($purchaseOwners as $appraisal => $storeKey) {
+            if (! in_array($storeKey, $targetKeys, true)) {
+                $purchaseSourceIssues[] = sprintf('Compra física pendiente: la tasación %s no corresponde a una tienda objetivo verificable.', $appraisal);
+            }
+        }
+        $purchaseSourceIssues = array_values(array_unique($purchaseSourceIssues));
+        $calculator = app(StoreManagerCommissionPlanCalculator::class);
+        $reviewPayloads = $this->delegationReviews->forMonthAndDelegations(
+            $month,
+            collect($targets)->pluck('store_name'),
+        );
+        $managerHistory = $this->delegationManagers->resolve($month, collect($targets)->pluck('store_name')->all());
+        $verifiedManagerIds = array_fill_keys($this->delegationManagers->verifiedManagerIds($month), true);
+        $teamRoster = $this->storeManagerRoster->resolve($month, collect($targets)->pluck('store_name')->all());
+
+        return array_map(function (array $target) use ($deliveriesByStore, $purchasesByStore, $purchaseConflicts, $purchaseSourceIssues, $deliverySourceIssues, $calculator, $reviewPayloads, $managerHistory, $verifiedManagerIds, $teamRoster, $month): array {
+            $storeKey = (string) $target['store_key'];
+            $storeOperations = $deliveriesByStore->get($storeKey, collect())->values();
+            $deliveries = $storeOperations->count();
+            $individualDeliveries = $storeOperations
+                ->filter(fn (SalesforceOpportunity $row): bool => blank($row->shared_delivery_id))
+                ->count();
+            $sharedDeliveries = $deliveries - $individualDeliveries;
+            $purchases = (int) $purchasesByStore->get($storeKey, 0);
+            $deliveryKpi = $calculator->storeKpiIncentive($deliveries, (int) $target['target_deliveries']);
+            $purchaseKpi = $calculator->storeKpiIncentive($purchases, (int) $target['target_purchases']);
+            $issues = [];
+            foreach ($purchaseConflicts as $appraisal => $stores) {
+                if (in_array($storeKey, $stores, true)) {
+                    $issues[] = 'Conflicto de atribución para la tasación '.$appraisal.'.';
+                }
+            }
+            $issues = array_values(array_unique([...$issues, ...$purchaseSourceIssues, ...$deliverySourceIssues]));
+            $team = $this->storeManagerTeamComponents(
+                $storeOperations,
+                $target,
+                $month,
+                $calculator,
+                $verifiedManagerIds,
+                $teamRoster[$this->formulaConfig->delegationKey($target['store_name'])] ?? null,
+            );
+            $review = $reviewPayloads[$target['store_name']] ?? null;
+            $reviewAmount = null;
+            $reviewStatus = is_array($review) ? ($review['technical_status'] ?? null) : null;
+            $reviewCount = is_array($review) ? $review['reviews_count'] ?? null : null;
+            $reviewAverage = is_array($review) ? $review['average_rating'] ?? null : null;
+            $reviewCountIsInteger = is_int($reviewCount)
+                || (is_string($reviewCount) && preg_match('/^\d+$/', $reviewCount) === 1);
+            $reviewCount = $reviewCountIsInteger ? (int) $reviewCount : null;
+            $reviewAmount = $reviewStatus === 'available'
+                ? $calculator->storeReviewAdjustment($reviewCount, $reviewAverage)
+                : null;
+            if ($reviewStatus !== 'available' || $reviewAmount === null) {
+                $team['issues'][] = 'Reseñas de tienda pendientes de verificación.';
+            }
+            $manager = $managerHistory[$this->formulaConfig->delegationKey($target['store_name'])] ?? [];
+            if (($manager['store_manager_history_status'] ?? 'unverified') !== 'verified'
+                || ($manager['store_manager_rotation_history_status'] ?? 'unverified') !== 'verified') {
+                $team['issues'][] = 'Historial del responsable de tienda no verificable.';
+            }
+            if ((int) ($manager['store_manager_distinct_count'] ?? 0) >= 2) {
+                $team['issues'][] = $manager['store_manager_alert'] ?? 'Revisar la atribución del responsable de tienda.';
+            }
+            if ($reviewStatus === 'available' && $reviewAmount === null) {
+                $issues[] = 'Payload de reseñas incoherente: recuento y media no son compatibles.';
+            }
+            $issues = array_values(array_unique([...$issues, ...$team['issues']]));
+            $complete = $issues === [] && $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
+                && $reviewAmount !== null && $team['complete'];
+            $total = $complete
+                ? $calculator->finalTotal((float) $deliveryKpi['incentive'], (float) $purchaseKpi['incentive'], $reviewAmount, $team['subtotals'])
+                : null;
+            $status = $complete && $total !== null ? 'calculated' : 'pending_source';
+
+            return [
+                'delegation_name' => $target['store_name'],
+                'store_manager_target_key' => $storeKey,
+                'target_deliveries' => $target['target_deliveries'],
+                'target_purchases' => $target['target_purchases'],
+                'deliveries_count' => $deliveries,
+                'individual_deliveries_count' => $individualDeliveries,
+                'shared_deliveries_count' => $sharedDeliveries,
+                'purchases_count' => $purchases,
+                'objective_reached' => $deliveryKpi['status'] === 'calculated' && $purchaseKpi['status'] === 'calculated'
+                    && $deliveries >= (int) $target['target_deliveries'] && $purchases >= (int) $target['target_purchases'],
+                'objective_percentage' => $deliveryKpi['ratio'] === null ? null : round((float) $deliveryKpi['ratio'] * 100, 2),
+                'objective_commission_percent' => null,
+                'rentability_total' => null,
+                'average_rentability' => null,
+                'prima_final' => null,
+                'reviews_count' => null,
+                'reviews_average_rating' => null,
+                'reviews_commission_amount' => null,
+                'financing_profitability_percentage' => null,
+                'profitability_bonus_amount' => null,
+                'profitability_bonus_percent' => null,
+                'financed_amount_percentage' => null,
+                'financed_amount_bonus_amount' => null,
+                'financed_amount_bonus_percent' => null,
+                'store_manager_plan' => 'october_2026',
+                'store_manager_status' => $status,
+                'store_manager_issues' => $issues,
+                'store_deliveries_incentive' => $status === 'calculated' ? $deliveryKpi['incentive'] : null,
+                'store_purchases_incentive' => $status === 'calculated' ? $purchaseKpi['incentive'] : null,
+                'store_reviews_adjustment' => $reviewAmount,
+                'reviews_count' => is_array($review) ? ($review['reviews_count'] ?? null) : null,
+                'reviews_average_rating' => is_array($review) ? ($review['average_rating'] ?? null) : null,
+                'reviews_technical_status' => is_array($review) ? ($review['technical_status'] ?? 'not_available') : 'not_available',
+                'reviews_fetched_at' => is_array($review) ? ($review['fetched_at'] ?? null) : null,
+                'team_components' => $team['components'],
+                'team_subtotals' => $team['subtotals'],
+                'team_roster_status' => $team['roster_status'],
+                'team_roster_evidence_count' => $team['roster_evidence_count'],
+                'team_member_count' => $team['member_count'],
+                'store_manager_salesforce_user_id' => $manager['store_manager_salesforce_user_id'] ?? null,
+                'store_manager_name' => $manager['store_manager_name'] ?? null,
+                'store_manager_history_status' => $manager['store_manager_history_status'] ?? 'unverified',
+                'store_manager_closing_status' => $manager['store_manager_closing_status'] ?? 'unverified',
+                'store_manager_rotation_history_status' => $manager['store_manager_rotation_history_status'] ?? 'unverified',
+                'store_manager_distinct_count' => $manager['store_manager_distinct_count'] ?? null,
+                'store_manager_alert' => $manager['store_manager_alert'] ?? null,
+                'store_manager_evidence_count' => $manager['store_manager_evidence_count'] ?? 0,
+                'total_commission' => $total,
+                'total_bruto' => $total,
+                'total_final' => $total,
+                'target_source' => $target['target_source'],
+            ];
+        }, $targets);
+    }
+
+    /** @param array<int, string> $appraisalIds
+     * @return array<int, string>
+     */
+    private function purchaseAppraisalsFoundInMultipleMonths(array $appraisalIds): array
+    {
+        if ($appraisalIds === []) {
+            return [];
+        }
+
+        return SalesforceOpportunity::query()
+            ->select(['purchase_appraisal_id', 'cv_signed_date'])
+            ->whereIn('purchase_appraisal_id', $appraisalIds)
+            ->whereNotNull('cv_signed_date')
+            ->where(function (Builder $query): void {
+                $this->applyRecordTypeFilter($query, ['tasacion', 'cambio']);
+            })
+            ->get()
+            ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->purchase_appraisal_id)
+            ->filter(fn (Collection $rows): bool => $rows
+                ->map(fn (SalesforceOpportunity $row): string => $row->cv_signed_date?->format('Y-m') ?? '')
+                ->filter()
+                ->unique()
+                ->count() > 1)
+            ->keys()
+            ->map(fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all();
+    }
+
+    /** @return array{complete: bool, issues: array<int, string>, subtotals: array<string, float|null>, components: array<string, mixed>} */
+    private function storeManagerTeamComponents(Collection $operations, array $target, CarbonImmutable $month, StoreManagerCommissionPlanCalculator $calculator, array $verifiedManagerIds, ?array $roster): array
+    {
+        $issues = $roster['issues'] ?? ['Adscripción histórica del equipo no verificada para el periodo.'];
+        foreach ($operations->filter(fn (SalesforceOpportunity $row): bool => blank($row->owner_id)) as $operation) {
+            $issues[] = 'La operación '.(string) ($operation->salesforce_id ?: 'sin Salesforce ID').' carece de propietario Salesforce verificable.';
+        }
+        $subtotals = [];
+        $components = [];
+        $individualOperations = $operations
+            ->filter(fn (SalesforceOpportunity $row): bool => blank($row->shared_delivery_id))
+            ->filter(fn (SalesforceOpportunity $row): bool => filled($row->owner_id))
+            ->groupBy(fn (SalesforceOpportunity $row): string => (string) $row->owner_id);
+        $sharedOperations = collect();
+        foreach ($operations as $row) {
+            if (blank($row->shared_delivery_id)) {
+                continue;
+            }
+
+            foreach (collect([(string) $row->owner_id, (string) $row->shared_delivery_id])->filter()->unique() as $userId) {
+                $sharedOperations->put(
+                    $userId,
+                    $sharedOperations->get($userId, collect())
+                        ->push($row)
+                        ->unique(fn (SalesforceOpportunity $sharedRow): string => (string) $sharedRow->salesforce_id)
+                        ->values(),
+                );
+            }
+        }
+        $rosterMembers = collect($roster['members'] ?? [])
+            ->mapWithKeys(fn (array $member, string $userId): array => [$userId => $member]);
+        $memberIds = $individualOperations->keys()
+            ->merge($sharedOperations->keys())
+            ->merge($rosterMembers->keys())
+            ->map(fn (mixed $id): string => (string) $id)
+            ->filter()
+            ->unique()
+            ->values();
+        if ($memberIds->isEmpty()) {
+            $issues[] = 'Composición del equipo sin miembros verificables.';
+        }
+        $zone = Str::of((string) ($target['zone'] ?? ''))->ascii()->lower()->value();
+        $minimums = match (true) {
+            str_contains($zone, 'sur') || str_contains($zone, 'madrid') || str_contains($zone, 'palma') => [11500.0, 4900.0],
+            str_contains($zone, 'norte') => [9000.0, 3500.0],
+            str_contains($zone, 'levante') || str_contains($zone, 'mediterr') => [10300.0, 3700.0],
+            str_contains($zone, 'catal') => [11500.0, 3700.0],
+            default => null,
+        };
+        if ($minimums === null) {
+            $issues[] = 'Zona de tienda ausente o no reconocida; no se pueden aplicar mínimos económicos.';
+        }
+        $ownerIds = $memberIds;
+        $employmentDates = Schema::hasTable('hr_employment_dates')
+            ? HrEmploymentDate::query()->whereIn('salesforce_user_id', $ownerIds)->whereDate('effective_date', '<=', $month->addMonth()->subDay()->toDateString())->orderByDesc('effective_date')->get()->groupBy('salesforce_user_id')
+            : collect();
+        foreach ($memberIds as $ownerId) {
+            $ownerId = (string) $ownerId;
+            $rawIndividualRows = $individualOperations->get($ownerId, collect());
+            $sharedRows = $sharedOperations->get($ownerId, collect());
+            $member = $rosterMembers->get($ownerId);
+            $memberIssues = [];
+            $primaryRows = collect();
+
+            if ($member === null) {
+                foreach ($rawIndividualRows->merge($sharedRows) as $row) {
+                    $memberIssues[] = 'La operación '.(string) ($row->salesforce_id ?: 'sin Salesforce ID').' no figura en el roster histórico verificado para '.$ownerId.'.';
+                }
+            } elseif (($member['coverage_conflict'] ?? false) === true) {
+                $memberIssues[] = 'La adscripción de '.$ownerId.' presenta coberturas contradictorias entre tiendas.';
+            } else {
+                $primaryRows = $rawIndividualRows->filter(function (SalesforceOpportunity $row) use ($member, &$memberIssues): bool {
+                    if ($this->operationCoveredByRoster($row, $member)) {
+                        return true;
+                    }
+
+                    $memberIssues[] = 'La operación '.(string) ($row->salesforce_id ?: 'sin Salesforce ID').' queda fuera de la vigencia acreditada del roster.';
+
+                    return false;
+                })->values();
+
+                foreach ($sharedRows as $row) {
+                    if (! $this->operationCoveredByRoster($row, $member)) {
+                        $memberIssues[] = 'La participación compartida '.(string) ($row->salesforce_id ?: 'sin Salesforce ID').' queda fuera de la vigencia acreditada del roster.';
+                    }
+                }
+            }
+
+            $issues = [...$issues, ...$memberIssues];
+            $hasMissingFinancial = $primaryRows->isNotEmpty()
+                && $primaryRows->contains(fn (SalesforceOpportunity $row): bool => $row->financial_commission === null);
+            $hasMissingGuarantee = $primaryRows->isNotEmpty()
+                && $primaryRows->contains(fn (SalesforceOpportunity $row): bool => $row->garantia_total === null);
+            $financing = $primaryRows->isEmpty()
+                ? 0.0
+                : ($hasMissingFinancial ? null : round((float) $primaryRows->sum(fn (SalesforceOpportunity $row): float => (float) $row->financial_commission), 2));
+            $guarantee = $primaryRows->isEmpty()
+                ? 0.0
+                : ($hasMissingGuarantee ? null : round((float) $primaryRows->sum(fn (SalesforceOpportunity $row): float => (float) $row->garantia_total), 2));
+            $employment = $employmentDates->get((string) $ownerId, collect())->first();
+            $penalty = null;
+            if (isset($verifiedManagerIds[(string) $ownerId])) {
+                $penalty = 0.0;
+            } elseif ($employment?->effective_date !== null && $minimums !== null) {
+                $olderThanThreeMonths = $employment->effective_date->addMonths(3)->lt($month->addMonth()->subDay());
+                $penalty = $olderThanThreeMonths && ($primaryRows->count() < 10 || $financing === null || $guarantee === null || $financing < $minimums[0] || $guarantee < $minimums[1]) ? 100.0 : 0.0;
+            } else {
+                $issues[] = $minimums === null ? 'No se puede validar la penalización individual para '.$ownerId.'.' : 'Antigüedad laboral pendiente para '.$ownerId.'.';
+            }
+            $delivery = $calculator->individualDeliveryIncentive($primaryRows->count());
+            $financingIncentive = $calculator->thresholdIncentive($financing, $minimums[0] ?? null, 100.0);
+            $guaranteeIncentive = $calculator->thresholdIncentive($guarantee, $minimums[1] ?? null, 60.0);
+            if ($hasMissingFinancial) {
+                $issues[] = 'Comisión financiera pendiente para '.$ownerId.'.';
+            }
+            if ($hasMissingGuarantee) {
+                $issues[] = 'Garantías pendientes para '.$ownerId.'.';
+            }
+            $subtotal = $memberIssues === []
+                ? $calculator->individualSubtotal($delivery, $financingIncentive, $guaranteeIncentive, $penalty)
+                : null;
+            if ($subtotal === null) {
+                $issues[] = 'Subtotal individual pendiente para '.$ownerId.'.';
+            }
+            $subtotals[$ownerId] = $subtotal;
+            $components[$ownerId] = [
+                'member_name' => $member['member_name'] ?? null,
+                'deliveries' => $primaryRows->count(),
+                'individual_deliveries' => $primaryRows->count(),
+                'primary_deliveries' => $primaryRows->count(),
+                'shared_deliveries' => $sharedRows->count(),
+                'delivery_incentive' => $delivery,
+                'financing' => $financingIncentive,
+                'guarantee' => $guaranteeIncentive,
+                'penalty' => $penalty,
+                'subtotal' => $subtotal,
+                'assignment_issues' => array_values(array_unique($memberIssues)),
+            ];
+        }
+
+        return [
+            'complete' => $issues === []
+                && count($subtotals) === $memberIds->count()
+                && collect($subtotals)->every(fn (mixed $subtotal): bool => is_numeric($subtotal)),
+            'issues' => array_values(array_unique($issues)),
+            'subtotals' => $subtotals,
+            'components' => $components,
+            'roster_status' => $roster['status'] ?? 'pending',
+            'roster_evidence_count' => (int) ($roster['evidence_count'] ?? 0),
+            'member_count' => $rosterMembers->count(),
+        ];
+    }
+
+    /** @param array<string, mixed> $member */
+    private function operationCoveredByRoster(SalesforceOpportunity $operation, array $member): bool
+    {
+        if ($operation->cv_signed_date === null) {
+            return false;
+        }
+
+        $operationStart = CarbonImmutable::parse($operation->cv_signed_date->toDateString())->startOfDay();
+        $operationEnd = $operationStart->addDay();
+
+        foreach ($member['coverage_intervals'] ?? [] as $interval) {
+            try {
+                $coverageFrom = CarbonImmutable::parse((string) ($interval['from'] ?? ''));
+                $coverageTo = blank($interval['to'] ?? null)
+                    ? null
+                    : CarbonImmutable::parse((string) $interval['to']);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            if ($coverageFrom->lessThanOrEqualTo($operationStart)
+                && ($coverageTo === null || $operationEnd->lessThanOrEqualTo($coverageTo))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -354,6 +834,9 @@ class CommercialCommissionDashboardService
             ->filter(fn (SalesforceOpportunity $row) => filled($row->shared_delivery_id))
             ->groupBy(fn (SalesforceOpportunity $row) => (string) $row->shared_delivery_id);
         $salesforceUsersById = $this->salesforceUsersById();
+        $storeManagerIds = $periodStart->greaterThanOrEqualTo(
+            CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM)
+        ) ? $this->delegationManagers->verifiedManagerIds($periodStart) : [];
 
         $userNames = [];
 
@@ -403,6 +886,7 @@ class CommercialCommissionDashboardService
             $financingPenaltyAmounts,
             $financingPenaltyDetails,
             $includeDetails,
+            $storeManagerIds,
         ): array {
             /** @var Collection<int, SalesforceOpportunity> $ownerOperations */
             $ownerOperations = $operationsByOwner->get($userId, collect());
@@ -597,6 +1081,8 @@ class CommercialCommissionDashboardService
                 ];
             }
 
+            $row = $this->storeManagerExemption->apply($row, in_array($userId, $storeManagerIds, true));
+
             return $row;
         })->sortByDesc('final_commission')->values()->all();
 
@@ -666,6 +1152,10 @@ class CommercialCommissionDashboardService
             })
             ->values();
 
+        $storeManagerIds = $periodStart->greaterThanOrEqualTo(
+            CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM)
+        ) ? $this->delegationManagers->verifiedManagerIds($periodStart) : [];
+
         return $userIds->map(function (string $userId) use (
             $operationsByOwner,
             $reviewsByOwner,
@@ -677,13 +1167,14 @@ class CommercialCommissionDashboardService
             $financingPenaltyAmounts,
             $financingPenaltyDetails,
             $includeDetails,
+            $storeManagerIds,
         ): array {
             /** @var Collection<int, SalesforceOpportunity> $ownerOperations */
             $ownerOperations = $operationsByOwner->get($userId, collect())->values();
             $salesforceUser = $salesforceUsersById->get($userId);
 
             if ($salesforceUser?->commission_appraiser === true) {
-                return $this->buildAppraiserMonthlySummaryRow(
+                $row = $this->buildAppraiserMonthlySummaryRow(
                     $userId,
                     $userNames[$userId] ?? $userId,
                     $ownerOperations,
@@ -692,9 +1183,11 @@ class CommercialCommissionDashboardService
                     $financingPenaltyDetails[$userId] ?? [],
                     $includeDetails,
                 );
+
+                return $this->storeManagerExemption->apply($row, in_array($userId, $storeManagerIds, true));
             }
 
-            return $this->buildCommercialMonthlySummaryRow(
+            $row = $this->buildCommercialMonthlySummaryRow(
                 $userId,
                 $userNames[$userId] ?? $userId,
                 $salesforceUser,
@@ -706,6 +1199,8 @@ class CommercialCommissionDashboardService
                 $financingPenaltyDetails[$userId] ?? [],
                 $includeDetails,
             );
+
+            return $this->storeManagerExemption->apply($row, in_array($userId, $storeManagerIds, true));
         })->sortByDesc('final_commission')->values()->all();
     }
 
@@ -1113,6 +1608,7 @@ class CommercialCommissionDashboardService
 
         $sales = $this->salesForPurchasedVehicles($purchases);
         $details = [];
+        $usedPurchaseAppraisals = [];
 
         foreach ($purchases as $purchase) {
             $purchaseDate = $purchase->cv_signed_date ? CarbonImmutable::parse($purchase->cv_signed_date)->startOfDay() : null;
@@ -1435,6 +1931,18 @@ class CommercialCommissionDashboardService
                 $purchase = null;
             }
 
+            if (
+                $saleDate->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
+                && filled($purchase?->purchase_appraisal_id)
+            ) {
+                $appraisalId = (string) $purchase->purchase_appraisal_id;
+                if (isset($usedPurchaseAppraisals[$appraisalId])) {
+                    continue;
+                }
+
+                $usedPurchaseAppraisals[$appraisalId] = true;
+            }
+
             $purchaseOwnerId = (string) ($sale->vehicle_buyer_id ?: $purchase?->vehicle_buyer_id ?: $purchase?->owner_id ?: '');
             $purchaseOwnerName = (string) ($sale->vehicle_buyer_name ?: $purchase?->vehicle_buyer_name ?: $purchase?->owner_name ?: $purchaseOwnerId);
             $purchaseSource = (string) ($sale->vehicle_purchase_source ?: $purchase?->vehicle_purchase_source ?: '');
@@ -1509,6 +2017,22 @@ class CommercialCommissionDashboardService
         return $this->deliveryOpportunities->forPeriod($periodStart, $periodEnd, self::OPPORTUNITY_COLUMNS);
     }
 
+    private function monthlyStoreManagerPurchaseOpportunities(
+        CarbonImmutable $periodStart,
+        CarbonImmutable $periodEnd
+    ): Builder {
+        $query = SalesforceOpportunity::query()
+            ->select(self::OPPORTUNITY_COLUMNS)
+            ->where('cv_signed', true)
+            ->whereDate('cv_signed_date', '>=', $periodStart->toDateString())
+            ->whereDate('cv_signed_date', '<', $periodEnd->toDateString())
+            ->whereRaw("LOWER(COALESCE(stage_name, '')) <> ?", ['cerrada perdida']);
+
+        $this->applyRecordTypeFilter($query, ['tasacion', 'cambio']);
+
+        return $query;
+    }
+
     /**
      * Mirrors the Salesforce product report used for "Rentabilidad Total".
      * It intentionally has a different scope than delivery KPIs.
@@ -1569,6 +2093,7 @@ class CommercialCommissionDashboardService
                 'importe_financiado',
                 'gestion_de_venta',
                 'opo_div_descuento',
+                'financial_commission',
             ] as $column) {
                 if (! Schema::hasColumn('salesforce_opportunities', $column)) {
                     $issues[] = "Falta la columna local salesforce_opportunities.{$column}. Ejecuta las migraciones pendientes.";

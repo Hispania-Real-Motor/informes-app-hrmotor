@@ -569,13 +569,18 @@ class CommercialCommissionDashboardController extends Controller
                 'commercial_name',
                 'final_commission',
             );
-            $sheets[] = $this->commissionSheet(
-                'Delegaciones',
-                'Delegacion',
-                $commercialDashboard['delegation_rows'] ?? [],
-                'delegation_name',
-                'total_commission',
-            );
+            $delegationRows = $commercialDashboard['delegation_rows'] ?? [];
+            $sheets[] = collect($delegationRows)->contains(
+                fn (array $row): bool => ($row['store_manager_plan'] ?? null) === 'october_2026'
+            )
+                ? $this->storeManagerCommissionSheet($delegationRows)
+                : $this->commissionSheet(
+                    'Delegaciones',
+                    'Delegacion',
+                    $delegationRows,
+                    'delegation_name',
+                    'total_commission',
+                );
             unset($commercialDashboard);
             gc_collect_cycles();
 
@@ -724,6 +729,51 @@ class CommercialCommissionDashboardController extends Controller
                 ])
                 ->values()
                 ->all(),
+        ];
+    }
+
+    /** @param array<int, array<string, mixed>> $rows */
+    private function storeManagerCommissionSheet(array $rows): array
+    {
+        $money = static fn (mixed $value): string|float => is_numeric($value) ? round((float) $value, 2) : 'Pendiente';
+
+        return [
+            'name' => 'Delegaciones',
+            'headers' => [
+                'Tienda', 'Jefe', 'Meta entregas', 'Entregas físicas', 'Entregas individuales', 'Compartidas', 'Meta compras', 'Compras',
+                'Incentivo entregas', 'Incentivo compras', 'Reseñas', 'Ajuste reseñas',
+                'Roster', 'Miembros', 'Desglose equipo', 'Estado', 'Total', 'Incidencias',
+            ],
+            'rows' => collect($rows)->map(function (array $row) use ($money): array {
+                $components = collect($row['team_components'] ?? [])->map(
+                    fn (array $component, string $userId): array => [
+                        'user_id' => $userId,
+                        'name' => $component['member_name'] ?? null,
+                        'subtotal' => $money($component['subtotal'] ?? null),
+                    ]
+                )->values()->all();
+
+                return [
+                    (string) ($row['delegation_name'] ?? '-'),
+                    (string) ($row['store_manager_name'] ?? 'Pendiente'),
+                    $row['target_deliveries'] ?? 'Pendiente',
+                    $row['deliveries_count'] ?? 'Pendiente',
+                    $row['individual_deliveries_count'] ?? 'Pendiente',
+                    $row['shared_deliveries_count'] ?? 'Pendiente',
+                    $row['target_purchases'] ?? 'Pendiente',
+                    $row['purchases_count'] ?? 'Pendiente',
+                    $money($row['store_deliveries_incentive'] ?? null),
+                    $money($row['store_purchases_incentive'] ?? null),
+                    $row['reviews_count'] ?? 'Pendiente',
+                    $money($row['store_reviews_adjustment'] ?? null),
+                    (string) ($row['team_roster_status'] ?? 'Pendiente'),
+                    $row['team_member_count'] ?? 'Pendiente',
+                    json_encode($components, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    (string) ($row['store_manager_status'] ?? 'Pendiente'),
+                    $money($row['total_commission'] ?? null),
+                    implode(' ', $row['store_manager_issues'] ?? []),
+                ];
+            })->values()->all(),
         ];
     }
 

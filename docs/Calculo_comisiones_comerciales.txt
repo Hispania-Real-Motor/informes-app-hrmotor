@@ -1010,8 +1010,14 @@ Pruebas:
 - No mezclar CreatedDate, fecha de reserva y fecha de firma.
 - No reutilizar el universo de Comerciales en Delegaciones o Financieros.
 - Tienda de entrega y delegación del propietario son ejes distintos.
-- Una entrega compartida puede generar dos beneficiarios, pero una sola
-  operación. El secundario recibe una participación, no ownership.
+- Una entrega compartida puede aparecer en dos participantes para el desglose
+  físico, pero es una sola operación. El volumen de tienda la cuenta una vez;
+  `individual_deliveries_count` excluye las compartidas y solo las entregas
+  individuales alimentan el incentivo, financiación y garantías de cada
+  usuario. La penalización, si corresponde, se evalúa sobre el componente
+  individual y no convierte la operación compartida en una operación
+  económica. El secundario recibe una participación física, no ownership ni un
+  incentivo económico individual por esa operación.
 - Los bonus secuenciales de Delegaciones se multiplican; no se suman.
 - Contact Center tiene una ventana de cierre que llega hasta el día 10 del mes
   siguiente.
@@ -1019,3 +1025,113 @@ Pruebas:
 - Financieros depende del interés elegido; un dato ausente no se inventa.
 - La configuración del período prevalece sobre los valores por defecto.
 - Nunca guardar contraseñas, tokens o credenciales en este archivo.
+
+15. COMISIONES DE JEFES DE TIENDA DESDE OCTUBRE DE 2026
+========================================================
+
+- Los objetivos mensuales se persisten en `store_manager_commission_targets`
+  mediante una importación explícita y auditable; no se insertan objetivos al
+  arrancar ni se heredan automáticamente a meses posteriores.
+- La referencia aprobada de octubre es el archivo controlado por el repositorio
+  `database/seeders/StoreManagerCommissionTargetsOctober2026.csv`, descrito
+  como la hoja «Detalle por tienda». `StoreManagerCommissionTargetService` la
+  lee de forma independiente de la tabla mutable y calcula su SHA-256; la
+  referencia debe ser válida, tener etiqueta y hash no vacíos, 34 tiendas y
+  totales 907 entregas / 499 compras, y repetir ese mismo hash y etiqueta en
+  cada objetivo. La tabla persistida y los objetivos del snapshot deben
+  coincidir exactamente con ella. Para octubre, si el archivo falta, no se
+  puede leer o no cumple el contrato, la preparación/aprobación falla cerrada y
+  no usa la tabla persistida como sustituto. La importación conserva hash y
+  etiqueta de fuente, pero el comando no recibe ni guarda un actor de
+  importación; la procedencia empresarial del archivo sigue siendo evidencia
+  administrativa y no se ha acreditado una carga productiva.
+- La atribución económica permanece provisional cuando faltan evidencias de
+  tienda física de compra, identidad de operación, roster de equipo, reseñas o
+  antigüedad laboral. No se sustituye una fuente ausente por el propietario de
+  Salesforce.
+- La réplica local de Opportunity procede de
+  `SalesforceOpportunitySyncService::saveRecord()`: `Fecha_firma_contrato__c`
+  → `cv_signed_date`, `OPO_CAS_Contrato_CV_firmado__c` → `cv_signed`,
+  `RecordType.Name`/`StageName` → `record_type_name`/`stage_name`,
+  `Tienda_de_entrega__c` → `delivery_store`, `OPP_BUS_Tasacion__c` →
+  `purchase_appraisal_id`, `OPP_BUS_Tasacion__r.TAS_BUS_Delegacion_de_compra__c`
+  → `purchase_delegation_id`, `Delegacion_de_la_tasacion__c` →
+  `purchase_delegation_name`, `Entrega_Compartida__c` → `shared_delivery_id`,
+  `Garant_a_Total__c` → `garantia_total` y `Comisi_n_Financiera__c` →
+  `financial_commission`.
+- Las entregas usan la réplica local en el intervalo civil del mes, con
+  contrato firmado, etapa distinta de `Cerrada Perdida` y tipo Venta/Cambio o
+  nombre Facilitea; la atribución se normaliza por `delivery_store`. La
+  implementación actual no genera una incidencia específica para una tienda de
+  entrega no vacía que no coincida con un objetivo: queda como discrepancia
+  pendiente y no debe documentarse como bloqueo ya resuelto.
+- Desde octubre de 2026, las compras de jefes de tienda se deduplican por
+  `purchase_appraisal_id` y se bloquean ante IDs/nombres de delegación física
+  contradictorios, una misma tasación firmada en varios meses o una tienda que
+  no sea objetivo. Exigen `purchase_delegation_id` y
+  `purchase_delegation_name`; no usan `delivery_store` como fallback. Solo son
+  elegibles Tasación/Cambio con contrato firmado, fecha de firma dentro del
+  mes, etapa distinta de `Cerrada Perdida` y los tres campos de atribución
+  física presentes; una fila que no cumple queda fuera del conteo y mantiene
+  una incidencia de fuente.
+- La financiación individual usa `financial_commission` (`Comisi_n_Financiera__c`),
+  nunca `importe_financiado`, para comparar el mínimo zonal. Un valor nulo no
+  se convierte en cero. La zona no reconocida es una incidencia bloqueante.
+- La adscripción histórica del equipo se conserva en
+  `store_manager_commission_roster_members`; los miembros sin entregas no se
+  eliminan. Una entrega compartida aparece en el propietario y en el miembro
+  secundario acreditado para el desglose físico, pero no crea economía
+  individual: el conteo físico de tienda la incluye una vez y los componentes
+  individuales solo usan operaciones no compartidas dentro de la vigencia del
+  usuario. La penalización individual puede seguir reflejando un mínimo no
+  alcanzado, pero no atribuye economía a la operación compartida. Una operación fuera de `coverage_from`/`coverage_to` deja el
+  subtotal de ese usuario pendiente. Coberturas solapadas o contradictorias
+  del mismo usuario y mes bloquean el componente. Sin roster verificado el
+  desglose puede ser provisional, pero el total no es certificable.
+  La evidencia se valida e importa con
+  `commissions:import-store-manager-roster <file>`: por defecto es una
+  validación sin escritura; `--dry-run` lo explicita y `--apply` persiste de
+  forma atómica. `--imported-by` es obligatorio con `--apply` y se guarda como
+  actor de importación. El CSV exige las cabeceras de mes, delegación, User ID,
+  cobertura, procedencia, referencia, actor y verificación. La validación
+  normaliza la delegación, limita las procedencias, exige que la cobertura
+  intersecte el mes, identidad local no ambigua, rechaza duplicados y
+  solapamientos, no sobrescribe una evidencia distinta y protege periodos
+  definitivos. No hay evidencia de la fuente externa autorizada ni de una
+  ejecución productiva en esta revisión, por lo que la carga real sigue
+  pendiente.
+- En el plan de octubre, el responsable al cierre solo es utilizable si la fila
+  de histórico está marcada `history_verified` y cubre el último instante del
+  mes. La cobertura de rotaciones debe estar compuesta por intervalos verificados
+  que cubran el mes completo sin huecos; cualquiera de los dos controles
+  incompletos deja la fila económica pendiente y no muestra una identidad no
+  verificada como responsable certificado.
+- Las fechas de alta/reingreso no proceden de `User.CreatedDate`:
+  `ImportHrEmploymentDates` valida un CSV contra `SalesforceUser` y persiste
+  `hr_employment_dates`; en escritura exige `--imported-by`.
+- Las reseñas del plan nuevo proceden del endpoint interno configurado en
+  `services.internal_reviews`, con `reviews_count`, `average_rating`, estado
+  técnico y fecha de consulta cacheada. Cero reseñas con media nula es válido;
+  un recuento positivo exige media numérica y la liquidación exige rango 0--5.
+  Un payload contradictorio o media fuera de rango queda pendiente y la
+  precisión recibida no se redondea antes del umbral. El sincronizador de
+  `Resena__c` es otro contrato de Comisiones y no debe tratarse como la fuente
+  de este plan. En el snapshot candidato son obligatorios `reviews_count` y
+  `reviews_average_rating`, incluso como `0` y `null`; la aprobación vuelve a
+  derivar `store_reviews_adjustment` con el mismo calculador y rechaza el
+  snapshot si falta una métrica o el importe no coincide. La media conserva su
+  precisión hasta el umbral: `3.995` queda por debajo de 4 y produce `-150`,
+  mientras `4.0` o más produce `+150`; cero reseñas con media nula produce
+  `-150`.
+- La preparación y aprobación validan el snapshot congelado, sus 34 tiendas,
+  responsables, objetivos y su fuente, reseñas, roster, componentes,
+  subtotales por usuario y total conciliado. Para octubre exigen además el
+  plan exacto `october_2026`, coincidencia exacta de objetivos/fuente con la
+  referencia aprobada y presencia de métricas de reseñas que permitan
+  recalcular el ajuste. La aprobación comprueba también que las entregas
+  físicas sean la suma de individuales y compartidas y que cada subtotal
+  coincida con su componente y clave Salesforce. El código permite aprobar
+  cuando toda la evidencia es verificable; en esta revisión no se importaron
+  datos productivos ni se aprobó octubre. La ausencia de evidencia real mantiene
+  la liquidación pendiente, pero no constituye por sí sola una prohibición
+  permanente del flujo de aprobación.

@@ -22,6 +22,11 @@ siempre el diff real y declarar `Docs-Impact: updated` y
 dashboard provisional. La documentación de dependencias de otros informes
 puede describir su aislamiento sin tratarlos como consumidores de la fuente.
 
+El comando `ImportHrEmploymentDates.php` está mapeado explícitamente al dominio
+`commissions`: sus fechas históricas de empleo son una evidencia de atribución
+para las liquidaciones de jefes de tienda, aunque el importador no dependa de
+un listado productivo de RR. HH. durante las pruebas.
+
 Cuando un archivo compartido contenga un cambio acotado a un informe, el mapa
 puede usar una entrada exacta en `EXACT`, acompañada de una prueba documental.
 La entrada debe reflejar el comportamiento del diff, no solo el directorio del

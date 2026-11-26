@@ -1,5 +1,46 @@
 # Handoff para agentes
 
+## 2026-11-19 — Campañas: UX de filtros, tabla y rankings
+
+### Revisión documental — report_docs_maintainer
+
+- Se contrastó el diff completo frente a `dd30757f8966dc2cf33c276efd8e9dc982b33418`.
+  El impacto real queda limitado a la presentación de la pestaña Campañas y a
+  los rankings; no hay cambio de fuente, tabla, columna, sincronizador,
+  fórmula económica, permisos, API, CSV, auditoría ni base de datos.
+- Se actualizaron `docs/informe-campanas.md` y
+  `docs/matriz-trazabilidad-kpi.md` con los seis rankings visibles, sus
+  ordenaciones y nulos, el formato de porcentajes, la retirada visual de
+  Estado actual/Filtros avanzados y los límites de auditoría. No se promovieron
+  fichas KPI a verificadas.
+- No se consultaron Salesforce ni bases de datos ni se ejecutaron
+  sincronizaciones. El validador documental requiere una descripción de PR;
+  queda pendiente ejecutarlo con `--pr-body-file` y los SHA disponibles.
+
+- Rama: `feature/campanas-ux-rankings-filtros-20261119`. SHA base:
+  `dd30757f8966dc2cf33c276efd8e9dc982b33418`.
+- La revisión mantiene la atribución, los cierres económicos, permisos y fuentes
+  locales. No hay migraciones, cambios de `.env`, sincronizaciones ni despliegue.
+- La tabla de campañas queda siempre visible con scroll interno, elimina «Estado
+  actual» del selector y de la vista, conserva Campaign ID oculto por defecto,
+  renombra «Columnas» a «Filtro» y presenta CTR con dos decimales. Los filtros
+  avanzados se desactivan retirando su interfaz y listeners exclusivos.
+- Los rankings obligatorios (mejor/peor CTR, mejor/peor CPC y mayor/menor
+  porcentaje de oportunidades) se normalizan frente a localStorage y se muestran
+  por defecto. El backend ordena valores válidos y no convierte `null` en cero;
+  el porcentaje usa el campo canónico `lead_to_opportunity` de las atribuciones.
+- Se retiró el texto de integración pendiente y la etiqueta de vista general.
+  Las tarjetas de ranking usan `h3`, estructura vertical común, Instrument Sans y
+  barras rojas sólidas. El diagnóstico conserva su flujo autorizado y ahora
+  gestiona payload vacío sin lanzar una excepción.
+- Verificación: `node --check resources/js/reports/campaigns-dashboard.js`,
+  `node --test tests/js/campaign-presentation.test.mjs` (44/44) y `git diff --check`
+  correctos. PHP, Composer y npm no están disponibles en esta sesión; lint PHP,
+  suite Laravel y build quedan pendientes de CI/Herd.
+- Riesgo pendiente: validar visualmente la altura de tabla, el orden de los seis
+  rankings y la presencia de intereses/costes con datos reales en Venta y
+  Tasación. El SHA final se añadirá tras el commit de revisión.
+
 ## 2026-11-18 — Normalización de meses en guía de periodos cerrados
 
 - Se normalizan estrictamente los meses públicos de `period_advice` aceptando
@@ -8748,6 +8789,838 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   de PR. `git diff --check` y la revisión del diff documental quedan por cerrar.
 - Docs-Impact: updated. Docs-Matrix-Impact: updated.
 
+# Comisiones de jefes de tienda — octubre 2026 (2026-11-18)
+
+- Rama creada: `codex/store-manager-commissions-october-2026`. SHA base
+  revalidado antes de crearla: `45ebdc45512e2140b97e72253eba8929d14d184e`.
+- Implementado únicamente el núcleo puro y versionado del plan nuevo en
+  `StoreManagerCommissionPlanCalculator`: vigencia desde `2026-10`, objetivos
+  por periodo con estados distinto para ausente/cero, tramos exactos de
+  entregas/compras, entregas individuales, incentivos por mínimos monetarios,
+  subtotal individual y `max(0)` aplicado solo al total final.
+- Test añadido: `tests/Unit/StoreManagerCommissionPlanCalculatorTest.php`, con
+  los límites 26/27/30/32 sobre objetivo 30, objetivo cero/ausente, límites de
+  entregas individuales, acumulados negativos, datos monetarios ausentes y
+  total bruto negativo.
+- No se modificó el dashboard histórico, Area Manager, comerciales, cierres ni
+  snapshots. No se importaron objetivos ni se ejecutaron sincronizaciones o
+  escrituras en Salesforce.
+- Bloqueos verificados antes de integrar el cálculo: el modelo/sincronizador de
+  usuarios solo expone `CreatedDate`, no una fecha real verificable de alta o
+  reingreso; la réplica de oportunidades no contiene un campo verificado de
+  tienda física de compra ni una clave estable de deduplicación Tasación/Cambio;
+  y el servicio actual de reseñas necesita una ruta explícita de fuente válida,
+  cero confirmado, payload incompleto y error antes de poder liberar cierres.
+  No se usaron heurísticas ni `owner_delegation` como sustitutos.
+- Comando ejecutado: `php artisan test --filter=StoreManagerCommissionPlanCalculatorTest`.
+  El proceso no produjo salida y fue interrumpido; no hay resultado de pruebas
+  que pueda declararse exitoso. Falta ejecutar Pint, suite completa, build
+  frontend y validador documental en un entorno con runtime operativo.
+- No hay migraciones, variables de entorno ni acciones manuales de producción.
+  Octubre no queda importado, aprobado ni publicado; el componente de jefes de
+  tienda permanece provisional y bloqueado hasta verificar las tres fuentes.
+- Docs-Impact: updated (este handoff). No se actualizan `PROJECT_CONTEXT.md` ni
+  `DECISIONS.md`: el cambio no altera todavía la arquitectura integrada ni
+  adopta una decisión irreversible sobre fuentes externas.
+
+## Revisión documental — comisiones de jefes de tienda (2026-11-18)
+
+- Fallback aplicado: no se pudo invocar un agente personalizado desde esta
+  sesión; la revisión se realizó directamente siguiendo
+  `docs/guia-mantenimiento-documental.md`.
+- Se contrastaron el calculador y el test nuevos con la guía, el documento
+  funcional y la matriz. El impacto queda documentado como provisional: no hay
+  pestaña integrada, sincronizador, persistencia, exportación ni KPI oficial.
+- Documentación modificada: `docs/informe-comisiones.md`,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/decisiones-negocio-pendientes.md` y
+  este archivo.
+- Evidencia: `app/Services/Reports/CommercialCommissions/StoreManagerCommissionPlanCalculator.php`
+  y `tests/Unit/StoreManagerCommissionPlanCalculatorTest.php`. Se registran
+  las fórmulas demostradas y no se rellenan por conjetura fuente API, campo
+  local, universo, identidad o deduplicación.
+- Discrepancias/bloqueos: fecha verificable de alta o reingreso, tienda física
+  de compra, clave estable Tasación/Cambio y contrato de estados de reseñas.
+  El test focalizado fue interrumpido sin resultado exitoso; no se consultaron
+  Salesforce ni bases de datos ni se ejecutaron sincronizaciones.
+- Validador documental: pendiente de ejecutar con base, HEAD y descripción de
+  PR disponibles. `PROJECT_CONTEXT.md` y `DECISIONS.md` no cambian porque no
+  hay cambio arquitectónico ni decisión irreversible.
+
+## Corrección posterior del test en PR #158
+
+- El CI identificó que PHPUnit no reconocía el comentario `@dataProvider` y
+  ejecutaba el test parametrizado sin argumentos. Se sustituyó por el atributo
+  nativo `#[DataProvider('storeKpiBrackets')]` y se importó
+  `PHPUnit\\Framework\\Attributes\\DataProvider`.
+- Verificación local: `php -l tests/Unit/StoreManagerCommissionPlanCalculatorTest.php`
+  correcto; `git diff --check` correcto. La suite CI debe reejecutarse en el
+  PR para confirmar todos los tests.
+
+## Endurecimiento del contrato del calculador (2026-11-19)
+
+- El cálculo KPI ya no normaliza silenciosamente un `actual` o `target` negativo:
+  devuelve `data_invalid`, sin incentivo ni tramo. Esto evita convertir datos
+  corruptos en comisiones pagables.
+- `finalTotal()` devuelve `null` si algún subtotal individual está ausente o no
+  es numérico; no se suma parcialmente una persona con componentes pendientes.
+- Se añadieron pruebas para ambos casos y para el subtotal incompleto.
+- No se añadieron migraciones, objetivos, sincronizaciones, campos Salesforce,
+  endpoints ni cierres. La integración funcional sigue bloqueada por la falta
+  de una fuente verificable para objetivos de octubre, tienda física de compra,
+  fecha real de alta/reingreso, deduplicación Tasación/Cambio y contrato de
+  reseñas.
+- Verificación ejecutada: `git diff --check` correcto. El runtime PHP no está
+  disponible en este entorno, por lo que la prueba focalizada no pudo ejecutarse
+  localmente; debe validarse en CI antes de cerrar la PR.
+
+## Integración persistente de objetivos de jefes de tienda (2026-11-19)
+
+- Añadidos `store_manager_commission_targets` y el modelo
+  `StoreManagerCommissionTarget`, con mes, zona, clave canónica, objetivos,
+  SHA256 de fuente, etiqueta de fuente, actor y timestamps. La migración no
+  inserta datos automáticamente.
+- Añadida la transcripción versionada
+  `database/seeders/StoreManagerCommissionTargetsOctober2026.csv` con 34 filas;
+  el importador comprueba 34 filas y sumas 907/499, y ofrece dry-run por
+  defecto: `php artisan commissions:import-store-manager-targets`.
+  La escritura explícita de staging es `--write`; es idempotente por mes y
+  clave canónica y no se ejecutó en este entorno.
+- `CommercialCommissionDashboardService` incorpora las filas objetivo del plan
+  octubre+ al bloque existente de Delegaciones cuando están persistidas. Las
+  filas sin atribución económica verificable quedan `pending_source`, con
+  `total_bruto` y `total_final` nulos; no se presentan como cero ni como
+  definitivas. Septiembre y meses anteriores conservan el camino histórico.
+- `CommercialCommissionSourceReadinessService` bloquea el ámbito delegations
+  desde octubre si falta la tabla, no hay objetivos o no hay exactamente 34.
+- Pendiente: conectar las operaciones, equipos, reseñas, exportación/API y
+  resolución manual a este payload; esta entrega no inventa campos Salesforce
+  para tienda física de compra ni fecha real de contratación/reincorporación.
+- Verificación: `git diff --check` pendiente de ejecutar tras este cambio; PHP y
+  PHPUnit dependen de CI porque no hay runtime PHP local disponible.
+
+## Corrección de CI posterior (2026-11-19)
+
+- Pint reportó `unary_operator_spaces` en el importador de objetivos; se
+  restauró la convención existente del repositorio (`! is_file` y
+  `! ctype_digit`).
+- El validador documental remoto requiere que la descripción de la PR declare
+  explícitamente `Docs-Outside-Paths` como JSON válido para las rutas nuevas
+  que no tienen mapa automático, junto con razón y evidencias. La descripción
+  de PR debe actualizarse antes de declarar el check documental verde; no se
+  modifica el validador para ocultar esa obligación.
+## 2026-11-19 — PR #159: revisión sénior de filtros, rankings y métricas
+
+- Rama: `feature/campanas-ux-rankings-filtros-20261119`; se continuó sobre la PR existente, sin crear rama, PR, merge ni despliegue.
+- Correcciones: el control de rankings se etiqueta `Filtro`; los seis rankings obligatorios se reinyectan al leer preferencias persistidas y no pueden desmarcarse; los rankings porcentuales descartan valores `null`; `formatDate(null|undefined|'')` devuelve `-`; el aviso `periodGuidance` queda inmediatamente encima de la comparativa por plataforma; se retira `bindDrawer()` de la inicialización activa; las preferencias antiguas fuerzan `cost_per_lead` y `cost_per_opportunity`, y Venta muestra ambas tarjetas de coste.
+- Diagnóstico: cuando la respuesta no aporta datos útiles, `renderDiagnostics` oculta `diagnosticsOpen`; no se fabrican fechas. La fecha fin de campaña sigue procediendo del campo `campaign_end_date` de las métricas de plataforma y la última fecha con inversión se calcula como el máximo `metric_date` con gasto positivo en el backend existente.
+- Intereses: se conserva la separación de disponibilidad; cuando la respuesta acredita atribución/Interests, el frontend mantiene la KPI y los costes; en modo solo plataforma siguen bloqueados para no presentar una inferencia como dato.
+- Base de datos, atribuciones persistidas, sincronizadores, reglas económicas, permisos y configuración: sin cambios.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (47/47), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos. PHP/Composer/npm no están disponibles en el entorno local; el build y PHPUnit quedan pendientes de CI.
+- Riesgo pendiente: no fue posible ejecutar localmente Laravel/PHP ni confirmar el check remoto hasta publicar el commit; la validación de datos reales de producción sigue fuera de alcance.
+## 2026-11-19 — PR #159: validación final de diagnóstico, Interests, rankings y fechas
+
+- Rama/PR: se continuó exclusivamente en `feature/campanas-ux-rankings-filtros-20261119` / PR #159. No se creó rama, no hubo merge, despliegue, backfill ni sincronización masiva.
+- Cambios: fondo `#ffffff` opaco para el panel de diagnóstico; nueva detección de evidencia útil (fechas reales, contadores positivos o estado/fecha de ejecución), ocultando el botón cuando solo hay propiedades nulas/cero; fechas `null`, `undefined`, vacías, `0` y `'0'` muestran `-`; pruebas para fecha válida; pruebas de los seis rankings con valores completos y descarte de porcentajes nulos.
+- Interests: se verificaron los tres contratos del payload. `platform_independent_only` mantiene `platformOnlyMode` y guiones; `period_mode=interest_pivot` habilita la KPI acreditada; `operational_provisional` requiere simultáneamente `interest_dependent.available` y `attribution.available`. No se alteran atribuciones, conversiones Ads, persistencia ni reglas económicas.
+- Procedencia: `last_spend_date` continúa siendo `MAX(metric_date)` con gasto positivo; `campaign_end_date` continúa procediendo del campo homónimo de `campaign_platform_daily_metrics`. No se añadió fallback temporal ni fecha inventada.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (50/50), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos.
+- Validación no ejecutable: `npm ci` falló porque `npm` no existe; el build no puede ejecutarse sin Vite; PHP/Composer no están disponibles para PHPUnit/Pint. La URL local `https://informes-app-hrmotor.test/informes/campanas` rechazó la conexión, por lo que no se declara verificación visual real de apertura/cierre, responsive ni permisos.
+- Riesgos pendientes: CI debe ejecutar build, PHPUnit y Pint; la inspección con datos reales de producción sigue pendiente y no se sustituyó por datos sintéticos.
+## 2026-11-20 — PR #159: ajustes visuales finales de Campañas
+
+- Se trabajó en un worktree aislado desde `origin/feature/campanas-ux-rankings-filtros-20261119`; no se tocaron los artefactos Vite ni el worktree de Comisiones.
+- Cambios: se eliminó la presentación de `investmentClosureStatus` y su listener/render innecesario; el cierre económico, bloqueos y advertencias no se modifican. El contexto `all` ya no genera subtítulo redundante. `campaign_end_date` se retiró de `platformColumns` y `columnDefinitions`, por lo que preferencias antiguas la descartan sin alterar el dato de backend. Se sustituyó `public/brand/google-ads-logo.png` por el PNG adjunto del usuario.
+- Pruebas: `node --test tests/js/campaign-presentation.test.mjs` (52/52), `node --check resources/js/reports/campaigns-dashboard.js` y `git diff --check` correctos.
+- Build: `npm run build` no ejecutable porque Vite no está instalado en el entorno. No se ejecutaron migraciones, sincronizaciones, backfills ni procesos de producción.
+- Riesgos pendientes: falta validar visualmente con Herd compilado en un entorno con dependencias frontend instaladas; el fallback textual del logo conserva accesibilidad si la imagen falla.
+
+## 2026-11-23 — PR #159: certificación parcial y filtros de Campañas
+
+- Se mantuvo el trabajo exclusivamente en la PR #159 y en su rama remota; no se
+  crearon ramas nuevas, no hubo merge, despliegue, migración, backfill ni
+  sincronización.
+- La cobertura operativa incompleta ya no elimina globalmente las evidencias de
+  Opportunity confirmadas. Las filas acreditadas conservan oportunidades,
+  reservas, ventas, importes y costes calculados por los resolvers existentes;
+  las filas sin relación válida siguen sin inventar resultados. La disponibilidad
+  comercial distingue `available`, `partial` y `unavailable`.
+- Se retiró el selector visible de `Origen comercial`; se conserva únicamente el
+  estado interno compatible para enlaces operativos autorizados y no se alteran
+  las reglas de autorización ni la selección backend. El filtro `Estado` parte
+  de `Todas` y su valor vacío no aplica el criterio `active`.
+- No se cambiaron atribuciones persistidas, fórmulas económicas, permisos,
+  sincronizadores ni cierres.
+- Pruebas ejecutadas: `node tests/js/campaign-presentation.test.mjs` (52/52),
+  `node --check resources/js/reports/campaigns-dashboard.js` y
+  `git diff --check` correctos. PHP/PHPUnit/Pint y el build no pudieron
+  ejecutarse en este entorno porque no hay runtime PHP/npm disponible.
+- Pendiente: ejecutar en CI la suite Laravel/Pint/build y validar con el dataset
+  operativo autorizado que la cobertura parcial y los costes confirmados llegan
+  a las tarjetas y comparativas. No se declara esa verificación como realizada.
+
+## 2026-11-23 — PR #159: delimitación del universo comercial operativo
+
+- Se volvió a verificar el HEAD antes del cambio: `a1f4567`.
+- `CampaignOperationalAttributionBuilder` conserva el lote completo para las
+  filas de auditoría, pero ahora construye primero el subconjunto que tiene
+  evidencia de adquisición, matching inequívoco y campaña de plataforma elegible
+  (`google_ads` o `meta`). Solo ese subconjunto se envía a
+  `opportunitiesForBatch`; por tanto, históricos, no atribuibles y campañas
+  excluidas no contaminan `unresolvedRelationships` ni la cobertura comercial.
+- No se alteran sincronizadores, matching oficial, atribuciones persistidas,
+  permisos, cierres ni runs activos. El caso de las 1.965/46/seis relaciones
+  comunicado externamente no se ha asumido como dato local ni como regla.
+- La cobertura continúa siendo completa únicamente cuando la evidencia de
+  Opportunity está disponible y no quedan relaciones sin resolver dentro del
+  universo elegible. Fuera de ese universo no se convierten ausencias normales
+  en incidencias Salesforce.
+- Verificaciones: revisión de HEAD y diff; tests JS 52/52, `node --check` y
+  `git diff --check` deberán mantenerse en CI junto con PHPUnit/Pint/build.
+  PHPUnit, Pint y build no se ejecutaron localmente por ausencia de PHP/npm.
+- Pendiente explícito: ejecutar la suite Feature de atribución con fixtures de
+  históricos fuera de período, UTM sin campaña acreditada, relación contradictoria
+  y duplicidad. No se declara esa cobertura de pruebas como verificada localmente.
+
+## 2026-11-23 — PR #159: revisión del contrato de agregación
+
+- Revisión del HEAD `5280a210`: `mergeRows()` no conserva `opportunity_key`,
+  porque su contrato es una fila agregada por campaña. La detección anterior
+  basada en ese campo podía clasificar una respuesta parcial válida como no
+  disponible.
+- Corrección mínima: la disponibilidad parcial se determina solo mediante
+  contadores comerciales materializados por relaciones verificadas
+  (`opportunities`, `reservations`, `sales`, `purchases` o
+  `appraisals_generated` positivos). No se usan UTM ni la mera existencia de
+  una fila.
+- El aviso público distingue ahora resultados confirmados con cobertura
+  incompleta de ausencia total de relaciones confirmadas; no se combinan los
+  mensajes de “disponible” y “todo bloqueado”.
+- Tests JS ejecutados: 52/52. No hay `vendor`, `node_modules`, PHP, Composer ni
+  npm disponibles en este worktree; PHPUnit, Pint y build quedan sin ejecutar y
+  se mantienen como pendientes verificables de CI.
+
+## 2026-11-24 — PR #159: regresiones PHP de CampaignDashboardTest
+
+- Se verificó el HEAD `0034b5e898a84ee81c3a2c90be9aa1723cfbfd1b` antes de editar.
+- La expectativa del drawer avanzado y la selección `active` eran contratos
+  visuales obsoletos. La prueba ahora verifica que el drawer no se restaura,
+  que `Todas` es la opción seleccionada y que el origen permanece como input
+  interno no visible.
+- La causa de los dos `operations:run` con exit code 1 era la allowlist
+  `operations.scheduled_task_keys`: `OperationalTaskService` reclama con origen
+  `scheduler`, pero los tests solo activaban `campaign_current_status.enabled`.
+  El fixture declara explícitamente la tarea `campaigns-sync-current-status`;
+  no se relajan controles ni se cambia la configuración productiva. Los
+  `Http::fake` siguen interceptando Meta y no se añade Google al escenario.
+- Pendiente de ejecución en Herd/Codex con dependencias: los tres tests, toda
+  `CampaignDashboardTest`, `CampaignOperationalAttributionTest`, PHPUnit,
+  Pint y build. Este worktree no contiene PHP, Composer, `vendor`, npm ni
+  `node_modules`, por lo que no se declaran esos resultados como ejecutados.
+
+## 2026-11-24 — PR #159: alineación final del contrato visual
+
+- Se verificó el HEAD `fd8d43e4b875eda72b8afd6b70d02a4a82e4552d` antes del cambio.
+- `campaignNameChecklist`, `campaignNamesSelectAll`, `campaignNamesClear` y
+  `advancedFiltersApply` no existen en la vista vigente. Las expectativas PHP
+  ahora comprueban explícitamente su ausencia y mantienen las comprobaciones de
+  búsqueda, filtros visibles, rankings y comparativa.
+- Se retiró de la inicialización activa la carga y serialización de selecciones
+  antiguas de nombres de campaña. Así, una preferencia persistida de una UI
+  eliminada no introduce un filtro invisible; no se modifican los filtros
+  visibles ni el contrato backend de datos.
+- JavaScript ejecutado: 52/52; `node --check` y `git diff --check` correctos.
+- PHPUnit, Pint y build siguen pendientes por falta de PHP/npm accesibles en
+  este entorno; no se declaran como ejecutados.
+
+## 2026-11-24 — PR #159: aserciones visuales finales
+
+- Se verificó el HEAD `68e526f3f4235bb0565cb2d71b1137b50931963c` antes de editar.
+- `campaign-detail-toggle` no existe en el JavaScript vigente y no representa
+  una funcionalidad perdida. La prueba deja de exigirlo y comprueba el contrato
+  actual `data-table-type`, manteniendo las aserciones reales de gráficos,
+  etiquetas de línea, icono de puntos, filtros y rankings.
+- No se restauraron controles antiguos ni se modificaron sincronizadores,
+  cierres, atribuciones ni disponibilidad comercial.
+- Validación local disponible: `node --check`, tests JavaScript y
+  `git diff --check`. PHPUnit, Pint y build deben repetirse en Herd/Codex con
+  las dependencias accesibles; no se declaran aquí como ejecutados.
+
+## Fuentes confirmadas de compra física (2026-11-19)
+
+- La sincronización de oportunidades solicita y persiste la fuente confirmada
+  por Dirección: `OPP_BUS_Tasacion__c`,
+  `OPP_BUS_Tasacion__r.TAS_BUS_Delegacion_de_compra__c` y
+  `Delegacion_de_la_tasacion__c`.
+- Se añadió una migración aditiva con índices para el identificador de
+  tasación, el ID de delegación física y su nombre. El modelo y las columnas
+  de selección del dashboard quedan alineados.
+- La identidad de compra debe deduplicarse por `purchase_appraisal_id`; no se
+  debe sustituir por matrícula, propietario, tienda de entrega ni Product2.
+- Pendiente de cerrar: conectar esta atribución al productor de filas del plan
+  nuevo, incorporar el importador de fechas RR. HH. y aplicar la exención de
+  penalizaciones ordinarias en las rutas individuales de comercial/tasador con
+  historial de jefe verificado.
+
+## Deduplicación, RR. HH. y exención individual (2026-11-19)
+
+- Desde octubre, `resolvePurchaseCommissionDetails()` no vuelve a contabilizar
+  una compra cuyo `purchase_appraisal_id` ya fue usada en el periodo. La regla
+  no altera los meses anteriores y utiliza la tasación, no matrícula ni vehículo.
+- Añadidos `hr_employment_dates`, `HrEmploymentDate` y el comando
+  `commissions:import-hr-employment-dates`. El importador valida identidad,
+  fecha, duplicados, referencia y funciona en dry-run; nunca lee
+  `User.CreatedDate`.
+- Añadido `StoreManagerIndividualExemptionService`, conectado al resumen de
+  comerciales desde octubre para IDs de jefe verificados por historial. Pone a
+  cero únicamente penalizaciones ordinarias, conserva incentivos positivos y
+  mantiene el importe de cancelaciones financieras exactamente una vez.
+
+## Integración del plan de octubre (2026-11-19)
+
+- El dashboard calcula ahora los KPI de entregas y compras por tienda con los
+  objetivos persistidos; las compras se agrupan por `purchase_appraisal_id`.
+  Las colisiones entre tiendas quedan como incidencia pendiente y no producen
+  un importe económico inventado.
+- La exención de jefe se resuelve con todos los historiales verificados que
+  cubren el mes, incluso cuando el jefe no tiene operaciones propias en ese
+  periodo; ya no depende de que aparezca como propietario de una oportunidad.
+- Se corrigió el formato Pint del importador de objetivos. La validación local
+  incluye `git diff --check`, Pint y `artisan test --filter=StoreManagerCommission`
+  con 11 pruebas, 30 aserciones y resultado correcto. GitHub Actions confirma
+  además `CI / test`, `CI / october-provisional-mariadb` y `Documentation
+  integrity / docs-integrity` en verde.
+
+## Corrección final de defectos económicos de la PR 158 (2026-11-19)
+
+- El KPI de compras físicas del plan octubre+ usa exclusivamente oportunidades
+  Tasación/Cambio firmadas en el mes, con `purchase_appraisal_id` y
+  `purchase_delegation_name`; no utiliza la tienda de entrega como fallback.
+  La deduplicación conserva una sola compra por tasación y deja los conflictos
+  como `pending_source`.
+- Se normalizan las claves de tienda eliminando el prefijo HR Motor y se
+  preservan las variantes auditadas de A Coruña, Málaga y Lliçà de Vall.
+- La exención de jefe restaura el descuento ordinario previamente aplicado,
+  elimina las penalizaciones ordinarias sin perder incentivos positivos,
+  conserva los incentivos de tasador y suma la cancelación financiera una sola
+  vez.
+- Dos o más jefes demostrados generan alerta de revisión. El promedio de
+  reseñas conserva su precisión de origen para evaluar el umbral sin redondeo
+  previo.
+- El cierre definitivo de Delegaciones desde octubre bloquea filas económicas
+  no calculadas o con fuente pendiente. El importador de RR. HH. valida la
+  identidad contra `salesforce_users`, fecha calendario, referencia, duplicados
+  y periodos definitivos; no usa `User.CreatedDate`.
+- Seguridad: no se importan datos sin identidad Salesforce inequívoca ni se
+  escriben filas durante el dry-run. No se han incluido credenciales ni datos
+  reales.
+- Base de datos: no se añade migración en esta corrección; requiere tener
+  aplicadas las migraciones existentes de objetivos, historial, campos de
+  compra y `hr_employment_dates` antes de usar el flujo.
+- Verificación local: Pint completado; `artisan test
+  --filter=StoreManagerCommission` pasó (11 pruebas, 30 aserciones); `git
+  diff --check` pasó. Las suites de dashboard/cierre deben confirmarse en CI
+  si el entorno local no devuelve salida completa.
+- Documentación: no fue posible invocar el agente personalizado
+  `report_docs_maintainer` en esta sesión; se aplicó el procedimiento de
+  revisión documental como fallback del agente principal. La descripción de
+  la PR debe conservar un único bloque `Docs-Impact` y `Docs-Matrix-Impact`.
+- Pendiente externo: verificar con Salesforce la cobertura real de
+  `OPP_BUS_Tasacion__c` y con RR. HH. el fichero autorizado; sin esas
+  evidencias el importe permanece pendiente y no se certifica en esta revisión.
+  El flujo de aprobación sigue disponible para un snapshot íntegro cuando las
+  evidencias pasen sus validaciones.
+
+## Regresión CI y trazabilidad histórica (2026-11-19)
+
+- Se corrigió la exención para restaurar el descuento ordinario únicamente
+  cuando la fila contiene evidencia de `prima_total`; una fila sintética que
+  ya representa la base positiva no se sobrecompensa. Se conservaron los
+  incentivos positivos y la cancelación financiera única.
+- La alerta de dos responsables se aplica únicamente desde octubre de 2026.
+  Julio-septiembre mantienen el umbral histórico de más de dos responsables.
+  La misma vigencia se refleja en readiness, cierre, proyección de auditoría y
+  vista Blade.
+- Las oportunidades Tasación/Cambio incompletas ya no desaparecen: se
+  registran como incidencias de fuente y dejan la fila pendiente. También se
+  registra una incidencia si la delegación física no corresponde a una tienda
+  objetivo del periodo.
+- Se completaron las claves ausentes que la plantilla histórica consultaba en
+  las filas nuevas con valores nulos explícitos; no se convierten estados
+  pendientes en importes cero.
+- Verificación: los dos fallos auditados pasan (19 pruebas, 69 aserciones),
+  Pint sobre los archivos de la corrección y `git diff --check` correctos.
+
+## Regresión SourceReadiness histórica (2026-11-19)
+
+- `CommercialCommissionSourceReadinessService` conserva ahora las alertas
+  históricas legítimas de julio-septiembre cuando hay más de dos responsables.
+  Esas advertencias siguen siendo informativas; desde octubre las alertas de
+  dos o más responsables permanecen bloqueantes para el plan nuevo.
+- Verificación focalizada: 47 pruebas pasadas y 149 aserciones incluyendo
+  SourceReadiness, evolución de gobierno y exención individual.
+- La liquidación completa de equipo, antigüedad y reseñas del plan nuevo sigue
+  requiriendo la integración de sus fuentes verificables; no se presenta un
+  total parcial como definitivo.
+
+## Liquidación económica integral de jefes (2026-11-19)
+
+- `buildStoreManagerProvisionalRows()` conecta ahora entregas y compras con
+  reseñas de tienda, responsables históricos, equipo operativo, incentivos
+  individuales, financiación, garantías y penalización única de antigüedad.
+  El total usa `StoreManagerCommissionPlanCalculator::finalTotal()` y queda
+  nulo si cualquier componente obligatorio carece de evidencia.
+- Las filas nuevas incluyen estados, subtotales, responsables, referencias de
+  fuente e incidencias; las compras incompletas, las compras de tienda no
+  objetivo y las tiendas de entrega sin valor bloquean la liquidación. Una
+  `delivery_store` no vacía pero no objetivo aún queda como discrepancia de
+  atribución sin incidencia específica. La vista de octubre usa una tabla
+  específica y no presenta columnas históricas de rentabilidad.
+- El cálculo consulta `hr_employment_dates` para la última fecha aplicable y
+  nunca `User.CreatedDate`. El importador exige correspondencia inequívoca,
+  permite registrar `--imported-by`, mantiene dry-run y protege todos los
+  cierres definitivos afectados desde la fecha laboral.
+- Verificación local: Pint y 58 pruebas focalizadas, 179 aserciones, correctas;
+  `git diff --check` correcto. El plan permanece provisional hasta disponer de
+  evidencias Salesforce/RR. HH. y resolver responsables o fuentes pendientes.
+
+## Auditoría económica correctiva (2026-11-19)
+
+- El mínimo de financiación individual usa `financial_commission`, que es la
+  persistencia de `Comisi_n_Financiera__c`; el capital `importe_financiado` ya
+  no participa en ese umbral. Los importes financieros o de garantías nulos
+  mantienen el componente pendiente.
+- Los empleados verificados como jefes quedan exentos de la penalización de
+  antigüedad incluso sin fecha laboral; los comerciales ordinarios requieren
+  la última fecha RR. HH. y la consulta se ejecuta por lote para evitar N+1.
+- Se validan zonas desconocidas como incidencia, la coherencia del payload de
+  reseñas y los campos de estado/fecha que consume readiness.
+- La integridad de aprobación verifica 34 filas, todos los componentes,
+  subtotales numéricos y la conciliación matemática del total; un snapshot con
+  estado `calculated` pero desglose parcial o contradictorio se rechaza.
+- Se añadió `tests/Feature/StoreManagerSettlementIntegrationTest.php` con
+  liquidación sintética de 630 EUR, validación del campo financiero,
+  exención de jefe sin RR. HH. y rechazo de snapshot inconsistente.
+- Verificación local de esta iteración: 45 pruebas y 132 aserciones correctas,
+  Pint correcto y `git diff --check` correcto. No se importaron datos reales ni
+  se modificaron Salesforce o cierres definitivos.
+
+## Corrección final de atribución y roster (2026-11-19)
+
+- Las compras nuevas se deduplican por `purchase_appraisal_id` y ahora se
+  rechazan como pendientes cuando cambian el ID de delegación física, el
+  nombre asociado, el ID y nombre normalizados, o cuando la misma tasación
+  aparece firmada en meses diferentes. Las entregas sin tienda verificable
+  siguen generando incidencia y no se cuentan silenciosamente.
+- Se añadió el roster histórico `store_manager_commission_roster_members`,
+  con periodo, identidad Salesforce, procedencia, referencia y verificación.
+  `StoreManagerTeamRosterService` lo resuelve por lote; si falta la evidencia,
+  el dashboard conserva el desglose provisional pero no certifica el total.
+  Los miembros acreditados sin entregas sí aparecen con sus componentes cero
+  verificables.
+- El importador de RR. HH. mantiene el modo dry-run y exige `--imported-by`
+  cuando se solicita escritura, evitando filas sin actor auditado.
+- La interfaz de octubre y el XLSX de delegaciones exponen el desglose de
+  equipo, estado del roster, reseñas, incidencias y `Pendiente` para importes
+  nulos; no reutilizan los agregados económicos históricos del plan nuevo.
+- Verificación focalizada posterior: 122 pruebas, 833 aserciones correctas en
+  dashboard, readiness, cierres, evidencia e integración; Pint correcto.
+  Pendiente externo: cargar evidencia real de adscripción histórica y revisar
+  los conflictos de `OPP_BUS_Tasacion__c`; no se importaron datos reales ni se
+  aprobaron comisiones.
+
+## Readiness y validación final (2026-11-19)
+
+- `CommercialCommissionSourceReadinessService` acepta `calculated` únicamente
+  para filas `october_2026`; el cierre continúa exigiendo el contrato completo
+  y no trata `calculated` como certificación.
+- Se añadieron pruebas de importación RR. HH. para dry-run, actor obligatorio,
+  identidad única y protección de un periodo definitivo. La prueba local de
+  readiness queda en 29 pruebas y 81 aserciones; el conjunto focalizado previo
+  a las pruebas adicionales quedó en 126 pruebas y 841 aserciones.
+- La suite completa local no produjo un resumen: el runner agotó su límite de
+  ejecución de 120 segundos dentro de una consulta de un test de monitorización
+  operativo, después de ejecutar otros tests; no se observó un fallo funcional
+  de esta intervención. CI sigue siendo la validación completa, especialmente
+  MariaDB. El validador documental local no pudo ejecutarse porque el entorno
+  no tiene un intérprete Python utilizable; se revisó el contrato documental y
+  la descripción de PR debe usar un único bloque `Docs-Impact`.
+
+## Correcciones de auditoría y validación final (2026-11-19)
+
+- El modelo `CommercialCommissionRosterMember` declara explícitamente la tabla
+  `store_manager_commission_roster_members`; se corrigió la discrepancia entre
+  la convención Eloquent y el nombre de la migración.
+- El validador documental asigna explícitamente `ImportHrEmploymentDates.php` a
+  `commissions`, con cobertura en la guía y prueba de infraestructura. No se
+  utiliza una excepción `Docs-Outside-*` para una ruta que alimenta evidencia
+  de liquidaciones.
+- Verificación local final antes de publicar: 137 pruebas y 875 aserciones
+  correctas en la batería focalizada; los 11 tests de integración nuevos del
+  dashboard y del importador de RR. HH. pasan con 47 aserciones.
+- La sintaxis PHP, Pint y `git diff --check` deben repetirse tras el último
+  ajuste antes de publicar.
+
+## Operaciones compartidas y validación de fuentes (2026-11-19)
+
+- Las entregas compartidas se cuentan una sola vez en el volumen físico de la
+  tienda y se incorporan al desglose del propietario primario y del miembro
+  secundario acreditado. No aportan incentivos económicos individuales:
+  financiación y garantías solo usan operaciones individuales dentro de la
+  vigencia acreditada; una penalización puede derivarse del componente
+  individual no alcanzado, pero no atribuye economía a la operación compartida.
+- El importador de RR. HH. valida la identidad local, exige `--imported-by` para
+  escritura y protege los cierres definitivos afectados. No se cargaron datos
+  reales.
+- Se añadieron pruebas de reseñas para cero confirmado, payload contradictorio
+  y precisión 3,995; también se cubren miembro solo compartido, zona
+  desconocida, correo inválido y duplicado de identidad/fecha.
+- En la revisión intermedia anterior a `7179017` no estaba identificado un
+  cargador de roster. El HEAD actual sí incorpora
+  `commissions:import-store-manager-roster` y
+  `StoreManagerTeamRosterEvidenceService`: valida el CSV sin escribir por
+  defecto; `--apply` exige `--imported-by`, es idempotente para la misma
+  evidencia, rechaza conflictos de cobertura y protege periodos definitivos.
+  La fuente externa autorizada y una ejecución productiva siguen sin estar
+  acreditadas.
+
+## Revisión documental PR 158 — comisiones de jefes de tienda (2026-11-19)
+
+- Alcance comprobado: `main...HEAD` con base
+  `2b62ee2f471ebf92ab8210c6d6e67370c264ad2f` y HEAD funcional actual
+  `7179017320da2a1fde4d5b9111643274bbf9b6ee`, además del diff documental de
+  trabajo. El commit actual ya incluye el modelo, migración, servicio,
+  comando y tests de roster que antes estaban sin rastrear. Solo se modificó
+  documentación durante esta revisión; no se ejecutaron sincronizaciones ni
+  consultas Salesforce o de base de datos.
+- Documentación actualizada por esta revisión: `docs/informe-comisiones.md`,
+  `docs/Calculo_comisiones_comerciales.txt`, `docs/matriz-trazabilidad-kpi.md`,
+  `docs/decisiones-negocio-pendientes.md`, `docs/ai/PROJECT_CONTEXT.md` y este
+  `HANDOFF.md`. La matriz conserva el plan como evidencia focal con estado
+  `discrepancia/pendiente`, no como ficha KPI verificada.
+- Evidencia contrastada: `SalesforceOpportunitySyncService::saveRecord()` para
+  el mapeo API→réplica; `EligibleDeliveryOpportunityQuery` y
+  `CommercialCommissionDashboardService` para fechas, universo, filtros,
+  deduplicación y fórmulas; `StoreManagerTeamRosterService`,
+  `StoreManagerTeamRosterEvidenceService`,
+  `ImportStoreManagerCommissionRoster` y la migración/modelo de roster;
+  `ImportHrEmploymentDates` y `hr_employment_dates`; el endpoint interno de
+  reseñas y su servicio; `CommercialCommissionClosureService` y
+  `storeManagerCommissionSheet()` para snapshot, aprobación y exportación; y
+  los tests focalizados nuevos, incluido
+  `StoreManagerTeamRosterEvidenceImportTest`.
+- Discrepancias no resueltas: aunque el HEAD ya incorpora el importador
+  auditable de `store_manager_commission_roster_members`, no se acreditó la
+  fuente externa autorizada ni una ejecución productiva; una `delivery_store`
+  no vacía y no objetivo queda fuera del agrupado sin incidencia específica; y
+  el código sí permite aprobar un snapshot íntegro, por lo que la documentación
+  ya no lo describe como una prohibición permanente.
+- Contrato Docs-Impact: el cambio funcional exige `Docs-Impact: updated` y
+  `Docs-Matrix-Impact: updated`, con `Docs-Scope: commissions` y evidencia de
+  las rutas funcionales de Comisiones, importación RR. HH., modelo/migración y
+  vista/exportación. El cuerpo real de la PR no está disponible en esta sesión;
+  por ello el contrato no pudo validarse contra la descripción publicada. Debe
+  existir un único bloque estructurado y el HEAD final debe incluir también los
+  archivos no rastreados relevantes.
+- Fallback: el agente personalizado `report_docs_maintainer` no pudo invocarse
+  desde esta sesión; esta revisión se realizó directamente siguiendo
+  `docs/guia-mantenimiento-documental.md`. No debe afirmarse delegación.
+- Validación documental: `python` no pudo iniciarse en Windows y `py` no está
+  instalado; no se pudo ejecutar `scripts/check_documentation_integrity.py` ni
+  la suite de `tests/documentation`. No se ejecutaron pruebas PHP durante esta
+  revisión. Sí se ejecutaron `git diff --check` y una comprobación local de
+  enlaces Markdown relativos, ambos sin incidencias. Queda ejecutar el
+  validador con el SHA final y el cuerpo real de la PR.
+
+## Revisión documental del diff completo de PR 158 y trabajo pendiente (2026-11-20)
+
+- Alcance contrastado: diff completo `d12a592f66e63b3b5776aed0fd949c48acda9512..7179017320da2a1fde4d5b9111643274bbf9b6ee` y diff adicional `7179017320da2a1fde4d5b9111643274bbf9b6ee..working tree`. El árbol de trabajo ya contenía cambios funcionales ajenos; se preservaron y no se modificaron PHP, Blade, JavaScript, tests, migraciones ni datos. El agente personalizado `report_docs_maintainer` no pudo invocarse: fallback ejecutado por el agente principal.
+- Informes y superficies afectadas: el informe de **Comisiones**, pestaña **Delegaciones**, plan `october_2026`; rutas funcionales contrastadas `GET /informes/comisiones-comerciales/` y `GET /informes/comisiones-comerciales/export/comisiones.xlsx`, además de las acciones existentes de cierre `data/closure`, `closure/prepare`, `closure/approve` y `closure/reopen`. El archivo de rutas no cambia en el diff; cambian el payload, la tabla Blade, la hoja XLSX y la validación del snapshot que consumen esas acciones.
+- Evidencia revisada: `SalesforceOpportunitySyncService::saveRecord()` y su SOQL para el mapeo API→réplica; `EligibleDeliveryOpportunityQuery` y `CommercialCommissionDashboardService` para fecha, universo, filtros, tasaciones elegibles, deduplicación, operaciones compartidas y vigencia por operación; `StoreManagerTeamRosterService`/`StoreManagerTeamRosterEvidenceService` para roster, conflictos e importación; `CommercialCommissionDelegationReviewsService` para payload y caché; `CommercialCommissionClosureService` para snapshots, objetivos congelados, subtotales por usuario y aprobación; `CommercialCommissionDashboardController::storeManagerCommissionSheet()` y la vista de Comisiones para presentación/exportación.
+- Reglas documentadas: una operación compartida cuenta una vez como volumen físico de tienda y aparece en el desglose de participantes, pero no crea incentivo, financiación ni garantías individuales; la penalización puede derivarse del mínimo individual no alcanzado, sin atribuir economía adicional a la operación compartida. La cobertura del roster se aplica a la fecha de cada operación mediante `[coverage_from, coverage_to)` y los solapamientos contradictorios del mismo usuario/mes bloquean; las compras solo cuentan si la tasación es elegible y tiene identidad física completa; el snapshot conserva objetivos/fuente, 34 claves de tienda en octubre, contadores, componentes y `team_subtotals` por Salesforce User ID; la aprobación recalcula/contrasta coherencia matemática sin sustituir el snapshot.
+- Importación y reseñas: `commissions:import-store-manager-roster` valida sin escribir por defecto; `--dry-run` explicita ese modo y `--apply` requiere `--imported-by`, que queda guardado como actor de importación. Se documentaron validación de identidad, procedencia, cobertura, duplicados, conflictos, atomicidad e inmutabilidad de periodos definitivos. El endpoint de reseñas distingue cero confirmado (`0` + media nula), payload contradictorio, media fuera de `0..5`, errores y caducidad; conserva precisión como `3.995` hasta aplicar el umbral.
+- Presentación y auditoría: la UI de Delegaciones y la hoja XLSX exponen `Entregas físicas`, `Entregas individuales`, `Compartidas`, miembros, desglose individual/compartido, subtotales, estado e incidencias; los importes no numéricos se muestran como `Pendiente`. La aprobación rechaza filas sin objetivos/fuente congelados, subtotales por usuario conciliados o contadores físicos incoherentes.
+- Documentación modificada focalmente: `docs/informe-comisiones.md`, `docs/Calculo_comisiones_comerciales.txt`, `docs/matriz-trazabilidad-kpi.md`, `docs/decisiones-negocio-pendientes.md`, `docs/ai/HANDOFF.md`, `docs/ai/PROJECT_CONTEXT.md` y `docs/ai/DECISIONS.md`. Se conservaron las modificaciones documentales previas y la historia del handoff; no se editaron `docs/guia-mantenimiento-documental.md` ni documentos de otros informes.
+- Discrepancias no resueltas: no se acreditó la fuente externa autorizada del roster, una ejecución productiva del importador ni datos de Salesforce/producción; una `delivery_store` no vacía que no coincide con objetivo queda fuera del agrupado sin incidencia localizada; la fuente/procedencia del CSV de objetivos permanece administrativa y su importador usa `--write` sin actor `imported_by`; la identidad física final de Tasación/Cambio y las evidencias RR. HH. siguen pendientes. El cuerpo publicado de la PR 158 no está disponible en esta sesión, por lo que no se pudo validar su bloque `Docs-Impact` contra la descripción real.
+- Validación: no se ejecutaron sincronizaciones, consultas Salesforce/base de datos ni pruebas PHP. `git diff --check` y la comprobación local de enlaces Markdown relativos terminaron correctamente (`markdown-relative-links: OK`). El runtime no dispone de un intérprete Python utilizable (`python.exe` de WindowsApps no inicia; `py` y `python3` no están disponibles), por lo que `scripts/check_documentation_integrity.py` y `tests/documentation` no pudieron ejecutarse; además no se dispone del archivo con el cuerpo real de la PR para completar su contrato.
+
+## Implementación y verificación local de PR 158 en worktree de Comisiones (2026-11-20)
+
+- Alcance de esta ejecución: se mantuvo la rama `work/comisiones-20261120` en
+  `C:\Users\Usuario\Herd\informes-app-hrmotor-comisiones`; no se tocó el
+  worktree padre, Campañas, otra rama ni ningún worktree adicional. Los siete
+  documentos que ya estaban modificados sin commit se conservaron y se revisó
+  su relación con Comisiones antes de trabajar.
+- Implementación: el dashboard separa volumen físico, entregas individuales y
+  compartidas; las operaciones compartidas aparecen en el desglose físico de
+  ambos participantes, pero solo las individuales alimentan la economía
+  individual. La vigencia del roster se aplica a cada `cv_signed_date`, los
+  solapamientos entre tiendas bloquean la atribución y las tasaciones solo
+  detectan repeticiones intermensuales dentro de `Tasación`/`Cambio`. Las
+  reseñas incoherentes o fuera de rango quedan pendientes; una operación sin
+  propietario Salesforce verificable queda identificada como incidencia. El snapshot de
+  Delegaciones valida objetivos congelados, claves, contadores, componentes,
+  subtotales por usuario y total conciliado antes de aprobar.
+- Archivos funcionales modificados: `app/Console/Commands/ImportStoreManagerCommissionRoster.php`,
+  `app/Http/Controllers/Reports/CommercialCommissions/CommercialCommissionDashboardController.php`,
+  `app/Models/CommercialCommissionRosterMember.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionClosureService.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionDashboardService.php`,
+  `app/Services/Reports/CommercialCommissions/StoreManagerTeamRosterEvidenceService.php`,
+  `app/Services/Reports/CommercialCommissions/StoreManagerTeamRosterService.php`,
+  `resources/views/reports/commercial-commissions/index.blade.php`,
+  `tests/Feature/StoreManagerSettlementIntegrationTest.php` y
+  `tests/Feature/StoreManagerTeamRosterEvidenceImportTest.php`.
+- CI: `.github/workflows/ci.yml` añade los dos filtros de Comisiones al job
+  `october-provisional-mariadb`; no se modificaron los pasos existentes de
+  Interests ni Campañas.
+- Base de datos: se añadió
+  `database/migrations/2026_11_20_090000_add_imported_by_to_store_manager_commission_roster_members_table.php`
+  para auditar el actor/servicio del importador. No se ejecutó la migración ni
+  se cargaron datos reales.
+- Seguridad y fiabilidad: el importador valida sin escribir por defecto;
+  `--apply` exige `--imported-by`, persiste de forma atómica, rechaza identidad
+  ambigua, duplicados y solapamientos, no sobrescribe evidencia distinta y
+  protege periodos definitivos. El cierre vuelve a conciliar el snapshot
+  congelado y no expone secretos ni datos productivos.
+- Rendimiento: el roster se resuelve con una consulta mensual y agrupación
+  controlada; no se añadieron sincronizaciones, migraciones ejecutadas ni
+  llamadas externas. La validación del snapshot trabaja sobre el payload ya
+  congelado.
+- Verificaciones: `git diff --check` terminó correctamente. Los comandos
+  `php artisan test --filter=StoreManagerSettlementIntegrationTest` y
+  `php artisan test --filter=StoreManagerTeamRosterEvidenceImportTest` no
+  pudieron iniciar porque falta `vendor/autoload.php` y no hay un intérprete
+  PHP/lint estable en el entorno; los intentos posteriores de `php -l` tampoco
+  encontraron el ejecutable. Tampoco pudieron ejecutarse el validador
+  documental ni `tests/documentation`, porque `python`, `python3` y `py` no
+  están disponibles. No se deben interpretar estas verificaciones bloqueadas
+  como una suite verde.
+- Primer CI del SHA `8e4dca1c` ejecutó 1.817 pruebas y 16.206 aserciones; la
+  documentación pasó y fallaron únicamente dos expectativas nuevas que
+  confundían el campo positivo `penalty` con el subtotal negativo resultante.
+  Se corrigieron esas aserciones para exigir `penalty = 100.0` y
+  `subtotal = -100.0`; el mismo ajuste queda cubierto para SQLite y MariaDB.
+- Revalidación del SHA `97745cbd`: `CI / test`,
+  `CI / october-provisional-mariadb` y `Documentation integrity / docs-integrity`
+  terminaron correctamente. La PR permanece abierta y en draft; no se hizo
+  merge, despliegue, aprobación económica ni importación real.
+- Documentación: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated` y
+  `Docs-Scope: commissions`. El agente `report_docs_maintainer` sí fue
+  invocado con el diff funcional, pero no devolvió un resultado utilizable tras
+  varias esperas y fue cerrado; el agente principal aplicó y revisó el
+  procedimiento documental como fallback, sin atribuirle cambios ni revisión.
+- Acciones pendientes: instalar/restaurar dependencias de desarrollo, ejecutar
+  migraciones solo con autorización, repetir lint/Pint, pruebas focalizadas y
+  suite completa, ejecutar el validador documental, revisar el diff final y
+  solo después decidir sobre commit/PR. En esta sesión no se hizo commit, push,
+  merge, sincronización, despliegue ni importación real.
+
+## Correcciones residuales de integridad económica PR 158 (2026-11-23)
+
+- Alcance: se mantuvo exclusivamente el worktree
+  `C:\Users\Usuario\Herd\informes-app-hrmotor-comisiones`, en la rama local
+  `work/comisiones-20261120`. El commit funcional `1abb3aa` se publicó por
+  fast-forward en el head `codex/store-manager-commissions-october-2026` del
+  PR 158; el PR continúa abierto, en draft y sin conflictos. No se tocó el
+  worktree padre, Campañas, otra rama, migraciones ejecutadas, sincronizaciones,
+  despliegues ni datos reales.
+- Cambios funcionales: `CommercialCommissionDashboardService` ahora conserva
+  incidencias con ID Salesforce y valor original para tiendas de entrega
+  desconocidas o ambiguas, sin atribuirlas por propietario ni incluirlas en
+  incentivos. La cobertura del roster exige que el intervalo semiabierto
+  contenga el día completo representado por un `cv_signed_date` DATE-only;
+  una entrada intradía no cubre su propio día sin hora de firma exacta.
+- Identidad y auditoría: la evidencia de roster exige exactamente una
+  identidad local `SalesforceUser` con nombre verificable y coincidente. La
+  resolución del dashboard vuelve a marcar como pendiente cualquier evidencia
+  histórica que carezca de esa identidad. `--imported-by` ya no acepta texto
+  libre: para `--apply` debe ser `report-user:<id>` de un `ReportUser` activo
+  con rol admin, director o auditor de comisiones; `recorded_by` sigue siendo
+  el actor consignado en la evidencia original.
+- Objetivos y snapshot: el dashboard congela objetivos, claves, nombres,
+  zonas, valores y procedencia. La aprobación contrasta el contenido con la
+  tabla autorizada del mes y, para octubre, con el CSV versionado y su SHA-256,
+  exigiendo 34 tiendas y totales 907/499. Los meses futuros usan el conjunto
+  persistido específico del periodo sin imponer 34 tiendas; la readiness de
+  octubre conserva el contrato 34.
+- Archivos modificados: `app/Console/Commands/ImportStoreManagerCommissionRoster.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionClosureService.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionDashboardService.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionSourceReadinessService.php`,
+  `app/Services/Reports/CommercialCommissions/StoreManagerCommissionTargetService.php`,
+  `app/Services/Reports/CommercialCommissions/StoreManagerTeamRosterEvidenceService.php`,
+  `app/Services/Reports/CommercialCommissions/StoreManagerTeamRosterService.php`,
+  `tests/Feature/StoreManagerSettlementIntegrationTest.php` y
+  `tests/Feature/StoreManagerTeamRosterEvidenceImportTest.php`. Este bloque
+  documental añade únicamente esta entrada; los siete documentos modificados
+  previamente se conservaron.
+- Base de datos/configuración: no se añadieron tablas, columnas, migraciones ni
+  variables de entorno. No se ejecutaron comandos de migración ni importación.
+- Seguridad: se evita atribución silenciosa de una tienda no autorizada, se
+  bloquean identidades Salesforce ausentes/ambiguas y actores de importación no
+  verificables, y la aprobación no confía en claves o importes auto-declarados
+  por el snapshot.
+- Rendimiento: la resolución de identidades Salesforce se hace en una consulta
+  por lote para el roster mensual; la validación de objetivos trabaja sobre 34
+  filas de referencia y el snapshot ya congelado, sin consultas Salesforce en
+  HTTP ni recalcular la liquidación en aprobación.
+- Verificaciones locales: `git diff --check` correcto. El entorno local no
+  tiene PHP, Composer, `vendor/autoload.php` ni un runtime Python utilizable;
+  por ello no se ejecutaron localmente PHPUnit, Pint, lint PHP ni el validador
+  documental.
+- Verificaciones CI del SHA `1abb3aa`: `CI / test`,
+  `CI / october-provisional-mariadb` y `Documentation integrity / docs-integrity`
+  terminaron correctamente. Incluyen la suite focalizada, regresiones y la
+  comprobación documental. Se añadieron pruebas para tienda desconocida,
+  tienda ambigua, identidad Salesforce ausente, actor inválido, límite
+  intradía, candidato correcto y snapshots manipulados.
+- Riesgos/pendientes: la evidencia externa autorizada del roster y la eventual
+  importación productiva siguen pendientes de aportación humana. Antes de usar
+  datos reales debe revisarse el diff de la PR y ejecutar los comandos de
+  importación solo en modo `--dry-run` en un entorno controlado. No se aprobó
+  ninguna liquidación económica.
+- Mantenimiento documental: se invocó `report_docs_maintainer` con el diff
+  funcional y las referencias exigidas, pero no devolvió un resultado utilizable
+  tras dos esperas y se cerró. El agente principal revisó y mantuvo estos
+  documentos como fallback, sin atribuir al agente cambios que no realizó.
+
+## Cierre de tres defectos de certificación económica PR 158 (2026-11-23)
+
+- Alcance: se mantuvo exclusivamente el worktree
+  `C:\Users\Usuario\Herd\informes-app-hrmotor-comisiones`, en la rama
+  `work/comisiones-20261120`. El estado funcional de partida fue
+  `908a9729b2078fb911546524a2d41e3e736b5285`; el código quedó en
+  `2791d1f797dada633c71652bb446e43509cc7f76` antes de la documentación. No
+  se tocó el worktree padre, Campañas, otra rama ni otro worktree.
+- Problemas corregidos: octubre falla cerrado si falta o es inválida la
+  referencia aprobada de objetivos y no usa la tabla mutable como sustituto;
+  la aprobación recalcula las reseñas desde `reviews_count` y
+  `reviews_average_rating`, sin redondear antes del umbral, exige el plan
+  `october_2026` y rechaza payloads ausentes, contradictorios o manipulados;
+  y el historial de responsables exige identidad/cierre verificados y
+  cobertura verificada de rotaciones para todo el mes antes de permitir una
+  liquidación certificable.
+- Archivos funcionales modificados: `app/Services/Reports/CommercialCommissions/CommercialCommissionClosureService.php`,
+  `app/Services/Reports/CommercialCommissions/CommercialCommissionDashboardService.php`,
+  `app/Services/Reports/CommercialCommissions/DelegationManagerHistoryResolver.php` y
+  `app/Services/Reports/CommercialCommissions/StoreManagerCommissionPlanCalculator.php`.
+  Archivos de pruebas: `tests/Feature/StoreManagerSettlementIntegrationTest.php` y
+  `tests/Feature/CommissionGovernanceEvolutionTest.php`.
+- Documentación modificada: `docs/informe-comisiones.md`,
+  `docs/Calculo_comisiones_comerciales.txt`, `docs/matriz-trazabilidad-kpi.md`,
+  este `docs/ai/HANDOFF.md` y `docs/ai/DECISIONS.md`. No se actualizó
+  `docs/ai/PROJECT_CONTEXT.md` porque no cambió la arquitectura, los módulos
+  ni las convenciones generales.
+- Decisiones: la referencia de octubre es una fuente controlada independiente
+  de los objetivos mutables; el snapshot es una entrada no confiable que debe
+  contener y demostrar sus métricas congeladas; y la identidad de cierre y la
+  cobertura mensual son ejes verificables separados. Las rotaciones siguen
+  generando advertencias según las reglas históricas, pero no habilitan un
+  importe cuando la cobertura exigida no está acreditada.
+- Base de datos/configuración: no se añadieron tablas, columnas, migraciones,
+  variables de entorno ni dependencias. No se ejecutaron migraciones,
+  sincronizaciones, imports reales ni despliegues.
+- Seguridad y fiabilidad: se eliminaron fallbacks silenciosos para objetivos,
+  se evita aceptar ajustes de reseñas auto-declarados y se bloquea la
+  atribución económica cuando falta evidencia histórica verificable. La
+  aprobación no hace llamadas remotas ni modifica cierres definitivos.
+- Rendimiento: la referencia se lee una vez por validación, la fórmula de
+  reseñas se comparte con el dashboard y la aprobación trabaja en memoria
+  sobre el snapshot; no se añadieron consultas Salesforce ni consultas N+1.
+- Reproducción: en `941de10` se reprodujeron los tres defectos con cuatro
+  fallos esperados y 1.830 pruebas pasadas. La corrección funcional en
+  `2791d1f` pasó `CI / test`, `CI / october-provisional-mariadb` y
+  `Documentation integrity / docs-integrity` en el run `45145172467`. La
+  documentación quedó publicada en `38ad1eb`; sus checks finales pasaron en
+  `CI` run `45148009607` y `Documentation integrity` run `45148009604`.
+  Localmente `git diff --check` es correcto; no hay PHP, Composer,
+  `vendor/autoload.php` ni un runtime Python utilizable, por lo que PHPUnit,
+  Pint, lint PHP y el validador documental no se ejecutaron localmente.
+- Mantenimiento documental: se invocó `report_docs_maintainer` con el rango
+  base/HEAD y el alcance de Comisiones. El agente dejó actualizados los tres
+  documentos funcionales, pero se detuvo antes de completar HANDOFF y el
+  validador; el agente principal revisó el diff y completó este registro como
+  fallback, sin atribuirle la validación final.
+- Contrato de PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
+  `Docs-Scope: commissions`. El commit documental `38ad1eb8d4dc5c3b33165686807b9e38a1493b6e`
+  está publicado en las dos ramas remotas de Comisiones y sus tres checks
+  finales están verdes.
+- Acciones manuales: revisar el diff completo antes de fusionar, mantener la
+  PR en draft y aportar la procedencia empresarial del CSV, la evidencia
+  autorizada del roster, la conciliación Salesforce/RR. HH. y cualquier
+  validación productiva autorizada. No se aprobó octubre ni ninguna liquidación.
+- Riesgos pendientes: sin esas fuentes externas el plan continúa provisional;
+  una referencia, reseña, responsable o cobertura incompleta debe permanecer
+  pendiente y no convertirse en cero o en importe económico.
+
+## 2026-11-25 — PR #159: validación de automatización operativa
+
+- Se confirmó el HEAD `1422ef5f35828c8e1c799d837fa0481bd06c1a40` antes de la
+  validación.
+- Corrección aplicada: el lector operativo del dashboard recibe el año derivado
+  del período solicitado, no `2026` fijo.
+- `CampaignDailyOperationalAutomationTest`: 4/4 pasados.
+- `CampaignOperationalAttributionTest`: 13/13 pasados (110 assertions).
+- JavaScript: 52/52; `node --check` y `git diff --check` correctos.
+- Pint ejecutado sobre `CampaignOperationalAttributionBuilder.php` y aplicado
+  sin errores.
+- Build pendiente: `npm run build` falló porque Vite no está disponible en
+  `node_modules` después de que `npm ci` quedara bloqueado. No se declara el
+  build como válido.
+- No se ejecutaron sincronizaciones externas, migraciones, runs ni flags de
+  producción. La automatización no debe considerarse lista para despliegue
+  hasta completar el build y la suite PHP completa en Herd.
+
+## 2026-11-25 — PR #159: cierre adicional de bloqueos P0
+
+- Se verificó el HEAD remoto `a129f0bdebb31b14da995538e9122593080086ec`.
+- La selección económica del builder y del dashboard usa el estado real del
+  cierre: los meses cerrados requieren snapshot válido y los abiertos requieren
+  al menos una plataforma con cobertura disponible. Noviembre cerrado ya no se
+  rechaza por una regla especial.
+- El frontend genera presets hasta el mes visible actual y admite años
+  posteriores; la allowlist operativa sigue siendo la única autorización para
+  deep-links operativos. Se eliminó la restricción de año fijo en la lectura de
+  fechas.
+- El rollback de la migración de versionado es deliberadamente no destructivo:
+  no elimina la columna de identidad de runs ni su evidencia histórica.
+- JavaScript: 52/52, `node --check` y `git diff --check` correctos. PHPUnit,
+  Pint y build siguen pendientes por falta de runtime/dependencias accesibles.
+
+## 2026-11-25 — PR #159: generalización inicial del ciclo operativo mensual
+
+- Se verificó el HEAD remoto `03724cb51fe4826f2b0d11a825d79f16de38c957` antes
+  de modificar la automatización.
+- Se añadió `CAMPAIGN_OPERATIONAL_ENABLED_MONTHS` como allowlist explícita de
+  meses operativos, conservando las banderas históricas de octubre/noviembre y
+  el valor por defecto deshabilitado.
+- El constructor, la automatización diaria, el proyector de Interests y el
+  dashboard aceptan meses configurados; el límite de fecha se calcula por
+  calendario y se conserva la regla de no usar el día actual incompleto.
+- La publicación automática con cobertura parcial queda protegida por
+  `CAMPAIGN_OPERATIONAL_DAILY_ALLOW_PARTIAL_PUBLICATION_ENABLED=false` por
+  defecto. No se activa ninguna bandera ni run.
+- Frontend: los presets y deep-links operativos aceptan períodos configurados
+  sin eliminar la compatibilidad con octubre/noviembre.
+- JavaScript: 52/52, `node --check` y `git diff --check` correctos. PHPUnit,
+  Pint y build no se ejecutaron por falta de runtime/dependencias accesibles;
+  esta entrega no declara producción lista.
+
+## 2026-11-25 — PR #159: calendario económico y versionado de runs
+
+- Se revisó de nuevo el HEAD remoto `5ff0de9421b7d0bc6bc3d7ab4740ec5c3c705686`.
+- La selección de plataformas económicas del builder y del dashboard ya no usa
+  el número de mes; utiliza el estado real `closed` para leer snapshots y la
+  ruta abierta para cobertura diaria acreditada.
+- Se añadió la migración aditiva
+  `2026_11_25_120000_add_attribution_algorithm_version_to_campaign_operational_runs.php`.
+  Los runs nuevos guardan `operational-2026-11.1` y los runs preparados/activos
+  solo se reutilizan si coinciden con esa versión. No se ejecutó la migración.
+- El calendario frontend acepta años posteriores y períodos autorizados sin
+  ampliar la allowlist operativa.
+- Verificaciones ejecutadas: `node --check`, JavaScript 52/52 y
+  `git diff --check`. PHPUnit, Pint y build siguen pendientes por falta de
+  runtime/dependencias accesibles. No se activaron flags ni runs.
 # Corrección Contact Center — certificación octubre de 2026
 
 ## Resumen de la tarea
@@ -8897,3 +9770,78 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   editar; los cambios documentales se realizaron manualmente y se validarán
   con el procedimiento de `docs/guia-mantenimiento-documental.md`.
 - Docs-Impact: updated. Docs-Matrix-Impact: updated.
+
+## Integración de `main` para PR #158 (2026-11-25)
+
+- Alcance: se trabajó exclusivamente en
+  `C:\Users\Usuario\Herd\informes-app-hrmotor-comisiones`, rama
+  `work/comisiones-20261120`. El árbol estaba limpio, la rama de la PR no
+  estaba asociada a otro worktree y el worktree principal no fue modificado.
+- Referencias: la rama local se actualizó por fast-forward desde `3151259` a
+  `4dda436`, y se integró `origin/main` (`c1dbda9`) mediante merge normal, sin
+  rebase ni reescritura. El merge commit publicado es `f48deb3` en
+  `codex/store-manager-commissions-october-2026`.
+- Conflictos resueltos: `docs/ai/HANDOFF.md` conserva las secciones históricas
+  de Comisiones y Contact Center; `docs/guia-mantenimiento-documental.md`
+  conserva el mapeo de empleo y las reglas `EXACT` de Contact Center; y
+  `tests/documentation/test_check_documentation_integrity.py` conserva ambas
+  pruebas de dominio. No quedan rutas sin fusionar ni marcadores de conflicto.
+- Integración funcional: los cambios PHP/Blade y la migración que ya estaban en
+  `origin/main` se conservaron por auto-merge; no se editó lógica de Campañas
+  ni de Comisiones durante la resolución y no se modificó ningún JavaScript.
+  La migración de Contact Center solo se integró en el árbol; no se ejecutó.
+- Verificaciones: `git diff --cached --check` y la búsqueda global de
+  marcadores terminaron correctamente. El test documental local no pudo
+  iniciarse porque el entorno no dispone de `python.exe`; debe validarse en
+  CI. No se ejecutaron migraciones, sincronizaciones, imports ni despliegues.
+- Documentación: se conservaron las reglas de ambas ramas y este registro se
+  añade para cumplir el protocolo de entrega. No cambia la arquitectura ni
+  `PROJECT_CONTEXT.md`. La PR permanece abierta y no se fusiona con `main`.
+- Contrato PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
+  `Docs-Scope: commissions`.
+
+## Corrección final de checks de PR #158 (2026-11-26)
+
+- Se ajustó únicamente `tests/Feature/CampaignDashboardTest.php`: el test de
+  contrato de UI habilita la autenticación y octubre como período operacional
+  para un administrador, que son las condiciones reales para mostrar el
+  selector; el test de acceso verifica que el selector aparece para Admin y
+  permanece oculto para Director. No se modificó la vista ni el control de
+  acceso del dashboard.
+- La descripción de la PR actualizó `Docs-Outside-Paths` y
+  `Docs-Outside-Evidence` para enumerar exactamente las cinco rutas
+  funcionales sin mapeo documental detectadas contra `main`, incluida
+  `app/Services/Salesforce/OperationalInterestCurrentAutomation.php`.
+- No hay cambios de aplicación, consultas, sincronizadores, migraciones,
+  flags ni configuración productiva. No cambian la arquitectura ni las
+  convenciones generales; no se actualizan `PROJECT_CONTEXT.md` ni
+  `DECISIONS.md`.
+- Verificaciones: `git diff --check` correcto. El test PHP afectado no pudo
+  ejecutarse localmente porque el entorno no dispone de PHP. En CI,
+  `docs-integrity` y `october-provisional-mariadb` pasan; el job `test` se
+  detiene antes de los tests PHP en `Audit runtime dependencies` por avisos de
+  seguridad de `symfony/routing`, por lo que el test PHP sigue sin ejecutarse.
+- No se requiere mantenimiento documental de informes: el cambio modifica
+  exclusivamente tests y metadatos de la PR, sin cambiar el comportamiento,
+  origen, cálculo, presentación o auditoría de ningún informe.
+
+## Corrección de vulnerabilidades Symfony de PR #158 (2026-11-26)
+
+- Se actualizó exclusivamente `composer.lock`; `composer.json` permanece sin
+  cambios y no se modificaron código de negocio, workflows, consultas,
+  sincronizadores, migraciones ni configuración productiva.
+- Versiones corregidas: `symfony/http-foundation` `8.1.11` a `8.1.12`,
+  `symfony/http-kernel` `8.1.11` a `8.1.12`, `symfony/mailer` `8.0.15` a
+  `8.1.12` y `symfony/routing` `8.1.11` a `8.1.12`. La resolución se generó
+  con Composer partiendo del lock original y sin actualizar Laravel ni Pest.
+- Las versiones `8.1.12` son las releases parcheadas de la rama compatible
+  con PHP 8.4 y corrigen los cinco avisos de auditoría; no se introdujeron
+  excepciones ni exclusiones de CVE.
+- Verificaciones locales: `composer validate --no-check-publish --strict`,
+  `composer validate --check-lock --no-check-publish --strict`,
+  `composer audit --locked --no-dev` y `git diff --check`, todas correctas.
+  PHPUnit completo, MariaDB y `docs-integrity` quedan para GitHub Actions;
+  no se ejecutaron migraciones ni procesos de datos.
+- No cambia la arquitectura ni el comportamiento de los informes, por lo que
+  no se actualizan `PROJECT_CONTEXT.md` ni `DECISIONS.md` y no se requiere
+  mantenimiento adicional de documentación de informes.

@@ -165,6 +165,25 @@ class CommercialCommissionSourceReadinessTest extends TestCase
         $this->assertFalse(data_get($state, 'components.reviews.blocking'));
     }
 
+    public function test_october_calculated_store_manager_row_is_not_reclassified_as_pending(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-10 10:00:00');
+        $this->completedRunFor('salesforce_opportunities', '2026-10-01 00:00:00', '2026-11-01 00:00:00');
+
+        $state = app(CommercialCommissionSourceReadinessService::class)->inspect('delegations', '2026-10', [
+            'issues' => [],
+            'delegation_rows' => [[
+                'delegation_name' => 'Norte Test',
+                'store_manager_plan' => 'october_2026',
+                'store_manager_status' => 'calculated',
+                'reviews_technical_status' => 'available',
+                'reviews_fetched_at' => now()->toIso8601String(),
+            ]],
+        ]);
+
+        $this->assertNotContains('La tienda Norte Test tiene componentes económicos pendientes.', $state['blocking']);
+    }
+
     public function test_stale_available_delegation_review_still_blocks(): void
     {
         $state = $this->inspectDelegationRows([

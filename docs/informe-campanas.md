@@ -316,6 +316,52 @@ cobertura de octubre en proveedores, Salesforce ni producción.
 
 Actualizado: 2026-11-18. URL: `/informes/campanas`.
 
+## Iteración UX de rankings y filtros — 2026-11-19
+
+La pestaña de Campañas mantiene el mismo dataset, periodo, filtros de servidor,
+fuentes locales, atribución, auditoría y exportaciones. El cambio es de
+presentación: la tabla de detalle permanece abierta y usa desplazamiento
+interno; el control que antes decía «Columnas» se presenta como «Filtro» y
+continúa gestionando la visibilidad de columnas. La columna **Estado actual**
+deja de estar disponible en el selector y en la tabla de esta vista. El estado
+histórico/operativo documentado en las secciones anteriores no se recalcula ni
+se borra de persistencia; simplemente ya no se muestra aquí.
+
+El cajón de **Filtros avanzados** se retira de la interfaz. No se modifican los
+parámetros ni el filtrado que el servicio PHP admite: nombre, oportunidad,
+reserva, venta y clasificación siguen siendo contratos de backend/exportación
+cuando se reciben por las vías existentes, pero esta iteración no ofrece sus
+controles avanzados en el DOM. El botón de limpieza general permanece.
+
+### Rankings visibles y formato
+
+Por defecto, y también al recuperar una preferencia de `localStorage`, la
+interfaz incluye estos seis rankings, siempre que el contexto y la
+disponibilidad de datos permitan representarlos:
+
+- Mejor y peor CTR, ordenados por `ctr` descendente y ascendente.
+- Mejor y peor CPC, ordenados por `cpc` ascendente y descendente.
+- Mayor y menor porcentaje de oportunidades, ordenados por
+  `lead_to_opportunity` descendente y ascendente.
+
+Cada ranking toma como máximo cinco filas y excluye valores `null` cuando el
+backend exige valor. `lead_to_opportunity` es la razón existente de
+`opportunities / leads_salesforce`; en el contrato ROT-4, `leads_salesforce`
+representa Interests, no una entidad Salesforce Lead. El servicio no convierte
+ausencias en cero ni cambia el universo, deduplicación o fórmula económica.
+Los porcentajes de la presentación usan agrupación española y dos decimales;
+el valor JSON y la ordenación numérica no se alteran. Los demás rankings
+existentes siguen sujetos a la configuración de visibilidad y a la
+disponibilidad de sus métricas.
+
+La regresión JavaScript cubre el formato, la exclusión visual de Estado actual,
+la compatibilidad de identificadores legacy, la disponibilidad parcial y los
+rankings/renderizadores reales. No acredita cobertura de proveedores,
+Salesforce ni producción. Evidencia funcional: `CampaignDashboardDatasetService::platformOnlyRankings()`;
+evidencia de presentación: `campaigns-dashboard.js`, la vista Blade y
+`tests/js/campaign-presentation.test.mjs`. No se promueve ninguna ficha KPI a
+auditada: la trazabilidad completa de fuentes y campos API continúa pendiente.
+
 ## Contrato funcional ROT-4
 
 La entidad CRM de adquisición es `Interes__c`, replicada localmente en
@@ -985,3 +1031,18 @@ son informativas cuando la cobertura de Opportunities y la integridad de fuentes
 son completas; no se invalidan mediante un umbral numérico arbitrario.
 Las tareas de Opportunities y Opportunity–Interest solo se reutilizan cuando su
 evidencia persistida cubre el cutoff del Interest operacional seleccionado.
+## Revisión final de presentación — 2026-11-19
+
+- El diagnóstico de sincronización solo se considera disponible cuando contiene evidencia útil: una fecha real, una ejecución con estado/fecha o un contador positivo. Objetos vacíos, contadores cero y propiedades nulas no habilitan el botón. El panel lateral usa fondo blanco opaco, conserva apertura/cierre y no cambia autorización.
+- La presentación distingue el payload certificado `period_mode=interest_pivot`, el payload provisional `operational_provisional` con `availability.attribution.status=available` y el modo `platform_independent_only`. Solo los dos primeros acreditan Interests; el último muestra guiones y no sustituye Interests por conversiones nativas de Ads.
+- Los seis rankings obligatorios permanecen visibles con datos o con estado vacío. Los porcentajes de oportunidades excluyen valores nulos; no se inventan ceros ni resultados cuando faltan atribuciones.
+- Las fechas ausentes (`null`, cero numérico, cadena `0` o cadena vacía) se muestran como `-`. `last_spend_date` mantiene la procedencia backend de la última fecha diaria con gasto positivo; `campaign_end_date` mantiene el campo de campaña recibido desde las métricas de plataforma.
+## Ajustes visuales finales de Campañas — 2026-11-20
+
+- La etiqueta informativa de cierre «Inversión: Abierta. Resultados comerciales: Abiertos.» deja de generarse en la vista. El estado económico y sus reglas de bloqueo permanecen en el payload y en las advertencias de integridad.
+- El contexto `Todos` muestra un único H2 «Detalle de campañas»; no se renderiza un subtítulo idéntico. Los contextos con descripciones específicas conservan sus subtítulos útiles.
+- `campaign_end_date` permanece en backend, métricas y contratos, pero se elimina de la configuración visual, del selector y de la migración de preferencias antiguas.
+- La comparativa por plataforma usa el PNG facilitado para Google Ads en `/brand/google-ads-logo.png`, manteniendo `alt="Google Ads"`, dimensiones explícitas y fallback textual si la imagen falla.
+### Alcance de la PR 158
+
+La PR 158 no modifica las reglas, fuentes, atribución ni exportaciones de Campañas. Sus cambios de comisiones de jefes de tienda permanecen aislados del universo de campañas y no alteran sus snapshots ni sus KPIs.

@@ -3378,6 +3378,7 @@ th.num {
     width: min(640px, calc(100vw - 24px));
     padding: 30px;
     border-radius: 32px 0 0 32px;
+    background: #ffffff;
 }
 
 .campaigns-report .campaign-diagnostics-drawer .panel-title {
@@ -3426,6 +3427,56 @@ th.num {
     background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
     border-radius: 32px;
     box-shadow: inset 0 0 0 1px rgba(31, 41, 68, .08);
+}
+
+/* Campañas: tabla compacta, controles homogéneos y rankings legibles. */
+.campaigns-report .campaigns-filter-bar input,
+.campaigns-report .campaigns-filter-bar select,
+.campaigns-report .campaigns-filter-bar button,
+.campaigns-report .ranking-popover,
+.campaigns-report .columns-popover {
+    font-family: "Instrument Sans", Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.campaigns-report .campaign-filter-actions {
+    align-self: end;
+    justify-self: end;
+}
+
+.campaigns-report .campaign-table-card .table-wrap {
+    max-height: 30rem;
+    overflow: auto;
+}
+
+.campaigns-report .campaign-table-card thead th {
+    position: sticky;
+    top: 0;
+}
+
+.campaigns-report .priority-grid {
+    align-items: stretch;
+    gap: 14px;
+    row-gap: 14px;
+}
+
+.campaigns-report .priority-grid > .card {
+    display: flex;
+    flex-direction: column;
+}
+
+.campaigns-report .priority-grid > .card .panel-title {
+    min-height: 3.2rem;
+    margin-bottom: 12px;
+}
+
+.campaigns-report .priority-grid > .card h3 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.25;
+}
+
+.campaigns-report .campaign-metric-bar b {
+    background: #ed1b2f;
 }
 
 .campaigns-report .line-grid {

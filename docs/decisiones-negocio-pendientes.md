@@ -95,6 +95,39 @@ controlada conforme a `operaciones-produccion.md`:
 El lifecycle/presencia de Opportunities no pertenece a esta lista: quedó
 desplegado, reconciliado e idempotente en producción el 8 de septiembre de 2026.
 
+## Plan de jefes de tienda desde octubre de 2026 — decisiones pendientes
+
+La integración provisional ya conecta objetivos persistidos, entregas, compras,
+reseñas, responsables, roster, RR. HH., snapshot y XLSX. No obstante, estas
+decisiones/evidencias siguen abiertas antes de tratar el plan como liquidación
+productiva:
+
+- Identificar y aprobar la fuente externa y acreditar una ejecución controlada
+  del procedimiento de carga de `store_manager_commission_roster_members`. Ya
+  existe `commissions:import-store-manager-roster`: por defecto valida sin
+  escribir, `--dry-run` lo explicita y `--apply` exige `--imported-by`, persiste
+  el actor y protege la operación atómica. También rechaza coberturas
+  solapadas/contradictorias del mismo usuario y mes. No existe evidencia en
+  esta revisión de datos autorizados o de una ejecución productiva.
+- Conciliar en Salesforce la identidad física de Tasación/Cambio y resolver la
+  discrepancia de una `delivery_store` no vacía que no coincide con un objetivo:
+  el recorrido actual la deja fuera sin una incidencia específica. La misma
+  evidencia debe confirmar que los campos de tasación elegible son estables y
+  que una operación compartida sigue siendo solo volumen físico, sin economía
+  individual duplicada.
+- Autorizar las evidencias reales de alta/reingreso de RR. HH. y adscripción
+  histórica. `ImportHrEmploymentDates` exige actor al escribir y bloquea
+  períodos definitivos, pero no aporta por sí mismo la fuente empresarial.
+- Mantener el contrato del endpoint interno de reseñas: fuente válida, cero
+  confirmado, payload incompleto, error, media fuera de 0--5 y caducidad son
+  estados distintos; la precisión de la media debe conservarse hasta aplicar
+  el umbral.
+
+El plan sigue provisional y estas pendientes impiden certificar el cierre hasta
+que las fuentes y conflictos se resuelvan. El código sí permite aprobar un
+snapshot íntegro cuando todas las validaciones pasan; esta nota no afirma que
+se haya aprobado octubre ni convierte fixtures en evidencia productiva.
+
 ## Decisiones cerradas e implementadas
 
 | Informe | Decisión implantada |

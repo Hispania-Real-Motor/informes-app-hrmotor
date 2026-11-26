@@ -17,6 +17,8 @@ final class CampaignOperationalAttributionBuilder
 {
     private const LEASE_MINUTES = 5;
 
+    private const ATTRIBUTION_ALGORITHM_VERSION = 'operational-2026-11.1';
+
     public function __construct(
         private readonly OperationalInterestSourceReader $interests,
         private readonly CampaignAttributionBuilderService $matching,
@@ -31,7 +33,14 @@ final class CampaignOperationalAttributionBuilder
 
     public function build(int $year, int $month): array
     {
-        if ($year !== 2026 || ! in_array($month, [10, 11], true)) {
+        $monthKey = sprintf('%04d-%02d', $year, $month);
+        $legacyEnabled = match ($monthKey) {
+            '2026-10' => config('campaign_operational.october_2026_enabled', false),
+            '2026-11' => config('campaign_operational.november_2026_enabled', false),
+            default => false,
+        };
+        if ($year < 2026 || $month < 1 || $month > 12
+            || (! in_array($monthKey, config('campaign_operational.enabled_months', []), true) && ! $legacyEnabled)) {
             throw new RuntimeException('Período operativo no habilitado.');
         }
 
@@ -39,32 +48,34 @@ final class CampaignOperationalAttributionBuilder
         $monthKey = $source['month'];
         $start = CarbonImmutable::create($year, $month, 1, 0, 0, 0, 'Europe/Madrid');
         $endExclusive = $start->addMonth();
-        $endDate = $month === 10
-            ? $endExclusive->subDay()->toDateString()
-            : min(
-                $endExclusive->subDay()->toDateString(),
-                CarbonImmutable::parse($source['effective_cutoff_at'], 'UTC')->setTimezone('Europe/Madrid')->toDateString(),
-                CarbonImmutable::now('Europe/Madrid')->subDay()->toDateString()
-            );
+        $endDate = min(
+            $endExclusive->subDay()->toDateString(),
+            CarbonImmutable::parse($source['effective_cutoff_at'], 'UTC')->setTimezone('Europe/Madrid')->toDateString(),
+            CarbonImmutable::now('Europe/Madrid')->subDay()->toDateString()
+        );
         if ($endDate < $start->toDateString()) {
             throw new RuntimeException('No hay un día completo disponible para la atribución operativa.');
         }
         $economic = $this->dashboard->operationalEconomicContext($monthKey, $endDate);
-        if ($month === 10 && ($economic['closure_status'] !== 'closed' || $economic['snapshot_rows'] === [])) {
-            throw new RuntimeException('Falta el snapshot económico cerrado de octubre.');
+        if ($economic['closure_status'] === 'closed' && $economic['snapshot_rows'] === []) {
+            throw new RuntimeException($monthKey === '2026-10'
+                ? 'Falta el snapshot económico cerrado de octubre.'
+                : 'Falta el snapshot económico cerrado del período.');
         }
-        if ($month === 11 && $economic['closure_status'] !== 'open') {
-            throw new RuntimeException('Noviembre ya no admite la fuente económica abierta.');
+        $economicPlatforms = array_filter($economic['availability']['platforms'] ?? [], static fn (array $state): bool => ($state['status'] ?? null) === 'available');
+        if ($economic['closure_status'] !== 'closed' && $economicPlatforms === []) {
+            throw new RuntimeException('No existe cobertura económica válida para el período abierto.');
         }
         $opportunity = $this->opportunityEvidence($source);
         $active = DB::table('campaign_operational_months as m')
             ->join('campaign_operational_runs as r', 'r.id', '=', 'm.active_run_id')
-            ->where('m.month_key', $monthKey)->first(['r.id', 'r.interest_run_id', 'r.projection_key', 'r.economic_fingerprint',
+            ->where('m.month_key', $monthKey)->first(['r.id', 'r.interest_run_id', 'r.projection_key', 'r.attribution_algorithm_version', 'r.economic_fingerprint',
                 'r.opportunity_sync_run_id', 'r.opportunity_sync_cutoff_at', 'r.direct_relationship_run_id',
                 'r.direct_relationship_cutoff_at', 'r.relationship_fingerprint', 'r.status']);
         if ($active !== null && $active->status === 'completed'
             && (int) $active->interest_run_id === $source['run_id']
             && $active->projection_key === $source['projection_key']
+            && $active->attribution_algorithm_version === self::ATTRIBUTION_ALGORITHM_VERSION
             && $active->economic_fingerprint === $economic['fingerprint']
             && (int) $active->opportunity_sync_run_id === (int) $opportunity['opportunity_run_id']
             && (string) $active->opportunity_sync_cutoff_at === (string) $opportunity['opportunity_cutoff_at']
@@ -77,6 +88,7 @@ final class CampaignOperationalAttributionBuilder
             ->where('status', 'prepared')->orderByDesc('id')->first();
         if ($prepared !== null && (int) $prepared->interest_run_id === $source['run_id']
             && $prepared->projection_key === $source['projection_key']
+            && $prepared->attribution_algorithm_version === self::ATTRIBUTION_ALGORITHM_VERSION
             && $prepared->economic_fingerprint === $economic['fingerprint']
             && $prepared->relationship_fingerprint === $opportunity['fingerprint']) {
             return ['run_id' => (int) $prepared->id, 'month' => $monthKey, 'reused' => true, 'status' => 'prepared'];
@@ -91,20 +103,37 @@ final class CampaignOperationalAttributionBuilder
         $unresolvedRelationships = 0;
 
         try {
-            $availablePlatforms = $month === 10
+            $availablePlatforms = $economic['closure_status'] === 'closed'
                 ? array_values(array_unique(array_column($economic['snapshot_rows'], 'platform')))
                 : array_keys(array_filter($economic['availability']['platforms'],
                     static fn (array $state): bool => $state['status'] === 'available'));
             $lookup = $this->matching->operationalMetricLookup(
                 $start, CarbonImmutable::parse($endDate, 'Europe/Madrid')->addDay()->startOfDay(),
-                $month === 10 ? $economic['snapshot_rows'] : null, $availablePlatforms,
+                $economic['closure_status'] === 'closed' ? $economic['snapshot_rows'] : null, $availablePlatforms,
                 $economic['summary']['campaigns']
             );
             $this->interests->eachBatch($source, function (array $batch) use ($runId, $monthKey, $endDate, $token, $source, $opportunity, $lookup, &$count, &$processed, &$incidents, &$unresolvedRelationships): void {
                 $batch = array_values(array_filter($batch, static fn (array $interest): bool => CarbonImmutable::parse($interest['functional_created_at'], 'UTC')
                     ->setTimezone('Europe/Madrid')->toDateString() <= $endDate));
+                // Keep the full batch for audit rows, but scope commercial
+                // relationship coverage to interests that the existing matcher
+                // proves are attributable to an eligible ad campaign.
+                $eligibleInterests = [];
+                $campaignsByInterest = [];
+                foreach ($batch as $candidate) {
+                    $candidateLead = $this->asMatchingInterest($candidate);
+                    if (! $this->hasAcquisitionEvidence($candidateLead)) {
+                        continue;
+                    }
+                    $candidateCampaign = $this->matching->resolveOperationalCampaign($candidateLead, $lookup);
+                    $campaignsByInterest[$candidate['salesforce_id']] = $candidateCampaign;
+                    if ($candidateCampaign['campaign_source_type'] === 'platform_campaign'
+                        && in_array($candidateCampaign['platform'], ['google_ads', 'meta'], true)) {
+                        $eligibleInterests[] = $candidate;
+                    }
+                }
                 $relationshipEvidence = $opportunity['available']
-                    ? $this->opportunitiesForBatch($batch, $opportunity['direct_run_id'], $source['run_id'])
+                    ? $this->opportunitiesForBatch($eligibleInterests, $opportunity['direct_run_id'], $source['run_id'])
                     : ['resolved' => [], 'unresolved' => 0];
                 $opportunities = $relationshipEvidence['resolved'];
                 $unresolvedRelationships += $relationshipEvidence['unresolved'];
@@ -115,7 +144,8 @@ final class CampaignOperationalAttributionBuilder
                     if (! $this->hasAcquisitionEvidence($lead)) {
                         continue;
                     }
-                    $campaign = $this->matching->resolveOperationalCampaign($lead, $lookup);
+                    $campaign = $campaignsByInterest[$interest['salesforce_id']]
+                        ?? $this->matching->resolveOperationalCampaign($lead, $lookup);
                     $relationship = $opportunities[$interest['salesforce_id']] ?? null;
                     $flags = $opportunity['available']
                         ? $this->matching->operationalOpportunityFlags($lead, $relationship)
@@ -225,10 +255,18 @@ final class CampaignOperationalAttributionBuilder
     /** Explicit administrative activation after reviewing a prepared run. */
     public function activate(int $year, int $month, int $runId): array
     {
-        if ($year !== 2026 || ! in_array($month, [10, 11], true) || $runId < 1) {
+        if ($year < 2026 || $month < 1 || $month > 12 || $runId < 1) {
             throw new RuntimeException('Período o run no habilitado.');
         }
         $monthKey = sprintf('%04d-%02d', $year, $month);
+        $legacyEnabled = match ($monthKey) {
+            '2026-10' => config('campaign_operational.october_2026_enabled', false),
+            '2026-11' => config('campaign_operational.november_2026_enabled', false),
+            default => false,
+        };
+        if (! in_array($monthKey, config('campaign_operational.enabled_months', []), true) && ! $legacyEnabled) {
+            throw new RuntimeException('Período operativo no habilitado.');
+        }
         $candidate = DB::table('campaign_operational_runs')->where('id', $runId)
             ->where('month_key', $monthKey)->first();
         if ($candidate === null || ! in_array($candidate->status, ['prepared', 'completed'], true)) {
@@ -237,13 +275,14 @@ final class CampaignOperationalAttributionBuilder
         $evidence = json_decode($candidate->economic_evidence, true, 512, JSON_THROW_ON_ERROR);
         $endDate = $evidence['end_date'] ?? null;
         if (! is_string($endDate) || $endDate < $monthKey.'-01'
-            || $endDate > ($month === 10 ? '2026-10-31' : '2026-11-30')) {
+            || $endDate > CarbonImmutable::create($year, $month, 1, 0, 0, 0, 'Europe/Madrid')->endOfMonth()->toDateString()) {
             throw new RuntimeException('La cobertura económica preparada no es válida.');
         }
         $source = $this->interests->open($year, $month, true);
         $economic = $this->dashboard->operationalEconomicContext($monthKey, $endDate);
         $opportunity = $this->opportunityEvidence($source);
-        if ((int) $candidate->interest_run_id !== $source['run_id']
+        if ($candidate->attribution_algorithm_version !== self::ATTRIBUTION_ALGORITHM_VERSION
+            || (int) $candidate->interest_run_id !== $source['run_id']
             || $candidate->projection_key !== $source['projection_key']
             || (int) $candidate->utm_contract_version !== $source['utm_contract_version']
             || $candidate->economic_fingerprint !== $economic['fingerprint']
@@ -305,6 +344,7 @@ final class CampaignOperationalAttributionBuilder
             $runId = DB::table('campaign_operational_runs')->insertGetId([
                 'month_key' => $month, 'interest_run_id' => $source['run_id'],
                 'projection_key' => $source['projection_key'], 'utm_contract_version' => $source['utm_contract_version'],
+                'attribution_algorithm_version' => self::ATTRIBUTION_ALGORITHM_VERSION,
                 'interest_cutoff_at' => $source['effective_cutoff_at'], 'interest_observed_at' => $source['observed_at'],
                 'economic_fingerprint' => $economic['fingerprint'],
                 'economic_evidence' => json_encode([

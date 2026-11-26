@@ -1,0 +1,35 @@
+zone,store_name,delivery_target,purchase_target
+Levante,Alicante,35,28
+Levante,Murcia,30,12
+Levante,Valencia,30,10
+Levante,Paterna,30,28
+Levante,Sedaví,30,15
+Levante,Castellón,12,7
+Levante,Villarreal,30,15
+Levante,Elche,20,8
+Levante,Alcoy,20,8
+Norte,Bilbao,35,20
+Norte,Fontellas,30,10
+Norte,Pamplona,30,15
+Norte,San Sebastián,20,12
+Norte,Zaragoza,30,15
+Norte,Gijón,30,18
+Norte,A Coruña,30,18
+Norte,Valladolid,30,18
+Cataluña,Badalona,20,12
+Cataluña,Girona,25,12
+Cataluña,Lleida,20,10
+Cataluña,Lliçà de Vall,20,10
+Cataluña,Manresa,20,10
+Cataluña,Sant Boi,50,30
+Sur,Alcalá de Guadaíra,28,16
+Sur,Málaga Ortega,25,22
+Sur,Málaga Almacha,15,9
+Sur,Sevilla,35,20
+Sur,Palma,30,15
+Sur,Dos Hermanas,15,9
+Sur,Badajoz,12,5
+Madrid,Alcobendas,20,15
+Madrid,Rivas,40,22
+Madrid,Torrejón,40,15
+Madrid,Villalba,20,10

@@ -106,6 +106,12 @@ class IntegrityTests(unittest.TestCase):
         ):
             self.assertEqual({"commissions"}, checker.domains_for(path))
 
+    def test_hr_employment_import_maps_to_commissions(self) -> None:
+        self.assertEqual(
+            {"commissions"},
+            checker.domains_for("app/Console/Commands/ImportHrEmploymentDates.php"),
+        )
+
     def test_contact_center_lead_sync_metadata_and_index_map_only_to_commissions(self) -> None:
         for path in (
             "app/Services/Reports/MonthlyCommercial/Sync/SalesforceMonthlyLeadsSyncService.php",

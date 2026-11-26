@@ -34,8 +34,13 @@ final class CampaignDailyOperationalAutomation
         }
 
         $month = CarbonImmutable::now('Europe/Madrid')->format('Y-m');
-        if (! in_array($month, ['2026-10', '2026-11'], true)
-            || ! config('campaign_operational.'.($month === '2026-10' ? 'october_2026_enabled' : 'november_2026_enabled'), false)) {
+        $legacyEnabled = match ($month) {
+            '2026-10' => config('campaign_operational.october_2026_enabled', false),
+            '2026-11' => config('campaign_operational.november_2026_enabled', false),
+            default => false,
+        };
+        if (! preg_match('/\A\d{4}-(0[1-9]|1[0-2])\z/D', $month)
+            || (! in_array($month, config('campaign_operational.enabled_months', []), true) && ! $legacyEnabled)) {
             throw new RuntimeException('El período operacional de Campañas no tiene contrato habilitado.');
         }
 
@@ -90,7 +95,9 @@ final class CampaignDailyOperationalAutomation
         if ($persisted->status === 'completed' && $persisted->activated_at !== null) {
             return ['month' => $month, 'steps' => self::SOURCE_TASKS, 'attribution' => $attribution, 'activation' => 'unchanged'];
         }
-        if (($attribution['status'] ?? null) !== 'prepared' || ! ($attribution['opportunity_coverage_complete'] ?? false)) {
+        $partialPublicationAllowed = config('campaign_operational.daily_automation_allow_partial_publication_enabled', false);
+        if (($attribution['status'] ?? null) !== 'prepared'
+            || (! ($attribution['opportunity_coverage_complete'] ?? false) && ! $partialPublicationAllowed)) {
             throw new RuntimeException('La atribución no cumple la política de calidad operacional.');
         }
 

@@ -184,3 +184,9 @@ jobs:
 
       - name: Operational campaign attribution MariaDB tests
         run: php artisan test --filter=CampaignOperationalAttributionTest
+
+      - name: Store manager settlement MariaDB tests
+        run: php artisan test --filter=StoreManagerSettlementIntegrationTest
+
+      - name: Store manager roster importer MariaDB tests
+        run: php artisan test --filter=StoreManagerTeamRosterEvidenceImportTest

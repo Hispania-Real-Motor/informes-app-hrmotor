@@ -145,7 +145,7 @@ test('real detail rendering preserves shared rows, hides empty rows and escapes 
     vm.runInContext('renderCampaignTables(rows)', sandbox);
     assert.ok(!root.innerHTML.includes('EMPTY'));
     assert.ok(root.innerHTML.includes('&lt;script&gt;paused&lt;/script&gt;'));
-    assert.ok(root.innerHTML.includes('Estado no disponible'));
+    assert.ok(!root.innerHTML.includes('Estado actual'));
     assert.ok(root.innerHTML.includes('>—</td>'));
     assert.ok(root.innerHTML.includes(money(0)));
     assert.ok(root.innerHTML.includes('/informes/campanas/export/campaigns.csv'));
@@ -247,7 +247,7 @@ test('historical labels are presented only with platform evidence, without infer
         const before = JSON.stringify(sandbox.statusRow);
         const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [statusRow])", sandbox);
         assert.equal(historicalStatusPresentation(sandbox.statusRow).text, expected);
-        assert.ok(html.includes('Estado no disponible'));
+        assert.ok(!html.includes('Estado actual'));
         assert.ok(!html.includes('(histórico)</td>'));
         assert.equal(JSON.stringify(sandbox.statusRow), before);
     }
@@ -286,7 +286,7 @@ test('only explicit provider campaign states admit the backend historical label'
                 sandbox.invalidStatusRow = { platform, [field]: state, campaign_status_label: label };
                 assert.equal(historicalStatusPresentation(sandbox.invalidStatusRow).text, 'Estado no disponible');
                 const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [invalidStatusRow])", sandbox);
-                assert.ok(html.includes('Estado no disponible'));
+                assert.ok(!html.includes('Estado actual'));
                 assert.ok(!html.includes('>Inactiva (histórico)<'));
                 assert.ok(!html.includes('>Activa (histórico)<'));
                 assert.ok(!html.includes('<script>'));
@@ -344,7 +344,8 @@ test('real charts split at gaps while preserving zero, negatives and terminal nu
 test('state selector has compact label while retaining historical option values', () => {
     const blade = fs.readFileSync(new URL('../../resources/views/reports/campaigns/index.blade.php', import.meta.url), 'utf8');
     assert.ok(blade.includes('<label for="campaignStatus">Estado</label>'));
-    assert.ok(blade.includes('value="active" selected>Activas según criterio histórico'));
+    assert.ok(blade.includes('value="" selected>Todas'));
+    assert.ok(blade.includes('value="active">Activas según criterio histórico'));
     assert.ok(blade.includes('value="inactive">Inactivas según criterio histórico'));
     assert.ok(!blade.includes('id="campaignStatusHelp"'));
 });
@@ -373,11 +374,11 @@ test('detail columns remove functional results, use purchase costs and migrate o
     const memory = new Map([['hrmotor_campaign_columns_v5', JSON.stringify(['campaign', 'result_count', 'cost_per_result', 'sales'])], ['unrelated', 'keep']]);
     sandbox.localStorage = {getItem: (key) => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value)};
     const migrated = Array.from(vm.runInContext('loadVisibleColumns()', sandbox));
-    assert.deepEqual(migrated, ['campaign', 'sales', 'cost_per_purchase']);
+    assert.deepEqual(migrated, ['campaign', 'sales', 'cost_per_purchase', 'cost_per_lead', 'cost_per_opportunity']);
     assert.equal(memory.get('unrelated'), 'keep');
     assert.ok(memory.has('hrmotor_campaign_columns_v5'));
     memory.set('hrmotor_campaign_columns_v7', JSON.stringify(['campaign']));
-    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign']);
+    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'cost_per_lead', 'cost_per_opportunity']);
     for (const context of ['all', 'tasacion', 'otros']) {
         assert.equal(vm.runInContext(`columnAllowedInContext('cost_per_purchase', '${context}')`, sandbox), true);
     }
@@ -385,6 +386,28 @@ test('detail columns remove functional results, use purchase costs and migrate o
     assert.ok(!html.includes('data-column="result_count"'));
     assert.ok(!html.includes('data-column="cost_per_result"'));
     assert.equal((html.match(/Coste por compra/g) || []).length, 1);
+});
+
+test('campaign end date is never a visual column, including legacy preferences', () => {
+    const memory = new Map([['hrmotor_campaign_columns_v7', JSON.stringify(['campaign', 'campaign_end_date', 'spend'])]]);
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => id === 'campaignTables' ? { innerHTML: '' } : null,
+        querySelectorAll: () => [],
+    });
+    isolated.localStorage = { getItem: (key) => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value) };
+    vm.runInContext("visibleColumns = loadVisibleColumns(); currentContext = 'all';", isolated);
+    assert.ok(!Array.from(vm.runInContext('visibleColumns', isolated)).includes('campaign_end_date'));
+    const html = vm.runInContext("renderCampaignTable('all', 'Detalle de campañas', '', [{campaign_name:'A', campaign_end_date:'2026-11-20', spend:10}])", isolated);
+    assert.ok(!html.includes('campaign_end_date'));
+    assert.ok(!html.includes('Fecha fin de campaña'));
+    assert.equal((html.match(/Detalle de campañas/g) || []).length, 1);
+});
+
+test('economic closure status is no longer rendered in the campaigns view', () => {
+    const blade = fs.readFileSync(new URL('../../resources/views/reports/campaigns/index.blade.php', import.meta.url), 'utf8');
+    assert.ok(!blade.includes('investmentClosureStatus'));
+    assert.ok(!source.includes('function renderInvestmentClosure'));
 });
 
 test('only detail monetary cells use a dash while preserving reasons, valid zeros and negatives', () => {
@@ -472,7 +495,7 @@ test('real dashboard formatters group four digits, preserve precision, negatives
         assert.equal(formatted.replace(/\s/g, ' '), expected + ' €');
         assert.equal(vm.runInContext(`formatCompactAxisValue(${value}, true)`, sandbox), formatted);
     }
-    assert.equal(vm.runInContext('formatPercentRatio(12.345)', sandbox), '1.234,5%');
+    assert.equal(vm.runInContext('formatPercentRatio(12.345)', sandbox), '1.234,50%');
     assert.equal(vm.runInContext('formatMultiplier(1234.5)', sandbox), '1.234,50');
     assert.equal(vm.runInContext('formatMoney(null)', sandbox), 'Sin datos');
     assert.equal(vm.runInContext('formatReviewValue({value: "1234 / 9999"})', sandbox), '1.234 / 9.999');
@@ -537,15 +560,14 @@ test('sync diagnostic distinguishes operational success from old metrics and fai
     assert.ok(root.innerHTML.includes('Último dato de métricas'));
 });
 
-test('current status is rendered and escaped, legacy columns migrate without altering identifiers', () => {
+test('current status is excluded while legacy identifiers remain safe', () => {
     const memory = new Map([['hrmotor_campaign_columns_v6', JSON.stringify(['campaign', 'campaign_status_label', 'spend'])]]);
     sandbox.localStorage = {getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value)};
-    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'current_status', 'spend']);
+    assert.deepEqual(Array.from(vm.runInContext('loadVisibleColumns()', sandbox)), ['campaign', 'spend', 'cost_per_lead', 'cost_per_opportunity']);
     sandbox.currentRow = {platform: 'meta', campaign_id: '9007199254740993', spend: 1234.56, campaign_name: '<b>name</b>', current_status: {availability: 'fresh', verified_at: new Date().toISOString(), raw_status: 'PAUSED', label: '<img src=x>'}};
     const before = JSON.stringify(sandbox.currentRow);
     const html = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [currentRow])", sandbox);
-    assert.ok(html.includes('Estado actual'));
-    assert.ok(html.includes('&lt;img src=x&gt;'));
+    assert.ok(!html.includes('Estado actual'));
     assert.ok(html.includes('1.234,56'));
     assert.equal(sandbox.currentRow.campaign_id, '9007199254740993');
     assert.ok(!html.includes('<img src=x>'));
@@ -622,7 +644,6 @@ test('operational availability unlocks only metrics supported by the current res
     isolated.availability = { ...available, opportunity_dependent: { status: 'blocked' } };
     vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls(); renderColumnsPopover();', isolated);
     assert.equal(controls.leadType.disabled, false);
-    assert.equal(controls.hasOpportunity.disabled, true);
     assert.doesNotMatch(popover.innerHTML.match(/<input[^>]+data-column-toggle="leads_salesforce"[^>]*>/)?.[0] || '', /disabled/);
     assert.match(popover.innerHTML.match(/<input[^>]+data-column-toggle="sales"[^>]*>/)?.[0] || '', /disabled/);
     const partialTable = vm.runInContext("renderCampaignTable('all', 'Detalle', '', [{platform:'meta', campaign_name:'Synthetic', spend:10, leads_salesforce:2, opportunities:null, sales:null}])", isolated);
@@ -633,13 +654,11 @@ test('operational availability unlocks only metrics supported by the current res
     isolated.availability = { mode: 'platform_independent_only' };
     vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls(); renderColumnsPopover();', isolated);
     assert.equal(controls.leadType.disabled, true);
-    assert.equal(controls.hasOpportunity.disabled, true);
     assert.match(popover.innerHTML.match(/<input[^>]+data-column-toggle="leads_salesforce"[^>]*>/)?.[0] || '', /disabled/);
 
     isolated.availability = { mode: 'official_complete' };
     vm.runInContext('applyCampaignAvailability(availability); applyAvailabilityControls(); renderColumnsPopover();', isolated);
     assert.equal(controls.leadType.disabled, false);
-    assert.equal(controls.hasOpportunity.disabled, false);
     assert.doesNotMatch(popover.innerHTML.match(/<input[^>]+data-column-toggle="sales"[^>]*>/)?.[0] || '', /disabled/);
 
     isolated.availability = {};
@@ -680,7 +699,6 @@ test('a definitive load failure fails closed without discarding column preferenc
     vm.runInContext('renderWarnings = () => {}; renderKpisState = () => {}; renderCharts = () => {}; renderPlatformComparison = () => {}; renderReviewCampaigns = () => {}; renderDiagnostics = () => {}; renderRankings = () => {}; renderCampaignTables = () => {}; showStatusMessage = () => {};', isolated);
     vm.runInContext("renderLoadFailure(new Error('network unavailable'));", isolated);
     assert.equal(controls.leadType.disabled, true);
-    assert.equal(controls.hasOpportunity.disabled, true);
     assert.equal(notice.hidden, true);
     assert.equal(notice.textContent, '');
     assert.match(popover.innerHTML.match(/<input[^>]+data-column-toggle="sales"[^>]*>/)?.[0] || '', /disabled/);
@@ -702,6 +720,35 @@ test('provisional Interest KPI uses attributed count while unavailable source sh
     vm.runInContext('applyCampaignAvailability(availability); renderKpis({spend:20, leads_salesforce:null})', isolated);
     assert.match(kpis.innerHTML, /Intereses generados[\s\S]*kpi-value">—/);
     assert.match(kpis.innerHTML, /Sin atribución de Interests disponible/);
+});
+
+test('interest availability requires the certified mode and preserves attributed KPI values', () => {
+    const kpis = { innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; } };
+    const isolated = createDashboardSandbox({ addEventListener() {}, querySelectorAll: () => [],
+        getElementById: (id) => id === 'summaryKpis' ? kpis : null });
+    vm.runInContext('applyCampaignAvailability({}, null); renderKpis({spend:20, leads_salesforce:7})', isolated);
+    assert.match(kpis.innerHTML, /Intereses generados[\s\S]*kpi-value">—/);
+    kpis.innerHTML = '';
+    vm.runInContext("currentContext = 'venta'; applyCampaignAvailability({}, 'interest_pivot'); renderKpis({spend:20, leads_salesforce:7, opportunities:3, cost_per_lead:2.8571, cost_per_opportunity:6.6667}, 'venta')", isolated);
+    assert.match(kpis.innerHTML, /Intereses generados[\s\S]*kpi-value">7/);
+    assert.match(kpis.innerHTML, /Coste por interés[\s\S]*2,86/);
+});
+
+test('all six mandatory rankings remain visible with complete values and no invented null rows', () => {
+    const rankings = { innerHTML: '' };
+    const isolated = createDashboardSandbox({ addEventListener() {}, querySelectorAll: () => [],
+        getElementById: (id) => id === 'rankingsGrid' ? rankings : null });
+    vm.runInContext("visibleRankings = mandatoryRankingKeys; opportunityMetricsAvailable = true; interestMetricsAvailable = true; currentContext = 'all';", isolated);
+    vm.runInContext(`renderRankings({
+        best_ctr: [{campaign_name:'A', ctr:0.2}], worst_ctr: [{campaign_name:'B', ctr:0.01}],
+        best_cpc: [{campaign_name:'C', cpc:2}], worst_cpc: [{campaign_name:'D', cpc:20}],
+        best_lead_to_opportunity: [{campaign_name:'E', lead_to_opportunity:0.5}, {campaign_name:'N', lead_to_opportunity:null}],
+        worst_lead_to_opportunity: [{campaign_name:'F', lead_to_opportunity:0.01}, {campaign_name:'N', lead_to_opportunity:null}]
+    })`, isolated);
+    for (const title of ['Mejor CTR', 'Peor CTR', 'Mejor CPC', 'Peor CPC', 'Mayor porcentaje de oportunidades', 'Menor porcentaje de oportunidades']) {
+        assert.ok(rankings.innerHTML.includes(title), title);
+    }
+    assert.equal((rankings.innerHTML.match(/>N<\/span>/g) || []).length, 0);
 });
 
 test('platform comparison adds only a visual ChatGPT card after available providers', () => {
@@ -861,4 +908,58 @@ test('a cancelled request and its late response cannot clear the latest valid av
     assert.deepEqual(rendered, ['latest']);
     assert.deepEqual(loadFailures, []);
     assert.equal(vm.runInContext('campaignRows[0].campaign_name', isolated), 'Latest');
+});
+
+test('mandatory rankings cannot be hidden and null percentage values are excluded', () => {
+    const ranking = vm.runInContext("rankingRowsForDisplay([{lead_to_opportunity:null},{lead_to_opportunity:0.25}], {key:'best_lead_to_opportunity', metric:'lead_to_opportunity'})", sandbox);
+    assert.deepEqual(Array.from(ranking).map((row) => row.lead_to_opportunity), [0.25]);
+    vm.runInContext("visibleRankings = ['best_ctr', 'worst_ctr', 'best_cpc', 'worst_cpc', 'best_lead_to_opportunity', 'worst_lead_to_opportunity'];", sandbox);
+    const target = { checked: false, dataset: { rankingToggle: 'best_ctr' }, matches: (selector) => selector === '[data-ranking-toggle]' };
+    const listeners = [];
+    const isolated = createDashboardSandbox({
+        addEventListener: (type, handler) => type === 'change' && listeners.push(handler),
+        getElementById: () => null,
+        querySelectorAll: () => [],
+    });
+    vm.runInContext('bindRankingSettings()', isolated);
+    isolated.HTMLInputElement = function HTMLInputElement() {};
+    Object.setPrototypeOf(target, isolated.HTMLInputElement.prototype);
+    listeners.find(Boolean)({ target });
+    assert.equal(target.checked, true);
+});
+
+test('formatDate does not turn null into the Unix epoch', () => {
+    assert.equal(vm.runInContext('formatDate(null)', sandbox), '-');
+    assert.equal(vm.runInContext('formatDate(undefined)', sandbox), '-');
+    assert.equal(vm.runInContext("formatDate('')", sandbox), '-');
+    assert.equal(vm.runInContext('formatDate(0)', sandbox), '-');
+    assert.equal(vm.runInContext("formatDate('0')", sandbox), '-');
+    assert.match(vm.runInContext("formatDate('2026-11-19')", sandbox), /19\/11\/2026/);
+});
+
+test('empty diagnostics remove the diagnostics control', () => {
+    const root = { innerHTML: '' };
+    const button = { classList: { added: false, add() { this.added = true; }, remove() {} } };
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => id === 'campaignDiagnostics' ? root : (id === 'diagnosticsOpen' ? button : null),
+        querySelectorAll: () => [],
+    });
+    vm.runInContext('renderDiagnostics({})', isolated);
+    assert.equal(button.classList.added, true);
+});
+
+test('diagnostics with only null properties remain hidden while real evidence is rendered', () => {
+    const root = { innerHTML: '' };
+    const button = { classList: { added: false, removed: false, add() { this.added = true; }, remove() { this.removed = true; } } };
+    const isolated = createDashboardSandbox({
+        addEventListener() {},
+        getElementById: (id) => id === 'campaignDiagnostics' ? root : (id === 'diagnosticsOpen' ? button : null),
+        querySelectorAll: () => [],
+    });
+    vm.runInContext('renderDiagnostics({meta_sync_operation:{verified_at:null,last_attempt_status:null}, google_sync_operation:{verified_at:null,last_attempt_status:null}, meta_metric_rows:0, google_metric_rows:0})', isolated);
+    assert.match(root.innerHTML, /Sin diagnóstico disponible/);
+    root.innerHTML = '';
+    vm.runInContext("renderDiagnostics({meta_metric_rows:2, last_meta_sync:'2026-11-19 10:00:00'})", isolated);
+    assert.match(root.innerHTML, /Filas Meta/);
 });
