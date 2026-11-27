@@ -56,6 +56,11 @@
   nombre de índice demasiado largo en MariaDB; ambos se corrigieron en esta
   iteración. También se añadió el mapeo documental explícito de los modelos de
   objetivos y se eliminó el falso impacto transversal de una ruta nueva.
+  La ejecución siguiente (`45971913928`) confirmó `docs-integrity` y
+  `october-provisional-mariadb`, pero `test` encontró que los tres lotes de
+  auditoría pasaban arrays PHP directamente a `insertOrIgnore()` para la
+  columna JSON `metadata`; la serialización se corrigió en el importador y en
+  el servicio de herencia/edición, manteniendo los lotes y la idempotencia.
   PHP/PHPUnit/Pint no se pudieron ejecutar en esta sesión porque no existe un
   binario PHP en el PATH ni en las rutas locales esperadas. Deben ejecutarse en
   Herd/CI antes de publicar. No se ejecutó `php artisan migrate`, ningún

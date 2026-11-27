@@ -158,11 +158,11 @@ class ImportStoreManagerCommissionTargets extends Command
                         'before_purchase_target' => $stored?->purchase_target,
                         'after_delivery_target' => $target['delivery_target'],
                         'after_purchase_target' => $target['purchase_target'],
-                        'metadata' => [
+                        'metadata' => json_encode([
                             'source_type' => StoreManagerCommissionTargetService::SOURCE_TYPE_IMPORTED,
                             'source_sha256' => $source,
                             'source_label' => self::TARGET_SOURCE_LABEL,
-                        ],
+                        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
                         'created_at' => $now,
                         'updated_at' => $now,
                     ];

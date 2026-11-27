@@ -173,12 +173,12 @@ class StoreManagerCommissionTargetService
                     'before_purchase_target' => $before['purchase_target'],
                     'after_delivery_target' => $incoming['delivery_target'],
                     'after_purchase_target' => $incoming['purchase_target'],
-                    'metadata' => [
+                    'metadata' => json_encode([
                         'before_source_type' => $before['source_type'],
                         'before_source_month' => $before['source_month'],
                         'after_source_type' => self::SOURCE_TYPE_ADMIN,
                         'after_source_month' => null,
-                    ],
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
@@ -404,11 +404,11 @@ class StoreManagerCommissionTargetService
                 'before_purchase_target' => null,
                 'after_delivery_target' => (int) $target->delivery_target,
                 'after_purchase_target' => (int) $target->purchase_target,
-                'metadata' => [
+                'metadata' => json_encode([
                     'source_type' => self::SOURCE_TYPE_INHERITED,
                     'source_sha256' => $target->source_sha256,
                     'source_label' => $target->source_label,
-                ],
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
