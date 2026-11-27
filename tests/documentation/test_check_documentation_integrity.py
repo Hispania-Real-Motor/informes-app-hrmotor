@@ -122,6 +122,14 @@ class IntegrityTests(unittest.TestCase):
 
         self.assertEqual({"interests", "campaigns"}, checker.domains_for("app/Models/SalesforceLead.php"))
 
+    def test_store_manager_target_models_map_to_commissions(self) -> None:
+        for path in (
+            "app/Models/StoreManagerCommissionTarget.php",
+            "app/Models/StoreManagerCommissionTargetEvent.php",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual({"commissions"}, checker.domains_for(path))
+
     def test_current_campaign_status_configuration_maps_only_to_campaigns(self) -> None:
         self.assertEqual({"campaigns"}, checker.domains_for("config/campaign_current_status.php"))
 

@@ -16,11 +16,12 @@
   reutilizar `commercial_commission_month_settings` o mezclar los objetivos de
   Area Manager. Los eventos guardan operación, actor y valores anteriores y
   nuevos; la referencia de octubre conserva su contrato SHA-256/34/907/499.
-- La edición vive en una ruta separada de Coeficientes y solo acepta objetivos
-  por `store_key`; el servidor conserva tienda, zona y procedencia y solo
-  actualiza filas con cambios. Admin es el único rol autorizado. Así se evita
-  que un formulario alterado modifique identidades, cierres, snapshots o
-  fórmulas económicas.
+- La edición vive en una sección y formulario separados dentro de Coeficientes,
+  con un marcador explícito que reutiliza el endpoint existente sin ampliar el
+  contrato de rutas. Solo acepta objetivos por `store_key`; el servidor
+  conserva tienda, zona y procedencia y solo actualiza filas con cambios. Admin
+  es el único rol autorizado. Así se evita que un formulario alterado
+  modifique identidades, cierres, snapshots o fórmulas económicas.
 
 ## 2026-11-13 — atribución provisional de Campañas con puntero propio
 

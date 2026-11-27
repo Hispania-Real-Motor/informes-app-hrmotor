@@ -3,10 +3,9 @@
 ## 2026-11-27 — Herencia mensual y edición de objetivos de jefes de tienda
 
 - Rama: `codex/store-manager-targets-monthly-inheritance`, creada desde
-  `origin/main` en `99f066021819743b07096956dc5e78033135fa35`. Commit local de
-  esta entrega: `feat(commissions): materialize monthly store manager targets`.
-  No se ha hecho push, PR, merge, despliegue, importación real ni cambio
-  productivo.
+  `origin/main` en `99f066021819743b07096956dc5e78033135fa35`. La entrega se
+  publica con commits normales en la PR #163 hacia `main`; no se hace merge,
+  despliegue, importación real ni cambio productivo.
 - Objetivo: eliminar la necesidad de importar un CSV cada mes desde noviembre
   de 2026, manteniendo octubre como referencia importada inmutable y sin
   mezclar estos objetivos con Area Manager ni con el plan histórico de
@@ -32,11 +31,11 @@
   administrativa conservan operación, actor cuando existe, mes de origen y
   valores anteriores/nuevos. Octubre mantiene el hash, etiqueta y contrato de
   referencia 34/907/499.
-- Administración: la nueva ruta
-  `reports.commission-settings.targets.update` y la sección separada
-  «Objetivos de jefes de tienda» solo aceptan valores enteros no negativos por
-  `store_key`. El servidor toma nombre, zona y procedencia de la fila
-  persistida; solo Admin puede escribir. Octubre se muestra como solo lectura.
+- Administración: la sección separada «Objetivos de jefes de tienda» reutiliza
+  la ruta existente de configuración con un marcador explícito de formulario;
+  solo acepta valores enteros no negativos por `store_key`. El servidor toma
+  nombre, zona y procedencia de la fila persistida; solo Admin puede escribir.
+  Octubre se muestra como solo lectura.
 - Archivos funcionales modificados: servicio y modelo de objetivos, modelo de
   eventos, migración aditiva, importador histórico, dashboard, readiness,
   controlador/vista/ruta de Coeficientes y
@@ -46,17 +45,22 @@
   otros informes ni fuentes externas.
 - Documentación actualizada: `docs/informe-comisiones.md`,
   `docs/matriz-trazabilidad-kpi.md`, `docs/ai/PROJECT_CONTEXT.md`,
-  `docs/ai/DECISIONS.md` y este handoff. El agente personalizado
+  `docs/ai/DECISIONS.md`, `docs/guia-mantenimiento-documental.md`, el mapa y
+  la prueba del validador documental, y este handoff. El agente personalizado
   `report_docs_maintainer` se intentó invocar, pero la sesión alcanzó el límite
   de agentes; se aplicó el procedimiento documental como fallback del agente
   principal y se revisó el diff documental manualmente.
 - Pruebas/verificaciones ejecutadas: `npm run build` correcto y los bundles
   históricos restaurados para no ampliar el diff; `git diff --check` correcto.
+  El primer CI detectó un conflicto de visibilidad del helper del test y un
+  nombre de índice demasiado largo en MariaDB; ambos se corrigieron en esta
+  iteración. También se añadió el mapeo documental explícito de los modelos de
+  objetivos y se eliminó el falso impacto transversal de una ruta nueva.
   PHP/PHPUnit/Pint no se pudieron ejecutar en esta sesión porque no existe un
   binario PHP en el PATH ni en las rutas locales esperadas. Deben ejecutarse en
   Herd/CI antes de publicar. No se ejecutó `php artisan migrate`, ningún
   comando de importación real ni sincronización externa.
-- Pruebas focalizadas pendientes de ejecutar con PHP:
+- Pruebas focalizadas pendientes de confirmar en CI con PHP:
   `php artisan test --filter=StoreManagerCommissionTargetInheritanceTest`,
   `php artisan test --filter=StoreManagerCommissionTargetImportTest`,
   `php artisan test --filter=CommercialCommissionFormulaSettingsTest`,

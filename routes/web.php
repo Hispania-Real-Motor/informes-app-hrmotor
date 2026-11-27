@@ -198,7 +198,6 @@ Route::middleware('reports.auth')->group(function () {
         ->group(function () {
             Route::get('/', [CommercialCommissionFormulaSettingsController::class, 'index'])->name('index');
             Route::post('/unlock', [CommercialCommissionFormulaSettingsController::class, 'unlock'])->name('unlock');
-            Route::put('/targets', [CommercialCommissionFormulaSettingsController::class, 'updateTargets'])->name('targets.update');
             Route::put('/', [CommercialCommissionFormulaSettingsController::class, 'update'])->name('update');
             Route::get('/contact-center-roster', [ContactCenterCommissionRosterController::class, 'index'])->name('contact-center-roster.index');
             Route::post('/contact-center-roster', [ContactCenterCommissionRosterController::class, 'store'])->name('contact-center-roster.store');

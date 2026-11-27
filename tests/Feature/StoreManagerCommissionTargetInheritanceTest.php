@@ -232,12 +232,20 @@ class StoreManagerCommissionTargetInheritanceTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->withSession($this->session($director))
-            ->put('/informes/configuracion-comisiones/targets', ['month' => '2026-11', 'targets' => $values])
+        $this->withSession($this->sessionPayload($director))
+            ->put('/informes/configuracion-comisiones', [
+                'month' => '2026-11',
+                'targets' => $values,
+                'store_manager_targets' => 1,
+            ])
             ->assertForbidden();
 
-        $this->withSession($this->session($admin))
-            ->put('/informes/configuracion-comisiones/targets', ['month' => '2026-11', 'targets' => $values])
+        $this->withSession($this->sessionPayload($admin))
+            ->put('/informes/configuracion-comisiones', [
+                'month' => '2026-11',
+                'targets' => $values,
+                'store_manager_targets' => 1,
+            ])
             ->assertRedirect('/informes/configuracion-comisiones?month=2026-11');
 
         $this->assertSame(35, (int) StoreManagerCommissionTarget::query()->where(['month' => '2026-11', 'store_key' => 'a-coruna'])->value('delivery_target'));
@@ -273,7 +281,7 @@ class StoreManagerCommissionTargetInheritanceTest extends TestCase
         ]);
     }
 
-    private function session(ReportUser $user): array
+    private function sessionPayload(ReportUser $user): array
     {
         return [
             'informes_authenticated' => true,

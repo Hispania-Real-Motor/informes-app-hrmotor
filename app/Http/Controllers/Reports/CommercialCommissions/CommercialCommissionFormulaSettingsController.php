@@ -82,6 +82,10 @@ class CommercialCommissionFormulaSettingsController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
+        if ($request->boolean('store_manager_targets')) {
+            return $this->updateTargets($request);
+        }
+
         abort_unless(ReportUserAccess::canManageReportUsers($request), 403);
 
         $selectedMonth = $this->formulaConfig->resolveSelectedMonth($request->input('month'));

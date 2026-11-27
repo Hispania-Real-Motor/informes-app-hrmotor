@@ -490,10 +490,11 @@
             </div>
 
             @if (($storeManagerTargetRows ?? []) !== [])
-                <form method="POST" action="{{ route('reports.commission-settings.targets.update') }}">
+                <form method="POST" action="{{ route('reports.commission-settings.update') }}">
                     @csrf
                     @method('PUT')
                     <input type="hidden" name="month" value="{{ $selectedMonthKey }}">
+                    <input type="hidden" name="store_manager_targets" value="1">
                     <div class="table-responsive">
                         <table class="report-table">
                             <thead>

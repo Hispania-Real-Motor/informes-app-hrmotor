@@ -36,7 +36,7 @@ return new class extends Migration
             $table->json('metadata')->nullable();
             $table->timestamps();
             $table->index(['month', 'store_key']);
-            $table->unique(['operation_id', 'target_id']);
+            $table->unique(['operation_id', 'target_id'], 'sm_target_events_operation_target_unique');
         });
     }
 
