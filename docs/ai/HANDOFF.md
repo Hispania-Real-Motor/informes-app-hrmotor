@@ -10201,3 +10201,23 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   el comportamiento del informe.
 - Acciones manuales pendientes: publicar el commit en la rama de la PR #164 y
   esperar los checks `test`, `october-provisional-mariadb` y `docs-integrity`.
+
+## Integración de main en la PR #163 (2026-11-27)
+
+- Se actualizó `origin/main` hasta `b563137a9cdb634164f1ade9e09e59208e7814ed`
+  y se incorporó mediante merge normal en
+  `codex/store-manager-targets-monthly-inheritance`, sin rebase ni force-push.
+- El merge no produjo conflictos. Se conserva la corrección de Stock de main,
+  incluidos los ajustes de fecha de `tests/Feature/StockDashboardTest.php`, y
+  se mantienen intactos los cambios de herencia mensual, auditoría y edición
+  protegida de objetivos de Comisiones.
+- No se modificaron fórmulas, cierres, snapshots, permisos, datos productivos,
+  importaciones reales ni lógica de Stock; los assets, documentación y tests de
+  Campañas procedentes de main permanecen en la rama.
+- Verificaciones locales sobre la combinación: `StockDashboardTest.php` pasó
+  (16/16, 166 assertions); `StoreManagerCommissionTargetInheritanceTest.php`
+  pasó (9/9, 44 assertions); el bloque focalizado de importación, dashboard,
+  cierres y permisos de Comisiones pasó (212/212, 1.467 assertions); Pint y
+  `git diff --check` pasaron.
+- Acciones pendientes: publicar el merge commit y esperar los checks de la PR
+  `test`, `october-provisional-mariadb` y `docs-integrity`.
