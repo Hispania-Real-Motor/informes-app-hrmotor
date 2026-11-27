@@ -291,13 +291,17 @@ function bindLeadReloadRetry() {
 
 function renderSummary(data) {
     const updatedBadge = document.getElementById('updatedBadge');
+    const provisionalPeriod = data.periodo_actual?.etiqueta || 'Periodo seleccionado';
+    const provisionalCutoff = data.dataset_generated_at
+        ? ` · corte ${formatDateTime(data.dataset_generated_at)}`
+        : '';
     updatedBadge.textContent = data.provisional
-        ? 'Octubre 2026 · datos reconstruidos'
+        ? `${provisionalPeriod} · provisional${provisionalCutoff}`
         : data.dataset_cutoff_at
         ? `Datos certificados hasta: ${formatDateTime(data.dataset_cutoff_at)}${data.generation_stale ? ' · Desactualizados' : ''}`
         : 'Datos certificados: pendiente';
     updatedBadge.title = data.provisional
-        ? 'Datos de octubre disponibles. Algunas métricas requieren información adicional.'
+        ? 'Fuente operativa mensual; estado provisional.'
         : [
         data.salesforce_leads_synced_at ? `Intereses: ${formatDateTime(data.salesforce_leads_synced_at)}` : null,
         data.activities_synced_at ? `Actividades: ${formatDateTime(data.activities_synced_at)}` : null,
@@ -364,7 +368,7 @@ function provisionalKpiCards(kpis, activityCoverage = null, kpiEvidence = null) 
     const managementHint = kpiEvidence?.activity_complete === false
         ? 'Cobertura Task/Event parcial: ausencia de gestión no acreditada'
         : 'Clasificación observada con la regla oficial; no certifica el histórico';
-    const commercialHint = kpiEvidence?.commercial_users_observed_at
+    const commercialHint = kpiEvidence?.commercial_scope || kpiEvidence?.commercial_users_observed_at
         ? 'Elegibilidad observada en el registro local de usuarios; no certifica asignación histórica'
         : 'Sin proyección comercial compatible';
     return [

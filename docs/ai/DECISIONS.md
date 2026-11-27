@@ -23,6 +23,18 @@
   es el único rol autorizado. Así se evita que un formulario alterado
   modifique identidades, cierres, snapshots o fórmulas económicas.
 
+## 2026-11-27 — fallback ejecutivo acotado a la fuente operativa mensual
+
+- El Resumen conserva la generación oficial como fuente preferente. Solo cuando
+  esa generación no existe, puede leer el run operativo mensual ya activado y
+  contar filas por sus fechas funcionales reales para el día/MTD solicitado;
+  nunca reparte totales mensuales ni convierte una fuente no disponible en
+  cero.
+- La salida conserva el estado `provisional` y se presenta como parcial. El
+  lector vuelve a comprobar los punteros de mes y actividad después del conteo,
+  de modo que un cambio concurrente invalida el resultado. No se crean tablas,
+  migraciones, backfills ni sincronizaciones nuevas.
+
 ## 2026-11-13 — atribución provisional de Campañas con puntero propio
 
 - Campañas no reutiliza `campaign_attributions` ni el puntero de generación

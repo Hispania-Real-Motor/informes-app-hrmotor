@@ -14,7 +14,7 @@
             <x-reports.ui.page-header
                 eyebrow="Visión estratégica"
                 title="Resumen Ejecutivo"
-                description="Situación global del último día cerrado y contexto acumulado del mes para Leads, Reservas y Ventas."
+                description="Situación global del último día cerrado y contexto acumulado del mes para Intereses, Reservas y Ventas."
             >
                 <x-slot:actions>
                     <span class="report-ui-badge">{{ $summary['cutoff']['display_label'] }}</span>
@@ -72,6 +72,9 @@
                             <div class="report-ui-kpi-strip__meta">Baseline: {{ $metric['display']['baseline'] }}</div>
                             <div class="report-ui-kpi-strip__meta">Variación: {{ $metric['display']['variation_percent'] }}</div>
                             <div class="report-ui-kpi-strip__meta">MTD: {{ $metric['display']['mtd'] }}</div>
+                            @if ($metric['provisional'] ?? false)
+                                <div class="report-ui-kpi-strip__meta">Fuente operativa provisional</div>
+                            @endif
                             @if ($metric['display']['d364_reference'] !== '-')
                                 <div class="report-ui-kpi-strip__meta">D-364 orientativo: {{ $metric['display']['d364_reference'] }}</div>
                             @endif

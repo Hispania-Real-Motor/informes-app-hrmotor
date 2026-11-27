@@ -7,6 +7,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use App\Support\ReportUserAccess;
 
 /**
  * Read model for the administrative October/November 2026 dashboard.
@@ -45,14 +46,14 @@ final class October2026ProvisionalInterestDashboardDatasetService
     public function summary(Request $request): array
     {
         $snapshot = $this->snapshot($request);
+        $isCommercial = ReportUserAccess::isCommercial($request);
         $rows = $this->filteredRows($snapshot, $request);
         $bucket = $this->bucket($rows, $this->hasOwners($snapshot), $this->hasActivity($snapshot), $this->hasKpis($snapshot));
         $overview = $snapshot['overview'];
-        $filters = $this->filterOptions($snapshot);
+        $filters = $this->filterOptions($snapshot, $request);
         $period = $overview['period'];
         $start = CarbonImmutable::parse($period['start_utc'], 'UTC')->setTimezone('Europe/Madrid');
         $end = CarbonImmutable::parse($period['end_utc'], 'UTC')->setTimezone('Europe/Madrid')->subDay();
-        $label = $period['label'];
 
         $this->assertCurrent($snapshot);
 
@@ -68,33 +69,22 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'empty' => $bucket['leads_totales'] === 0,
             'message' => $bucket['leads_totales'] === 0 ? 'No hay Intereses que coincidan con los filtros del mes.' : null,
             'kpis' => $bucket,
-            'activity_coverage' => $this->hasActivity($snapshot) ? [
+            'activity_coverage' => $this->hasActivity($snapshot) && ! $isCommercial ? [
                 'complete' => $snapshot['activity_coverage_complete'],
                 'verified' => $snapshot['activity_verified_count'],
                 'quarantined' => $snapshot['activity_quarantined_count'],
             ] : null,
             'kpi_evidence' => $this->hasKpis($snapshot) ? [
                 'reference_at' => $snapshot['kpi_reference_at'],
-                'commercial_users_observed_at' => $snapshot['commercial_users_observed_at'],
-                'activity_complete' => $snapshot['activity_coverage_complete'],
+                'commercial_users_observed_at' => $isCommercial ? null : $snapshot['commercial_users_observed_at'],
+                'commercial_scope' => $isCommercial,
+                'activity_complete' => $isCommercial ? null : $snapshot['activity_coverage_complete'],
                 'management_complete_for_filter' => $bucket['gestionados'] !== null,
             ] : null,
             'comparativa' => [],
-            'insights' => [
-                $label.': '.$overview['coverage']['eligible_active_matching'].' Intereses activos disponibles.',
-                ...(isset($overview['coverage']['observed']) ? ['Cobertura operativa: '.$overview['coverage']['observed'].' observados, '.$overview['coverage']['admitted'].' admitidos y '.$overview['coverage']['quarantined'].' en cuarentena. '.$overview['coverage']['changed_between_reads'].' cambios entre lecturas.'] : []),
-                ...(isset($period['effective_cutoff']) ? ['Altas incluidas hasta '.CarbonImmutable::parse($period['effective_cutoff'], 'UTC')->setTimezone('Europe/Madrid')->format('d/m/Y H:i').'; contenido observado en la validación.'] : []),
-                ...(isset($overview['coverage']['delegation_quality']) ? [sprintf(
-                    'Procedencia: %d vacías, %d con valor general, %d con valor desconocido y %d reconocidas; los valores no reconocidos no se asignan por inferencia.',
-                    $overview['coverage']['delegation_quality']['blank'],
-                    $overview['coverage']['delegation_quality']['general'],
-                    $overview['coverage']['delegation_quality']['unknown_other'],
-                    $overview['coverage']['delegation_quality']['recognized'],
-                )] : []),
-                ...($this->hasActivity($snapshot) ? ['Actividad Task/Event observada sobre la cohorte de Intereses de '.$label.'; las actividades pueden haberse ejecutado fuera del mes. '.($snapshot['activity_coverage_complete'] ? 'Cobertura observable completa.' : 'Cobertura parcial: '.($snapshot['activity_quarantined_count'] ?? 0).' actividades en cuarentena; los recuentos son mínimos observados.').' '.$bucket['activities'].' actividades activas sobre '.$bucket['interests_with_activity'].' Intereses filtrados. No equivale a llamadas atendidas ni acredita quién gestionó cada Interés.'] : []),
-                $this->hasKpis($snapshot) ? 'Clasificación de gestión preparada localmente con la regla oficial a la fecha de referencia indicada; los potenciales sin actividad acreditada permanecen indeterminados si la cobertura es parcial.' : 'Los indicadores de gestión y elegibilidad comercial requieren una proyección administrativa compatible.',
-                'Las comparativas requieren fuentes mensuales compatibles.',
-            ],
+            'insights' => isset($period['effective_cutoff'])
+                ? ['Fuente operativa provisional · corte observado: '.CarbonImmutable::parse($period['effective_cutoff'], 'UTC')->setTimezone('Europe/Madrid')->format('d/m/Y H:i').'.']
+                : [],
             'filters' => $filters,
             'availability' => [
                 'commercials' => $this->hasOwners($snapshot) ? (isset($snapshot['operational_month']) ? 'Propietarios observados en la sincronización operativa; asignación histórica no certificada.' : 'Propietarios observados en F2M; la asignación histórica no está certificada.') : 'Sin datos suficientes de propietarios para este mes.',
@@ -103,7 +93,10 @@ final class October2026ProvisionalInterestDashboardDatasetService
                     : 'Sin inventario Task/Event operativo completo para esta versión de Intereses.',
                 'comparison' => 'Sin datos suficientes para comparar con otro período.',
             ],
-            'coverage' => $overview['coverage'],
+            'coverage' => $isCommercial ? [
+                'eligible_active_matching' => $bucket['leads_totales'],
+                'scope' => 'authenticated_commercial',
+            ] : $overview['coverage'],
         ];
     }
 
@@ -137,7 +130,11 @@ final class October2026ProvisionalInterestDashboardDatasetService
             return ['ok' => true, 'zones' => [], 'delegations' => [], 'commercials' => [], 'items' => [], 'message' => 'Sin datos suficientes de propietarios para este mes.'];
         }
         $rows = $this->filteredRows($snapshot, $request);
-        $commercials = (clone $rows)->select(['owner_key', 'commercial_delegation', 'commercial_zone'])
+        $commercialRows = (clone $rows)
+            ->where('owner_is_technical', false)
+            ->whereNotNull('owner_key')
+            ->where('owner_key', '<>', 'missing');
+        $commercials = (clone $commercialRows)->select(['owner_key', 'commercial_delegation', 'commercial_zone'])
             ->selectRaw('COUNT(*) as leads_totales')
             ->selectRaw("SUM(CASE WHEN interest_status = 'Convertido' THEN 1 ELSE 0 END) as convertidos")
             ->selectRaw("SUM(CASE WHEN interest_status = 'Descartado' THEN 1 ELSE 0 END) as descartados")
@@ -154,7 +151,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
 
             return [
                 'group_key' => $key,
-                'comercial' => ($labels[$key] ?? 'Propietario sin nombre').' · '.substr($key, -6),
+                'comercial' => $labels[$key] ?? 'Comercial sin nombre',
                 'commercial_delegation' => (string) $row->commercial_delegation,
                 'zone' => (string) $row->commercial_zone,
                 'leads_totales' => $total,
@@ -166,8 +163,12 @@ final class October2026ProvisionalInterestDashboardDatasetService
                 ...$this->kpiValues($row, $total, $this->hasKpis($snapshot)),
             ];
         })->all();
-        $delegations = $this->groupedCommercialBuckets($rows, 'commercial_delegation', 'commercial_delegation', $this->hasKpis($snapshot));
-        $zones = $this->groupedCommercialBuckets($rows, 'commercial_zone', 'zone', $this->hasKpis($snapshot));
+        $delegationRows = (clone $commercialRows)->where(function (Builder $query): void {
+            $query->whereNull('commercial_delegation')
+                ->orWhere('commercial_delegation', '<>', 'Asignación no acreditada');
+        });
+        $delegations = $this->groupedCommercialBuckets($delegationRows, 'commercial_delegation', 'commercial_delegation', $this->hasKpis($snapshot));
+        $zones = $this->groupedCommercialBuckets($commercialRows, 'commercial_zone', 'zone', $this->hasKpis($snapshot));
         $this->assertCurrent($snapshot);
 
         return [
@@ -212,10 +213,7 @@ final class October2026ProvisionalInterestDashboardDatasetService
     /** @param array{overview:array<string,mixed>,projection_key:string,integrity_revision:int} $snapshot */
     private function filteredRows(array $snapshot, Request $request): Builder
     {
-        $rows = DB::table('salesforce_interest_october_provisional_projection_rows')
-            ->where('scope', $snapshot['scope'] ?? self::SCOPE)
-            ->where('integrity_revision', $snapshot['integrity_revision'])
-            ->where('projection_key', $snapshot['projection_key']);
+        $rows = $this->projectionRows($snapshot, $request);
         if ($this->hasActivity($snapshot)) {
             $rows->leftJoin('salesforce_interest_operational_activity_summaries as activity_summary', function ($join) use ($snapshot): void {
                 $join->on('activity_summary.interest_key', '=', 'salesforce_interest_october_provisional_projection_rows.interest_key')
@@ -243,8 +241,24 @@ final class October2026ProvisionalInterestDashboardDatasetService
     }
 
     /** @param array{overview:array<string,mixed>,projection_key:string,integrity_revision:int} $snapshot */
-    private function filterOptions(array $snapshot): array
+    private function filterOptions(array $snapshot, Request $request): array
     {
+        if (ReportUserAccess::isCommercial($request)) {
+            return [
+                'lead_delegations' => $this->projectionLabels($snapshot, 'origin_delegation', $request),
+                'groups' => $this->projectionLabels($snapshot, 'origin_group', $request),
+                'zones' => $this->projectionLabels($snapshot, 'origin_zone', $request),
+                'portals' => $this->projectionLabels($snapshot, 'source', $request),
+                'sources' => $this->projectionLabels($snapshot, 'source', $request),
+                'media' => $this->projectionLabels($snapshot, 'medium', $request),
+                'channels' => $this->projectionLabels($snapshot, 'channel', $request),
+                'statuses' => $this->projectionLabels($snapshot, 'interest_status', $request),
+                'lead_types' => $this->projectionLabels($snapshot, 'interest_type', $request),
+                'commercials' => $this->hasOwners($snapshot) ? $this->ownerFilterOptions($snapshot, $request) : [],
+                'commercial_delegations' => $this->hasOwners($snapshot) ? $this->projectionLabels($snapshot, 'commercial_delegation', $request) : [],
+            ];
+        }
+
         $overview = $snapshot['overview'];
         $classification = $overview['classification'] ?? [];
         $functional = $overview['functional_kpis'] ?? [];
@@ -259,8 +273,8 @@ final class October2026ProvisionalInterestDashboardDatasetService
             'channels' => $this->labels($functional['channels'] ?? [], 'channel'),
             'statuses' => $this->labels($functional['statuses'] ?? [], 'status'),
             'lead_types' => $this->labels($functional['types'] ?? [], 'type'),
-            'commercials' => $this->hasOwners($snapshot) ? $this->ownerFilterOptions($snapshot) : [],
-            'commercial_delegations' => $this->hasOwners($snapshot) ? $this->projectionLabels($snapshot, 'commercial_delegation') : [],
+            'commercials' => $this->hasOwners($snapshot) ? $this->ownerFilterOptions($snapshot, $request) : [],
+            'commercial_delegations' => $this->hasOwners($snapshot) ? $this->projectionLabels($snapshot, 'commercial_delegation', $request) : [],
         ];
     }
 
@@ -448,11 +462,21 @@ final class October2026ProvisionalInterestDashboardDatasetService
     }
 
     /** @return list<array{id:string,name:string}> */
-    private function ownerFilterOptions(array $snapshot): array
+    private function ownerFilterOptions(array $snapshot, Request $request): array
     {
+        $ownerKeys = $this->projectionRows($snapshot, $request)
+            ->where('owner_is_technical', false)
+            ->whereNotNull('owner_key')
+            ->where('owner_key', '<>', 'missing')
+            ->distinct()
+            ->pluck('owner_key')
+            ->all();
         $options = [];
         foreach ($this->ownerLabels($snapshot) as $key => $name) {
-            $options[] = ['id' => $key, 'name' => $name.' · '.substr($key, -6)];
+            if (! in_array($key, $ownerKeys, true)) {
+                continue;
+            }
+            $options[] = ['id' => $key, 'name' => $name ?: 'Comercial sin nombre'];
         }
         usort($options, fn (array $a, array $b): int => strcmp($a['name'], $b['name']));
 
@@ -460,13 +484,37 @@ final class October2026ProvisionalInterestDashboardDatasetService
     }
 
     /** @return list<string> */
-    private function projectionLabels(array $snapshot, string $column): array
+    private function projectionLabels(array $snapshot, string $column, ?Request $request = null): array
     {
-        return DB::table('salesforce_interest_october_provisional_projection_rows')
+        $rows = $this->projectionRows($snapshot, $request)
+            ->when(in_array($column, ['commercial_delegation', 'commercial_zone'], true), function (Builder $query): void {
+                $query->where('owner_is_technical', false)
+                    ->whereNotNull('owner_key')
+                    ->where('owner_key', '<>', 'missing');
+            })
+            ->when($column === 'commercial_delegation', function (Builder $query): void {
+                $query->where(function (Builder $query): void {
+                    $query->whereNull('commercial_delegation')
+                        ->orWhere('commercial_delegation', '<>', 'Asignación no acreditada');
+                });
+            });
+
+        return $rows->whereNotNull($column)->where($column, '<>', '')
+            ->distinct()->orderBy($column)->pluck($column)->all();
+    }
+
+    private function projectionRows(array $snapshot, ?Request $request = null): Builder
+    {
+        $rows = DB::table('salesforce_interest_october_provisional_projection_rows')
             ->where('scope', $snapshot['scope'] ?? self::SCOPE)
             ->where('integrity_revision', $snapshot['integrity_revision'])
-            ->where('projection_key', $snapshot['projection_key'])
-            ->distinct()->orderBy($column)->pluck($column)->all();
+            ->where('projection_key', $snapshot['projection_key']);
+
+        if ($request !== null && ReportUserAccess::isCommercial($request)) {
+            $rows->where('owner_key', ReportUserAccess::interestOwnerKey($request) ?? '__missing__');
+        }
+
+        return $rows;
     }
 
     /** @return list<array<string, int|float|string|null>> */

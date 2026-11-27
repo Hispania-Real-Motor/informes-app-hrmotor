@@ -10,7 +10,7 @@ final class InterestTechnicalOwnerClassifier
         '0057R00000CQGZaQAP',
     ];
 
-    private const NAMES = ['admin adesso', 'api user', 'carlos torres'];
+    private const NAMES = ['admin adesso', 'api user', 'carlos torres', 'desbloqueos hr'];
 
     public static function isTechnical(?string $ownerId, ?string $ownerName): bool
     {

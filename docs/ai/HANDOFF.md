@@ -86,6 +86,95 @@
   la edición de un valor sintético en un entorno autorizado; no ejecutar
   importaciones reales ni reabrir cierres desde esta tarea.
 
+## 2026-11-27 — Revisión documental `report_docs_maintainer` (fallback local)
+
+- Se invocó `report_docs_maintainer`; su resultado indicó que la revisión debía
+  cerrarse mediante el procedimiento local de fallback. Se revisó el diff
+  completo del worktree frente a `b563137` (HEAD del worktree: el mismo commit
+  base, con cambios sin commit) y se preservaron los cambios ajenos.
+- Documentación actualizada: `docs/reglas-negocio-leads.md`,
+  `docs/informe-comisiones.md`,
+  `docs/Documentacion_general_informes_y_contraste_salesforce.md` y
+  `docs/matriz-trazabilidad-kpi.md`. No se tocaron PHP, JavaScript, Blade,
+  configuración funcional, migraciones, tests ni datos. No se actualizó
+  `PROJECT_CONTEXT.md`: no cambian módulos ni arquitectura. `DECISIONS.md` se
+  actualizó separadamente para registrar el fallback ejecutivo.
+- Evidencia contrastada: `ExecutiveDailyDatasetService` mantiene la generación
+  oficial como preferente y usa `OperationalInterestMonthlyReader` solo como
+  fallback local; la ausencia de fuente/cobertura queda como `null` presentado,
+  no como cero. `ReportUserAccess`, los dos controladores de Intereses y los
+  datasets aplican el acceso provisional de Admin/Dirección/Comercial con
+  `salesforce_user_id`, el ámbito `owner_key` HMAC antes de filtros/agregados y
+  exclusión de técnicos en distribuciones comerciales. Dirección abre Call
+  Center y Contact Center sin recibir acciones de administración.
+- Tests funcionales modificados que sustentan el cambio: `ExecutiveSummaryPageTest`,
+  `MonthlyInterestProvisionalReaderTest`, `October2026ProvisionalInterestReaderTest`,
+  `CallCenterCommissionDashboardTest`, `CommissionVisibilitySecurityTest` y
+  `tests/js/leads-unavailable.test.mjs`. No se inventaron cifras, no se
+  consultaron Salesforce/bases de datos ni se ejecutaron sincronizaciones.
+- Validaciones documentales: `git diff --check` frente a `b563137` correcto y
+  los destinos de enlaces Markdown locales revisados sin referencias faltantes.
+  Se intentó ejecutar `scripts/check_documentation_integrity.py`, pero el único
+  `python.exe` disponible es el stub de `WindowsApps` y no arranca; además no
+  se dispone del cuerpo real de la PR para completar `--pr-body-file`. Queda
+  pendiente ejecutarlo en CI con base,
+  HEAD y la descripción real de PR. No se ejecutó ninguna prueba de aplicación
+  ni comando de producción en esta revisión documental.
+- Discrepancia técnica pendiente: la nueva ruta de fallback ejecutivo no tiene
+  un test focalizado añadido en este diff que cubra toda la cadena de fuente
+  operativa, revalidación de punteros y salida `null`; la documentación la
+  mantiene como evidencia de implementación pendiente de auditoría, no como
+  KPI verificado. También permanece pendiente la auditoría de 23 campos de la
+  matriz para los KPI provisionales y de Comisiones.
+
+## 2026-11-27 — Hotfix de Resumen, Intereses y Comisiones
+
+- Base revisada: `b563137` (`origin/main`) durante la implementación y
+  posteriormente integrada sobre `3a3486e` (`origin/main`) en la rama
+  `codex/hotfix-summary-interests-commissions`; no se hizo despliegue ni
+  operación sobre producción.
+- Resumen: la clave interna `leads` se conserva por compatibilidad, pero su
+  etiqueta visible es `Intereses`. Cuando no existe generación oficial, el
+  motor puede leer únicamente el mes operativo validado localmente, con límites
+  diarios reales y estado provisional/parcial; si la fuente no cubre el corte,
+  el valor sigue siendo `null`, nunca un cero sustitutorio. Reservas y Ventas
+  conservan sus lectores, fórmulas y controles de calidad.
+- Intereses: Administración, Dirección y Comercial pueden consultar octubre y
+  noviembre provisionales cuando el flag y la fuente son válidos. El Comercial
+  requiere Salesforce User ID y queda restringido en servidor al `owner_key`
+  HMAC de `ObservedInterestOwnerProjection` antes de agregaciones, filtros,
+  opciones y metadatos. Los usuarios técnicos y «Desbloqueos HR» se excluyen
+  de cuadros/rankings comerciales, sin alterar el total global; se eliminan
+  códigos visibles, el sufijo HMAC, «Asignación no acreditada» del cuadro y los
+  banners provisionales extensos. Las páginas administrativas siguen siendo
+  solo de administración.
+- Comisiones: Dirección puede abrir las pestañas Call Center y Contact Center;
+  exportaciones, auditorías, cierres, snapshots y operaciones administrativas
+  mantienen sus permisos existentes.
+- Archivos funcionales: controladores de Intereses, `ReportUserAccess`,
+  `ObservedInterestOwnerProjection`, lectores/datasets ejecutivo y provisional,
+  vistas/JavaScript de Resumen e Intereses, y pruebas focalizadas de Intereses,
+  Resumen y Comisiones.
+- Base de datos/configuración: no hay migraciones ni variables nuevas. No se
+  ejecutaron sincronizaciones, backfills, comandos de scheduler ni acceso a
+  producción.
+- Seguridad y rendimiento: el alcance comercial se aplica antes de SQL
+  agregado y no depende de parámetros del cliente; no se consulta Salesforce
+  en HTTP ni se exponen recuentos globales a Comerciales. La fuente operativa
+  reutiliza filas locales y punteros existentes.
+- Verificación disponible: `git diff --check` correcto y
+  `node --test tests/js/leads-unavailable.test.mjs` correcto (27/27).
+  PHP/Composer y npm no están disponibles en esta sesión; por ello no fue
+  posible ejecutar lint PHP, la batería PHPUnit focalizada ni `npm run build`.
+  Deben ejecutarse en Herd/CI antes de desplegar. El validador documental se
+  intentó ejecutar, pero el entorno solo expone el stub de WindowsApps; queda
+  pendiente en CI junto con el cuerpo real de la PR.
+- Acciones pendientes: confirmar en CI las pruebas PHP focalizadas, el build y
+  la disponibilidad real de generación/fuente operativa de Intereses. Si no
+  existe ninguna fuente local válida, la recuperación mínima es completar y
+  activar el run operativo mensual mediante el proceso administrativo existente;
+  no se debe reconstruir ni certificar históricamente desde HTTP.
+
 ## 2026-11-26 — Ajustes finales de revisión de Campañas
 
 - La tabla de detalle de Campañas conserva el dataset compartido y las

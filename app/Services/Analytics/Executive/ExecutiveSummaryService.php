@@ -7,7 +7,7 @@ use Carbon\CarbonImmutable;
 final class ExecutiveSummaryService
 {
     private const METRIC_LABELS = [
-        'leads' => 'Leads',
+        'leads' => 'Intereses',
         'reservas' => 'Reservas',
         'ventas' => 'Ventas',
     ];
@@ -106,6 +106,7 @@ final class ExecutiveSummaryService
             'evaluable' => $evaluation['evaluable'],
             'business_alert' => $evaluation['business_alert'],
             'data_incident' => (bool) ($dataset['data_incident'] ?? false),
+            'provisional' => (bool) ($dataset['provisional'] ?? false),
             'day_complete' => (bool) ($dataset['day_complete'] ?? false),
             'status' => $status,
             'direction' => $direction,

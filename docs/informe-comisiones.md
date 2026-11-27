@@ -1,6 +1,6 @@
 # Informe de Comisiones
 
-Actualizado: 2026-11-12.
+Actualizado: 2026-11-27.
 
 La guía completa, orientada a presentar y auditar la pestaña **Financieros**, se
 encuentra en `docs/informe-comisiones-financieras.md`. Incluye campos Salesforce,
@@ -497,13 +497,24 @@ Archivos principales:
 
 - La meta de entregas de Delegaciones es la misma configurada para la delegación en Area Manager. Solo se comparte el objetivo; las entregas reales mantienen sus reglas independientes.
 - Los seis bloques tienen cierres y snapshots independientes.
-- Call Center y Contact Center detallados son exclusivos de Administrador. Dirección puede aprobar o reabrir ambos mediante un resumen sin detalle.
+- Históricamente, Call Center y Contact Center detallados eran exclusivos de Administrador y Dirección solo recibía un resumen sin detalle. Desde el hotfix del 2026-11-27, Dirección puede abrir las pestañas/detalles de ambos bloques; no recibe por ello acciones administrativas adicionales.
 - En los contratos históricos, el jefe de tienda procede de `Delegacion__c.DEL_BUS_Jefe_Tienda__c` (lookup a `User`). La comisión mensual completa se atribuye al último responsable verificable del mes, sin prorrateo; las rotaciones generan alertas no bloqueantes. El plan `october_2026` de Delegaciones añade la exigencia de cobertura continua verificada descrita abajo.
 - Si Salesforce no aporta evidencia histórica suficiente, el informe muestra el histórico como no verificable y no inventa una asignación pasada.
 - Un mes es verificable únicamente cuando existe cobertura continua. Para julio, una confirmación real puede registrarse con `php artisan commissions:record-delegation-manager-evidence <delegation-id> "<delegación>" <manager-id> "<jefe>" 2026-07 --source=<fuente> --reference=<ticket-o-documento> --recorded-by=<responsable>`.
 - Financieros, Call Center y Contact Center disponen de cierre únicamente desde julio de 2026. Los filtros contractuales de Call Center son visuales y nunca alteran el snapshot mensual canónico.
 - La tabla `salesforce_delegation_manager_history` se evoluciona mediante la migración incremental `2026_08_28_100000_add_coverage_metadata_to_salesforce_delegation_manager_history_table`. Hasta ejecutarla, el informe degrada el responsable a histórico no verificable sin impedir la carga.
 - Dirección aprueba desde una superficie consolidada de scopes. Los importes definitivos proceden del snapshot; para scopes navegables pendientes se abre primero su pestaña canónica y Call/Contact se proyectan sin detalle.
+
+### Acceso vigente de Dirección a Call Center y Contact Center
+
+`ReportUserAccess::canViewCallContactCommissionDetails()` permite a
+Administrador y Dirección abrir las pestañas `call-center` y `contact-center`
+del informe. El cambio afecta al contrato de presentación y acceso a detalle,
+no a la fórmula económica, el universo, el readiness, los cierres, las
+exportaciones, la auditoría ni las acciones de preparación/aprobación/reapertura.
+Dirección sigue sin recibir diagnóstico o sincronización administrativa desde
+esta apertura. Los tests de regresión comprueban ambas pestañas, que la pestaña
+solicitada queda activa y que no aparece el estado visual de bloqueado.
 
 ## Preparación y evidencia de responsables
 

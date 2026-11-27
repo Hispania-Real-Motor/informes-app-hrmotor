@@ -3,6 +3,9 @@
 namespace App\Services\Analytics\Executive;
 
 use App\Services\Reports\Leads\SalesforceInterestDashboardDatasetService;
+use App\Services\Reports\Leads\InterestDatasetUnavailable;
+use App\Services\Reports\Leads\OperationalInterestMonthlyReader;
+use App\Services\Reports\Leads\ProvisionalInterestSourceUnavailable;
 use App\Services\Reports\ReservationsSales\ReservationsSalesDashboardDatasetService;
 use Carbon\CarbonImmutable;
 use RuntimeException;
@@ -22,6 +25,7 @@ final class ExecutiveDailyDatasetService
     public function __construct(
         private readonly SalesforceInterestDashboardDatasetService $leads,
         private readonly ReservationsSalesDashboardDatasetService $reservationsSales,
+        private readonly OperationalInterestMonthlyReader $operationalInterests,
     ) {}
 
     /** @return array<string, mixed> */
@@ -97,6 +101,7 @@ final class ExecutiveDailyDatasetService
             'data_health' => $health,
             'day_complete' => $dayComplete,
             'data_incident' => $dataIncident,
+            'provisional' => collect([$current, $mtd])->contains(fn (array $sample): bool => $sample['provisional']),
             'coverage' => [
                 'current' => $this->coveragePayload($current),
                 'references' => collect($references)->map(fn (array $sample): array => $this->coveragePayload($sample))->all(),
@@ -123,7 +128,8 @@ final class ExecutiveDailyDatasetService
             : $this->reservationSalesSample($metric, $start, $endExclusive);
         $sourceCutoff = $this->sourceCutoff($raw['source_cutoff']);
         $baseCovered = $this->baseCoverageCovered($raw['source_cutoff']);
-        $complete = $baseCovered === null
+        $provisional = (bool) ($raw['provisional'] ?? false);
+        $complete = $baseCovered === null || $provisional
             ? $sourceCutoff !== null && $sourceCutoff->greaterThanOrEqualTo($endExclusive)
             : $baseCovered && $sourceCutoff !== null && $sourceCutoff->greaterThanOrEqualTo($endExclusive);
         $incident = (bool) ($raw['data_incident'] ?? false)
@@ -136,6 +142,7 @@ final class ExecutiveDailyDatasetService
             'value' => $complete && ! $incident ? (int) $raw['value'] : null,
             'raw_value' => (int) $raw['value'],
             'complete' => $complete,
+            'provisional' => $provisional,
             'data_incident' => $incident,
             'source_cutoff' => $raw['source_cutoff'],
             'coverage' => $raw['coverage'],
@@ -148,6 +155,20 @@ final class ExecutiveDailyDatasetService
         $endInclusive = $endExclusive->subSecond();
         try {
             $sample = $this->leads->executiveLeadTotal($start, $endInclusive);
+        } catch (InterestDatasetUnavailable) {
+            try {
+                return $this->operationalInterests->executiveDailyTotal($start, $endExclusive);
+            } catch (ProvisionalInterestSourceUnavailable) {
+                return [
+                    'value' => 0,
+                    'source_cutoff' => [
+                        'dataset_cutoff_at' => null,
+                        'sync_run_status' => 'missing_or_unaligned',
+                    ],
+                    'coverage' => [],
+                    'data_incident' => true,
+                ];
+            }
         } catch (RuntimeException) {
             return [
                 'value' => 0,
@@ -164,6 +185,7 @@ final class ExecutiveDailyDatasetService
             'value' => $sample['value'],
             'source_cutoff' => $sample['source_cutoff'],
             'coverage' => $sample['coverage'],
+            'provisional' => (bool) ($sample['provisional'] ?? false),
             'data_incident' => false,
         ];
     }
@@ -202,6 +224,10 @@ final class ExecutiveDailyDatasetService
     {
         if ($dataIncident) {
             return ExecutiveMetricRulesEngine::HEALTH_INCIDENT;
+        }
+
+        if (collect($requiredSamples)->contains(fn (array $sample): bool => $sample['provisional'])) {
+            return ExecutiveMetricRulesEngine::HEALTH_PARTIAL;
         }
 
         if (collect($requiredSamples)->contains(fn (array $sample): bool => $this->missingCoverage($sample['source_cutoff']))) {
@@ -249,6 +275,7 @@ final class ExecutiveDailyDatasetService
             'end_exclusive' => $sample['end_exclusive'],
             'complete' => $sample['complete'],
             'data_incident' => $sample['data_incident'],
+            'provisional' => $sample['provisional'],
             'raw_value' => $sample['raw_value'],
             'details' => $sample['coverage'],
             'source_cutoff' => $sample['source_cutoff'],

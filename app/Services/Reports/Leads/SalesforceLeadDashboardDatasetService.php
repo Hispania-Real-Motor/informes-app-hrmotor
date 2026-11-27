@@ -827,7 +827,7 @@ class SalesforceLeadDashboardDatasetService
         return true;
     }
 
-    private function passesAccessScope(array $lead, array $filters): bool
+    protected function passesAccessScope(array $lead, array $filters): bool
     {
         if (filled($filters['access_commercial'] ?? null) && $lead['gestor_id'] !== $filters['access_commercial']) {
             return false;

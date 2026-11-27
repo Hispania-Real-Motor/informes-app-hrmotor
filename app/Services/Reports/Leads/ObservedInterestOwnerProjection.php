@@ -9,6 +9,15 @@ use Illuminate\Support\Facades\DB;
 /** Resolves only observed owner identity and assignment, never historical inference. */
 final class ObservedInterestOwnerProjection
 {
+    public static function ownerKey(?string $salesforceUserId): string
+    {
+        $salesforceUserId = trim((string) $salesforceUserId);
+
+        return $salesforceUserId === ''
+            ? 'missing'
+            : hash_hmac('sha256', $salesforceUserId, (string) config('app.key'));
+    }
+
     /** @return array{0: array<int, array<string, mixed>>, 1: array<int, array<string, mixed>>} */
     public function forRows(Collection $rows, string $cutoffUtc, string $projectionKey): array
     {
@@ -27,7 +36,7 @@ final class ObservedInterestOwnerProjection
         foreach ($rows as $row) {
             $ownerId = trim((string) $row->owner_salesforce_id);
             $ownerName = trim((string) $row->owner_name);
-            $ownerKey = $ownerId === '' ? 'missing' : hash_hmac('sha256', $ownerId, (string) config('app.key'));
+            $ownerKey = self::ownerKey($ownerId);
             $technical = InterestTechnicalOwnerClassifier::isTechnical($ownerId, $ownerName);
             $observed = $ownerId === '' || $technical ? null : $observations->get($ownerId);
             $assignment = $observed !== null && $observed->count() === 1 ? $observed->first() : null;

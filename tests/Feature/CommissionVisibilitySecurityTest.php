@@ -7,7 +7,6 @@ use App\Models\CommercialCommissionSnapshot;
 use App\Models\ReportUser;
 use App\Services\Reports\CallCenterCommissions\CallCenterCommissionDashboardService;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionAuditProjectionService;
-use App\Services\Reports\ContactCenterCommissions\ContactCenterCommissionDashboardService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -18,17 +17,15 @@ class CommissionVisibilitySecurityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_director_cannot_force_call_or_contact_details_and_services_are_not_built(): void
+    public function test_director_can_open_call_and_contact_details_without_admin_actions(): void
     {
-        $this->app->instance(CallCenterCommissionDashboardService::class, tap(Mockery::mock(CallCenterCommissionDashboardService::class), fn ($mock) => $mock->shouldNotReceive('build')));
-        $this->app->instance(ContactCenterCommissionDashboardService::class, tap(Mockery::mock(ContactCenterCommissionDashboardService::class), fn ($mock) => $mock->shouldNotReceive('build')));
         $director = $this->user(ReportUser::ROLE_DIRECTOR);
 
         foreach (['call-center', 'contact-center'] as $tab) {
             $this->actingAsReportUser($director)->get('/informes/comisiones-comerciales?month=2026-07&tab='.$tab)
                 ->assertOk()
-                ->assertViewHas('activeCommissionTab', 'summary')
-                ->assertSee('aria-disabled="true"', false);
+                ->assertViewHas('activeCommissionTab', $tab)
+                ->assertDontSee('aria-disabled="true"', false);
         }
     }
 

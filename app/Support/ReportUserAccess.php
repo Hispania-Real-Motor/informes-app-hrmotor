@@ -6,6 +6,7 @@ use App\Models\CommercialCommissionApprover;
 use App\Models\CommercialCommissionClosure;
 use App\Models\ReportAccessSetting;
 use App\Models\ReportUser;
+use App\Services\Reports\Leads\ObservedInterestOwnerProjection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
@@ -24,7 +25,7 @@ class ReportUserAccess
 
     private const REPORT_DEFINITIONS = [
         'leads' => [
-            'label' => 'Leads',
+            'label' => 'Intereses',
             'route' => 'reports.leads.index',
             'default_minimum_role' => ReportUser::ROLE_VIEWER,
         ],
@@ -160,6 +161,35 @@ class ReportUserAccess
         return self::canonicalRole(self::role($request)) === ReportUser::ROLE_COMMERCIAL
             ? self::reportUser($request)?->salesforce_user_id
             : null;
+    }
+
+    public static function isCommercial(Request $request): bool
+    {
+        return self::canonicalRole(self::role($request)) === ReportUser::ROLE_COMMERCIAL;
+    }
+
+    public static function interestOwnerKey(Request $request): ?string
+    {
+        $salesforceUserId = self::salesforceUserId($request);
+
+        return filled($salesforceUserId) ? ObservedInterestOwnerProjection::ownerKey($salesforceUserId) : null;
+    }
+
+    public static function canViewInterestDashboard(Request $request): bool
+    {
+        $role = self::canonicalRole(self::role($request));
+        if (! in_array($role, [ReportUser::ROLE_ADMIN, ReportUser::ROLE_DIRECTOR, ReportUser::ROLE_COMMERCIAL], true)) {
+            return false;
+        }
+
+        return ! self::isCommercial($request) || self::interestOwnerKey($request) !== null;
+    }
+
+    public static function canViewInterestReport(Request $request): bool
+    {
+        return self::isCommercial($request)
+            ? self::canViewInterestDashboard($request)
+            : self::canViewLeads($request);
     }
 
     public static function areaZoneKey(Request $request): ?string
@@ -325,7 +355,7 @@ class ReportUserAccess
 
     public static function canViewCallContactCommissionDetails(Request $request): bool
     {
-        return self::isAdmin($request);
+        return self::isAdmin($request) || self::isDirector($request);
     }
 
     public static function canManageFinancingPenalties(Request $request): bool

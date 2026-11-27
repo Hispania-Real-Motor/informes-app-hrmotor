@@ -336,7 +336,7 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Octubre 2026')
             ->assertSee('id="leadReportContent"', false)
-            ->assertSee('Octubre 2026 · datos reconstruidos')
+            ->assertDontSee('id="octoberProvisionalNotice"', false)
             ->assertDontSee('provisional y no certificado históricamente')
             ->assertDontSee('Explorar agregados provisionales');
         $this->asReportUser($viewer)->get('/informes/leads')->assertDontSee('value="october_2026"', false);
@@ -351,12 +351,39 @@ class October2026ProvisionalInterestReaderTest extends TestCase
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('id="leadReportContent"', false)
             ->assertSee('Grupo de procedencia')
-            ->assertSee('Algunas métricas comerciales y de actividad todavía no tienen datos suficientes.')
+            ->assertDontSee('Algunas métricas comerciales y de actividad todavía no tienen datos suficientes.')
             ->assertSee('window.initialLeadPeriod = "october_2026";', false)
             ->assertSee('<div class="is-hidden" id="leadUnavailableState">', false);
 
         $this->authorisedChange(fn () => DB::table('salesforce_interest_monthly_activity_recoveries')->where('id', 1)->update(['phase' => 'verify_task']));
         $this->asReportUser($admin)->get('/informes/leads?period=october_2026')->assertStatus(503);
+    }
+
+    public function test_director_and_scoped_commercial_can_read_october_without_global_metadata(): void
+    {
+        config()->set('services.informes_auth.enabled', true);
+        config()->set('salesforce.october_2026_provisional_enabled', true);
+        $this->seedValidJournals();
+        $ownerId = '005000000000000001';
+        $otherOwnerId = '005000000000000002';
+        $this->appendEligibleRows([
+            ['Potencial', 'Venta', 'Web', 'Pago', 'Formulario', 'Madrid', $ownerId, 'Comercial octubre'],
+            ['Convertido', 'Tasacion', 'Portal alternativo', 'Organico', 'Llamada', 'Barcelona', $otherOwnerId, 'Otro comercial'],
+        ]);
+        app(October2026ProvisionalInterestReader::class)->validate();
+        $director = $this->user(ReportUser::ROLE_DIRECTOR);
+        $commercial = $this->user(ReportUser::ROLE_COMMERCIAL, $ownerId);
+
+        $this->asReportUser($director)->get('/informes/leads?period=october_2026')->assertOk();
+        $this->asReportUser($commercial)->get('/informes/leads?period=october_2026')->assertOk();
+        $this->asReportUser($commercial)->getJson('/informes/leads/data/resumen?period=october_2026')
+            ->assertOk()
+            ->assertJsonPath('kpis.leads_totales', 1)
+            ->assertJsonPath('coverage.scope', 'authenticated_commercial')
+            ->assertJsonCount(1, 'filters.commercials')
+            ->assertJsonPath('filters.commercials.0.id', hash_hmac('sha256', $ownerId, (string) config('app.key')));
+        $this->asReportUser($commercial)->getJson('/informes/leads/data/resumen?period=october_2026&commercial='.hash_hmac('sha256', '005000000000000002', (string) config('app.key')))
+            ->assertOk()->assertJsonPath('kpis.leads_totales', 0);
     }
 
     public function test_october_dashboard_filters_use_the_versioned_projection_and_reconcile_combined_dimensions(): void
@@ -439,11 +466,11 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         $commercials = $this->asReportUser($admin)->getJson('/informes/leads/data/commercials?period=october_2026');
         $commercials->assertOk();
         $items = $commercials->json('commercials');
-        $this->assertSame(4, collect($items)->sum('leads_totales'));
-        $this->assertCount(4, $items);
+        $this->assertSame(2, collect($items)->sum('leads_totales'));
+        $this->assertCount(2, $items);
         $this->assertCount(2, collect($items)->filter(fn (array $item): bool => str_contains($item['comercial'], 'Nombre repetido')));
-        $this->assertSame(4, collect($commercials->json('delegations'))->sum('leads_totales'));
-        $this->assertSame(4, collect($commercials->json('zones'))->sum('leads_totales'));
+        $this->assertSame(2, collect($commercials->json('delegations'))->sum('leads_totales'));
+        $this->assertSame(2, collect($commercials->json('zones'))->sum('leads_totales'));
         $this->assertDatabaseCount('salesforce_interest_october_provisional_owners', 4);
         $this->assertDatabaseMissing('salesforce_interest_october_provisional_owners', ['name_ciphertext' => 'Nombre repetido']);
 
@@ -803,9 +830,9 @@ class October2026ProvisionalInterestReaderTest extends TestCase
         return 'a01'.str_pad((string) $number, 15, '0', STR_PAD_LEFT);
     }
 
-    private function user(string $role): ReportUser
+    private function user(string $role, ?string $salesforceUserId = null): ReportUser
     {
-        return ReportUser::create(['name' => 'Synthetic', 'email' => uniqid('', true).'@example.test', 'password' => 'synthetic-password', 'role' => $role, 'is_active' => true]);
+        return ReportUser::create(['name' => 'Synthetic', 'email' => uniqid('', true).'@example.test', 'password' => 'synthetic-password', 'role' => $role, 'salesforce_user_id' => $salesforceUserId, 'is_active' => true]);
     }
 
     private function asReportUser(ReportUser $user): static
