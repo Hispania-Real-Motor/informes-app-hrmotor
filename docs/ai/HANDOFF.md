@@ -10090,3 +10090,4 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   inventar datos ni resultados de CI.
 - Contrato de PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: unchanged`,
   `Docs-Matrix-Reason: El ajuste cambia únicamente la presentación condicional de avisos y series sin modificar KPI, fuente, universo, filtros, fórmulas ni trazabilidad.`
+  `Docs-Matrix-Evidence: ["resources/js/reports/campaigns-dashboard.js"]`.
