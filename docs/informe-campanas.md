@@ -1118,3 +1118,10 @@ evidencia persistida cubre el cutoff del Interest operacional seleccionado.
 ### Alcance de la PR 158
 
 La PR 158 no modifica las reglas, fuentes, atribución ni exportaciones de Campañas. Sus cambios de comisiones de jefes de tienda permanecen aislados del universo de campañas y no alteran sus snapshots ni sus KPIs.
+
+## Revisión final de presentación para Dirección — 2026-11-27
+
+- Dirección mantiene la lectura operacional habilitada y los mismos KPI comerciales confirmados que Administración. Este ajuste no modifica autorización, consultas, atribución, contratos económicos ni exportaciones.
+- Cuando el summary operacional es válido y contiene evidencia utilizable, la interfaz de Dirección oculta los mensajes genéricos de provisionalidad. Los errores, bloqueos, fallback y avisos de cobertura incompleta permanecen visibles. Administración conserva su presentación anterior.
+- La sección **Evolución mensual** se oculta para Dirección únicamente cuando no existe ninguna serie con valor numérico utilizable; los ceros numéricos reales siguen siendo datos válidos. Administración conserva el estado vacío existente.
+- La bandera de Dirección se usa solo para presentación en la respuesta HTML. El servidor mantiene la comprobación `isAdmin() || isDirector()` al autorizar la lectura y clasificación operacional.

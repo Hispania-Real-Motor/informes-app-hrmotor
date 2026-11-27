@@ -697,7 +697,8 @@ async function reloadAllData() {
         const operationalNotice = document.getElementById('campaignOperationalNotice');
         if (operationalNotice) {
             const evidence = summary?.operational_evidence;
-            operationalNotice.hidden = !evidence && !campaignOperationalFallbackNotice;
+            operationalNotice.hidden = (!evidence && !campaignOperationalFallbackNotice)
+                || shouldSuppressDirectorOperationalNotice(summary);
             operationalNotice.textContent = evidence
                 ? (window.reportUserIsAdmin
                     ? `Campañas ${evidence.month}: atribución operativa provisional, no certificada. Economía ${evidence.economic_state}; versión económica ${evidence.economic_version ?? 'no disponible'}; Interest run ${evidence.interest_run_id}; atribución run ${evidence.attribution_run_id}; corte ${evidence.interest_cutoff_at}; universo activo ${evidence.coverage?.eligible_active_matching ?? 'no disponible'}; incidencias ${evidence.incidents_count}.`
@@ -789,7 +790,7 @@ function renderSummary(data) {
     applyCampaignAvailability(data?.availability || {}, data?.period_mode);
     applyAvailabilityControls();
     renderPeriodGuidance(data?.availability?.period_advice || null);
-    renderWarnings(data.warnings || [], data.availability || {});
+    renderWarnings(data.warnings || [], data.availability || {}, shouldSuppressDirectorOperationalNotice(data));
     currentContext = data.selected_context || currentContext;
     syncCampaignTypeSelect();
     syncContextTabs();
@@ -904,18 +905,51 @@ function applyAvailabilityControls() {
     });
 }
 
-function renderWarnings(warnings, availability = {}) {
+function isDirectorUser() {
+    return window.reportUserIsDirector === true;
+}
+
+function hasUsableOperationalDataset(data = {}) {
+    const usable = (state) => ['available', 'partial'].includes(state?.status);
+
+    return data?.ok === true
+        && data?.availability?.mode === 'operational_provisional'
+        && usable(data?.availability?.interest_dependent)
+        && usable(data?.availability?.attribution)
+        && data?.operational_evidence != null;
+}
+
+function shouldSuppressDirectorOperationalNotice(data = {}) {
+    return isDirectorUser() && hasUsableOperationalDataset(data);
+}
+
+function isGenericOperationalProvisionalWarning(warning) {
+    const normalized = String(warning || '')
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
+    return /^(?:atribucion operativa provisional de \d{4}-\d{2}; no constituye certificacion historica(?: ni sustituye el informe publicado)?|(?:campanas )?\d{4}-\d{2}: datos operativos provisionales; no constituyen una? certificacion historica|datos operativos provisionales de \d{4}-\d{2}; no constituyen una? certificacion historica)\.?$/.test(normalized);
+}
+
+function renderWarnings(warnings, availability = {}, suppressGenericOperationalWarning = false) {
     const root = document.getElementById('warnings');
     if (!root) return;
 
     root.innerHTML = '';
+
+    const candidateWarnings = Array.isArray(warnings) ? warnings : [];
+    const filteredWarnings = suppressGenericOperationalWarning
+        ? candidateWarnings.filter((warning) => !isGenericOperationalProvisionalWarning(warning))
+        : candidateWarnings;
 
     const blockedPlatformWarnings = Object.entries(availability?.platforms || {})
         .filter(([, state]) => state?.status === 'blocked' && state?.reason)
         .map(([platform, state]) => `${platform === 'google_ads' ? 'Google Ads' : 'Meta Ads'}: ${state.reason}`);
     const visibleWarnings = blockedPlatformWarnings.length
         ? blockedPlatformWarnings
-        : warnings.filter((warning) => !String(warning).startsWith('Modo de recuperación:'));
+        : filteredWarnings.filter((warning) => !String(warning).startsWith('Modo de recuperación:'));
 
     visibleWarnings.forEach((warning) => {
         root.insertAdjacentHTML('beforeend', `<div class="notice campaign-availability-notice">${escapeHtml(warning)}</div>`);
@@ -1254,7 +1288,12 @@ function renderCharts(charts) {
         root.innerHTML = '';
         return;
     }
-    root.innerHTML = metricChartsShellHtml(charts.monthly_evolution || []);
+    const monthlyRows = Array.isArray(charts?.monthly_evolution) ? charts.monthly_evolution : [];
+    if (isDirectorUser() && !hasUsableMonthlyEvolution(monthlyRows)) {
+        root.innerHTML = '';
+        return;
+    }
+    root.innerHTML = metricChartsShellHtml(monthlyRows);
 }
 
 function bindMetricChartsToggle() {
@@ -1314,6 +1353,18 @@ function metricChartRows(rows) {
                 cost_per_result: costPerResult ?? (results > 0 && spend !== null ? spend / results : null),
             };
         });
+}
+
+function hasUsableMonthlyEvolution(rows) {
+    const definitions = metricChartDefinitions(currentContext);
+
+    return metricChartRows(rows).some((row) => definitions.some((definition) => {
+        if (costDenominators[definition.key]) {
+            return numericChartValue(costPresentation(row[definition.key], row, definition.key, formatMoney).value) !== null;
+        }
+
+        return numericChartValue(row[definition.key]) !== null;
+    }));
 }
 
 function metricChartDefinitions(context = currentContext) {

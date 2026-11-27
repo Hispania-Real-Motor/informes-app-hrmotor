@@ -125,7 +125,7 @@ class StockDashboardTest extends TestCase
         }
 
         $this->withSession($this->sessionData($admin))
-            ->get('/informes/stock')
+            ->get('/informes/stock?date_from=2026-07-28&date_to=2026-07-30')
             ->assertOk()
             ->assertSee('Análisis integral del stock')
             ->assertSee('Menos de 60 días')
