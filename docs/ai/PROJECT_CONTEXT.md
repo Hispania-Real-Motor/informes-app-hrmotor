@@ -1,6 +1,26 @@
 # Contexto técnico del proyecto
 
-Actualizado: 2026-11-13.
+Actualizado: 2026-11-27.
+
+## Objetivos mensuales de jefes de tienda (2026-11-27)
+
+El plan `october_2026` conserva octubre como referencia importada inmutable
+para edición administrativa. Desde noviembre, `StoreManagerCommissionTargetService`
+resuelve y materializa la herencia secuencial en
+`store_manager_commission_targets` antes de que el dashboard o un snapshot de
+Delegaciones use los objetivos. La materialización es transaccional, inserta
+solo claves ausentes y conserva los valores propios de cada mes; los estados
+`pending_approval` y `definitive` de Delegaciones no se completan
+automáticamente.
+
+La procedencia persistida distingue `imported`, `inherited` y
+`admin_override`, con `source_month` cuando aplica. La migración aditiva añade
+`store_manager_commission_target_events` para operación, actor, mes de origen y
+valores anteriores/nuevos. La pantalla administrativa Coeficientes expone un
+formulario separado para estos objetivos; el backend acepta únicamente valores
+enteros por `store_key`, autoriza solo Admin y vuelve a comprobar el cierre
+económico dentro de la transacción. Area Manager, el plan histórico de
+Delegaciones, fórmulas, snapshots y otros informes permanecen separados.
 
 ## Atribución operativa de Campañas (2026-11-13, PR Draft pendiente)
 

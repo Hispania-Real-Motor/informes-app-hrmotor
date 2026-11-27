@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Reports\CommercialCommissions;
 
 use App\Http\Controllers\Controller;
 use App\Services\Reports\CommercialCommissions\CommercialCommissionFormulaConfigService;
+use App\Services\Reports\CommercialCommissions\StoreManagerCommissionTargetService;
 use App\Support\ReportUserAccess;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ class CommercialCommissionFormulaSettingsController extends Controller
 {
     public function __construct(
         private readonly CommercialCommissionFormulaConfigService $formulaConfig,
+        private readonly StoreManagerCommissionTargetService $storeManagerTargets,
     ) {}
 
     public function index(Request $request): View|RedirectResponse
@@ -22,6 +24,7 @@ class CommercialCommissionFormulaSettingsController extends Controller
 
         $selectedMonth = $this->formulaConfig->resolveSelectedMonth($request->query('month'));
         $isEditableMonth = $this->formulaConfig->isEditableMonth($selectedMonth, $request);
+        $storeManagerTargetRows = $this->storeManagerTargets->materializeForMonth($selectedMonth);
 
         return view('reports.commercial-commissions.settings', [
             'reportUserRole' => ReportUserAccess::role($request),
@@ -39,7 +42,42 @@ class CommercialCommissionFormulaSettingsController extends Controller
             'availableAreaManagerDelegations' => $this->formulaConfig->availableAreaManagerDelegations(
                 $this->formulaConfig->forMonth($selectedMonth)
             ),
+            'storeManagerTargetRows' => $storeManagerTargetRows,
+            'canEditStoreManagerTargets' => $isEditableMonth
+                && $this->storeManagerTargets->isEditableTargetMonth($selectedMonth),
         ]);
+    }
+
+    public function updateTargets(Request $request): RedirectResponse
+    {
+        abort_unless(ReportUserAccess::canManageReportUsers($request), 403);
+
+        $selectedMonth = $this->formulaConfig->resolveSelectedMonth($request->input('month'));
+        if (! $this->formulaConfig->isEditableMonth($selectedMonth, $request)) {
+            return back()->withErrors(['month' => 'Solo se puede editar el mes abierto.'])->withInput();
+        }
+
+        $data = $request->validate([
+            'month' => ['required', 'date_format:Y-m'],
+            'targets' => ['required', 'array', 'min:1'],
+            'targets.*' => ['required', 'array'],
+            'targets.*.delivery_target' => ['required', 'integer', 'min:0'],
+            'targets.*.purchase_target' => ['required', 'integer', 'min:0'],
+        ]);
+        $reportUser = ReportUserAccess::reportUser($request);
+        abort_unless($reportUser !== null, 403);
+
+        $updated = $this->storeManagerTargets->updateForMonth(
+            $selectedMonth,
+            $data['targets'],
+            (int) $reportUser->id,
+        );
+
+        return redirect()
+            ->route('reports.commission-settings.index', ['month' => $selectedMonth->format('Y-m')])
+            ->with('status', $updated > 0
+                ? 'Objetivos de jefes de tienda actualizados correctamente.'
+                : 'No había cambios en los objetivos de jefes de tienda.');
     }
 
     public function update(Request $request): RedirectResponse

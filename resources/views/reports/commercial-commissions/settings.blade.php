@@ -480,6 +480,82 @@
                 </div>
             @endif
         </form>
+
+        <section class="card panel">
+            <div class="panel-title">
+                <div>
+                    <h2>Objetivos de jefes de tienda</h2>
+                    <div class="small">Objetivos mensuales independientes de Area Manager y del plan histórico de Delegaciones. Los meses sin configuración propia heredan la versión materializada anterior.</div>
+                </div>
+            </div>
+
+            @if (($storeManagerTargetRows ?? []) !== [])
+                <form method="POST" action="{{ route('reports.commission-settings.targets.update') }}">
+                    @csrf
+                    @method('PUT')
+                    <input type="hidden" name="month" value="{{ $selectedMonthKey }}">
+                    <div class="table-responsive">
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Delegación / tienda</th>
+                                    <th>Zona</th>
+                                    <th>Objetivo entregas</th>
+                                    <th>Objetivo compras</th>
+                                    <th>Origen</th>
+                                    <th>Mes heredado</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($storeManagerTargetRows as $target)
+                                    @php($targetKey = $target['store_key'])
+                                    <tr>
+                                        <td>{{ $target['store_name'] }}</td>
+                                        <td>{{ $target['zone'] }}</td>
+                                        <td>
+                                            <input
+                                                name="targets[{{ $targetKey }}][delivery_target]"
+                                                type="number"
+                                                step="1"
+                                                min="0"
+                                                value="{{ old("targets.{$targetKey}.delivery_target", $target['target_deliveries']) }}"
+                                                @disabled(! ($canEditStoreManagerTargets ?? false))
+                                            >
+                                        </td>
+                                        <td>
+                                            <input
+                                                name="targets[{{ $targetKey }}][purchase_target]"
+                                                type="number"
+                                                step="1"
+                                                min="0"
+                                                value="{{ old("targets.{$targetKey}.purchase_target", $target['target_purchases']) }}"
+                                                @disabled(! ($canEditStoreManagerTargets ?? false))
+                                            >
+                                        </td>
+                                        <td>{{ $target['origin_label'] }}</td>
+                                        <td>{{ $target['source_month'] ?: '—' }}</td>
+                                        <td>{{ ($canEditStoreManagerTargets ?? false) ? 'Editable' : 'Solo lectura' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @if ($canEditStoreManagerTargets ?? false)
+                        <div class="report-user-form-actions">
+                            <button type="submit" class="main-tab active">Guardar objetivos del mes</button>
+                        </div>
+                    @elseif ($selectedMonthKey === '2026-10')
+                        <div class="notice">Los objetivos originales de octubre de 2026 son una referencia inmutable.</div>
+                    @else
+                        <div class="notice">Este mes solo puede consultarse porque está cerrado o no es el mes abierto.</div>
+                    @endif
+                </form>
+            @else
+                <div class="notice">No hay objetivos materializados para este mes. Se necesita una referencia previa válida y un estado de Delegaciones que permita la inicialización.</div>
+            @endif
+        </section>
     </main>
 </div>
 </x-reports.app-shell>

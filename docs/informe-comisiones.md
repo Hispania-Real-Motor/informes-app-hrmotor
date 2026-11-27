@@ -598,8 +598,9 @@ publicada.
 
 Desde `2026-10-01`, la pestaña **Delegaciones** usa una fila específica del
 plan `october_2026`. Los objetivos deben existir en
-`store_manager_commission_targets`; la vista no hereda objetivos ni permite
-certificar una fila sin la configuración persistida.
+`store_manager_commission_targets`; desde noviembre de 2026, un mes sin filas
+propias materializa la cadena heredada antes de presentar sus filas o usarla
+como evidencia de cierre.
 
 `ImportStoreManagerCommissionTargets` valida en dry-run o escribe explícitamente
 el CSV de octubre, con 34 tiendas y totales esperados de 907 entregas y 499
@@ -610,11 +611,10 @@ etiqueta no vacíos, mantener exactamente 34 tiendas y los totales 907/499, y
 cada fila debe repetir exactamente ese SHA-256 y etiqueta. Los objetivos
 persistidos y los objetivos congelados en el snapshot deben coincidir con esa
 referencia canónica; si falta o no coincide, el flujo falla cerrado y no usa la
-tabla persistida como sustituto. No hay herencia automática de objetivos entre
-meses. La fuente del CSV no es Salesforce y su procedencia empresarial sigue
-siendo evidencia administrativa; el comando persiste hash y etiqueta de fuente,
-pero no recibe ni guarda un actor de importación. Esta revisión tampoco realizó
-una consulta productiva.
+tabla persistida como sustituto. La fuente del CSV no es Salesforce y su
+procedencia empresarial sigue siendo evidencia administrativa; el comando
+persiste hash, etiqueta y un evento de importación sin actor humano de sesión.
+Esta revisión tampoco realizó una consulta productiva.
 
 El dry-run continúa limitado a validar el fichero y no se bloquea por un cierre
 de Delegaciones definitivo, porque no escribe objetivos ni modifica el cierre.
@@ -630,6 +630,51 @@ candidato. El cierre financiero es independiente de esta guarda de Delegaciones.
 `StoreManagerCommissionTargetImportTest` cubre dry-run con cierre definitivo,
 reapertura con financieros definitivos, rechazo definitivo, rechazo de candidato
 incompatible e idempotencia conservando los campos de auditoría.
+
+### Herencia mensual y edición administrativa (2026-11-27)
+
+`StoreManagerCommissionTargetService::materializeForMonth()` resuelve los
+objetivos desde la primera referencia persistida disponible a partir de octubre
+y recorre como máximo 120 meses. Para cada mes solo inserta las claves de tienda
+que faltan; conserva cualquier valor propio ya existente y permite que una
+modificación administrativa de noviembre sea la fuente de diciembre y de los
+meses siguientes. La operación se ejecuta en una transacción, bloquea las filas
+de objetivos y utiliza la clave única `(month, store_key)` junto con
+`insertOrIgnore()` para tolerar inicializaciones concurrentes sin sobrescribir
+objetivos. Una segunda lectura no vuelve a escribir un conjunto completo.
+
+La materialización se activa desde la lectura normal de **Coeficientes** y desde
+el cálculo de la pestaña **Delegaciones**; no requiere un comando mensual. Los
+meses `pending_approval` y `definitive` no se completan automáticamente. Un mes
+`reopened` puede recibir la herencia, pero la edición vuelve a comprobar el
+cierre de Delegaciones dentro de la transacción antes de escribir. El cierre de
+Financieros sigue siendo independiente. Si no existe una referencia válida, la
+lectura permanece sin objetivos y la readiness bloquea la evidencia económica.
+
+La sección separada **Objetivos de jefes de tienda** de Coeficientes solo está
+disponible para administradores autorizados. El cliente envía exclusivamente
+los dos enteros por `store_key`; zona, nombre, identidad y procedencia se toman
+de la base de datos y se validan en backend. Octubre permanece de solo lectura.
+Los cambios modifican únicamente las filas alteradas, se marcan como
+`admin_override` y no tocan fórmulas, objetivos de Area Manager, el plan
+histórico de Delegaciones, cierres ni snapshots.
+
+La migración aditiva añade `source_type`, `source_month` y `modified_by` a
+`store_manager_commission_targets`, además de
+`store_manager_commission_target_events`. Cada importación, herencia o cambio
+administrativo conserva una operación, valores anteriores/nuevos y, cuando
+corresponde, usuario y mes de procedencia. Una herencia se identifica siempre
+como tal y no se presenta como el CSV original de octubre.
+
+Las regresiones focalizadas están en
+`StoreManagerCommissionTargetInheritanceTest` y cubren octubre 34/907/499,
+cadena octubre→noviembre→diciembre, modificaciones hacia adelante sin alterar
+octubre, materialización parcial e idempotente, protección de meses
+definitivos/pending, edición administrativa, 403 para Dirección y auditoría.
+La concurrencia se protege mediante bloqueo transaccional y la clave única;
+debe confirmarse en CI/MariaDB. La suite PHP y Pint deben ejecutarse en el entorno que disponga de
+PHP; esta revisión local solo pudo ejecutar `npm run build` y
+`git diff --check` porque PHP no está disponible en el PATH.
 
 ### Trazabilidad de fuentes y universo
 

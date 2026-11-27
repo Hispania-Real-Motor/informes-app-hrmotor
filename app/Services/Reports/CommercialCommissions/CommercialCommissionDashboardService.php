@@ -126,6 +126,10 @@ class CommercialCommissionDashboardService
         $periodStart = $selectedMonth->startOfMonth();
         $periodEnd = $periodStart->addMonth();
         $formulaSettings = $this->formulaConfig->forMonth($selectedMonth);
+        $storeManagerPlanActive = $selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM));
+        $storeManagerTargets = $storeManagerPlanActive
+            ? $this->storeManagerTargets->materializeForMonth($selectedMonth)
+            : [];
         $blockingIssues = $this->blockingIssues($selectedMonth);
         $diagnostics = $this->diagnostics($selectedMonth, $periodStart, $periodEnd, $blockingIssues, $formulaSettings);
         $financingPenaltyLedger = $this->financingPenalties->forMonth($selectedMonth);
@@ -143,7 +147,7 @@ class CommercialCommissionDashboardService
             : [];
         $delegationRows = $blockingIssues === [] && $includeDelegationRows
             ? ($selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM))
-                ? $this->buildStoreManagerProvisionalRows($selectedMonth)
+                ? $this->buildStoreManagerProvisionalRows($selectedMonth, $storeManagerTargets)
                 : $this->buildDelegationRows($periodStart, $periodEnd, $formulaSettings))
             : [];
         foreach ($delegationRows as $delegationRow) {
@@ -151,11 +155,6 @@ class CommercialCommissionDashboardService
                 $warnings[] = $delegationRow['store_manager_alert'];
             }
         }
-
-        $storeManagerPlanActive = $selectedMonth->greaterThanOrEqualTo(CarbonImmutable::parse(StoreManagerCommissionPlanCalculator::EFFECTIVE_FROM));
-        $storeManagerTargets = $storeManagerPlanActive
-            ? $this->storeManagerTargets->forMonth($selectedMonth)
-            : [];
 
         return [
             'ready' => $blockingIssues === [],
@@ -177,10 +176,8 @@ class CommercialCommissionDashboardService
         ];
     }
 
-    private function buildStoreManagerProvisionalRows(CarbonImmutable $month): array
+    private function buildStoreManagerProvisionalRows(CarbonImmutable $month, array $targets): array
     {
-        $targets = $this->storeManagerTargets->forMonth($month);
-
         if ($targets === []) {
             return [];
         }

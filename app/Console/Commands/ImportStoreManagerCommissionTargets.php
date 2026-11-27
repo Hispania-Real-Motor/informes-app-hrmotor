@@ -5,10 +5,12 @@ namespace App\Console\Commands;
 use App\Models\CommercialCommissionClosure;
 use App\Models\CommercialCommissionSnapshot;
 use App\Models\StoreManagerCommissionTarget;
+use App\Models\StoreManagerCommissionTargetEvent;
 use App\Services\Reports\CommercialCommissions\StoreManagerCommissionTargetService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class ImportStoreManagerCommissionTargets extends Command
 {
@@ -93,15 +95,82 @@ class ImportStoreManagerCommissionTargets extends Command
                     'purchase_target' => (int) $row['purchases'],
                     'source_sha256' => $source,
                     'source_label' => self::TARGET_SOURCE_LABEL,
+                    'source_type' => StoreManagerCommissionTargetService::SOURCE_TYPE_IMPORTED,
+                    'source_month' => $month,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ], $rows);
 
+                $keysByStore = collect($targets)->pluck('store_key')->all();
+                $existing = StoreManagerCommissionTarget::query()
+                    ->where('month', $month)
+                    ->whereIn('store_key', $keysByStore)
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('store_key');
+                $changed = collect($targets)->filter(function (array $target) use ($existing): bool {
+                    $stored = $existing->get($target['store_key']);
+
+                    return $stored === null
+                        || (int) $stored->delivery_target !== $target['delivery_target']
+                        || (int) $stored->purchase_target !== $target['purchase_target']
+                        || (string) ($stored->source_sha256 ?? '') !== $target['source_sha256']
+                        || (string) ($stored->source_label ?? '') !== $target['source_label']
+                        || (string) ($stored->source_type ?? StoreManagerCommissionTargetService::SOURCE_TYPE_IMPORTED) !== $target['source_type']
+                        || (string) ($stored->source_month ?? '') !== $target['source_month'];
+                })->values();
+
+                if ($changed->isEmpty()) {
+                    return;
+                }
+
                 StoreManagerCommissionTarget::query()->upsert(
-                    $targets,
+                    $changed->all(),
                     ['month', 'store_key'],
-                    ['zone', 'store_name', 'delivery_target', 'purchase_target', 'source_sha256', 'source_label', 'updated_at'],
+                    ['zone', 'store_name', 'delivery_target', 'purchase_target', 'source_sha256', 'source_label', 'source_type', 'source_month', 'updated_at'],
                 );
+
+                $operationId = (string) Str::uuid();
+                $persisted = StoreManagerCommissionTarget::query()
+                    ->where('month', $month)
+                    ->whereIn('store_key', $changed->pluck('store_key')->all())
+                    ->get()
+                    ->keyBy('store_key');
+                $eventsAvailable = Schema::hasTable('store_manager_commission_target_events');
+
+                $events = [];
+                foreach ($changed as $target) {
+                    $stored = $existing->get($target['store_key']);
+                    $persistedTarget = $persisted->get($target['store_key']);
+                    if ($persistedTarget === null || ! $eventsAvailable) {
+                        continue;
+                    }
+
+                    $events[] = [
+                        'target_id' => $persistedTarget->id,
+                        'month' => $month,
+                        'store_key' => $target['store_key'],
+                        'operation_id' => $operationId,
+                        'event_type' => StoreManagerCommissionTargetService::SOURCE_TYPE_IMPORTED,
+                        'source_month' => $month,
+                        'report_user_id' => null,
+                        'before_delivery_target' => $stored?->delivery_target,
+                        'before_purchase_target' => $stored?->purchase_target,
+                        'after_delivery_target' => $target['delivery_target'],
+                        'after_purchase_target' => $target['purchase_target'],
+                        'metadata' => [
+                            'source_type' => StoreManagerCommissionTargetService::SOURCE_TYPE_IMPORTED,
+                            'source_sha256' => $source,
+                            'source_label' => self::TARGET_SOURCE_LABEL,
+                        ],
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+
+                if ($eventsAvailable && $events !== []) {
+                    StoreManagerCommissionTargetEvent::query()->insertOrIgnore($events);
+                }
             });
         } catch (\RuntimeException $exception) {
             $this->error($exception->getMessage());
@@ -148,9 +217,9 @@ class ImportStoreManagerCommissionTargets extends Command
         $frozenTargets = $snapshot === null
             ? null
             : data_get($snapshot->payload, 'delegations.store_manager_targets');
-        $incomingTargets = $this->canonicalTargetDefinitions($rows, $source, $keys);
+        $incomingTargets = $this->canonicalTargetDefinitions($rows, $source, $month, $keys);
         $candidateTargets = is_array($frozenTargets)
-            ? $this->canonicalTargetDefinitions($frozenTargets, null, $keys)
+            ? $this->canonicalTargetDefinitions($frozenTargets, null, null, $keys)
             : [];
 
         if ($snapshot === null || $incomingTargets !== $candidateTargets) {
@@ -159,11 +228,11 @@ class ImportStoreManagerCommissionTargets extends Command
     }
 
     /** @param array<int, array<string, mixed>> $targets */
-    private function canonicalTargetDefinitions(array $targets, ?string $source, StoreManagerCommissionTargetService $keys): array
+    private function canonicalTargetDefinitions(array $targets, ?string $source, ?string $sourceMonth, StoreManagerCommissionTargetService $keys): array
     {
         return collect($targets)
             ->filter(fn (mixed $target): bool => is_array($target))
-            ->map(function (array $target) use ($source, $keys): array {
+            ->map(function (array $target) use ($source, $sourceMonth, $keys): array {
                 $storeKey = (string) ($target['store_key'] ?? $target['storeKey'] ?? '');
                 $storeName = (string) ($target['store_name'] ?? $target['store'] ?? '');
 
@@ -178,6 +247,12 @@ class ImportStoreManagerCommissionTargets extends Command
                         'label' => $source === null
                             ? (string) data_get($target, 'target_source.label', '')
                             : self::TARGET_SOURCE_LABEL,
+                        'type' => $source === null
+                            ? (string) data_get($target, 'target_source.type', '')
+                            : StoreManagerCommissionTargetService::SOURCE_TYPE_IMPORTED,
+                        'source_month' => $source === null
+                            ? (string) data_get($target, 'target_source.source_month', '')
+                            : $sourceMonth,
                     ],
                 ];
             })

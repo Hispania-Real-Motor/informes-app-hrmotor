@@ -8,7 +8,8 @@ class StoreManagerCommissionTarget extends Model
 {
     protected $fillable = [
         'month', 'zone', 'store_key', 'store_name', 'delivery_target',
-        'purchase_target', 'source_sha256', 'source_label', 'imported_by',
+        'purchase_target', 'source_sha256', 'source_label', 'source_type',
+        'source_month', 'imported_by', 'modified_by',
     ];
 
     protected $casts = [

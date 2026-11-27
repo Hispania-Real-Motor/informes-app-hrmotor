@@ -1,5 +1,27 @@
 # Decisiones técnicas
 
+## 2026-11-27 — materialización auditable de objetivos mensuales de jefes de tienda
+
+- Se mantiene `store_manager_commission_targets` como fuente mensual efectiva
+  del plan `october_2026`. La herencia no se resuelve como fallback en memoria:
+  se materializa desde la primera referencia persistida disponible, mes a mes,
+  para que el objetivo usado por el dashboard y por un snapshot tenga una fila
+  propia, una clave única y una procedencia verificable.
+- La materialización inserta solo claves ausentes dentro de una transacción,
+  bloquea las filas de objetivos y respeta el cierre de Delegaciones. No se
+  completan meses `pending_approval` o `definitive`; un `reopened` sí puede
+  recibir la herencia. El límite de 120 meses evita recorridos ilimitados.
+- Se eligió una migración aditiva con `source_type`, `source_month` y
+  `modified_by`, más `store_manager_commission_target_events`, en lugar de
+  reutilizar `commercial_commission_month_settings` o mezclar los objetivos de
+  Area Manager. Los eventos guardan operación, actor y valores anteriores y
+  nuevos; la referencia de octubre conserva su contrato SHA-256/34/907/499.
+- La edición vive en una ruta separada de Coeficientes y solo acepta objetivos
+  por `store_key`; el servidor conserva tienda, zona y procedencia y solo
+  actualiza filas con cambios. Admin es el único rol autorizado. Así se evita
+  que un formulario alterado modifique identidades, cierres, snapshots o
+  fórmulas económicas.
+
 ## 2026-11-13 — atribución provisional de Campañas con puntero propio
 
 - Campañas no reutiliza `campaign_attributions` ni el puntero de generación

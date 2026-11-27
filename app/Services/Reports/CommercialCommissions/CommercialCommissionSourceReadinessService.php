@@ -289,6 +289,17 @@ class CommercialCommissionSourceReadinessService
             return $this->state('Objetivos de jefes de tienda', 'error', true, null, 'La configuración debe contener exactamente 34 objetivos por tienda.');
         }
 
+        $invalid = DB::table('store_manager_commission_targets')
+            ->where('month', $month)
+            ->where(function ($query): void {
+                $query->whereNull('delivery_target')
+                    ->orWhereNull('purchase_target');
+            })
+            ->exists();
+        if ($invalid) {
+            return $this->state('Objetivos de jefes de tienda', 'error', true, null, 'Hay objetivos de jefes de tienda incompletos o no verificables.');
+        }
+
         return $this->state('Objetivos de jefes de tienda', 'ready', false, DB::table('store_manager_commission_targets')->where('month', $month)->max('updated_at'), 'Objetivos persistidos y auditables.');
     }
 

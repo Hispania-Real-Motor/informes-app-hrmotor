@@ -1,5 +1,75 @@
 # Handoff para agentes
 
+## 2026-11-27 — Herencia mensual y edición de objetivos de jefes de tienda
+
+- Rama: `codex/store-manager-targets-monthly-inheritance`, creada desde
+  `origin/main` en `99f066021819743b07096956dc5e78033135fa35`. Commit local de
+  esta entrega: `feat(commissions): materialize monthly store manager targets`.
+  No se ha hecho push, PR, merge, despliegue, importación real ni cambio
+  productivo.
+- Objetivo: eliminar la necesidad de importar un CSV cada mes desde noviembre
+  de 2026, manteniendo octubre como referencia importada inmutable y sin
+  mezclar estos objetivos con Area Manager ni con el plan histórico de
+  Delegaciones.
+- Implementación: `StoreManagerCommissionTargetService` materializa la cadena
+  mensual desde la primera referencia persistida disponible hasta el mes
+  consultado, con límite de 120 meses, transacción, bloqueo de filas y una
+  inserción únicamente de claves ausentes. Los valores propios existentes
+  prevalecen; la cadena puede ser octubre → noviembre → diciembre → enero.
+  `CommercialCommissionDashboardService` y la pantalla Coeficientes llaman al
+  mismo flujo, de modo que un objetivo queda persistido antes de servirlo como
+  evidencia económica. Una lectura posterior no reescribe un mes completo.
+- Protección de cierres: no se materializan meses Delegaciones
+  `pending_approval` ni `definitive`; `reopened`, `provisional` y una ausencia
+  de fila de cierre permanecen utilizables. La edición vuelve a bloquear la
+  fila de Delegaciones dentro de la transacción y rechaza cambios en
+  `pending_approval`/`definitive`. El cierre Financieros no bloquea esta
+  operación y no se modifica ningún cierre, snapshot o aprobación.
+- Auditoría: la migración aditiva
+  `2026_11_27_120000_add_monthly_provenance_to_store_manager_commission_targets.php`
+  añade `source_type`, `source_month`, `modified_by` y la tabla
+  `store_manager_commission_target_events`. Importación, herencia y edición
+  administrativa conservan operación, actor cuando existe, mes de origen y
+  valores anteriores/nuevos. Octubre mantiene el hash, etiqueta y contrato de
+  referencia 34/907/499.
+- Administración: la nueva ruta
+  `reports.commission-settings.targets.update` y la sección separada
+  «Objetivos de jefes de tienda» solo aceptan valores enteros no negativos por
+  `store_key`. El servidor toma nombre, zona y procedencia de la fila
+  persistida; solo Admin puede escribir. Octubre se muestra como solo lectura.
+- Archivos funcionales modificados: servicio y modelo de objetivos, modelo de
+  eventos, migración aditiva, importador histórico, dashboard, readiness,
+  controlador/vista/ruta de Coeficientes y
+  `tests/Feature/StoreManagerCommissionTargetInheritanceTest.php` y la guarda
+  de procedencia de `CommercialCommissionClosureService`. No se
+  modificaron Campañas, fórmulas económicas, assets compilados, permisos de
+  otros informes ni fuentes externas.
+- Documentación actualizada: `docs/informe-comisiones.md`,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/ai/PROJECT_CONTEXT.md`,
+  `docs/ai/DECISIONS.md` y este handoff. El agente personalizado
+  `report_docs_maintainer` se intentó invocar, pero la sesión alcanzó el límite
+  de agentes; se aplicó el procedimiento documental como fallback del agente
+  principal y se revisó el diff documental manualmente.
+- Pruebas/verificaciones ejecutadas: `npm run build` correcto y los bundles
+  históricos restaurados para no ampliar el diff; `git diff --check` correcto.
+  PHP/PHPUnit/Pint no se pudieron ejecutar en esta sesión porque no existe un
+  binario PHP en el PATH ni en las rutas locales esperadas. Deben ejecutarse en
+  Herd/CI antes de publicar. No se ejecutó `php artisan migrate`, ningún
+  comando de importación real ni sincronización externa.
+- Pruebas focalizadas pendientes de ejecutar con PHP:
+  `php artisan test --filter=StoreManagerCommissionTargetInheritanceTest`,
+  `php artisan test --filter=StoreManagerCommissionTargetImportTest`,
+  `php artisan test --filter=CommercialCommissionFormulaSettingsTest`,
+  `php artisan test --filter=CommercialCommissionDashboardTest`,
+  `php artisan test --filter=CommercialCommissionSourceReadinessTest` y
+  `php vendor/bin/pint --test` sobre los PHP modificados. Después debe
+  ejecutarse la suite completa y CI, incluyendo el job MariaDB provisional.
+- Operación posterior: desplegar código y migración en el mismo release,
+  confirmar que octubre ya tiene sus 34 filas importadas y abrir Coeficientes
+  en noviembre con un administrador. Validar primero lectura/dry-run y luego
+  la edición de un valor sintético en un entorno autorizado; no ejecutar
+  importaciones reales ni reabrir cierres desde esta tarea.
+
 ## 2026-11-26 — Ajustes finales de revisión de Campañas
 
 - La tabla de detalle de Campañas conserva el dataset compartido y las
