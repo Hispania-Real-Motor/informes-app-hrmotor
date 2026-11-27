@@ -1749,6 +1749,14 @@ los workers con el procedimiento vigente. Comprobar `php artisan schedule:list`
 y los estados persistentes antes de restaurar cron. La lista vacía es también
 el interruptor de nuevas reservas; no borra los mecanismos de integridad.
 
+Para activar el refresco programado de reseñas internas de Comisiones, la
+allowlist debe incluir explícitamente
+`commercial-commissions-refresh-internal-reviews` (por ejemplo,
+`OPERATIONS_SCHEDULED_TASK_KEYS=commercial-commissions-refresh-internal-reviews`).
+La activación requiere autorización operativa y no modifica automáticamente el
+`.env` de producción. La tarea reutiliza el endpoint interno y su caché; no
+altera cierres económicos, snapshots ni atribuciones.
+
 **Preflight de solo lectura, bajo supervisión del operador:** contrastar SHA
 desplegado, `php artisan migrate:status`, `php artisan schedule:list`, proceso
 cron externo, proceso real del worker `operations`, conexión y cola de este,

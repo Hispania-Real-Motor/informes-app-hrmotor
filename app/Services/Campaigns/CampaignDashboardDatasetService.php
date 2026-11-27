@@ -472,7 +472,7 @@ class CampaignDashboardDatasetService
     /** The same dashboard presentation over a pinned provisional month. */
     private function operationalPayload(Request $request): array
     {
-        abort_unless(ReportUserAccess::isAdmin($request), 403);
+        abort_unless(ReportUserAccess::isAdmin($request) || ReportUserAccess::isDirector($request), 403);
         $filters = $this->filters($request);
         $month = substr($filters['start_date'], 0, 7);
         $legacyEnabled = match ($month) {
@@ -588,13 +588,20 @@ class CampaignDashboardDatasetService
                     ? 'Se muestran únicamente oportunidades confirmadas; la cobertura restante sigue pendiente.'
                     : 'No hay oportunidades confirmadas para este período.'),
             ];
-            $base['operational_evidence'] = [
+            $operationalEvidence = [
                 'month' => $month, 'economic_state' => $evidence['closure_status'],
                 'economic_version' => $evidence['closure_version'], 'interest_run_id' => (int) $run->interest_run_id,
                 'attribution_run_id' => (int) $run->id, 'interest_cutoff_at' => $run->interest_cutoff_at,
                 'interest_observed_at' => $run->interest_observed_at,
                 'coverage' => $source['coverage'], 'incidents_count' => (int) $run->incidents_count,
             ];
+            $base['operational_evidence'] = ReportUserAccess::isAdmin($request)
+                ? $operationalEvidence
+                : [
+                    'month' => $month,
+                    'economic_state' => $evidence['closure_status'],
+                    'provisional' => true,
+                ];
             $base['kpis'] = $totals;
             $base['campaigns'] = $campaigns;
             // The platform comparison must use the same already-filtered campaign
@@ -621,6 +628,12 @@ class CampaignDashboardDatasetService
                     ? 'Resultados comerciales confirmados con cobertura incompleta; las relaciones pendientes no se presentan como válidas.'
                     : 'Resultados comerciales no disponibles: no hay relaciones confirmadas en el universo atribuible.']),
             ];
+            if (! ReportUserAccess::isAdmin($request)) {
+                $base['warnings'] = [
+                    'Datos operativos provisionales de '.$month.'; no constituyen una certificación histórica.',
+                    ...($opportunityComplete ? [] : ['La cobertura de resultados comerciales puede estar incompleta.']),
+                ];
+            }
             $base['public_warnings'] = $base['warnings'];
             $base['filters']['lead_types'] = [
                 ['value' => 'venta', 'label' => 'Venta'],
@@ -649,7 +662,11 @@ class CampaignDashboardDatasetService
     private function operationalBlockedPayload(Request $request, string $reason): array
     {
         $summary = $this->platformOnlySummary($request);
-        $summary['warnings'][] = $reason;
+        $summary['operational_fallback'] = true;
+        $summary['operational_fallback_reason'] = ReportUserAccess::isAdmin($request)
+            ? $reason
+            : 'La atribución operativa no está disponible; se muestran los datos oficiales disponibles.';
+        $summary['warnings'][] = $summary['operational_fallback_reason'];
         $summary['public_warnings'] = $summary['warnings'];
 
         return ['summary' => $summary, 'campaigns' => $summary['campaigns'], 'rankings' => $summary['rankings']];

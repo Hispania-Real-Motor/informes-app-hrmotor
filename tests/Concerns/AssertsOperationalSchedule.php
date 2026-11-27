@@ -11,6 +11,7 @@ trait AssertsOperationalSchedule
     {
         $baseline = require base_path('tests/Fixtures/operational_schedule_baseline.php');
         $baseline['salesforce-sync-commercial-reviews'] = ['salesforce:sync-commercial-reviews', ['--months' => '2'], '20 2 * * *', 120];
+        $baseline['commercial-commissions-refresh-internal-reviews'] = ['commissions:refresh-internal-reviews', ['--months' => '2'], '30 2 * * *', 30];
         $baseline['operations-health'] = ['operations:check-health', [], '*/5 * * * *', 5];
         $baseline['campaigns-sync-current-status'] = ['campaigns:sync-current-status', [], '37 */6 * * *', 240];
         $baseline['salesforce-sync-interest-monthly-current'] = ['salesforce:sync-interest-monthly-current', ['--allow-salesforce-read' => true], '10 3 * * *', 240];

@@ -7,6 +7,8 @@ use App\Models\CampaignOperationalClassification;
 use App\Support\ReportUserAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CampaignDashboardController extends Controller
 {
@@ -21,12 +23,17 @@ class CampaignDashboardController extends Controller
             config('campaign_operational.october_2026_enabled') ? ['2026-10'] : [],
             config('campaign_operational.november_2026_enabled') ? ['2026-11'] : [],
         )));
+        $canViewOperational = (ReportUserAccess::isAdmin($request) || ReportUserAccess::isDirector($request))
+            && $enabledMonths !== [];
         $response = response()->view('reports.campaigns.index', [
             'reportUserRole' => ReportUserAccess::role($request),
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'campaigns'),
             'reportUserCanAudit' => ReportUserAccess::canAuditReport($request, 'campaigns'),
-            'reportUserCanViewOperationalCampaigns' => ReportUserAccess::isAdmin($request)
-                && $enabledMonths !== [],
+            'reportUserCanViewOperationalCampaigns' => $canViewOperational,
+            'reportUserIsAdmin' => ReportUserAccess::isAdmin($request),
+            'campaignOperationalDefaultMonth' => $canViewOperational
+                ? $this->operationalDefaultMonth($enabledMonths)
+                : null,
             'campaignOperationalEnabledMonths' => $enabledMonths,
             'campaignOperationalOctoberEnabled' => config('campaign_operational.october_2026_enabled') === true,
             'campaignOperationalNovemberEnabled' => config('campaign_operational.november_2026_enabled') === true,
@@ -63,5 +70,32 @@ class CampaignDashboardController extends Controller
         Cache::forever('campaign_dashboard_cache_version', (int) Cache::get('campaign_dashboard_cache_version', 1) + 1);
 
         return response()->json(['ok' => true, 'classification' => $classification]);
+    }
+
+    private function operationalDefaultMonth(array $enabledMonths): ?string
+    {
+        if (! Schema::hasTable('campaign_operational_months') || ! Schema::hasTable('campaign_operational_runs')) {
+            return null;
+        }
+
+        $validMonths = DB::table('campaign_operational_months as months')
+            ->join('campaign_operational_runs as runs', 'runs.id', '=', 'months.active_run_id')
+            ->whereIn('months.month_key', $enabledMonths)
+            ->where('runs.status', 'completed')
+            ->pluck('months.month_key')
+            ->map(static fn (mixed $month): string => (string) $month)
+            ->all();
+        if ($validMonths === []) {
+            return null;
+        }
+
+        $currentMonth = now('Europe/Madrid')->format('Y-m');
+        if (in_array($currentMonth, $validMonths, true)) {
+            return $currentMonth;
+        }
+
+        rsort($validMonths);
+
+        return $validMonths[0] ?? null;
     }
 }

@@ -2857,7 +2857,7 @@ th.num {
 
     .campaign-filter-actions {
         grid-column: span 2;
-        justify-self: stretch;
+        justify-self: end;
     }
 }
 
@@ -2894,6 +2894,12 @@ th.num {
     .campaign-table-actions {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .campaign-filter-actions {
+        align-items: flex-end;
+        justify-self: end;
+        width: 100%;
     }
 
     .campaigns-topbar {
@@ -3536,6 +3542,72 @@ th.num {
     display: flex;
     justify-content: flex-start;
     gap: 10px;
+}
+
+.commercial-commissions-report .commission-provisional-note {
+    display: block;
+    color: #9a3412;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.commercial-commissions-report .commission-issues-cell {
+    min-width: 72px;
+}
+
+.commercial-commissions-report .commission-incident-trigger {
+    min-width: 30px;
+    min-height: 28px;
+    padding: 3px 8px;
+    border: 1px solid rgba(200, 20, 38, .25);
+    border-radius: 999px;
+    background: rgba(229, 26, 46, .08);
+    color: #a11424;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.commercial-commissions-report .commission-incident-dialog {
+    width: min(560px, calc(100vw - 32px));
+    max-height: min(70vh, 620px);
+    padding: 22px;
+    border: 0;
+    border-radius: 24px;
+    color: #1f2944;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+}
+
+.commercial-commissions-report .commission-incident-dialog::backdrop {
+    background: rgba(15, 23, 42, .38);
+}
+
+.commercial-commissions-report .commission-incident-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.commercial-commissions-report .commission-incident-dialog h2 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.commercial-commissions-report .commission-incident-dialog p {
+    margin: 6px 0 0;
+    color: rgba(31, 41, 68, .68);
+    font-size: 12px;
+}
+
+.commercial-commissions-report .commission-incident-dialog li + li {
+    margin-top: 8px;
+}
+
+.commercial-commissions-report .commission-team-details {
+    margin-top: 6px;
+    text-align: left;
+    white-space: normal;
 }
 
 .commercial-commissions-report .commission-warning {

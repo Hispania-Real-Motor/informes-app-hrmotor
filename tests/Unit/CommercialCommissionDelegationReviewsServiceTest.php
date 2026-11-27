@@ -66,4 +66,34 @@ class CommercialCommissionDelegationReviewsServiceTest extends TestCase
         $this->assertSame('available', $payload['technical_status']);
         $this->assertSame(3.995, $payload['average_rating']);
     }
+
+    public function test_missing_location_mapping_is_distinguished_from_a_valid_zero(): void
+    {
+        Http::fake();
+
+        $payload = app(CommercialCommissionDelegationReviewsService::class)
+            ->forMonthAndDelegations(CarbonImmutable::parse('2026-10-01'), collect(['Delegación no mapeada']))['Delegación no mapeada'];
+
+        $this->assertSame('not_mapped', $payload['technical_status']);
+        $this->assertNull($payload['fetched_at']);
+        Http::assertNothingSent();
+    }
+
+    public function test_explicit_refresh_bypasses_the_short_term_cache_without_changing_the_contract(): void
+    {
+        Http::fakeSequence()
+            ->push(['reviews_count' => 1, 'average_rating' => 4.1], 200)
+            ->push(['reviews_count' => 2, 'average_rating' => 4.3], 200);
+        $service = app(CommercialCommissionDelegationReviewsService::class);
+        $month = CarbonImmutable::parse('2026-10-01');
+
+        $first = $service->forMonthAndDelegations($month, collect(['Alicante']))['Alicante'];
+        $cached = $service->forMonthAndDelegations($month, collect(['Alicante']))['Alicante'];
+        $refreshed = $service->forMonthAndDelegations($month, collect(['Alicante']), true)['Alicante'];
+
+        $this->assertSame(1, $first['reviews_count']);
+        $this->assertSame(1, $cached['reviews_count']);
+        $this->assertSame(2, $refreshed['reviews_count']);
+        Http::assertSentCount(2);
+    }
 }

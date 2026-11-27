@@ -1,5 +1,62 @@
 # Handoff para agentes
 
+## 2026-11-26 — Ajustes finales de revisión de Campañas
+
+- La tabla de detalle de Campañas conserva el dataset compartido y las
+  exportaciones, pero muestra inicialmente solo campañas con un resultado
+  comercial confirmado positivo; el selector permite volver a todas las
+  campañas y conserva la elección entre recargas y cambios de periodo.
+- «Limpiar filtros» vacía únicamente los filtros aplicables y conserva el
+  período, `source` y fechas seleccionados; en particular, no devuelve un mes
+  operativo válido a `last_30_days` ni cruza cierres económicos.
+- `CommercialCommissionDashboardTest` alinea el stub de reseñas con la firma
+  vigente de `forMonthAndDelegations`, incluido el parámetro opcional
+  `refresh`; es una corrección de compatibilidad del test y no cambia fórmulas,
+  umbrales, cierres ni KPIs de Comisiones.
+- Dirección recupera la clasificación operativa que ya tenía; las operaciones
+  administrativas de construcción y activación siguen protegidas para Admin.
+- Se documenta la activación explícita de
+  `commercial-commissions-refresh-internal-reviews` mediante
+  `OPERATIONS_SCHEDULED_TASK_KEYS`, sin tocar `.env` de producción, cierres ni
+  snapshots. No hay migraciones ni cambios de base de datos.
+- Seguridad: no se amplían permisos administrativos ni se modifican estados
+  económicos. Rendimiento: el filtro reutiliza las filas ya cargadas y no
+  añade consultas por campaña; los enlaces de exportación conservan su URL al
+  cambiar el filtro.
+- Pruebas ejecutadas: `node --test tests/js/*.test.mjs` (88/88),
+  `node --check` de los módulos de Campañas, `npm run build`, coherencia del
+  manifest con los archivos existentes y `git diff --check`. Los focales PHP
+  `CampaignOperationalAttributionTest` (13/13, 115 aserciones) y
+  `CampaignDashboardTest` (72/72, 767 aserciones), con la clave sintética de
+  CI, y Pint sobre los PHP modificados también pasan; los checks remotos deben
+  confirmar la suite Laravel completa.
+- Validador documental y pruebas de `tests/documentation` pendientes en este
+  entorno: el único `python.exe` disponible es el stub de WindowsApps y no se
+  dispone del cuerpo real de la PR para completar el contrato. No se inventó
+  una descripción ni se consultaron Salesforce o bases de datos.
+- Tras corregir la firma del stub de reseñas, `CommercialCommissionDashboardTest`
+  pasa 60/60 con 509 aserciones. La suite completa pasa 1.853 tests, con un
+  caso omitido y 16.477 aserciones; localmente se ejecutó con
+  `-d max_execution_time=0 -d disable_functions=set_time_limit` porque un
+  controlador existente fija 120 segundos durante la suite Windows. Pint
+  sobre la prueba PHP modificada también pasa.
+
+## 2026-11-26 — Corrección de checks de la PR de Comisiones y Campañas
+
+- Se mantuvieron los assets compilados nuevos y se conservaron byte a byte los
+  hashes existentes de `public/build/assets`, evitando que el validador
+  documental interprete una recompilación normal como eliminaciones o
+  renombrados históricos.
+- La descripción de la PR declara el impacto documental de Campañas y
+  Comisiones, la ruta operativa transversal y la justificación de que no cambia
+  ninguna fórmula comercial.
+- No hay migraciones, cambios de configuración, permisos, aprobaciones,
+  snapshots, cierres, importaciones ni despliegues. No se cambia la lógica
+  económica ni se modifica ningún informe fuera del alcance declarado.
+- El job remoto `october-provisional-mariadb` ya había pasado. La suite PHP
+  remota quedó interrumpida tras `CommercialCommissionApiTest` sin resumen de
+  aserciones; debe confirmarse en la nueva ejecución tras este commit.
+
 ## 2026-11-19 — Campañas: UX de filtros, tabla y rankings
 
 ### Revisión documental — report_docs_maintainer
@@ -9907,3 +9964,90 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   objetivos continúa sin actor `imported_by`, a diferencia del roster.
 - Contrato de PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
   `Docs-Scope: commissions`.
+
+## Ajustes finales de Comisiones y Campañas (2026-11-26)
+
+- Alcance contrastado: `origin/main` y `HEAD` son el mismo commit
+  (`dd3cd4c675a3226c40c9d5a0bf5f6c736e7b1c80`); el diff funcional de esta
+  tarea está en el árbol de trabajo e incluye archivos no rastreados. Se leyó
+  el diff completo, incluidas eliminaciones/adiciones de `public/build`; esos
+  artefactos no se modificaron desde esta revisión. Los informes afectados son
+  Comisiones / Delegaciones y Campañas / lectura operativa, rankings y detalle.
+- Comisiones: los incentivos de entregas y compras se exponen cuando su KPI
+  individual está calculado aunque la liquidación global esté pendiente; se
+  añaden estados técnicos al payload, sin cambiar el total ni el cierre. El
+  roster pendiente oculta subtotales y miembros no verificados en la tabla. Las
+  incidencias pasan a contador compacto y diálogo nativo accesible; el cero no
+  abre diálogo. El XLSX conserva el importe y el estado global, pero no exporta
+  estados individuales ni la marca visual `Provisional`.
+- Reseñas: `CommercialCommissionDelegationReviewsService` distingue
+  `not_mapped` de cero confirmado y no llama al endpoint sin mapeo. El refresco
+  explícito ignora el valor cacheado, vuelve a consultar y repuebla la caché.
+  `commissions:refresh-internal-reviews` está en el catálogo operacional con
+  reserva persistente, ventana/gracia de 30 minutos y dos meses móviles; el
+  timeout HTTP sigue limitado por la configuración del servicio. No usa el
+  sincronizador Salesforce legacy como sustituto ni expone endpoint,
+  credenciales o cuerpos remotos.
+- Campañas: Administración y Dirección pueden leer el dataset operacional
+  habilitado con los mismos KPI confirmados; Dirección conserva la capacidad
+  de clasificar campañas y recibe evidencia provisional resumida. El origen es
+  un control interno/URL, no un selector visible. Sin parámetros se prioriza el
+  mes actual válido y después el último mes activo; si falla una selección
+  implícita, la UI vuelve a oficial con aviso. Con `source=operational`
+  explícito, el servicio conserva la petición y entrega el fallback de
+  plataforma con aviso. La tabla de detalle añade un filtro visual persistido
+  (`campaigns.detailFilter.v1`) entre resultados comerciales y todas las
+  campañas, sin cambiar dataset, CSV ni auditoría. Rankings y columnas son
+  preferencias de presentación;
+  los rankings sin filas válidas se ocultan y el detalle prioriza campañas con
+  métrica comercial positiva confirmada sin eliminar campañas de inversión.
+- Alcance de artefactos: el diff también contiene bundles generados y cambios
+  de manifest para Llamadas, Intereses/Leads y Reservas/Ventas, pero no cambia
+  sus fuentes JavaScript ni contratos KPI. El CSS compartido añadido está
+  acotado a selectores de Campañas y Comisiones. Estos assets y el código de
+  otros informes se leyeron como parte del diff y no se modificaron durante
+  esta revisión.
+- Documentación modificada exclusivamente: `docs/informe-comisiones.md`,
+  `docs/informe-campanas.md`, `docs/matriz-trazabilidad-kpi.md`,
+  `docs/operaciones-produccion.md` y este `HANDOFF.md`. La guía
+  `docs/guia-mantenimiento-documental.md` fue
+  contrastada y ya contiene el mapa de estas rutas, por lo que no se editó.
+  No cambian `PROJECT_CONTEXT.md`, `DECISIONS.md` ni decisiones de negocio.
+- Evidencia revisada: controladores y dataset de Campañas, servicio/comando de
+  reseñas, catálogo y rutas del scheduler, servicio/vista/exportación de
+  Comisiones, JS/Blade/CSS y las pruebas focalizadas de permisos, presentación,
+  reseñas, liquidación y catálogo. No se consultaron Salesforce ni bases de
+  datos y no se ejecutaron sincronizaciones, imports, cierres ni despliegues.
+- Seguridad y rendimiento: se preservan permisos de cierre, snapshots y
+  aprobación; la clasificación de Campañas sigue limitada a Administración y
+  Dirección; la vista no consulta Salesforce ni sincroniza; el refresco usa el
+  pool existente y la lectura de Campañas reutiliza filas materializadas. No
+  hay migraciones, variables de entorno nuevas ni secretos documentados.
+- Revisión documental: se invocó `report_docs_maintainer` con el diff completo
+  y las referencias de base/HEAD. El agente modificó únicamente documentación;
+  el agente principal revisó sus cambios, corrigió el estado documentado del
+  permiso de Dirección y dejó código y assets fuera de alcance documental.
+- Verificaciones documentales: `git diff --check`, enlaces Markdown relativos y
+  referencias funcionales documentadas terminaron correctamente
+  (`git-diff-check: OK`, `markdown-relative-links: OK`,
+  `functional-reference-paths: OK`). La suite
+  `python -B -m unittest discover -s tests/documentation -p "test_*.py"` y el
+  validador `scripts/check_documentation_integrity.py` no pudieron ejecutarse:
+  el único `python.exe` expuesto es el stub de WindowsApps y no puede iniciarse,
+  y tampoco se dispone del cuerpo real de la PR #162 para completar el contrato
+  del validador. No se inventó una descripción de PR.
+- Verificaciones de código y assets: `node --test tests/js/campaign-presentation.test.mjs`
+  pasó con 54/54. Las suites PHP focalizadas con clave sintética válida pasaron
+  con 156/156 tests y 1.639 assertions; `CampaignDashboardTest` pasó con 72/72
+  tests y 767 assertions. Pint pasó sobre los PHP modificados, `git diff --check`
+  pasó, `npm ci` terminó sin vulnerabilidades y `npm run build` generó el
+  manifest y los assets Vite. La validación negativa de
+  `commissions:refresh-internal-reviews` rechazó correctamente
+  `--month=2026-13`; no se ejecutaron llamadas remotas ni importaciones reales.
+- Discrepancias pendientes: no hay evidencia productiva del endpoint, roster,
+  objetivos, cifras ni cobertura operativa; el XLSX no distingue estados de
+  incentivo parcial; y el fallback implícito/explícito necesita verificación UI
+  end-to-end. Recomendación para el cuerpo de PR:
+  `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
+  `Docs-Scope: commissions,campaigns`, con rutas funcionales modificadas como
+  `Docs-Evidence` y sin declarar cobertura productiva.

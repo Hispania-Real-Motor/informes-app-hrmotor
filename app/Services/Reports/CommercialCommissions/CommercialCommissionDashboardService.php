@@ -398,8 +398,13 @@ class CommercialCommissionDashboardService
                 'store_manager_plan' => 'october_2026',
                 'store_manager_status' => $status,
                 'store_manager_issues' => $issues,
-                'store_deliveries_incentive' => $status === 'calculated' ? $deliveryKpi['incentive'] : null,
-                'store_purchases_incentive' => $status === 'calculated' ? $purchaseKpi['incentive'] : null,
+                // Each store KPI has its own source contract. Do not hide a
+                // verified delivery/purchase incentive merely because another
+                // component (reviews, roster or the other KPI) is pending.
+                'store_deliveries_incentive' => $deliveryKpi['status'] === 'calculated' ? $deliveryKpi['incentive'] : null,
+                'store_deliveries_incentive_status' => $deliveryKpi['status'],
+                'store_purchases_incentive' => $purchaseKpi['status'] === 'calculated' ? $purchaseKpi['incentive'] : null,
+                'store_purchases_incentive_status' => $purchaseKpi['status'],
                 'store_reviews_adjustment' => $reviewAmount,
                 'reviews_count' => is_array($review) ? ($review['reviews_count'] ?? null) : null,
                 'reviews_average_rating' => is_array($review) ? ($review['average_rating'] ?? null) : null,

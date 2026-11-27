@@ -142,7 +142,7 @@ class CampaignOperationalAttributionTest extends TestCase
         app(CampaignOperationalAttributionBuilder::class)->build(2026, 10);
     }
 
-    public function test_non_admin_is_denied_even_when_a_provisional_run_exists(): void
+    public function test_director_can_read_provisional_attribution_and_classify_without_technical_evidence(): void
     {
         $this->operationalMonth('2026-10', 2);
         $this->closedOctober();
@@ -150,7 +150,18 @@ class CampaignOperationalAttributionTest extends TestCase
         $director = $this->reportUser(ReportUser::ROLE_DIRECTOR);
         $this->withSession($this->sessionFor($director))
             ->getJson('/informes/campanas/data/summary?source=operational&start_date=2026-10-01&end_date=2026-10-31')
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('availability.mode', 'operational_provisional')
+            ->assertJsonMissingPath('operational_evidence.interest_run_id')
+            ->assertJsonPath('operational_evidence.provisional', true);
+
+        $this->withSession($this->sessionFor($director))
+            ->postJson('/informes/campanas/classifications', [
+                'platform' => 'meta', 'campaign_id' => 'campaign-1',
+                'classification' => 'real', 'reason' => 'Clasificación operativa revisada.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
     }
 
     public function test_campaign_flags_are_independent_and_disabled_by_default(): void

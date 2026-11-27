@@ -145,6 +145,21 @@ export function advertisingDetailRows(rows) {
     return result;
 }
 
+export const commercialResultMetricKeys = [
+    'leads_salesforce', 'interests_salesforce', 'opportunities', 'reservations', 'sales', 'purchases',
+];
+
+export function hasConfirmedCommercialResult(row) {
+    return commercialResultMetricKeys.some((key) => {
+        const value = finiteAdvertisingNumber(row[key]);
+        return value !== null && value > 0;
+    });
+}
+
+export function commercialResultDetailRows(rows) {
+    return rows.filter(hasConfirmedCommercialResult);
+}
+
 // Scoped to the advertising detail; cards/charts retain their existing format.
 export function detailMoneyPresentation(value, row, key, formatMoney) {
     if (costDenominators[key]) {

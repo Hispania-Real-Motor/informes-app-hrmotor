@@ -99,7 +99,7 @@ class OperationalTaskReviewTest extends TestCase
         $this->assertTrue($snapshot[self::KEY]['awaitingFirstSchedule']);
         $this->assertNull($snapshot[self::KEY]['success']);
         $this->assertSame('success', $snapshot['operations-health']['status']);
-        $this->assertSame(18, collect(app(OperationalTaskCatalog::class)->all())->where('manual_allowed', true)->count());
+        $this->assertSame(19, collect(app(OperationalTaskCatalog::class)->all())->where('manual_allowed', true)->count());
     }
 
     public static function cadences(): array
@@ -146,7 +146,7 @@ class OperationalTaskReviewTest extends TestCase
             $this->artisan('operations:run', ['task' => 'operations-health'])->assertExitCode(5);
         }
         $this->assertSame(3, OperationalTaskRun::query()->where('status', 'unhealthy')->count());
-        $this->assertSame(22, OperationalAlert::query()->where('state', 'open')->count());
+        $this->assertSame(23, OperationalAlert::query()->where('state', 'open')->count());
         $this->assertDatabaseMissing('operational_alerts', ['technical_identifier' => 'operations-health', 'state' => 'open']);
         $this->assertSame([3], OperationalAlert::query()->pluck('occurrences')->unique()->values()->all());
         $state = DB::table('operational_task_states')->where('task_key', 'operations-health')->first();

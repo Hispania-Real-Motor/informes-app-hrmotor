@@ -250,6 +250,16 @@ final class OperationalTaskCatalog
                 'manual_allowed' => true, 'risk' => 'moderate',
                 'overlap_policy' => 'exclusive-persistent', 'policy' => 'Dos meses móviles cubren el mes anterior completo; sin fresh.',
             ],
+            'commercial-commissions-refresh-internal-reviews' => [
+                'label' => 'refresco de reseñas internas de Comisiones', 'module' => 'commercial-commissions',
+                'command' => 'commissions:refresh-internal-reviews',
+                'arguments' => ['--months' => '2'],
+                'cron' => '30 2 * * *', 'timezone' => 'Europe/Madrid',
+                'window_minutes' => 30, 'grace_minutes' => 30,
+                'manual_allowed' => true, 'risk' => 'moderate',
+                'overlap_policy' => 'exclusive-persistent',
+                'policy' => 'Reutiliza el endpoint interno y su caché; no modifica cierres ni snapshots.',
+            ],
             'operations-health' => [
                 'label' => 'Comprobación de salud operacional', 'module' => 'operations',
                 'command' => 'operations:check-health',
