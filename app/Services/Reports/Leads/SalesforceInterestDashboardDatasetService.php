@@ -13,6 +13,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\LazyCollection;
+use App\Support\ReportUserAccess;
 
 class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardDatasetService
 {
@@ -47,6 +48,23 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
         $this->sourceContext = $this->resolveAlignedContext();
         $payload = parent::payload($request, $context, $timing);
         $this->assertContextStillCurrent($this->sourceContext);
+        if (ReportUserAccess::isCommercial($request)) {
+            $filters = $payload['summary']['filters'] ?? [];
+            $filters['commercials'] = collect($payload['commercials'] ?? [])
+                ->map(fn (array $row): array => ['id' => (string) ($row['group_key'] ?? ''), 'name' => (string) ($row['comercial'] ?? 'Comercial sin nombre')])
+                ->filter(fn (array $row): bool => $row['id'] !== '')
+                ->values()->all();
+            $filters['commercial_delegations'] = collect($payload['commercial_delegations'] ?? [])
+                ->pluck('commercial_delegation')->filter()->unique()->sort()->values()->all();
+            $filters['zones'] = collect($payload['commercial_zones'] ?? [])
+                ->pluck('zone')->filter()->unique()->sort()->values()->all();
+            $filters['portals'] = collect($payload['portals'] ?? [])
+                ->pluck('portal')->filter()->unique()->sort()->values()->all();
+            $filters['lead_delegations'] = collect($payload['delegations'] ?? [])
+                ->pluck('lead_delegation')->filter()->unique()->sort()->values()->all();
+            $payload['summary']['filters'] = $filters;
+            $payload['summary']['metadata_coverage'] = null;
+        }
         if (($payload['summary']['empty'] ?? false) === true) {
             $payload['summary']['message'] = 'No hay Interests que coincidan con el periodo y los filtros seleccionados.';
         }
@@ -75,6 +93,16 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
         }
 
         return $payload;
+    }
+
+    public function filters(Request $request, string $context = 'summary'): array
+    {
+        $filters = parent::filters($request, $context);
+        $filters['access_owner_key'] = ReportUserAccess::isCommercial($request)
+            ? (ReportUserAccess::interestOwnerKey($request) ?? '__missing__')
+            : null;
+
+        return $filters;
     }
 
     public function executiveLeadTotal(CarbonImmutable $start, CarbonImmutable $end): array
@@ -156,7 +184,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
                 }
 
                 $decorated = $this->decorateLead($row, $summaries->get($id));
-                if ($filters !== null && ! $this->passesAccessScopeInterest($decorated, $filters)) {
+                if ($filters !== null && ! $this->passesAccessScope($decorated, $filters)) {
                     return null;
                 }
 
@@ -202,7 +230,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
         $period = $this->periods($filters)['current'];
 
         $rows = $this->auditRows($period, $context, false)
-            ->filter(fn (array $interest): bool => $this->passesAccessScopeInterest($interest['_decorated'], $filters))
+            ->filter(fn (array $interest): bool => $this->passesAccessScope($interest['_decorated'], $filters))
             ->map(fn (array $interest): array => $this->reconciliationAuditRow($interest, $filters));
 
         return $this->validatedRows($rows, $context);
@@ -218,6 +246,14 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
         $ownerId = $this->cleanValue(data_get($interest, 'owner_salesforce_id'));
         $ownerName = $this->cleanValue(data_get($interest, 'owner_name'));
         $commercial = $ownerId ? $this->commercialUsers()->get($ownerId) : null;
+        $ownerKey = ObservedInterestOwnerProjection::ownerKey($ownerId);
+        $commercialName = $this->cleanValue(data_get($commercial, 'name'));
+        $isTechnicalOwner = InterestTechnicalOwnerClassifier::isTechnical($ownerId, $ownerName)
+            || InterestTechnicalOwnerClassifier::isTechnical($ownerId, $commercialName);
+        $visibleOwnerName = $commercialName ?? $ownerName;
+        if (blank($visibleOwnerName) || preg_match('/^[A-Za-z0-9]{15,18}$/', (string) $visibleOwnerName) === 1) {
+            $visibleOwnerName = 'Comercial sin nombre';
+        }
         $commercialDelegation = $this->interestDelegationNormalizer->normalize(data_get($commercial, 'user_delegation'));
         if (str_ends_with($commercialDelegation['delegation'], ' General')) {
             $commercialDelegation = $this->interestDelegationNormalizer->normalize(null);
@@ -229,7 +265,7 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
             && $lastActivityAt->lessThanOrEqualTo($referenceDate)
             && $lastActivityAt->greaterThanOrEqualTo($referenceDate->subDays(3));
         $isPotential = $status === 'Potencial';
-        $isUnassigned = $isPotential && InterestTechnicalOwnerClassifier::isTechnical($ownerId, $ownerName);
+        $isUnassigned = $isPotential && $isTechnicalOwner;
         $source = $this->cleanValue(data_get($interest, 'source')) ?? 'Sin clasificar';
         $channel = $this->cleanValue(data_get($interest, 'channel'));
 
@@ -273,10 +309,12 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
             'commercial_delegation_is_classified' => $commercialDelegation['is_classified'],
             'zona' => $commercialDelegation['zone'],
             'gestor_id' => $ownerId,
-            'gestor_nombre' => data_get($commercial, 'name') ?? $ownerName,
-            'gestor_es_comercial' => $commercial !== null,
-            'is_without_eligible_commercial' => $commercial === null,
-            'is_without_commercial_delegation' => $commercial !== null && ! $commercialDelegation['is_classified'],
+            'gestor_nombre' => $visibleOwnerName,
+            'gestor_es_comercial' => $commercial !== null && ! $isTechnicalOwner,
+            'is_without_eligible_commercial' => $commercial === null || $isTechnicalOwner,
+            'is_without_commercial_delegation' => $commercial !== null && ! $isTechnicalOwner && ! $commercialDelegation['is_classified'],
+            'owner_key' => $ownerKey,
+            'owner_is_technical' => $isTechnicalOwner,
             'is_unclassified' => ! $originDelegation['is_classified'],
             'is_exposicion' => false,
             'total_actividades' => $totalActivities,
@@ -633,8 +671,14 @@ class SalesforceInterestDashboardDatasetService extends SalesforceLeadDashboardD
             ->keyBy('salesforce_id');
     }
 
-    private function passesAccessScopeInterest(array $interest, array $filters): bool
+    protected function passesAccessScope(array $interest, array $filters): bool
     {
+        if (array_key_exists('access_owner_key', $filters)
+            && filled($filters['access_owner_key'])
+            && ($interest['owner_key'] ?? 'missing') !== $filters['access_owner_key']) {
+            return false;
+        }
+
         if (filled($filters['access_commercial'] ?? null)
             && $interest['gestor_id'] !== $filters['access_commercial']) {
             return false;

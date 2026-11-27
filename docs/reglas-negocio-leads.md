@@ -1,5 +1,45 @@
 # Informe de Interests — contrato ROT-1
 
+## Estado vigente tras el hotfix del 2026-11-27
+
+La etiqueta visible del informe es **Intereses**; `leads` permanece únicamente
+como clave técnica de compatibilidad y no describe el objeto externo. La fuente
+oficial publicada conserva prioridad. Cuando no existe una generación oficial,
+el Resumen Ejecutivo puede usar el fallback operativo mensual local descrito en
+la matriz, con estado provisional/parcial y sin sustituir una indisponibilidad
+por cero.
+
+Las vistas provisionales `period=october_2026` y `period=november_2026` siguen
+siendo administrativas, están protegidas por su flag mensual y responden
+`no-store, private`. El acceso vigente es: Administrador y Dirección pueden
+consultar el inventario; Comercial solo puede hacerlo si su `ReportUser` tiene
+`salesforce_user_id`. Viewer y usuarios Comerciales sin ese identificador
+reciben 403. La autorización se aplica también en los endpoints JSON antes de
+leer filas, filtros o agregados; auditoría y exportación del dataset oficial
+mantienen sus permisos independientes.
+
+Para Comercial, el alcance se fija en servidor con `owner_key`, un HMAC-SHA256
+del Salesforce User ID usando `app.key`, y se aplica antes de filtros, opciones,
+tarjetas y agrupaciones. El ID Salesforce y el sufijo de la clave HMAC no se
+usan como nombre ni se muestran en los controles visuales; las claves técnicas
+internas se conservan únicamente donde el contrato del endpoint las necesita.
+Las distribuciones de comerciales de Administración/Dirección excluyen
+propietarios técnicos y propietarios ausentes; las agrupaciones por delegación
+también excluyen delegaciones comerciales no acreditadas. El total global de
+Intereses no se reduce por esa exclusión. La
+clasificación técnica vigente incorpora `Desbloqueos HR` además de las
+identidades/nombres técnicos ya existentes. El usuario técnico no es un
+comercial elegible ni aparece en los rankings comerciales.
+
+La UI vigente ya no muestra el banner extenso de inventario reconstruido ni la
+frase histórica «datos reconstruidos». El badge identifica el período como
+provisional y, si existe, su corte; los mensajes de disponibilidad se mantienen
+breves. La presentación de actividad, evidencia global y cobertura operativa
+se omite o acota para Comercial a su ámbito autenticado. Estas reglas
+reemplazan la presentación administrativa anterior; la descripción histórica
+se conserva en las secciones posteriores para no confundirla con el contrato
+vigente.
+
 ### Noviembre de 2026: fuente operativa provisional por mes (en revisión)
 
 La tarea catalogada `salesforce-sync-interest-operational-current` solo
@@ -11,12 +51,13 @@ si falta el contrato KPI del mes. No invoca la generación oficial, no mueve su
 puntero y no convierte esta fuente en origen de Campañas, Reservas/Ventas,
 Llamadas, SEO, Comisiones o Stock.
 
-Para el administrador autorizado, `november_2026` puede leer el puntero de la
-nueva sincronización operativa si está activo; de lo contrario conserva la ruta
-mensual estricta descrita más abajo. El puntero activo manda y una incoherencia
-falla cerrada, sin retroceder a otra revisión. La fuente oficial publicada sigue
-teniendo prioridad sin selección explícita. Flag, rol, `no-store, private` y
-restricción de auditoría/exportación permanecen.
+Para los roles autorizados por el contrato vigente, `november_2026` puede leer
+el puntero de la nueva sincronización operativa si está activo; de lo contrario
+conserva la ruta mensual estricta descrita más abajo. El puntero activo manda y
+una incoherencia falla cerrada, sin retroceder a otra revisión. La fuente
+oficial publicada sigue teniendo prioridad sin selección explícita. Flag,
+alcance por rol, `no-store, private` y restricción de auditoría/exportación
+permanecen.
 
 Una revisión operativa antigua, aunque conserve su checkpoint, no puede
 sustituir un run activo con cutoff posterior; si comparten cutoff, manda el ID
@@ -24,11 +65,11 @@ mayor. El lector conserva la última proyección activada cuando un run posterio
 falla o cuando se rechaza una reanudación superada. Esto no modifica el
 denominador ni las fórmulas del dashboard.
 
-El banner identifica «Noviembre de 2026 · inventario operativo provisional»,
-muestra la fecha de **preparación** del run visible separada del cutoff de
-pertenencia y advierte que no certifica valores históricos ni sustituye el
-informe oficial. El resumen AJAX muestra observados, admitidos, cuarentena y
-cambios entre lecturas; la fecha de preparación no es una fotografía `as-of`.
+El badge identifica el período como provisional y puede mostrar el corte
+observado, separado de la fecha de preparación del run visible. No certifica
+valores históricos ni sustituye el informe oficial. El resumen AJAX conserva
+los límites y la disponibilidad del dataset; la fecha de preparación no es una
+fotografía `as-of`.
 
 El universo de KPI disponibles es la proyección de Intereses **admitidos y no
 borrados** del run operativo activo. `observed` incluye también IDs
@@ -135,10 +176,11 @@ guarda solo claves HMAC y booleanos/indeterminados, sin payload ni IDs HTTP.
 Octubre usa el mismo contrato **solo si** existe un run operativo real activo;
 hasta entonces conserva su proyección histórica administrativa anterior y no
 hereda esos KPI nuevos. Noviembre conserva su puntero y sus datos actuales
-hasta una proyección compatible. El selector y el banner indican el mes y la
-fuente; el flag por mes, rol administrador, `no-store, private` y rechazo por
-versión incoherente siguen vigentes. No hay nueva auditoría o exportación
-provisional, comparativa entre meses ni publicación de generación oficial.
+hasta una proyección compatible. El selector y el badge indican el mes y la
+fuente; el flag por mes, el alcance por rol descrito arriba, `no-store, private`
+y rechazo por versión incoherente siguen vigentes. No hay nueva auditoría o
+exportación provisional, comparativa entre meses ni publicación de generación
+oficial.
 
 ## Nota técnica — materialización mensual F2 provisional
 
@@ -255,9 +297,10 @@ La opción de período `october_2026` en `/informes/leads` entrega una vista
 administrativa provisional distinta del dashboard oficial. Sólo puede resumir
 la F2, F2M y F5 mensuales fijadas para octubre de 2026 después de validar su
 misma procedencia, estado terminado y manifiestos. Con flag apagado devuelve
-404; sin rol administrador, 403; y con evidencia incompleta, 503. La respuesta
-es `no-store, private`. No es Summary, AJAX ni CSV: no carga el dataset oficial
-ni habilita KPI, comparativas, auditorías o exportaciones. F2/F2M/F5 son IDs
+404; sin un rol del alcance vigente, 403; y con evidencia incompleta, 503. La
+respuesta es `no-store, private`. HTML y endpoints JSON leen la misma
+proyección; no cargan el dataset oficial ni habilitan auditorías o
+exportaciones provisionales. F2/F2M/F5 son IDs
 internos fijos sin parámetros ni configuración que pueda redirigir la fuente.
 La pantalla sólo está disponible tras `reports:validate-october-2026-provisional
 --confirm`: HTTP lee el snapshot local de la misma revisión de journals y falla
@@ -276,9 +319,9 @@ documento y no marca F2/F2M/F5 como verificadas.
 
 `/informes/leads?period=november_2026` es una vista administrativa aislada, no
 una extensión del lector publicado. Exige el flag
-`SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED` (apagado por defecto) y rol
-administrador: con el flag apagado responde 404, sin ese rol 403 y sin una
-proyección vigente 503; la respuesta es `no-store, private`. Usa la revisión
+`SALESFORCE_NOVEMBER_2026_PROVISIONAL_ENABLED` (apagado por defecto) y el
+alcance de rol vigente: con el flag apagado responde 404, sin ese alcance 403
+y sin una proyección vigente 503; la respuesta es `no-store, private`. Usa la revisión
 `completed` más reciente que ya tenga proyección validada para noviembre de
 2026 en `Europe/Madrid`, siempre con F2, F2M y F5 terminadas y verificadas para
 la misma recuperación. Una F2 nueva todavía en preparación o completada sin
@@ -448,8 +491,9 @@ oficiales. Al abandonar octubre provisional mediante otro período o al
 restablecer filtros, el navegador hace una carga completa del dashboard oficial
 con ese período; no conserva filtros, estado ni respuesta AJAX provisional.
 
-La etiqueta breve de esa presentación es «datos reconstruidos». Esta página sólo
-describe agregados de Interests; no debe afirmar que Reservas/Ventas, Campañas,
+La etiqueta «datos reconstruidos» pertenece a la presentación histórica y ya no
+es el texto vigente. La UI actual identifica explícitamente el estado
+provisional y el corte disponible. Esta página sólo describe agregados de Interests; no debe afirmar que Reservas/Ventas, Campañas,
 Llamadas u otros informes estén disponibles o no desde esta fuente: cada informe
 conserva sus fuentes, controles y reglas propios.
 
@@ -462,8 +506,9 @@ certificada. Cada fila F2M activa y coincidente conserva una clave estable
 guarda cifrada en una tabla separada de propietarios de la proyección. Así se
 pueden distinguir propietarios con el mismo nombre y filtrar o agrupar la vista
 sin exponer el identificador Salesforce ni conservarlo en la proyección HTTP.
-El nombre se descifra sólo para la respuesta administrativa autorizada; no se
-incluye en esta documentación ni se considera prueba de pertenencia histórica.
+El nombre se descifra sólo para la respuesta autorizada y queda limitado por el
+alcance `owner_key` cuando el actor es Comercial; no se incluye en esta
+documentación ni se considera prueba de pertenencia histórica.
 
 La delegación y la zona comercial se toman exclusivamente de
 `commercial_delegation_snapshots` cuando un único intervalo observado cubre el

@@ -22,6 +22,8 @@ class LeadDashboardDataController extends Controller
 
     public function resumen(Request $request): JsonResponse
     {
+        $this->authorizeInterestDashboard($request);
+
         if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => $this->octoberDataset->summary($request));
         }
@@ -36,6 +38,8 @@ class LeadDashboardDataController extends Controller
 
     public function portales(Request $request): JsonResponse
     {
+        $this->authorizeInterestDashboard($request);
+
         if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => $this->octoberDataset->sourceRows($request));
         }
@@ -50,6 +54,8 @@ class LeadDashboardDataController extends Controller
 
     public function delegaciones(Request $request): JsonResponse
     {
+        $this->authorizeInterestDashboard($request);
+
         if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => $this->octoberDataset->delegationRows($request));
         }
@@ -59,6 +65,8 @@ class LeadDashboardDataController extends Controller
 
     public function comerciales(Request $request): JsonResponse
     {
+        $this->authorizeInterestDashboard($request);
+
         if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => $this->octoberDataset->commercialRows($request));
         }
@@ -94,7 +102,7 @@ class LeadDashboardDataController extends Controller
         $month = MonthlyInterestProvisionalPeriod::forKey(request()->query('period'));
         $flag = $month['flag'] ?? 'salesforce.october_2026_provisional_enabled';
         abort_unless(config($flag) === true, 404);
-        abort_unless(ReportUserAccess::isAdmin(request()), 403);
+        $this->authorizeInterestDashboard(request());
 
         try {
             return response()->json($callback())->header('Cache-Control', 'no-store, private');
@@ -105,6 +113,8 @@ class LeadDashboardDataController extends Controller
 
     public function calidadDato(Request $request): JsonResponse
     {
+        $this->authorizeInterestDashboard($request);
+
         if ($this->isProvisional($request)) {
             return $this->provisionalJson(fn (): array => [
                 'items' => [],
@@ -207,5 +217,14 @@ class LeadDashboardDataController extends Controller
         }
 
         return $value;
+    }
+
+    private function authorizeInterestDashboard(Request $request): void
+    {
+        $allowed = $this->isProvisional($request)
+            ? ReportUserAccess::canViewInterestDashboard($request)
+            : ReportUserAccess::canViewInterestReport($request);
+
+        abort_unless($allowed, 403);
     }
 }

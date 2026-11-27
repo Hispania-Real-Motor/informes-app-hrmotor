@@ -27,6 +27,8 @@ class LeadDashboardController extends Controller
         OperationalInterestMonthlyReader $operationalReader,
         InterestGenerationReader $interestGenerations,
     ) {
+        abort_unless(ReportUserAccess::canViewInterestReport($request), 403);
+
         $requestedPeriod = $request->query('period');
         $requestedPeriod = is_string($requestedPeriod) ? $requestedPeriod : null;
         $requestedOctober = $requestedPeriod === self::OCTOBER_2026_PROVISIONAL_PERIOD;
@@ -64,9 +66,9 @@ class LeadDashboardController extends Controller
             'reportUserCanExport' => ReportUserAccess::canExportReport($request, 'leads'),
             'reportUserCanAudit' => ! $usesProvisional && ReportUserAccess::canAuditReport($request, 'leads'),
             'octoberProvisionalEnabled' => config('salesforce.october_2026_provisional_enabled') === true
-                && ReportUserAccess::isAdmin($request),
+                && ReportUserAccess::canViewInterestDashboard($request),
             'novemberProvisionalEnabled' => config('salesforce.november_2026_provisional_enabled') === true
-                && ReportUserAccess::isAdmin($request),
+                && ReportUserAccess::canViewInterestDashboard($request),
             'initialLeadPeriod' => $usesProvisional
                 ? ($monthlyPeriodKey ?? self::OCTOBER_2026_PROVISIONAL_PERIOD)
                 : $this->officialInitialPeriod($requestedPeriod),
@@ -84,7 +86,7 @@ class LeadDashboardController extends Controller
     private function assertOctoberAccess(Request $request, October2026ProvisionalInterestReader $reader): void
     {
         abort_unless(config('salesforce.october_2026_provisional_enabled') === true, 404);
-        abort_unless(ReportUserAccess::isAdmin($request), 403);
+        abort_unless(ReportUserAccess::canViewInterestDashboard($request), 403);
 
         try {
             $operational = app(OperationalInterestMonthlyReader::class);
@@ -97,7 +99,7 @@ class LeadDashboardController extends Controller
 
     private function canUseOctober(Request $request, October2026ProvisionalInterestReader $reader): bool
     {
-        if (config('salesforce.october_2026_provisional_enabled') !== true || ! ReportUserAccess::isAdmin($request)) {
+        if (config('salesforce.october_2026_provisional_enabled') !== true || ! ReportUserAccess::canViewInterestDashboard($request)) {
             return false;
         }
 
@@ -116,7 +118,7 @@ class LeadDashboardController extends Controller
     private function assertMonthlyAccess(Request $request, MonthlyInterestProvisionalReader $reader, OperationalInterestMonthlyReader $operational, array $period): void
     {
         abort_unless(config($period['flag']) === true, 404);
-        abort_unless(ReportUserAccess::isAdmin($request), 403);
+        abort_unless(ReportUserAccess::canViewInterestDashboard($request), 403);
 
         try {
             $this->monthlySnapshot($reader, $operational, $period);
@@ -128,7 +130,7 @@ class LeadDashboardController extends Controller
     /** @param array{year:int,month:int,flag:string,label:string} $period */
     private function canUseMonthly(Request $request, MonthlyInterestProvisionalReader $reader, OperationalInterestMonthlyReader $operational, array $period): bool
     {
-        if (config($period['flag']) !== true || ! ReportUserAccess::isAdmin($request)) {
+        if (config($period['flag']) !== true || ! ReportUserAccess::canViewInterestDashboard($request)) {
             return false;
         }
 

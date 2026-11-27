@@ -128,16 +128,6 @@
         </div>
     </section>
 
-    @if($isOctoberProvisional ?? false)
-        <section class="notice" id="octoberProvisionalNotice" aria-live="polite">
-            <strong>{{ ($isOperationalMonthly ?? false) ? ($provisionalPeriodLabel ?? 'Mes seleccionado').' · inventario operativo provisional' : (($initialLeadPeriod ?? null) === 'november_2026' ? 'Noviembre de 2026' : 'Octubre 2026 · datos reconstruidos.') }}</strong>
-            @if(($provisionalUpdatedUntil ?? null) && (($isOperationalMonthly ?? false) || ($initialLeadPeriod ?? null) === 'november_2026'))
-                <span>{{ ($isOperationalMonthly ?? false) ? 'Preparado el' : 'Actualizado hasta' }} {{ $provisionalUpdatedUntil }}</span>
-            @endif
-            Los filtros se aplican a los Intereses activos disponibles de ese mes. Esta vista no certifica valores históricos ni sustituye el informe oficial. Algunas métricas comerciales y de actividad todavía no tienen datos suficientes.
-        </section>
-    @endif
-
     <section class="filters card custom-periods is-hidden" id="customPeriods">
         <div class="filter-group">
             <label for="currentStart">Inicio actual</label>
@@ -234,9 +224,6 @@
                         <div class="columns-popover card is-hidden" id="leadCommercialZoneColumnsPopover"></div>
                     </div>
                 </div>
-                @if($isOctoberProvisional ?? false)
-                    <div class="notice">Asignación observada: el propietario disponible no acredita el responsable histórico al cierre de octubre.</div>
-                @endif
                 <div class="table-wrap">
                     <table id="leadCommercialZonesTable">
                         <thead>

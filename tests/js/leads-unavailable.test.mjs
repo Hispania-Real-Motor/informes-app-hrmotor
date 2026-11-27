@@ -9,7 +9,7 @@ const dashboardTemplate = readFileSync(new URL('../../resources/views/reports/le
 
 test('October copy stays concise and comparison without a source is hidden', () => {
     assert.match(dashboardTemplate, /value="october_2026"[^>]*>Octubre 2026<\/option>/);
-    assert.match(dashboardTemplate, /Octubre 2026 · datos reconstruidos/);
+    assert.doesNotMatch(dashboardTemplate, /id="octoberProvisionalNotice"/);
     assert.match(dashboardTemplate, /id="comparisonPeriodLabel"/);
     assert.match(dashboardTemplate, /class="card period-card @if\(\$isOctoberProvisional \?\? false\) is-hidden @endif"/);
     assert.match(dashboardTemplate, /class="card panel @if\(\$isOctoberProvisional \?\? false\) is-hidden @endif"/);

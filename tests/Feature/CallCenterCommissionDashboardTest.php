@@ -68,7 +68,8 @@ class CallCenterCommissionDashboardTest extends TestCase
             ->assertSee('Comerciales')
             ->assertSee('Detalle por comercial')
             ->assertSee('Delegaciones')
-            ->assertSee('Call Center');
+            ->assertSee('Call Center')
+            ->assertSee('Contact Center');
 
         $this->withSession($areaManagerSession)
             ->get('/informes/leads')
@@ -332,7 +333,7 @@ class CallCenterCommissionDashboardTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_director_no_puede_forzar_la_pestana_detallada_de_call_center(): void
+    public function test_director_puede_abrir_la_pestana_detallada_de_call_center(): void
     {
         config()->set('services.informes_auth.enabled', true);
 
@@ -355,10 +356,11 @@ class CallCenterCommissionDashboardTest extends TestCase
         $this->withSession($session)
             ->get('/informes/comisiones-comerciales?tab=call-center&month=2026-05')
             ->assertOk()
-            ->assertViewHas('activeCommissionTab', 'summary')
+            ->assertViewHas('activeCommissionTab', 'call-center')
             ->assertDontSee('Diagnostico y resync')
             ->assertDontSee('salesforce:sync-tasaciones')
-            ->assertSee('aria-disabled="true"', false);
+            ->assertDontSee('aria-disabled="true"', false)
+            ->assertSee('Comisiones Call Center');
     }
 
     private function authenticatedSession(string $role): array

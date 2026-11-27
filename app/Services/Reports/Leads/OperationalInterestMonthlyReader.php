@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports\Leads;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
@@ -81,6 +82,67 @@ final class OperationalInterestMonthlyReader
                 'kpi_projection_id' => $kpiProjection === null ? null : (int) $kpiProjection->id,
                 'kpi_reference_at' => $kpiProjection?->reference_at,
                 'commercial_users_observed_at' => $kpiProjection?->commercial_users_observed_at];
+        } catch (Throwable) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+    }
+
+    /** @return array{value:int,coverage:array<string,int>,source_cutoff:array<string,mixed>,provisional:bool} */
+    public function executiveDailyTotal(CarbonImmutable $start, CarbonImmutable $endExclusive): array
+    {
+        $startLocal = $start->setTimezone('Europe/Madrid');
+        $endLocal = $endExclusive->setTimezone('Europe/Madrid');
+        if ($startLocal->format('Y-m') !== $endLocal->subSecond()->format('Y-m')) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        $snapshot = $this->latestForMonth((int) $startLocal->format('Y'), (int) $startLocal->format('m'));
+        $period = $snapshot['overview']['period'] ?? null;
+        if (! is_array($period) || blank($period['start_utc'] ?? null) || blank($period['end_utc'] ?? null)) {
+            throw new ProvisionalInterestSourceUnavailable;
+        }
+
+        try {
+            $periodStart = CarbonImmutable::parse((string) $period['start_utc'], 'UTC');
+            $periodEnd = CarbonImmutable::parse((string) $period['end_utc'], 'UTC');
+            $effectiveCutoff = blank($period['effective_cutoff'] ?? null)
+                ? null
+                : CarbonImmutable::parse((string) $period['effective_cutoff'], 'UTC')->toIso8601String();
+            [$startUtc, $endUtc] = [$start->setTimezone('UTC'), $endExclusive->setTimezone('UTC')];
+            if ($startUtc->lt($periodStart) || $endUtc->gt($periodEnd) || $startUtc->gte($endUtc)) {
+                throw new ProvisionalInterestSourceUnavailable;
+            }
+
+            $query = DB::table('salesforce_interest_operational_rows')
+                ->where('run_id', $snapshot['integrity_revision'])
+                ->where('is_deleted', false)
+                ->where('functional_created_at', '>=', $startUtc)
+                ->where('functional_created_at', '<', $endUtc);
+            $value = (int) (clone $query)->count();
+            $coverage = [
+                'total' => $value,
+                'without_verified_at' => (int) (clone $query)->whereNull('verified_at')->count(),
+            ];
+            $this->assertCurrent($snapshot['operational_month'], $snapshot['integrity_revision'], $snapshot['projection_key']);
+            $this->assertActivityPointer($snapshot['operational_month'], $snapshot['activity_pointer_id']);
+
+            return [
+                'value' => $value,
+                'coverage' => $coverage,
+                'source_cutoff' => [
+                    'dataset_cutoff_at' => $effectiveCutoff,
+                    'salesforce_leads_synced_at' => $effectiveCutoff,
+                    'activities_synced_at' => null,
+                    'sync_run_id' => $snapshot['integrity_revision'],
+                    'sync_run_status' => 'completed',
+                    'coverage_base_status' => 'provisional',
+                    'coverage_base_mode' => 'operational_month',
+                    'freshness_status' => 'completed',
+                ],
+                'provisional' => true,
+            ];
+        } catch (ProvisionalInterestSourceUnavailable) {
+            throw new ProvisionalInterestSourceUnavailable;
         } catch (Throwable) {
             throw new ProvisionalInterestSourceUnavailable;
         }

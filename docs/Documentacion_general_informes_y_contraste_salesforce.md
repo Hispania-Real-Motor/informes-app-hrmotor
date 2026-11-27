@@ -1,7 +1,35 @@
 # Documentación general de informes y contraste con Salesforce
 
-Versión: 2026-09-22
+Versión: 2026-11-27
 Proyecto: `informes-app-hrmotor`
+
+### Addendum vigente de Intereses, Resumen y Comisiones (2026-11-27)
+
+El nombre visible del antiguo bloque Leads es **Intereses**. El alias técnico
+`leads` no identifica el objeto Salesforce actual. El informe oficial usa la
+generación publicada de Intereses; el Resumen Ejecutivo conserva Reservas y
+Ventas y, solo si esa generación no está disponible, puede leer el puntero
+operativo mensual local para contar filas activas no borradas por
+`functional_created_at`. Ese fallback devuelve estado provisional/parcial y
+mantiene `null` cuando falta cobertura o el puntero cambia; no convierte la
+indisponibilidad en cero ni lee Salesforce durante HTTP.
+
+Las vistas provisionales de octubre y noviembre siguen dependiendo de flag,
+puntero/proyección válida y `no-store, private`, pero el alcance vigente ya no
+es solo Administrador: también Dirección y Comercial pueden consultarlas;
+Comercial requiere `ReportUser.salesforce_user_id`. El servidor calcula el
+`owner_key` HMAC-SHA256 del Salesforce User ID con `app.key` y lo aplica antes
+de filtros y agregados, de modo que Comercial solo recibe su ámbito. Los
+propietarios técnicos, incluido `Desbloqueos HR`, no aparecen en las
+distribuciones comerciales; los totales globales de Intereses no se alteran.
+La UI muestra una marca breve de período provisional y corte cuando existe,
+sin exponer la clave HMAC ni el banner histórico extenso.
+
+En Comisiones, Dirección puede abrir las pestañas Call Center y Contact Center.
+La apertura no concede preparación, aprobación, reapertura, diagnóstico,
+exportaciones ni auditorías adicionales y no modifica los contratos económicos.
+Las secciones históricas de este documento siguen describiendo las fuentes
+legacy donde corresponda; este addendum prevalece para el hotfix indicado.
 
 ## 1. Propósito y criterio de verdad
 

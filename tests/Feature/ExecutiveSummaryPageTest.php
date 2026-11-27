@@ -48,7 +48,7 @@ class ExecutiveSummaryPageTest extends TestCase
                 ->assertOk()
                 ->assertSee('Resumen Ejecutivo')
                 ->assertSee('Último día cerrado: 30/09/2026')
-                ->assertSee('Leads')
+                ->assertSee('Intereses')
                 ->assertSee('Reservas')
                 ->assertSee('Ventas')
                 ->assertSee('No hay alertas de negocio activas para el último día evaluable.')

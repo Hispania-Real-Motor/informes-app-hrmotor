@@ -294,6 +294,28 @@ Auditoría inicial pendiente en cada una de las seis pestañas reales:
 | Área Manager | Pendiente | [Comisiones](informe-comisiones.md) |
 | Financieros | Pendiente | [Comisiones](informe-comisiones.md) y [guía financiera](informe-comisiones-financieras.md) |
 
+#### Revisión focal del hotfix de Intereses, Resumen y Comisiones — 2026-11-27
+
+Las fichas KPI completas siguen pendientes: esta sección indexa únicamente los
+contratos afectados por el diff frente a `b563137` y no inventa los 23 campos
+de una ficha verificada. La evidencia funcional y los tests tienen prioridad
+sobre las descripciones históricas anteriores de esta matriz. No se consultaron
+Salesforce, bases de datos ni producción.
+
+| Contrato afectado | Cadena funcional contrastada | Estado y límites de auditoría |
+| --- | --- | --- |
+| Resumen Ejecutivo — métrica visible «Intereses» y fallback operativo mensual | `Interes__c`/generación publicada → `InterestGenerationReader` → `SalesforceInterestDashboardDatasetService::executiveLeadTotal()`; si lanza `InterestDatasetUnavailable`, `OperationalInterestMonthlyReader::executiveDailyTotal()` lee `salesforce_interest_operational_rows` del run/proyección activos, `is_deleted=false` y rango de `functional_created_at` en `Europe/Madrid`, con revalidación de puntero de mes y actividad. `ExecutiveDailyDatasetService` conserva la evaluación, el baseline y el redondeo del motor ejecutivo; `ExecutiveSummaryService` presenta la etiqueta «Intereses». | Vigente para el hotfix; el fallback solo afecta a Intereses. Cuenta filas locales cubiertas y devuelve estado provisional/parcial. Sin fuente o cobertura válida, la muestra queda no evaluable/incidente y su valor presentado es `null`, no cero. Reservas y Ventas mantienen sus lectores. No hay ficha KPI de 23 campos verificada ni test nuevo específico de toda la cadena en este diff; `ExecutiveSummaryPageTest` sí contrasta la etiqueta visible. |
+| Intereses provisionales — octubre/noviembre, acceso y ámbito Comercial | Flag mensual → `LeadDashboardController`/`LeadDashboardDataController` → `ReportUserAccess::canViewInterestDashboard()`; Comercial exige `salesforce_user_id`. `ObservedInterestOwnerProjection::ownerKey()` calcula HMAC-SHA256 con `app.key`; `SalesforceInterestDashboardDatasetService::filters()` y `October2026ProvisionalInterestDashboardDatasetService::projectionRows()` fijan el ámbito antes de filtros/agregados. Lectura local: `OperationalInterestMonthlyReader` o proyección mensual/administrativa validada. | Vigente; Administrador, Dirección y Comercial con owner Salesforce acceden, Viewer y Comercial sin owner no. El ID Salesforce y la clave HMAC no se muestran como nombres ni en controles visuales; los contratos internos conservan sus claves técnicas. `MonthlyInterestProvisionalReaderTest` y `October2026ProvisionalInterestReaderTest` cubren acceso, ámbito y ausencia de escaneo de journals mensuales. Auditoría histórica, exportación provisional y certificación as-of siguen pendientes/no disponibles. |
+| Intereses provisionales — nombres, técnicos y delegaciones comerciales | `InterestTechnicalOwnerClassifier` añade `desbloqueos hr`; `decorateLead()` deriva `owner_key`, `owner_is_technical` y nombre seguro; `October2026ProvisionalInterestDashboardDatasetService::commercialRows()` excluye técnicos y `missing`; sus agrupaciones por delegación excluyen `Asignación no acreditada`, sin modificar el bucket global. Los nombres persistidos continúan cifrados en la tabla de propietarios. | Vigente para presentación y alcance comercial observado, no asignación histórica. La suma de la pestaña Comercial no representa el total global cuando existen propietarios técnicos/ausentes. No se promueve elegibilidad histórica ni delegación al cierre. Las regresiones de octubre comprueban la reducción de filas de distribución y la identidad HMAC. |
+| Intereses provisionales — mensajes y presentación | `resources/js/reports/leads-dashboard.js::renderSummary()` muestra período, `provisional` y corte; `resources/views/reports/leads/index.blade.php` retira el banner provisional extenso y el aviso de zona. La tarjeta de Intereses sin asignar conserva la semántica de owner técnico observado; los metadatos globales se acotan en ámbito Comercial. | Cambio de presentación vigente; no modifica fórmula, fuente ni exportación oficial. `tests/js/leads-unavailable.test.mjs` y los tests de lectores comprueban la retirada del banner y los mensajes sanitizados. |
+| Comisiones — pestañas Call Center y Contact Center para Dirección | `ReportUserAccess::canViewCallContactCommissionDetails()` permite rol Dirección además de Administrador; el controlador/vista conserva la pestaña solicitada y el detalle existente. | Cambio de acceso/presentación vigente. No cambia fuente, universo, fórmula, readiness, cierres, auditoría, exportaciones ni acciones administrativas. `CallCenterCommissionDashboardTest` y `CommissionVisibilitySecurityTest` comprueban ambos accesos y que Dirección no recibe acciones administrativas. |
+
+La apertura de Call/Contact para Dirección y la visibilidad provisional de
+Intereses son contratos de acceso/presentación; no se deben convertir en fichas
+KPI económicas. La documentación histórica que aún diga «solo Administrador»
+o «datos reconstruidos» queda supersedida para este hotfix y se conserva solo
+como histórico cuando así se indique en el documento funcional.
+
 #### Plan de jefes de tienda desde octubre de 2026 — evidencia focal con discrepancias
 
 Esta sección no es una ficha KPI verificada. El código conecta el cálculo con la

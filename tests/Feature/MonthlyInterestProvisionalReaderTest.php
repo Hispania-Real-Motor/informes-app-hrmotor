@@ -236,12 +236,16 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
         $reader->dashboardProjection(2);
     }
 
-    public function test_only_an_admin_can_read_november_and_http_never_scans_monthly_journal_rows(): void
+    public function test_admin_director_and_scoped_commercial_can_read_november_without_scanning_monthly_journals(): void
     {
         config()->set('services.informes_auth.enabled', true);
-        $this->seedNovember();
+        $ownerId = '005000000000000001';
+        $this->seedNovember($ownerId, 'Comercial observado');
         app(MonthlyInterestProvisionalReader::class)->validate(2);
         $admin = $this->user(ReportUser::ROLE_ADMIN);
+        $director = $this->user(ReportUser::ROLE_DIRECTOR);
+        $commercial = $this->user(ReportUser::ROLE_COMMERCIAL, $ownerId);
+        $commercialWithoutSalesforceId = $this->user(ReportUser::ROLE_COMMERCIAL);
         $viewer = $this->user(ReportUser::ROLE_VIEWER);
 
         $this->asReportUser($admin)->get('/informes/leads?period=november_2026')->assertNotFound();
@@ -258,6 +262,17 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
         $this->asReportUser($admin)->getJson('/informes/leads/data/resumen?period=november_2026')
             ->assertOk()->assertJsonPath('kpis.leads_totales', 1)
             ->assertJsonPath('kpis.gestionados', null);
+        $this->asReportUser($director)->get('/informes/leads?period=november_2026')->assertOk();
+        $this->asReportUser($director)->getJson('/informes/leads/data/resumen?period=november_2026')
+            ->assertOk()->assertJsonPath('kpis.leads_totales', 1);
+        $this->asReportUser($commercial)->get('/informes/leads?period=november_2026')->assertOk();
+        $this->asReportUser($commercial)->getJson('/informes/leads/data/resumen?period=november_2026')
+            ->assertOk()
+            ->assertJsonPath('kpis.leads_totales', 1)
+            ->assertJsonPath('filters.commercials.0.id', hash_hmac('sha256', $ownerId, (string) config('app.key')));
+        $this->asReportUser($commercial)->getJson('/informes/leads/data/resumen?period=november_2026&commercial='.hash_hmac('sha256', '005000000000000002', (string) config('app.key')))
+            ->assertOk()->assertJsonPath('kpis.leads_totales', 0);
+        $this->asReportUser($commercialWithoutSalesforceId)->get('/informes/leads?period=november_2026')->assertForbidden();
         $this->assertFalse(collect($queries)->contains(fn (string $sql): bool => str_contains($sql, 'salesforce_interest_monthly_recovery_rows')
             || str_contains($sql, 'salesforce_interest_monthly_materialized_rows')
             || str_contains($sql, 'salesforce_interest_monthly_activity_rows')));
@@ -319,10 +334,10 @@ class MonthlyInterestProvisionalReaderTest extends TestCase
         ]);
     }
 
-    private function user(string $role): ReportUser
+    private function user(string $role, ?string $salesforceUserId = null): ReportUser
     {
         return ReportUser::create(['name' => 'Synthetic', 'email' => uniqid('', true).'@example.test',
-            'password' => 'synthetic-password', 'role' => $role, 'is_active' => true]);
+            'password' => 'synthetic-password', 'role' => $role, 'salesforce_user_id' => $salesforceUserId, 'is_active' => true]);
     }
 
     private function readerWithHooks(?\Closure $beforePublication = null, ?\Closure $beforeHttpFinalCheck = null): MonthlyInterestProvisionalReader
