@@ -125,6 +125,8 @@ EXACT = {
     "app/Models/SalesforceVehicle.php": {"stock"},
     "app/Models/SalesforceUser.php": {"interests", "reservations", "commissions"},
     "app/Models/ReportSyncRun.php": ALL,
+    "app/Models/StoreManagerCommissionTarget.php": {"commissions"},
+    "app/Models/StoreManagerCommissionTargetEvent.php": {"commissions"},
 }
 MODEL_PREFIXES = (
     ("SalesforceInterest", {"interests", "reservations", "calls", "campaigns"}),

@@ -34,7 +34,10 @@ archivo. En particular, la metadata `appointment_fields_available` del
 sincronizador mensual y el índice de citas añadido el 24/11/2026 son evidencia
 técnica de certificación de Comisiones/Contact Center; no cambian los contratos
 de Intereses, Campañas ni Reservas/Ventas. El modelo general `SalesforceLead`
-mantiene sus dominios existentes.
+mantiene sus dominios existentes. Los modelos persistidos
+`StoreManagerCommissionTarget` y `StoreManagerCommissionTargetEvent` pertenecen
+al dominio de Comisiones aunque vivan bajo `app/Models/`; el validador los
+mapea explícitamente para no clasificarlos como rutas ajenas a informes.
 
 ## Instalación y reconocimiento
 

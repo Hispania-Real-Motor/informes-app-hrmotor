@@ -1,5 +1,91 @@
 # Handoff para agentes
 
+## 2026-11-27 — Herencia mensual y edición de objetivos de jefes de tienda
+
+- Rama: `codex/store-manager-targets-monthly-inheritance`, creada desde
+  `origin/main` en `99f066021819743b07096956dc5e78033135fa35`. La entrega se
+  publica con commits normales en la PR #163 hacia `main`; no se hace merge,
+  despliegue, importación real ni cambio productivo.
+- Objetivo: eliminar la necesidad de importar un CSV cada mes desde noviembre
+  de 2026, manteniendo octubre como referencia importada inmutable y sin
+  mezclar estos objetivos con Area Manager ni con el plan histórico de
+  Delegaciones.
+- Implementación: `StoreManagerCommissionTargetService` materializa la cadena
+  mensual desde la primera referencia persistida disponible hasta el mes
+  consultado, con límite de 120 meses, transacción, bloqueo de filas y una
+  inserción únicamente de claves ausentes. Los valores propios existentes
+  prevalecen; la cadena puede ser octubre → noviembre → diciembre → enero.
+  `CommercialCommissionDashboardService` y la pantalla Coeficientes llaman al
+  mismo flujo, de modo que un objetivo queda persistido antes de servirlo como
+  evidencia económica. Una lectura posterior no reescribe un mes completo.
+- Protección de cierres: no se materializan meses Delegaciones
+  `pending_approval` ni `definitive`; `reopened`, `provisional` y una ausencia
+  de fila de cierre permanecen utilizables. La edición vuelve a bloquear la
+  fila de Delegaciones dentro de la transacción y rechaza cambios en
+  `pending_approval`/`definitive`. El cierre Financieros no bloquea esta
+  operación y no se modifica ningún cierre, snapshot o aprobación.
+- Auditoría: la migración aditiva
+  `2026_11_27_120000_add_monthly_provenance_to_store_manager_commission_targets.php`
+  añade `source_type`, `source_month`, `modified_by` y la tabla
+  `store_manager_commission_target_events`. Importación, herencia y edición
+  administrativa conservan operación, actor cuando existe, mes de origen y
+  valores anteriores/nuevos. Octubre mantiene el hash, etiqueta y contrato de
+  referencia 34/907/499.
+- Administración: la sección separada «Objetivos de jefes de tienda» reutiliza
+  la ruta existente de configuración con un marcador explícito de formulario;
+  solo acepta valores enteros no negativos por `store_key`. El servidor toma
+  nombre, zona y procedencia de la fila persistida; solo Admin puede escribir.
+  Octubre se muestra como solo lectura.
+- Archivos funcionales modificados: servicio y modelo de objetivos, modelo de
+  eventos, migración aditiva, importador histórico, dashboard, readiness,
+  controlador/vista/ruta de Coeficientes y
+  `tests/Feature/StoreManagerCommissionTargetInheritanceTest.php` y la guarda
+  de procedencia de `CommercialCommissionClosureService`. No se
+  modificaron Campañas, fórmulas económicas, assets compilados, permisos de
+  otros informes ni fuentes externas.
+- Documentación actualizada: `docs/informe-comisiones.md`,
+  `docs/matriz-trazabilidad-kpi.md`, `docs/ai/PROJECT_CONTEXT.md`,
+  `docs/ai/DECISIONS.md`, `docs/guia-mantenimiento-documental.md`, el mapa y
+  la prueba del validador documental, y este handoff. El agente personalizado
+  `report_docs_maintainer` se intentó invocar, pero la sesión alcanzó el límite
+  de agentes; se aplicó el procedimiento documental como fallback del agente
+  principal y se revisó el diff documental manualmente.
+- Pruebas/verificaciones ejecutadas: `npm run build` correcto y los bundles
+  históricos restaurados para no ampliar el diff; `git diff --check` correcto.
+  El primer CI detectó un conflicto de visibilidad del helper del test y un
+  nombre de índice demasiado largo en MariaDB; ambos se corrigieron en esta
+  iteración. También se añadió el mapeo documental explícito de los modelos de
+  objetivos y se eliminó el falso impacto transversal de una ruta nueva.
+  La ejecución siguiente (`45971913928`) confirmó `docs-integrity` y
+  `october-provisional-mariadb`, pero `test` encontró que los tres lotes de
+  auditoría pasaban arrays PHP directamente a `insertOrIgnore()` para la
+  columna JSON `metadata`; la serialización se corrigió en el importador y en
+  el servicio de herencia/edición, manteniendo los lotes y la idempotencia.
+  La ejecución posterior (`45974404618`) confirmó de nuevo los dos checks
+  anteriores, pero el test local reveló que el `upsert` de edición necesitaba
+  incluir las columnas no nulas de la fila en su inserción SQLite, aunque no
+  formen parte de las columnas actualizadas; también se normalizó en el test
+  la comparación de `updated_at` por valor, no por identidad de objeto Carbon.
+  La corrección local pasa 9 pruebas/44 aserciones de herencia, 5/20 del
+  importador y 102/660 de los tres focales restantes de Comisiones, usando
+  únicamente la clave sintética de CI en el proceso de prueba.
+  PHP/PHPUnit locales sí están disponibles mediante el PHP 8.4 de Herd y los
+  focales indicados pasan; Pint local y la suite completa quedan pendientes de
+  confirmación remota. No se ejecutó `php artisan migrate`, ningún comando de
+  importación real ni sincronización externa.
+- Pruebas focalizadas confirmadas localmente:
+  `php artisan test --filter=StoreManagerCommissionTargetInheritanceTest`
+  (9/9, 44 aserciones),
+  `php artisan test --filter=StoreManagerCommissionTargetImportTest` (5/5,
+  20 aserciones) y los focales de Fórmulas, Readiness y Dashboard (102/102,
+  660 aserciones). Deben confirmarse Pint, la suite completa y CI, incluido
+  el job MariaDB provisional.
+- Operación posterior: desplegar código y migración en el mismo release,
+  confirmar que octubre ya tiene sus 34 filas importadas y abrir Coeficientes
+  en noviembre con un administrador. Validar primero lectura/dry-run y luego
+  la edición de un valor sintético en un entorno autorizado; no ejecutar
+  importaciones reales ni reabrir cierres desde esta tarea.
+
 ## 2026-11-26 — Ajustes finales de revisión de Campañas
 
 - La tabla de detalle de Campañas conserva el dataset compartido y las
@@ -10115,3 +10201,23 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   el comportamiento del informe.
 - Acciones manuales pendientes: publicar el commit en la rama de la PR #164 y
   esperar los checks `test`, `october-provisional-mariadb` y `docs-integrity`.
+
+## Integración de main en la PR #163 (2026-11-27)
+
+- Se actualizó `origin/main` hasta `b563137a9cdb634164f1ade9e09e59208e7814ed`
+  y se incorporó mediante merge normal en
+  `codex/store-manager-targets-monthly-inheritance`, sin rebase ni force-push.
+- El merge no produjo conflictos. Se conserva la corrección de Stock de main,
+  incluidos los ajustes de fecha de `tests/Feature/StockDashboardTest.php`, y
+  se mantienen intactos los cambios de herencia mensual, auditoría y edición
+  protegida de objetivos de Comisiones.
+- No se modificaron fórmulas, cierres, snapshots, permisos, datos productivos,
+  importaciones reales ni lógica de Stock; los assets, documentación y tests de
+  Campañas procedentes de main permanecen en la rama.
+- Verificaciones locales sobre la combinación: `StockDashboardTest.php` pasó
+  (16/16, 166 assertions); `StoreManagerCommissionTargetInheritanceTest.php`
+  pasó (9/9, 44 assertions); el bloque focalizado de importación, dashboard,
+  cierres y permisos de Comisiones pasó (212/212, 1.467 assertions); Pint y
+  `git diff --check` pasaron.
+- Acciones pendientes: publicar el merge commit y esperar los checks de la PR
+  `test`, `october-provisional-mariadb` y `docs-integrity`.

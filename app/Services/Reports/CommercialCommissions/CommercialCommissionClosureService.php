@@ -718,7 +718,7 @@ class CommercialCommissionClosureService
     }
 
     /** @param array<int, mixed> $targets
-     * @return array<int, array{zone: string, store_key: string, store_name: string, target_deliveries: int, target_purchases: int, target_source: array{sha256: string, label: string}}>
+     * @return array<int, array{zone: string, store_key: string, store_name: string, target_deliveries: int, target_purchases: int, target_source: array{sha256: string, label: string, type: string, source_month: string}}
      */
     private function canonicalTargetDefinitions(array $targets): array
     {
@@ -733,6 +733,8 @@ class CommercialCommissionClosureService
                 'target_source' => [
                     'sha256' => (string) data_get($target, 'target_source.sha256', ''),
                     'label' => (string) data_get($target, 'target_source.label', ''),
+                    'type' => (string) data_get($target, 'target_source.type', ''),
+                    'source_month' => (string) data_get($target, 'target_source.source_month', ''),
                 ],
             ])
             ->sortBy('store_key')
