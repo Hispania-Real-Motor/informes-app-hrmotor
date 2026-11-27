@@ -10051,3 +10051,42 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
   `Docs-Impact: updated`, `Docs-Matrix-Impact: updated`,
   `Docs-Scope: commissions,campaigns`, con rutas funcionales modificadas como
   `Docs-Evidence` y sin declarar cobertura productiva.
+
+## Revisión final de ajustes visuales de Campañas para Dirección (2026-11-27)
+
+- Base verificada: `origin/main` y la rama de trabajo parten de
+  `99f066021819743b07096956dc5e78033135fa35`. La rama conserva el acceso
+  operacional de Administración y Dirección mediante `isAdmin() || isDirector()`
+  en el controlador y el dataset; no se modificaron permisos ni cálculos.
+- Alcance: la vista expone una bandera de Dirección solo para presentación. Con
+  un summary operacional válido se ocultan únicamente los mensajes genéricos de
+  provisionalidad para Dirección; errores reales, bloqueos, fallback y avisos de
+  cobertura permanecen visibles. La evolución mensual se oculta para Dirección
+  solo cuando no contiene valores numéricos utilizables; ceros reales cuentan.
+  Administración conserva el comportamiento anterior.
+- Archivos funcionales modificados: `app/Http/Controllers/Reports/Campaigns/CampaignDashboardController.php`,
+  `resources/js/reports/campaigns-dashboard.js`,
+  `resources/views/reports/campaigns/index.blade.php`,
+  `tests/Feature/CampaignDashboardTest.php` y
+  `tests/js/campaign-presentation.test.mjs`. También se actualizó
+  `docs/informe-campanas.md`; no cambia `docs/matriz-trazabilidad-kpi.md` porque
+  no varían KPI, fuente, universo, filtro, fórmula ni contrato económico.
+- Base de datos y configuración: sin migraciones, sincronizaciones, ejecuciones
+  operativas, reconstrucción de runs, cambios de Comisiones o nuevas variables de
+  entorno. El build solo generó artefactos Vite.
+- Seguridad y rendimiento: la autorización sigue siendo server-side; la bandera
+  de UI no concede acceso. El filtro de avisos se aplica solo a mensajes
+  identificados como genéricos y el detector de evolución recorre las filas ya
+  recibidas sin nuevas consultas ni cargas de datos.
+- Verificaciones: `node --test tests/js/campaign-presentation.test.mjs` pasó
+  (59/59); el test de permisos focalizado pasó (1/1, 36 aserciones); el test de
+  Dirección sobre atribución operacional pasó (1/1, 6 aserciones); el build Vite,
+  `git diff --check` y el lint PHP de los archivos modificados pasaron. El worktree
+  no tenía `.env`; los tests PHP se ejecutaron con una `APP_KEY` efímera de proceso.
+- Revisión documental fallback: se invocó `report_docs_maintainer`, pero no
+  devolvió resultado tras varios intervalos y fue detenido; el agente principal
+  aplicó y revisó este procedimiento directamente. El validador documental queda
+  pendiente de ejecutarse con el SHA publicado y el cuerpo real de la PR, sin
+  inventar datos ni resultados de CI.
+- Contrato de PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: unchanged`,
+  `Docs-Matrix-Reason: El ajuste cambia únicamente la presentación condicional de avisos y series sin modificar KPI, fuente, universo, filtros, fórmulas ni trazabilidad.`

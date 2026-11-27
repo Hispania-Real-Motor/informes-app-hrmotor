@@ -771,7 +771,8 @@ class CampaignDashboardTest extends TestCase
             ->assertSee('campaignDiagnosticsModal', false)
             ->assertSee('window.reportUserCanExport = true', false)
             ->assertSee('window.reportUserCanAudit = true', false)
-            ->assertSee('<input type="hidden" id="campaignDataSource"', false);
+            ->assertSee('<input type="hidden" id="campaignDataSource"', false)
+            ->assertSee('window.reportUserIsDirector = false', false);
 
         $this->withSession($adminSession)
             ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
@@ -824,7 +825,8 @@ class CampaignDashboardTest extends TestCase
             ->assertSee('window.reportUserCanExport = true', false)
             ->assertSee('window.reportUserCanAudit = true', false)
             ->assertSee('id="campaignDataSource"', false)
-            ->assertSee('window.reportUserIsAdmin = false', false);
+            ->assertSee('window.reportUserIsAdmin = false', false)
+            ->assertSee('window.reportUserIsDirector = true', false);
 
         $this->withSession($directorSession)
             ->getJson('/informes/campanas/data/summary?'.$this->campaignQuery())
