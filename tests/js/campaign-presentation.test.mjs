@@ -67,7 +67,7 @@ const sandbox = {
     Intl, URLSearchParams, advertisingEligibility, advertisingDetailRows, commercialResultDetailRows, detailMoneyPresentation, currentStatusPresentation, historicalStatusPresentation, hasDetailActivity, costDisplay, costDenominators, costPresentation, contiguousChartSegments,
     localStorage: { getItem: () => null },
     document: { addEventListener() {}, getElementById: () => null, querySelectorAll: () => [] },
-    window: { reportUserCanExport: true, reportUserCanAudit: true, clearTimeout() {}, setTimeout: () => 0 },
+    window: { reportUserCanExport: true, reportUserCanAudit: true, reportUserIsAdmin: true, reportUserIsDirector: false, clearTimeout() {}, setTimeout: () => 0 },
 };
 vm.createContext(sandbox);
 vm.runInContext(source.replace(/^import .*;\r?\n/, ''), sandbox);
@@ -149,6 +149,27 @@ test('recovery mode remains technical state without a permanent public alert, wh
     assert.match(warnings.innerHTML, /Meta Ads: Sin cobertura verificable\./);
     assert.match(warnings.innerHTML, /campaign-availability-notice/);
     assert.ok(!warnings.innerHTML.includes('is-error'));
+});
+
+test('Director hides only generic operational notices when the provisional dataset is usable', () => {
+    const warnings = {innerHTML: '', insertAdjacentHTML(_position, html) { this.innerHTML += html; }};
+    const isolated = createDashboardSandbox({ addEventListener() {}, querySelectorAll: () => [],
+        getElementById: (id) => id === 'warnings' ? warnings : null });
+    const genericWarnings = [
+        'Atribución operativa provisional de 2026-11; no constituye certificación histórica ni sustituye el informe publicado.',
+        'Datos operativos provisionales de 2026-11; no constituyen una certificación histórica.',
+        'La cobertura de resultados comerciales puede estar incompleta.',
+    ];
+    isolated.window.reportUserIsDirector = true;
+    const suppress = vm.runInContext("shouldSuppressDirectorOperationalNotice({ok:true, availability:{mode:'operational_provisional', interest_dependent:{status:'available'}, attribution:{status:'available'}}, operational_evidence:{month:'2026-11'}})", isolated);
+    assert.equal(suppress, true);
+    vm.runInContext(`renderWarnings(${JSON.stringify(genericWarnings)}, {mode:'operational_provisional'}, ${suppress})`, isolated);
+    assert.doesNotMatch(warnings.innerHTML, /provisionales/);
+    assert.match(warnings.innerHTML, /cobertura de resultados comerciales/);
+
+    isolated.window.reportUserIsDirector = false;
+    vm.runInContext(`renderWarnings(${JSON.stringify(genericWarnings.slice(0, 1))}, {mode:'operational_provisional'}, false)`, isolated);
+    assert.match(warnings.innerHTML, /Atribución operativa provisional/);
 });
 
 test('real detail rendering preserves shared rows, hides empty rows and escapes campaign names', () => {
@@ -722,6 +743,25 @@ test('monthly charts preserve real zeroes and do not manufacture results from un
     assert.equal(vm.runInContext("metricChartRows([{result_count: null, sales: 4, purchases: 5, spend: 90}])[0].result_count", isolated), null);
     assert.equal(vm.runInContext("metricChartRows([{sales: 0, purchases: 0, spend: 0}])[0].result_count", isolated), 0);
     assert.equal(vm.runInContext("metricChartRows([{result_count: 0, spend: 0}])[0].cost_per_result", isolated), null);
+});
+
+test('Director hides an unusable monthly evolution while Administration keeps the existing empty state', () => {
+    const charts = { innerHTML: '' };
+    const isolated = createDashboardSandbox({ addEventListener() {}, querySelectorAll: () => [],
+        getElementById: (id) => id === 'campaignCharts' ? charts : null });
+    isolated.window.reportUserIsDirector = true;
+
+    vm.runInContext('renderCharts({monthly_evolution: []})', isolated);
+    assert.equal(charts.innerHTML, '');
+    vm.runInContext("renderCharts({monthly_evolution: [{date: '2026-11-01'}]})", isolated);
+    assert.equal(charts.innerHTML, '');
+    vm.runInContext("renderCharts({monthly_evolution: [{date: '2026-11-01', spend: 0, sales: 0, purchases: 0}]})", isolated);
+    assert.match(charts.innerHTML, /Evolución mensual/);
+
+    isolated.window.reportUserIsDirector = false;
+    vm.runInContext('renderCharts({monthly_evolution: []})', isolated);
+    assert.match(charts.innerHTML, /Evolución mensual/);
+    assert.match(charts.innerHTML, /Sin datos/);
 });
 
 test('a definitive load failure fails closed without discarding column preferences', () => {

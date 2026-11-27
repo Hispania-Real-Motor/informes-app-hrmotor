@@ -31,6 +31,7 @@ class CampaignDashboardController extends Controller
             'reportUserCanAudit' => ReportUserAccess::canAuditReport($request, 'campaigns'),
             'reportUserCanViewOperationalCampaigns' => $canViewOperational,
             'reportUserIsAdmin' => ReportUserAccess::isAdmin($request),
+            'reportUserIsDirector' => ReportUserAccess::isDirector($request),
             'campaignOperationalDefaultMonth' => $canViewOperational
                 ? $this->operationalDefaultMonth($enabledMonths)
                 : null,
