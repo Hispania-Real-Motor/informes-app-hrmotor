@@ -61,18 +61,25 @@
   auditoría pasaban arrays PHP directamente a `insertOrIgnore()` para la
   columna JSON `metadata`; la serialización se corrigió en el importador y en
   el servicio de herencia/edición, manteniendo los lotes y la idempotencia.
-  PHP/PHPUnit/Pint no se pudieron ejecutar en esta sesión porque no existe un
-  binario PHP en el PATH ni en las rutas locales esperadas. Deben ejecutarse en
-  Herd/CI antes de publicar. No se ejecutó `php artisan migrate`, ningún
-  comando de importación real ni sincronización externa.
-- Pruebas focalizadas pendientes de confirmar en CI con PHP:
-  `php artisan test --filter=StoreManagerCommissionTargetInheritanceTest`,
-  `php artisan test --filter=StoreManagerCommissionTargetImportTest`,
-  `php artisan test --filter=CommercialCommissionFormulaSettingsTest`,
-  `php artisan test --filter=CommercialCommissionDashboardTest`,
-  `php artisan test --filter=CommercialCommissionSourceReadinessTest` y
-  `php vendor/bin/pint --test` sobre los PHP modificados. Después debe
-  ejecutarse la suite completa y CI, incluyendo el job MariaDB provisional.
+  La ejecución posterior (`45974404618`) confirmó de nuevo los dos checks
+  anteriores, pero el test local reveló que el `upsert` de edición necesitaba
+  incluir las columnas no nulas de la fila en su inserción SQLite, aunque no
+  formen parte de las columnas actualizadas; también se normalizó en el test
+  la comparación de `updated_at` por valor, no por identidad de objeto Carbon.
+  La corrección local pasa 9 pruebas/44 aserciones de herencia, 5/20 del
+  importador y 102/660 de los tres focales restantes de Comisiones, usando
+  únicamente la clave sintética de CI en el proceso de prueba.
+  PHP/PHPUnit locales sí están disponibles mediante el PHP 8.4 de Herd y los
+  focales indicados pasan; Pint local y la suite completa quedan pendientes de
+  confirmación remota. No se ejecutó `php artisan migrate`, ningún comando de
+  importación real ni sincronización externa.
+- Pruebas focalizadas confirmadas localmente:
+  `php artisan test --filter=StoreManagerCommissionTargetInheritanceTest`
+  (9/9, 44 aserciones),
+  `php artisan test --filter=StoreManagerCommissionTargetImportTest` (5/5,
+  20 aserciones) y los focales de Fórmulas, Readiness y Dashboard (102/102,
+  660 aserciones). Deben confirmarse Pint, la suite completa y CI, incluido
+  el job MariaDB provisional.
 - Operación posterior: desplegar código y migración en el mismo release,
   confirmar que octubre ya tiene sus 34 filas importadas y abrir Coeficientes
   en noviembre con un administrador. Validar primero lectura/dry-run y luego

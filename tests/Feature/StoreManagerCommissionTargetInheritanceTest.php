@@ -135,12 +135,20 @@ class StoreManagerCommissionTargetInheritanceTest extends TestCase
         $timestamps = StoreManagerCommissionTarget::query()
             ->where('month', '2026-11')
             ->pluck('updated_at', 'store_key')
+            ->map(fn ($timestamp): ?string => $timestamp?->toDateTimeString())
             ->all();
 
         $service->materializeForMonth('2026-12');
 
         $this->assertSame($before, StoreManagerCommissionTargetEvent::query()->count());
-        $this->assertSame($timestamps, StoreManagerCommissionTarget::query()->where('month', '2026-11')->pluck('updated_at', 'store_key')->all());
+        $this->assertSame(
+            $timestamps,
+            StoreManagerCommissionTarget::query()
+                ->where('month', '2026-11')
+                ->pluck('updated_at', 'store_key')
+                ->map(fn ($timestamp): ?string => $timestamp?->toDateTimeString())
+                ->all(),
+        );
     }
 
     public function test_partial_month_is_completed_without_overwriting_existing_values(): void

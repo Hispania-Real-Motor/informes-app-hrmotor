@@ -152,11 +152,16 @@ class StoreManagerCommissionTargetService
 
                 $updates[] = [
                     'month' => $target->month,
+                    'zone' => $target->zone,
                     'store_key' => $target->store_key,
+                    'store_name' => $target->store_name,
                     'delivery_target' => $incoming['delivery_target'],
                     'purchase_target' => $incoming['purchase_target'],
+                    'source_sha256' => $target->source_sha256,
+                    'source_label' => $target->source_label,
                     'source_type' => self::SOURCE_TYPE_ADMIN,
                     'source_month' => null,
+                    'created_at' => $target->created_at ?? $now,
                     'modified_by' => $reportUserId,
                     'updated_at' => $now,
                 ];
@@ -461,8 +466,7 @@ class StoreManagerCommissionTargetService
     /** @param Collection<int, StoreManagerCommissionTarget> $targets */
     private function hasCompleteTargetValues(Collection $targets): bool
     {
-        return $targets->every(fn (StoreManagerCommissionTarget $target): bool =>
-            $target->delivery_target !== null
+        return $targets->every(fn (StoreManagerCommissionTarget $target): bool => $target->delivery_target !== null
             && $target->purchase_target !== null
             && (int) $target->delivery_target >= 0
             && (int) $target->purchase_target >= 0
