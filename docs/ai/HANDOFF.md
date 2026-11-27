@@ -10091,3 +10091,27 @@ La consulta F2 de recuperación comparte la selección de campos de la sincroniz
 - Contrato de PR: `Docs-Impact: updated`, `Docs-Matrix-Impact: unchanged`,
   `Docs-Matrix-Reason: El ajuste cambia únicamente la presentación condicional de avisos y series sin modificar KPI, fuente, universo, filtros, fórmulas ni trazabilidad.`
   `Docs-Matrix-Evidence: ["resources/js/reports/campaigns-dashboard.js"]`.
+
+## Corrección de ventana temporal en test de Stock para CI (2026-11-27)
+
+- Resumen: el test de visibilidad de Stock consultaba el período por defecto,
+  mientras sus fotografías históricas pertenecen al 28–30 de julio de 2026.
+  La petición del test se fijó explícitamente a `date_from=2026-07-28` y
+  `date_to=2026-07-30`, sin relajar ni eliminar aserciones.
+- Archivo modificado: `tests/Feature/StockDashboardTest.php`.
+- Decisión: corregir únicamente el contrato temporal del test; no se modificó
+  `StockDashboardDatasetService`, la vista, rutas, permisos, consultas
+  productivas, workflows ni datos reales.
+- Base de datos y configuración: sin migraciones, variables de entorno ni
+  cambios de configuración.
+- Seguridad y rendimiento: sin impacto productivo; se mantiene el alcance
+  original de autorización y la prueba continúa exigiendo la renderización de
+  `stock-line-chart`.
+- Verificaciones: el test focalizado pasó (1 test, 51 aserciones); la suite
+  `tests/Feature/StockDashboardTest.php` pasó (16 tests, 166 aserciones);
+  Pint pasó sobre el archivo modificado y `git diff --check` pasó.
+- Documentación de informes: no aplica el mantenimiento de documentación de
+  KPI porque el cambio solo corrige datos de entrada de un test y no modifica
+  el comportamiento del informe.
+- Acciones manuales pendientes: publicar el commit en la rama de la PR #164 y
+  esperar los checks `test`, `october-provisional-mariadb` y `docs-integrity`.
